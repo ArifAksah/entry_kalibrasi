@@ -188,6 +188,13 @@ const CertificatesCRUD: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.no_certificate || !form.no_order || !form.no_identification || !form.issue_date) return
+    
+    // Validate verifikator fields are required
+    if (!(form as any).verifikator_1 || !(form as any).verifikator_2) {
+      alert('Verifikator 1 dan Verifikator 2 harus dipilih')
+      return
+    }
+    
     setIsSubmitting(true)
     try {
       const payload = { ...form, results }
@@ -229,7 +236,7 @@ const CertificatesCRUD: React.FC = () => {
       {error && (<div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>)}
 
       <Card>
-        <Table headers={[ 'Certificate No', 'Order No', 'Identification', 'Issue Date', 'Station', 'Instrument', 'Actions' ]}>
+        <Table headers={[ 'Certificate No', 'Order No', 'Identification', 'Issue Date', 'Station', 'Instrument', 'Verification Status', 'Actions' ]}>
           {certificates.map((item) => (
             <tr key={item.id} className="hover:bg-gray-50">
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.no_certificate}</td>
@@ -238,6 +245,30 @@ const CertificatesCRUD: React.FC = () => {
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(item.issue_date).toLocaleDateString()}</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.station ? stations.find(s => s.id === item.station)?.name || 'Unknown' : '-'}</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.instrument ? instruments.find(i => i.id === item.instrument)?.name || 'Unknown' : '-'}</td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm">
+                <div className="flex flex-col space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs text-gray-500">V1:</span>
+                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                      (item as any).verifikator_1_status === 'approved' ? 'bg-green-100 text-green-800' :
+                      (item as any).verifikator_1_status === 'rejected' ? 'bg-red-100 text-red-800' :
+                      'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {(item as any).verifikator_1_status || 'pending'}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs text-gray-500">V2:</span>
+                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                      (item as any).verifikator_2_status === 'approved' ? 'bg-green-100 text-green-800' :
+                      (item as any).verifikator_2_status === 'rejected' ? 'bg-red-100 text-red-800' :
+                      'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {(item as any).verifikator_2_status || 'pending'}
+                    </span>
+                  </div>
+                </div>
+              </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                 <a href={`/certificates/${item.id}/print`} target="_blank" className="text-green-600 hover:text-green-800">Print</a>
                 {can('certificate','update') && canEndpoint('PUT', `/api/certificates/${item.id}`) && (
@@ -293,15 +324,15 @@ const CertificatesCRUD: React.FC = () => {
                     <p className="text-xs text-gray-500 mt-1">Disimpan sebagai id personel pada authorized_by</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Verifikator 1</label>
-                    <select value={(form as any).verifikator_1 ?? ''} onChange={e => setForm({ ...form, verifikator_1: e.target.value || null } as any)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Verifikator 1 *</label>
+                    <select required value={(form as any).verifikator_1 ?? ''} onChange={e => setForm({ ...form, verifikator_1: e.target.value || null } as any)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                       <option value="">Pilih personel</option>
                       {personel.map(p => (<option key={p.id} value={p.id}>{p.name} ({p.id.slice(0,8)})</option>))}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Verifikator 2</label>
-                    <select value={(form as any).verifikator_2 ?? ''} onChange={e => setForm({ ...form, verifikator_2: e.target.value || null } as any)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Verifikator 2 *</label>
+                    <select required value={(form as any).verifikator_2 ?? ''} onChange={e => setForm({ ...form, verifikator_2: e.target.value || null } as any)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                       <option value="">Pilih personel</option>
                       {personel.map(p => (<option key={p.id} value={p.id}>{p.name} ({p.id.slice(0,8)})</option>))}
                     </select>

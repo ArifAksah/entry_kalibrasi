@@ -16,7 +16,38 @@ export async function GET() {
       .order('created_at', { ascending: false })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data)
+
+    // Get verification status for each certificate (gracefully handle missing table)
+    const certificateIds = data?.map(c => c.id) || []
+    let verifications: Array<{ certificate_id: number; verification_level: number; status: string; certificate_version?: number }> = []
+
+    if (certificateIds.length) {
+      try {
+        const { data: v, error: verifError } = await supabaseAdmin
+          .from('certificate_verification')
+          .select('certificate_id, verification_level, status, certificate_version')
+          .in('certificate_id', certificateIds)
+
+        if (!verifError && v) {
+          verifications = v
+        }
+        // If the table doesn't exist yet or any error occurs, fall back to empty verifications
+      } catch {}
+    }
+
+    // Combine certificates with verification status
+    const certificatesWithStatus = (data || []).map(cert => {
+      const certVersion = (cert as any).version ?? 1
+      const verif1 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 1 && (v.certificate_version ?? 1) === certVersion)
+      const verif2 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 2 && (v.certificate_version ?? 1) === certVersion)
+      return {
+        ...cert,
+        verifikator_1_status: verif1?.status || 'pending',
+        verifikator_2_status: verif2?.status || 'pending',
+      }
+    })
+
+    return NextResponse.json(certificatesWithStatus)
   } catch (e) {
     return NextResponse.json({ error: 'Failed to fetch certificates' }, { status: 500 })
   }
@@ -47,6 +78,13 @@ export async function POST(request: NextRequest) {
     if (!no_certificate || !no_order || !no_identification || !issue_date) {
       return NextResponse.json({
         error: 'Certificate number, order number, identification number, and issue date are required',
+      }, { status: 400 })
+    }
+
+    // Validate verifikator fields are required
+    if (!verifikator_1 || !verifikator_2) {
+      return NextResponse.json({
+        error: 'Verifikator 1 and Verifikator 2 are required',
       }, { status: 400 })
     }
 
@@ -122,6 +160,13 @@ export async function POST(request: NextRequest) {
       v2 = verifikator_2
     }
 
+    // Debug logging for certificate creation
+    console.log('=== Creating Certificate ===')
+    console.log('Verifikator 1:', v1)
+    console.log('Verifikator 2:', v2)
+    console.log('Authorized By:', authorizedPersonId)
+    console.log('============================')
+
     const { data, error } = await supabaseAdmin
       .from('certificate')
       .insert({ 
@@ -134,7 +179,8 @@ export async function POST(request: NextRequest) {
         issue_date, 
         station: station ? parseInt(station) : null, 
         instrument: instrument ? parseInt(instrument) : null,
-        results: results ?? null
+        results: results ?? null,
+        version: 1
       })
       .select()
       .single()

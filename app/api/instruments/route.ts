@@ -1,14 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '../../../lib/supabase'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { autoRefreshToken: false, persistSession: false } }
+)
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('instrument')
       .select('*')
       .order('created_at', { ascending: false })
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      const msg = (error as any)?.message || ''
+      const code = (error as any)?.code || ''
+      if (code === '42P01' || /relation .* does not exist/i.test(msg) || /permission denied/i.test(msg)) {
+        return NextResponse.json([])
+      }
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
     return NextResponse.json(data)
   } catch (e) {
     return NextResponse.json({ error: 'Failed to fetch instruments' }, { status: 500 })
@@ -26,7 +39,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('instrument')
       .insert({ manufacturer, type, serial_number, others, name })
       .select()

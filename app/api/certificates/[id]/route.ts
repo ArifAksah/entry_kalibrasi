@@ -131,6 +131,28 @@ export async function PUT(
       v2 = verifikator_2
     }
 
+    // Auto-increment version when content changes meaningfully
+    // Fetch current certificate version
+    const { data: current, error: curErr } = await supabaseAdmin
+      .from('certificate')
+      .select('version, no_certificate, no_order, no_identification, issue_date, station, instrument, results')
+      .eq('id', id)
+      .maybeSingle()
+
+    const nextVersion = (() => {
+      const prev = current?.version ?? 1
+      // If any primary fields changed, bump version
+      const changed = !current ||
+        current.no_certificate !== no_certificate ||
+        current.no_order !== no_order ||
+        current.no_identification !== no_identification ||
+        current.issue_date !== issue_date ||
+        (current.station ?? null) !== (station ? parseInt(station) : null) ||
+        (current.instrument ?? null) !== (instrument ? parseInt(instrument) : null) ||
+        JSON.stringify(current.results ?? null) !== JSON.stringify(results ?? null)
+      return changed ? (prev + 1) : prev
+    })()
+
     const { data, error } = await supabaseAdmin
       .from('certificate')
       .update({ 
@@ -143,7 +165,8 @@ export async function PUT(
         issue_date, 
         station: station ? parseInt(station) : null, 
         instrument: instrument ? parseInt(instrument) : null,
-        results: results ?? null
+        results: results ?? null,
+        version: nextVersion
       })
       .eq('id', id)
       .select()

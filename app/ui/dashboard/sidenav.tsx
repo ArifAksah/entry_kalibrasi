@@ -96,6 +96,7 @@ const sections: NavSection[] = [
       { name: 'Verifikator Cal Result', href: '/verifikator-cal-result', icon: Icon.check },
       { name: 'Notes Instrumen Standard', href: '/notes-instrumen-standard', icon: Icon.beaker },
       { name: 'Verifikator Inspection', href: '/verifikator-inspection-results', icon: Icon.check },
+      { name: 'Certificate Verification', href: '/certificate-verification', icon: Icon.check },
       { name: 'Personel', href: '/inspection-person', icon: Icon.doc },
     ],
   },
@@ -179,6 +180,7 @@ const SideNav: React.FC = () => {
                 if (href === '/verifikator-cal-result') return canEndpoint('GET', '/api/verifikator-cal-result')
                 if (href === '/notes-instrumen-standard') return canEndpoint('GET', '/api/notes-instrumen-standard')
                 if (href === '/verifikator-inspection-results') return canEndpoint('GET', '/api/verifikator-inspection-results')
+                if (href === '/certificate-verification') return canEndpoint('GET', '/api/certificate-verification/pending')
                 if (href === '/inspection-person') return canEndpoint('GET', '/api/inspection-person')
               }
               
@@ -238,6 +240,7 @@ const SideNav: React.FC = () => {
                     if (href === '/verifikator-cal-result') return canEndpoint('GET', '/api/verifikator-cal-result')
                     if (href === '/notes-instrumen-standard') return canEndpoint('GET', '/api/notes-instrumen-standard')
                     if (href === '/verifikator-inspection-results') return canEndpoint('GET', '/api/verifikator-inspection-results')
+                    if (href === '/certificate-verification') return canEndpoint('GET', '/api/certificate-verification/pending')
                     if (href === '/inspection-person') return canEndpoint('GET', '/api/inspection-person')
                   }
                   
