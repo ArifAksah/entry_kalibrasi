@@ -46,6 +46,8 @@ export async function POST(request: NextRequest) {
       verification_level, // 1 or 2
       status, // 'pending', 'approved', 'rejected'
       notes,
+      rejection_reason,
+      approval_notes,
       verified_by,
       certificate_version
     } = body
@@ -184,6 +186,8 @@ export async function POST(request: NextRequest) {
         verification_level,
         status,
         notes: notes || null,
+        rejection_reason: rejection_reason || null,
+        approval_notes: approval_notes || null,
         verified_by: actualVerifiedBy,
         certificate_version: certificate_version ?? certData.version ?? 1
       })
