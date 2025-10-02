@@ -40,7 +40,7 @@ export async function PUT(
     if (authError || !user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
 
     const body = await request.json()
-    const { status, notes } = body
+    const { status, notes, rejection_reason, approval_notes } = body
 
     if (!status) {
       return NextResponse.json({
@@ -73,6 +73,8 @@ export async function PUT(
       .update({ 
         status,
         notes: notes || null,
+        rejection_reason: rejection_reason || null,
+        approval_notes: approval_notes || null,
         updated_at: new Date().toISOString()
       })
       .eq('id', params.id)

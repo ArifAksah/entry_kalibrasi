@@ -7,6 +7,8 @@ export interface CertificateVerification {
   verification_level: number
   status: 'pending' | 'approved' | 'rejected'
   notes?: string
+  rejection_reason?: string
+  approval_notes?: string
   verified_by: string
   created_at: string
   updated_at: string
@@ -18,6 +20,12 @@ export interface CertificateVerification {
     issue_date: string
     station?: number
     instrument?: number
+    verification_notes?: string
+    rejection_reason?: string
+    repair_notes?: string
+    repair_status?: 'none' | 'pending' | 'completed' | 'rejected'
+    repair_requested_at?: string
+    repair_completed_at?: string
   }
   verifikator?: {
     id: string
@@ -107,14 +115,22 @@ export const useCertificateVerification = () => {
     verification_level: number
     status: 'pending' | 'approved' | 'rejected'
     notes?: string
+    rejection_reason?: string
+    approval_notes?: string
   }) => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) throw new Error('Not authenticated')
+      if (!session?.access_token) {
+        setError('Not authenticated')
+        return { success: false, error: 'Not authenticated' }
+      }
       
       // Get current user to include in payload
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('User not found')
+      if (!user) {
+        setError('User not found')
+        return { success: false, error: 'User not found' }
+      }
       
       const res = await fetch('/api/certificate-verification', {
         method: 'POST',
@@ -128,25 +144,34 @@ export const useCertificateVerification = () => {
         }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to create verification')
+      if (!res.ok) {
+        const errorMessage = data.error || 'Gagal membuat verifikasi'
+        setError(errorMessage)
+        return { success: false, error: errorMessage }
+      }
       
       setVerifications(prev => [data, ...prev])
       setError(null)
-      return data
+      return { success: true, data }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'An error occurred'
       setError(msg)
-      throw new Error(msg)
+      return { success: false, error: msg }
     }
   }
 
   const updateVerification = async (id: number, payload: {
     status: 'pending' | 'approved' | 'rejected'
     notes?: string
+    rejection_reason?: string
+    approval_notes?: string
   }) => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) throw new Error('Not authenticated')
+      if (!session?.access_token) {
+        setError('Not authenticated')
+        return { success: false, error: 'Not authenticated' }
+      }
       
       const res = await fetch(`/api/certificate-verification/${id}`, {
         method: 'PUT',
@@ -157,15 +182,19 @@ export const useCertificateVerification = () => {
         body: JSON.stringify(payload),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to update verification')
+      if (!res.ok) {
+        const errorMessage = data.error || 'Gagal memperbarui verifikasi'
+        setError(errorMessage)
+        return { success: false, error: errorMessage }
+      }
       
       setVerifications(prev => prev.map(item => item.id === id ? data : item))
       setError(null)
-      return data
+      return { success: true, data }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'An error occurred'
       setError(msg)
-      throw new Error(msg)
+      return { success: false, error: msg }
     }
   }
 
@@ -190,6 +219,110 @@ export const useCertificateVerification = () => {
     }
   }
 
+  const requestRepair = async (certificateId: number, repairNotes?: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        setError('Not authenticated')
+        return { success: false, error: 'Not authenticated' }
+      }
+      
+      const res = await fetch('/api/certificate-verification/repair', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${session.access_token}` 
+        },
+        body: JSON.stringify({
+          certificate_id: certificateId,
+          repair_notes: repairNotes
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        const errorMessage = data.error || 'Gagal meminta perbaikan'
+        setError(errorMessage)
+        return { success: false, error: errorMessage }
+      }
+      
+      setError(null)
+      return { success: true, data }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'An error occurred'
+      setError(msg)
+      return { success: false, error: msg }
+    }
+  }
+
+  const completeRepair = async (certificateId: number, completionNotes?: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        setError('Not authenticated')
+        return { success: false, error: 'Not authenticated' }
+      }
+      
+      const res = await fetch('/api/certificate-verification/repair/complete', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${session.access_token}` 
+        },
+        body: JSON.stringify({
+          certificate_id: certificateId,
+          completion_notes: completionNotes
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        const errorMessage = data.error || 'Gagal menyelesaikan perbaikan'
+        setError(errorMessage)
+        return { success: false, error: errorMessage }
+      }
+      
+      setError(null)
+      return { success: true, data }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'An error occurred'
+      setError(msg)
+      return { success: false, error: msg }
+    }
+  }
+
+  const resetVerification = async (certificateId: number) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        setError('Not authenticated')
+        return { success: false, error: 'Not authenticated' }
+      }
+      
+      const res = await fetch('/api/certificate-verification/reset', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${session.access_token}` 
+        },
+        body: JSON.stringify({
+          certificate_id: certificateId
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        const errorMessage = data.error || 'Gagal mereset verifikasi'
+        setError(errorMessage)
+        return { success: false, error: errorMessage }
+      }
+      
+      setError(null)
+      return { success: true, data }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'An error occurred'
+      setError(msg)
+      return { success: false, error: msg }
+    }
+  }
+
   useEffect(() => { 
     fetchVerifications()
     fetchPendingCertificates()
@@ -203,6 +336,9 @@ export const useCertificateVerification = () => {
     createVerification, 
     updateVerification, 
     deleteVerification,
+    requestRepair,
+    completeRepair,
+    resetVerification,
     refetch: fetchVerifications,
     refetchPending: fetchPendingCertificates
   }

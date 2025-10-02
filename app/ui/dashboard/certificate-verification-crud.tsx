@@ -18,14 +18,18 @@ const CertificateVerificationCRUD: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [verificationForm, setVerificationForm] = useState({
     status: 'approved' as 'approved' | 'rejected',
-    notes: ''
+    notes: '',
+    rejection_reason: '',
+    approval_notes: ''
   })
 
   const openModal = (certificate: PendingCertificate) => {
     setSelectedCertificate(certificate)
     setVerificationForm({
       status: 'approved',
-      notes: ''
+      notes: '',
+      rejection_reason: '',
+      approval_notes: ''
     })
     setIsModalOpen(true)
   }
@@ -42,33 +46,74 @@ const CertificateVerificationCRUD: React.FC = () => {
     setIsSubmitting(true)
     try {
       const verificationLevel = selectedCertificate.verification_status.user_verification_level
-      if (!verificationLevel) throw new Error('Invalid verification level')
+      if (!verificationLevel) {
+        alert('Level verifikasi tidak valid.')
+        return
+      }
+
+      // Validate rejection reason if rejecting
+      if (verificationForm.status === 'rejected' && !verificationForm.rejection_reason.trim()) {
+        alert('Alasan penolakan harus diisi.')
+        return
+      }
 
       // Check if verification already exists
       const existingVerification = selectedCertificate.verification_status.user_verification_status
       if (existingVerification && existingVerification !== 'pending') {
-        throw new Error('This certificate has already been verified')
+        if (existingVerification === 'rejected') {
+          alert('Sertifikat ini sudah ditolak sebelumnya. Silakan gunakan tombol perbaikan untuk mengirim ulang.')
+        } else {
+          alert('Sertifikat ini sudah diverifikasi sebelumnya.')
+        }
+        return
       }
 
       const existingId = selectedCertificate.verification_status.user_verification_id
+      let result
+      
       if (existingId) {
-        await updateVerification(existingId, verificationForm)
+        result = await updateVerification(existingId, verificationForm)
       } else {
-        await createVerification({
+        result = await createVerification({
           certificate_id: selectedCertificate.id,
           verification_level: verificationLevel,
           status: verificationForm.status,
-          notes: verificationForm.notes || undefined
+          notes: verificationForm.notes || undefined,
+          rejection_reason: verificationForm.status === 'rejected' ? verificationForm.rejection_reason : undefined,
+          approval_notes: verificationForm.status === 'approved' ? verificationForm.approval_notes : undefined
         })
       }
       
-      closeModal()
-      // Refresh data (soft): refetch pending list
-      // As a simple approach, reload the page to ensure all views reflect changes
-      window.location.reload()
+      if (result.success) {
+        closeModal()
+        
+        // Show success message
+        if (verificationForm.status === 'approved') {
+          alert('Sertifikat berhasil disetujui!')
+        } else {
+          alert('Sertifikat telah ditolak. Sertifikat dapat diperbaiki dan dikirim ulang.')
+        }
+        
+        // Refresh data (soft): refetch pending list
+        // As a simple approach, reload the page to ensure all views reflect changes
+        window.location.reload()
+      } else {
+        // Handle error from result
+        const errorMessage = result.error || 'Terjadi kesalahan'
+        
+        // Show user-friendly error message
+        if (errorMessage.includes('rejected')) {
+          alert('Sertifikat telah ditolak. Silakan perbaiki sertifikat dan kirim ulang untuk verifikasi.')
+        } else if (errorMessage.includes('already')) {
+          alert('Sertifikat ini sudah diverifikasi sebelumnya.')
+        } else {
+          alert(`Terjadi kesalahan: ${errorMessage}`)
+        }
+      }
     } catch (e) {
       console.error('Verification error:', e)
-      alert(e instanceof Error ? e.message : 'Failed to submit verification')
+      const errorMessage = e instanceof Error ? e.message : 'Failed to submit verification'
+      alert(`Terjadi kesalahan: ${errorMessage}`)
     } finally {
       setIsSubmitting(false)
     }
@@ -159,9 +204,16 @@ const CertificateVerificationCRUD: React.FC = () => {
                 {getVerificationLevel(cert)}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm">
-                <span className={getStatusBadge(cert.verification_status.user_verification_status || 'pending')}>
-                  {cert.verification_status.user_verification_status || 'pending'}
-                </span>
+                <div className="flex flex-col">
+                  <span className={getStatusBadge(cert.verification_status.user_verification_status || 'pending')}>
+                    {cert.verification_status.user_verification_status || 'pending'}
+                  </span>
+                  {cert.verification_status.user_verification_status === 'rejected' && (
+                    <span className="text-xs text-red-500 mt-1">
+                      Sertifikat ditolak - gunakan tombol perbaikan
+                    </span>
+                  )}
+                </div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm">
                 <div className="flex flex-col space-y-1">
@@ -195,8 +247,20 @@ const CertificateVerificationCRUD: React.FC = () => {
                 </a>
                 {cert.verification_status.user_can_act ? (
                   <button 
-                    onClick={() => openModal(cert)} 
-                    className="text-blue-600 hover:text-blue-900"
+                    onClick={() => {
+                      if (cert.verification_status.user_verification_status === 'approved' || cert.verification_status.user_verification_status === 'rejected') {
+                        if (cert.verification_status.user_verification_status === 'rejected') {
+                          alert('Sertifikat ini sudah ditolak sebelumnya. Silakan gunakan tombol perbaikan untuk mengirim ulang.')
+                        } else {
+                          alert('Sertifikat ini sudah diverifikasi sebelumnya.')
+                        }
+                        return
+                      }
+                      openModal(cert)
+                    }} 
+                    className={`${cert.verification_status.user_verification_status === 'approved' || cert.verification_status.user_verification_status === 'rejected' 
+                      ? 'text-gray-400 cursor-not-allowed' 
+                      : 'text-blue-600 hover:text-blue-900'}`}
                     disabled={cert.verification_status.user_verification_status === 'approved' || cert.verification_status.user_verification_status === 'rejected'}
                   >
                     {cert.verification_status.user_verification_status === 'pending' ? 'Verify' : 'Update'}
@@ -294,16 +358,47 @@ const CertificateVerificationCRUD: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Notes (Optional)
+                      General Notes (Optional)
                     </label>
                     <textarea
                       value={verificationForm.notes}
                       onChange={(e) => setVerificationForm({ ...verificationForm, notes: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      rows={4}
-                      placeholder="Add any notes about your verification decision..."
+                      rows={3}
+                      placeholder="Add any general notes about your verification decision..."
                     />
                   </div>
+
+                  {verificationForm.status === 'rejected' && (
+                    <div>
+                      <label className="block text-sm font-medium text-red-700 mb-2">
+                        Rejection Reason *
+                      </label>
+                      <textarea
+                        value={verificationForm.rejection_reason}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, rejection_reason: e.target.value })}
+                        className="w-full px-3 py-2 border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                        rows={3}
+                        placeholder="Please provide a detailed reason for rejection..."
+                        required
+                      />
+                    </div>
+                  )}
+
+                  {verificationForm.status === 'approved' && (
+                    <div>
+                      <label className="block text-sm font-medium text-green-700 mb-2">
+                        Approval Notes (Optional)
+                      </label>
+                      <textarea
+                        value={verificationForm.approval_notes}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, approval_notes: e.target.value })}
+                        className="w-full px-3 py-2 border border-green-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                        rows={3}
+                        placeholder="Add any notes about the approval..."
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex justify-end space-x-3 pt-4">
@@ -312,18 +407,18 @@ const CertificateVerificationCRUD: React.FC = () => {
                     onClick={closeModal}
                     className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
                   >
-                    Cancel
+                    Batal
                   </button>
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className={`px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 ${
+                    className={`px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed ${
                       verificationForm.status === 'approved' 
                         ? 'bg-green-600 hover:bg-green-700' 
                         : 'bg-red-600 hover:bg-red-700'
                     }`}
                   >
-                    {isSubmitting ? 'Submitting...' : `${verificationForm.status === 'approved' ? 'Approve' : 'Reject'} Certificate`}
+                    {isSubmitting ? 'Mengirim...' : `${verificationForm.status === 'approved' ? 'Setujui' : 'Tolak'} Sertifikat`}
                   </button>
                 </div>
               </form>

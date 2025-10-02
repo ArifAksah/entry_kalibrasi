@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../../contexts/AuthContext'
 import { useCertificates } from '../../../hooks/useCertificates'
+import { useCertificateVerification } from '../../../hooks/useCertificateVerification'
 import { Certificate, CertificateInsert, Station, Instrument, Sensor } from '../../../lib/supabase'
 import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
@@ -11,6 +12,7 @@ import { usePermissions } from '../../../hooks/usePermissions'
 
 const CertificatesCRUD: React.FC = () => {
   const { certificates, loading, error, addCertificate, updateCertificate, deleteCertificate } = useCertificates()
+  const { completeRepair, resetVerification } = useCertificateVerification()
   const { user } = useAuth()
   const { can, canEndpoint } = usePermissions()
 
@@ -163,6 +165,16 @@ const CertificatesCRUD: React.FC = () => {
         station: item.station,
         instrument: item.instrument,
       })
+      // Load results data from database
+      const savedResults = (item as any).results || []
+      if (savedResults && savedResults.length > 0) {
+        setResults(savedResults)
+      } else {
+        // If no results saved, initialize with empty result
+        setResults([
+          { sensorId: null, startDate: '', endDate: '', place: '', environment: [], table: [], notesForm: { traceable_to_si_through: '', reference_document: '', calibration_methode: '', others: '', standardInstruments: [] } }
+        ])
+      }
     } else {
       setEditing(null)
       setForm({
@@ -176,6 +188,10 @@ const CertificatesCRUD: React.FC = () => {
         station: null,
         instrument: null,
       })
+      // Reset results for new certificate
+      setResults([
+        { sensorId: null, startDate: '', endDate: '', place: '', environment: [], table: [], notesForm: { traceable_to_si_through: '', reference_document: '', calibration_methode: '', others: '', standardInstruments: [] } }
+      ])
     }
     setIsModalOpen(true)
   }
@@ -216,6 +232,33 @@ const CertificatesCRUD: React.FC = () => {
     try { await deleteCertificate(id) } catch {}
   }
 
+
+  const handleCompleteRepair = async (certificate: Certificate) => {
+    if (!confirm('Tandai perbaikan sertifikat ini sebagai selesai?')) return
+    
+    const result = await completeRepair(certificate.id, 'Repair completed')
+    
+    if (result.success) {
+      alert('Perbaikan berhasil diselesaikan!')
+      window.location.reload()
+    } else {
+      alert('Gagal menyelesaikan perbaikan: ' + (result.error || 'Unknown error'))
+    }
+  }
+
+  const handleResetVerification = async (certificate: Certificate) => {
+    if (!confirm('Reset verifikasi untuk sertifikat ini? Ini akan menghapus semua verifikasi yang ada.')) return
+    
+    const result = await resetVerification(certificate.id)
+    
+    if (result.success) {
+      alert('Verifikasi berhasil direset!')
+      window.location.reload()
+    } else {
+      alert('Gagal mereset verifikasi: ' + (result.error || 'Unknown error'))
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -236,7 +279,7 @@ const CertificatesCRUD: React.FC = () => {
       {error && (<div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>)}
 
       <Card>
-        <Table headers={[ 'Certificate No', 'Order No', 'Identification', 'Issue Date', 'Station', 'Instrument', 'Verification Status', 'Actions' ]}>
+        <Table headers={[ 'Certificate No', 'Order No', 'Identification', 'Issue Date', 'Station', 'Instrument', 'Verification Status', 'Notes', 'Repair Status', 'Actions' ]}>
           {certificates.map((item) => (
             <tr key={item.id} className="hover:bg-gray-50">
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.no_certificate}</td>
@@ -269,13 +312,43 @@ const CertificatesCRUD: React.FC = () => {
                   </div>
                 </div>
               </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-xs">
+                <div className="truncate" title={(item as any).verification_notes || (item as any).rejection_reason || '-'}>
+                  {(item as any).verification_notes || (item as any).rejection_reason || '-'}
+                </div>
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm">
+                <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                  (item as any).repair_status === 'completed' ? 'bg-green-100 text-green-800' :
+                  (item as any).repair_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                  (item as any).repair_status === 'rejected' ? 'bg-red-100 text-red-800' :
+                  'bg-gray-100 text-gray-800'
+                }`}>
+                  {(item as any).repair_status || 'none'}
+                </span>
+              </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                 <a href={`/certificates/${item.id}/print`} target="_blank" className="text-green-600 hover:text-green-800">Print</a>
-                {can('certificate','update') && canEndpoint('PUT', `/api/certificates/${item.id}`) && (
-                <button onClick={() => openModal(item)} className="text-blue-600 hover:text-blue-900">Edit</button>
+                
+                {/* Edit button - hidden when repair status is pending or completed */}
+                {can('certificate','update') && canEndpoint('PUT', `/api/certificates/${item.id}`) && 
+                 (item as any).repair_status !== 'pending' && (item as any).repair_status !== 'completed' && (
+                  <button onClick={() => openModal(item)} className="text-blue-600 hover:text-blue-900">Edit</button>
                 )}
+                
                 {can('certificate','delete') && canEndpoint('DELETE', `/api/certificates/${item.id}`) && (
                 <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">Delete</button>
+                )}
+                
+                {/* Repair buttons */}
+                {(item as any).repair_status === 'none' && ((item as any).verifikator_1_status === 'rejected' || (item as any).verifikator_2_status === 'rejected') && (
+                  <button onClick={() => openModal(item)} className="text-orange-600 hover:text-orange-900">Request Repair</button>
+                )}
+                {(item as any).repair_status === 'pending' && (
+                  <button onClick={() => handleCompleteRepair(item)} className="text-green-600 hover:text-green-900">Complete Repair</button>
+                )}
+                {(item as any).repair_status === 'completed' && (
+                  <button onClick={() => handleResetVerification(item)} className="text-blue-600 hover:text-blue-900">Reset Verification</button>
                 )}
               </td>
             </tr>
@@ -696,6 +769,7 @@ const CertificatesCRUD: React.FC = () => {
           </div>
         </div>
       )}
+
     </div>
   )
 }
