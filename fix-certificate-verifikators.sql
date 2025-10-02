@@ -33,3 +33,5 @@ SELECT
 FROM certificate 
 WHERE id IN (SELECT id FROM certificate WHERE verifikator_1 IS NULL OR verifikator_2 IS NULL);
 
+
+
