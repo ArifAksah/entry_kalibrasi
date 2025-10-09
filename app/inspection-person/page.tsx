@@ -1,10 +1,5 @@
-'use client'
-
-import React from 'react'
-import SideNav from '../ui/dashboard/sidenav'
-import Header from '../ui/dashboard/header'
-import InspectionPersonCRUD from '../ui/dashboard/inspection-person-crud'
-import ProtectedRoute from '../../components/ProtectedRoute'
+import InspectionPersonCRUD from '../ui/dashboard/inspection-person-crud';
+import Breadcrumb from '../../components/ui/Breadcrumb';
 
 const InspectionPersonPage: React.FC = () => {
   return (
@@ -13,16 +8,19 @@ const InspectionPersonPage: React.FC = () => {
         <SideNav />
         <div className="bg-gray-50">
           <Header />
-          <div className="p-6">
+          <div className="p-6 max-w-7xl mx-auto">
+            <Breadcrumb items={[{ label: 'Dashboard', href: '/' }, { label: 'Personel' }]} />
+            <h1 className="text-3xl font-bold text-gray-900 mb-6">Personel Management</h1>
             <InspectionPersonCRUD />
           </div>
         </div>
       </div>
     </ProtectedRoute>
-  )
-}
+  );
+};
 
-export default InspectionPersonPage
+export default InspectionPersonPage;
+
 
 
 

@@ -5,6 +5,7 @@ import ProtectedRoute from '../../components/ProtectedRoute';
 import SideNav from '../ui/dashboard/sidenav';
 import Header from '../ui/dashboard/header';
 import InstrumentNamesCRUD from '../ui/dashboard/instrument-names-crud';
+import Breadcrumb from '../../components/ui/Breadcrumb';
 
 export default function InstrumentNamesPage() {
   return (
@@ -14,6 +15,7 @@ export default function InstrumentNamesPage() {
         <div className="bg-gray-50">
           <Header />
           <div className="p-6 max-w-7xl mx-auto">
+            <Breadcrumb items={[{ label: 'Dashboard', href: '/' }, { label: 'Instrument Names' }]} />
             <h1 className="text-3xl font-bold text-gray-900 mb-6">Instrument Names Management</h1>
             <InstrumentNamesCRUD />
           </div>

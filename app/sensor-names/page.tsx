@@ -5,6 +5,7 @@ import ProtectedRoute from '../../components/ProtectedRoute';
 import SideNav from '../ui/dashboard/sidenav';
 import Header from '../ui/dashboard/header';
 import SensorNamesCRUD from '../ui/dashboard/sensor-names-crud';
+import Breadcrumb from '../../components/ui/Breadcrumb';
 
 const SensorNamesPage: React.FC = () => {
   return (
@@ -14,6 +15,7 @@ const SensorNamesPage: React.FC = () => {
         <div className="bg-gray-50">
           <Header />
           <div className="p-6 max-w-7xl mx-auto">
+            <Breadcrumb items={[{ label: 'Dashboard', href: '/' }, { label: 'Sensor Names' }]} />
             {/* Page Header */}
             <div className="mb-8">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Sensor Names Management 🔧</h1>
