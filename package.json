@@ -1,0 +1,28 @@
+{
+  "name": "next-dashboard-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.4",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.13",
+    "@types/node": "24.5.2",
+    "@types/react": "19.1.13",
+    "@typescript-eslint/eslint-plugin": "latest",
+    "@typescript-eslint/parser": "latest",
+    "autoprefixer": "^10.4.21",
+    "eslint": "latest",
+    "tailwindcss": "^3.4.14",
+    "typescript": "latest"
+  }
+}
