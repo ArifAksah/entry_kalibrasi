@@ -271,206 +271,190 @@ const SensorsCRUD: React.FC = () => {
         )}
       </Card>
 
-      {/* Modal dengan 3 kolom */}
+      {/* Modal dengan button close yang elegan */}
       {isModalOpen && can('sensor', editingSensor ? 'update' : 'create') && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="w-full max-w-6xl mx-4 max-h-[90vh] overflow-y-auto">
             {/* Ambient Light Effect */}
             <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-cyan-600/10 rounded-2xl blur-xl -z-10"></div>
             
-            <Card 
-              title={
-                <div className="bg-gradient-to-r from-slate-800 to-blue-900 -mx-6 -mt-6 px-6 py-4 rounded-t-lg">
-                  <h3 className="text-xl font-semibold text-white">
-                    {editingSensor ? 'Edit Sensor' : 'Add New Sensor'}
-                  </h3>
-                  <p className="text-blue-200 text-sm mt-1">
-                    {editingSensor ? 'Update existing sensor information' : 'Create a new sensor entry'}
-                  </p>
-                </div>
-              }
-              className="relative overflow-hidden shadow-2xl border-0"
-            >
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card className="relative overflow-hidden shadow-2xl border-0 p-0">
+              {/* Header dengan gradient FULL WIDTH dan button close elegan */}
+              <div className="bg-gradient-to-r from-slate-800 to-blue-900 px-6 py-4 w-full relative">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-semibold text-white">
+                      {editingSensor ? 'Edit Sensor' : 'Add New Sensor'}
+                    </h3>
+                    <p className="text-blue-200 text-sm mt-1">
+                      {editingSensor ? 'Update existing sensor information' : 'Create a new sensor entry'}
+                    </p>
+                  </div>
                   
-                  {/* Kolom 1: Basic Information */}
-                  <div className="space-y-4">
-                    <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">
-                      Basic Information
-                    </h4>
+                  {/* Button Close yang Elegan */}
+                  <button
+                    onClick={handleCloseModal}
+                    className="flex items-center justify-center w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20 text-white hover:text-white transition-all duration-200 group ml-4"
+                    aria-label="Close modal"
+                  >
+                    <svg 
+                      className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        strokeWidth={2} 
+                        d="M6 18L18 6M6 6l12 12" 
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6">
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Sensor Name *
-                      </label>
-                      <input
-                        type="text"
-                        name="name"
-                        value={formData.name}
-                        onChange={handleInputChange}
-                        required
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                        placeholder="Enter sensor name"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Manufacturer *
-                      </label>
-                      <input
-                        type="text"
-                        name="manufacturer"
-                        value={formData.manufacturer}
-                        onChange={handleInputChange}
-                        required
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                        placeholder="Manufacturer name"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Type *
-                      </label>
-                      <input
-                        type="text"
-                        name="type"
-                        value={formData.type}
-                        onChange={handleInputChange}
-                        required
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                        placeholder="Sensor type"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Serial Number *
-                      </label>
-                      <input
-                        type="text"
-                        name="serial_number"
-                        value={formData.serial_number}
-                        onChange={handleInputChange}
-                        required
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                        placeholder="Serial number"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Kolom 2: Range & Capacity */}
-                  <div className="space-y-4">
-                    <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">
-                      Range & Capacity
-                    </h4>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Range Capacity
-                      </label>
-                      <input
-                        type="text"
-                        name="range_capacity"
-                        value={formData.range_capacity}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                        placeholder="Range capacity"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Range Capacity Unit
-                      </label>
-                      <select
-                        name="range_capacity_unit"
-                        value={formData.range_capacity_unit}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                      >
-                        <option value="">Select unit</option>
-                        <option value="ml">ml</option>
-                        <option value="l">l</option>
-                        <option value="g">g</option>
-                        <option value="kg">kg</option>
-                        <option value="mm">mm</option>
-                        <option value="cm">cm</option>
-                        <option value="m">m</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Graduating
-                      </label>
-                      <input
-                        type="text"
-                        name="graduating"
-                        value={formData.graduating}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                        placeholder="Graduating value"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Graduating Unit
-                      </label>
-                      <select
-                        name="graduating_unit"
-                        value={formData.graduating_unit}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                      >
-                        <option value="">Select unit</option>
-                        <option value="ml">ml</option>
-                        <option value="l">l</option>
-                        <option value="g">g</option>
-                        <option value="kg">kg</option>
-                        <option value="mm">mm</option>
-                        <option value="cm">cm</option>
-                        <option value="m">m</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Kolom 3: Funnel & Volume */}
-                  <div className="space-y-4">
-                    <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">
-                      Funnel & Volume
-                    </h4>
-                    
-                    <div className="grid grid-cols-2 gap-4">
+                    {/* Kolom 1: Basic Information */}
+                    <div className="space-y-4">
+                      <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">
+                        Basic Information
+                      </h4>
+                      
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Funnel Diameter
+                          Sensor Name *
                         </label>
                         <input
-                          type="number"
-                          step="0.01"
-                          name="funnel_diameter"
-                          value={formData.funnel_diameter}
+                          type="text"
+                          name="name"
+                          value={formData.name}
                           onChange={handleInputChange}
+                          required
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                          placeholder="0.00"
+                          placeholder="Enter sensor name"
                         />
                       </div>
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Diameter Unit
+                          Manufacturer *
+                        </label>
+                        <input
+                          type="text"
+                          name="manufacturer"
+                          value={formData.manufacturer}
+                          onChange={handleInputChange}
+                          required
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                          placeholder="Manufacturer name"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Type *
+                        </label>
+                        <input
+                          type="text"
+                          name="type"
+                          value={formData.type}
+                          onChange={handleInputChange}
+                          required
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                          placeholder="Sensor type"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Serial Number *
+                        </label>
+                        <input
+                          type="text"
+                          name="serial_number"
+                          value={formData.serial_number}
+                          onChange={handleInputChange}
+                          required
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                          placeholder="Serial number"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Kolom 2: Range & Capacity */}
+                    <div className="space-y-4">
+                      <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">
+                        Range & Capacity
+                      </h4>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Range Capacity
+                        </label>
+                        <input
+                          type="text"
+                          name="range_capacity"
+                          value={formData.range_capacity}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                          placeholder="Range capacity"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Range Capacity Unit
                         </label>
                         <select
-                          name="funnel_diameter_unit"
-                          value={formData.funnel_diameter_unit}
+                          name="range_capacity_unit"
+                          value={formData.range_capacity_unit}
                           onChange={handleInputChange}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                         >
-                          <option value="">Unit</option>
+                          <option value="">Select unit</option>
+                          <option value="ml">ml</option>
+                          <option value="l">l</option>
+                          <option value="g">g</option>
+                          <option value="kg">kg</option>
+                          <option value="mm">mm</option>
+                          <option value="cm">cm</option>
+                          <option value="m">m</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Graduating
+                        </label>
+                        <input
+                          type="text"
+                          name="graduating"
+                          value={formData.graduating}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                          placeholder="Graduating value"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Graduating Unit
+                        </label>
+                        <select
+                          name="graduating_unit"
+                          value={formData.graduating_unit}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                        >
+                          <option value="">Select unit</option>
+                          <option value="ml">ml</option>
+                          <option value="l">l</option>
+                          <option value="g">g</option>
+                          <option value="kg">kg</option>
                           <option value="mm">mm</option>
                           <option value="cm">cm</option>
                           <option value="m">m</option>
@@ -478,110 +462,151 @@ const SensorsCRUD: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Funnel Area
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          name="funnel_area"
-                          value={formData.funnel_area}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                          placeholder="0.00"
-                        />
+                    {/* Kolom 3: Funnel & Volume */}
+                    <div className="space-y-4">
+                      <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">
+                        Funnel & Volume
+                      </h4>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Funnel Diameter
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            name="funnel_diameter"
+                            value={formData.funnel_diameter}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                            placeholder="0.00"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Diameter Unit
+                          </label>
+                          <select
+                            name="funnel_diameter_unit"
+                            value={formData.funnel_diameter_unit}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                          >
+                            <option value="">Unit</option>
+                            <option value="mm">mm</option>
+                            <option value="cm">cm</option>
+                            <option value="m">m</option>
+                          </select>
+                        </div>
                       </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Area Unit
-                        </label>
-                        <select
-                          name="funnel_area_unit"
-                          value={formData.funnel_area_unit}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                        >
-                          <option value="">Unit</option>
-                          <option value="mm²">mm²</option>
-                          <option value="cm²">cm²</option>
-                          <option value="m²">m²</option>
-                        </select>
-                      </div>
-                    </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Funnel Area
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            name="funnel_area"
+                            value={formData.funnel_area}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                            placeholder="0.00"
+                          />
+                        </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Volume Per Tip
-                        </label>
-                        <input
-                          type="text"
-                          name="volume_per_tip"
-                          value={formData.volume_per_tip}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                          placeholder="Volume per tip"
-                        />
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Area Unit
+                          </label>
+                          <select
+                            name="funnel_area_unit"
+                            value={formData.funnel_area_unit}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                          >
+                            <option value="">Unit</option>
+                            <option value="mm²">mm²</option>
+                            <option value="cm²">cm²</option>
+                            <option value="m²">m²</option>
+                          </select>
+                        </div>
                       </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Volume Unit
-                        </label>
-                        <select
-                          name="volume_per_tip_unit"
-                          value={formData.volume_per_tip_unit}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                        >
-                          <option value="">Unit</option>
-                          <option value="ml">ml</option>
-                          <option value="l">l</option>
-                          <option value="μl">μl</option>
-                        </select>
-                      </div>
-                    </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Volume Per Tip
+                          </label>
+                          <input
+                            type="text"
+                            name="volume_per_tip"
+                            value={formData.volume_per_tip}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                            placeholder="Volume per tip"
+                          />
+                        </div>
 
-                    {/* Flags */}
-                    <div className="pt-4">
-                      <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                        <input 
-                          id="is_standard" 
-                          type="checkbox" 
-                          name="is_standard" 
-                          checked={(formData as any).is_standard} 
-                          onChange={handleInputChange} 
-                          className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" 
-                        />
-                        <label htmlFor="is_standard" className="text-sm font-medium text-gray-700">
-                          Standard Instrument?
-                        </label>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Volume Unit
+                          </label>
+                          <select
+                            name="volume_per_tip_unit"
+                            value={formData.volume_per_tip_unit}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                          >
+                            <option value="">Unit</option>
+                            <option value="ml">ml</option>
+                            <option value="l">l</option>
+                            <option value="μl">μl</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Flags */}
+                      <div className="pt-4">
+                        <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                          <input 
+                            id="is_standard" 
+                            type="checkbox" 
+                            name="is_standard" 
+                            checked={(formData as any).is_standard} 
+                            onChange={handleInputChange} 
+                            className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" 
+                          />
+                          <label htmlFor="is_standard" className="text-sm font-medium text-gray-700">
+                            Standard Instrument?
+                          </label>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Form Actions */}
-                <div className="flex items-center justify-end space-x-3 pt-6 border-t border-gray-200">
-                  <button
-                    type="button"
-                    onClick={handleCloseModal}
-                    className="px-6 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="px-6 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl"
-                  >
-                    {isSubmitting ? 'Saving...' : editingSensor ? 'Update Sensor' : 'Add Sensor'}
-                  </button>
-                </div>
-              </form>
+                  {/* Form Actions */}
+                  <div className="flex items-center justify-end space-x-3 pt-6 border-t border-gray-200">
+                    <button
+                      type="button"
+                      onClick={handleCloseModal}
+                      className="px-6 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="px-6 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl"
+                    >
+                      {isSubmitting ? 'Saving...' : editingSensor ? 'Update Sensor' : 'Add Sensor'}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </Card>
           </div>
         </div>
