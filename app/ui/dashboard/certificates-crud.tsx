@@ -115,17 +115,17 @@ const CertificatesCRUD: React.FC = () => {
         
         if (stationsRes.ok) {
           const stationsData = await stationsRes.json()
-          setStations(stationsData)
+          setStations(Array.isArray(stationsData) ? stationsData : (stationsData?.data ?? []))
         }
         
         if (instrumentsRes.ok) {
           const instrumentsData = await instrumentsRes.json()
-          setInstruments(instrumentsData)
+          setInstruments(Array.isArray(instrumentsData) ? instrumentsData : (instrumentsData?.data ?? []))
         }
 
         if (sensorsRes.ok) {
           const sensorsData = await sensorsRes.json()
-          setSensors(Array.isArray(sensorsData) ? sensorsData : [])
+          setSensors(Array.isArray(sensorsData) ? sensorsData : (sensorsData?.data ?? []))
         }
         if (personelRes.ok) {
           const p = await personelRes.json()
