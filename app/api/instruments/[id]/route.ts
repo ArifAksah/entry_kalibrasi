@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '../../../../lib/supabase'
+import { createClient } from '@supabase/supabase-js'
+
+// Use service role client to avoid RLS issues on server-side updates
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { autoRefreshToken: false, persistSession: false } }
+)
 
 export async function GET(
   request: NextRequest,
@@ -7,7 +14,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('instrument')
       .select('*')
       .eq('id', id)
@@ -35,12 +42,15 @@ export async function PUT(
       }, { status: 400 })
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('instrument')
       .update({ manufacturer, type, serial_number, others, name })
       .eq('id', id)
       .select()
       .single()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json(data)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data)
