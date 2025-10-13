@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     // Validate certificate exists
     const { data: certData, error: certError } = await supabaseAdmin
       .from('certificate')
-      .select('id, verifikator_1, verifikator_2, version')
+      .select('id, verifikator_1, verifikator_2, authorized_by, version')
       .eq('id', certificate_id)
       .single()
 

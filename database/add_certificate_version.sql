@@ -16,3 +16,9 @@ ALTER TABLE certificate_verification DROP CONSTRAINT IF EXISTS certificate_verif
 ALTER TABLE certificate_verification ADD CONSTRAINT certificate_verification_certificate_id_verification_level_version_key 
   UNIQUE (certificate_id, verification_level, certificate_version);
 
+
+
+
+
+
+

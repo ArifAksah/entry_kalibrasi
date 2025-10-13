@@ -6,7 +6,6 @@ import Header from '../ui/dashboard/header';
 import StatsCards from '../ui/dashboard/stats-cards';
 import Chart from '../ui/dashboard/chart';
 import DataTable from '../ui/dashboard/data-table';
-import SensorNamesCRUD from '../ui/dashboard/sensor-names-crud';
 
 const DashboardPage: React.FC = () => {
   return (
@@ -61,10 +60,7 @@ const DashboardPage: React.FC = () => {
           {/* Data Table */}
           <DataTable />
 
-          {/* Sensor Names CRUD */}
-          <div className="mt-8">
-            <SensorNamesCRUD />
-          </div>
+          {/* Sensor Names section removed */}
         </div>
       </div>
     </div>

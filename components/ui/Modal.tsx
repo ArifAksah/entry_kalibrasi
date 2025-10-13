@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Card } from './Card';
+import Card from './Card';
 
 interface ModalProps {
   isOpen: boolean;

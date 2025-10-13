@@ -33,9 +33,26 @@ export async function PUT(request: NextRequest) {
     const body = await request.json()
     // support single or array
     const rows = Array.isArray(body) ? body : [body]
-    const { data, error } = await supabaseAdmin.from('endpoint_catalog').upsert(rows, { onConflict: 'method,path' }).select()
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json(data)
+    const inserted: any[] = []
+    for (const r of rows) {
+      // Try update first by (method, path); if no row updated, insert
+      const { data: upd, error: updErr } = await supabaseAdmin
+        .from('endpoint_catalog')
+        .update({ resource: r.resource, description: r.description, enabled: r.enabled })
+        .eq('method', r.method)
+        .eq('path', r.path)
+        .select()
+      if (!updErr && upd && upd.length) { inserted.push(...upd); continue }
+
+      const { data: ins, error: insErr } = await supabaseAdmin
+        .from('endpoint_catalog')
+        .insert(r)
+        .select()
+        .single()
+      if (insErr) return NextResponse.json({ error: insErr.message }, { status: 400 })
+      inserted.push(ins)
+    }
+    return NextResponse.json(inserted)
   } catch (e) {
     return NextResponse.json({ error: 'Failed to upsert endpoint' }, { status: 500 })
   }

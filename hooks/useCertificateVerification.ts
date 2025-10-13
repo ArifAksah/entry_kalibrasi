@@ -39,31 +39,35 @@ export interface PendingCertificate {
   no_order: string
   no_identification: string
   issue_date: string
-  station?: number
-  instrument?: number
   verifikator_1?: string
   verifikator_2?: string
+  authorized_by?: string
   created_at: string
   station?: {
     id: number
     name: string
     station_id: string
-  }
+  } | null
   instrument?: {
     id: number
     name: string
     type?: string
     manufacturer?: string
     serial_number?: string
-  }
+  } | null
   verification_status: {
     verifikator_1: string
     verifikator_2: string
+    authorized_by: string
     user_verification_status: string | null
     user_verification_level: number | null
     user_verification_id: number | null
     verif1_created_at?: string
     verif2_created_at?: string
+    verif3_created_at?: string
+    verif1_status_for_v2?: string
+    verif2_status_for_auth?: string
+    user_can_act: boolean
   }
 }
 

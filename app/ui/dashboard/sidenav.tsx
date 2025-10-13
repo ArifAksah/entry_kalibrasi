@@ -72,33 +72,19 @@ const sections: NavSection[] = [
   {
     title: 'Instruments',
     items: [
-      { name: 'Instrument Names', href: '/instrument-names', icon: Icon.list },
       { name: 'Instruments', href: '/instruments', icon: Icon.tool },
     ],
   },
   {
     title: 'Sensors',
     items: [
-      { name: 'Sensor Names', href: '/sensor-names', icon: Icon.list },
       { name: 'Sensors', href: '/sensors', icon: Icon.sensor },
-      { name: 'Notes', href: '/notes', icon: Icon.doc },
     ],
   },
   {
     title: 'Stations',
     items: [
       { name: 'Stations', href: '/stations', icon: Icon.building },
-    ],
-  },
-  {
-    title: 'Calibration & Verification',
-    items: [
-      { name: 'Calibration Results', href: '/calibration-results', icon: Icon.doc },
-      { name: 'Verifikator Cal Result', href: '/verifikator-cal-result', icon: Icon.check },
-      { name: 'Notes Instrumen Standard', href: '/notes-instrumen-standard', icon: Icon.beaker },
-      { name: 'Verifikator Inspection', href: '/verifikator-inspection-results', icon: Icon.check },
-      { name: 'Certificate Verification', href: '/certificate-verification', icon: Icon.check },
-      { name: 'Personel', href: '/inspection-person', icon: Icon.doc },
     ],
   },
   {

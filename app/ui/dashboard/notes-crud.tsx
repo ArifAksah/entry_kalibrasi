@@ -136,7 +136,7 @@ const NotesCRUD: React.FC = () => {
                   <input
                     type="text"
                     name="traceable_to_si_through"
-                    value={formData.traceable_to_si_through}
+                    value={formData.traceable_to_si_through ?? ''}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Enter traceable to SI through information"
@@ -150,7 +150,7 @@ const NotesCRUD: React.FC = () => {
                   <input
                     type="text"
                     name="reference_document"
-                    value={formData.reference_document}
+                    value={formData.reference_document ?? ''}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Enter reference document"
@@ -164,7 +164,7 @@ const NotesCRUD: React.FC = () => {
                   <input
                     type="text"
                     name="calibration_methode"
-                    value={formData.calibration_methode}
+                    value={formData.calibration_methode ?? ''}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Enter calibration method"
@@ -177,7 +177,7 @@ const NotesCRUD: React.FC = () => {
                   </label>
                   <textarea
                     name="others"
-                    value={formData.others}
+                    value={formData.others ?? ''}
                     onChange={handleInputChange}
                     rows={4}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"

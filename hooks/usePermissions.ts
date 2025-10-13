@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
 export type Role = 'admin' | 'calibrator' | 'verifikator' | 'assignor' | 'user_station'
-export type Resource = 'certificate' | 'instrument' | 'sensor' | 'tte'
+export type Resource = 'certificate' | 'instrument' | 'sensor' | 'tte' | 'station'
 export type Action = 'create' | 'read' | 'update' | 'delete'
 
 type Row = { role: Role; resource: Resource; can_create: boolean; can_read: boolean; can_update: boolean; can_delete: boolean }

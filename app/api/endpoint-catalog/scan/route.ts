@@ -55,13 +55,25 @@ export async function POST(request: NextRequest) {
 
     if (endpoints.length === 0) return NextResponse.json({ message: 'No endpoints found' })
 
-    const { data, error } = await supabaseAdmin
-      .from('endpoint_catalog')
-      .upsert(endpoints, { onConflict: 'method,path' })
-      .select()
+    let count = 0
+    const results: any[] = []
+    for (const r of endpoints) {
+      const { data: upd, error: updErr } = await supabaseAdmin
+        .from('endpoint_catalog')
+        .update({ resource: r.resource, description: r.description, enabled: r.enabled })
+        .eq('method', r.method)
+        .eq('path', r.path)
+        .select()
+      if (!updErr && upd && upd.length) { count += upd.length; results.push(...upd); continue }
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    return NextResponse.json({ count: data?.length || 0, data })
+      const { data: ins, error: insErr } = await supabaseAdmin
+        .from('endpoint_catalog')
+        .insert(r)
+        .select()
+        .single()
+      if (!insErr && ins) { count += 1; results.push(ins) }
+    }
+    return NextResponse.json({ count, data: results })
   } catch (e) {
     return NextResponse.json({ error: 'Failed to scan endpoints' }, { status: 500 })
   }

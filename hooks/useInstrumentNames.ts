@@ -40,7 +40,7 @@ export const useInstrumentNames = () => {
     }
   }
 
-  const updateInstrumentName = async (id: number, payload: InstrumentNameUpdate) => {
+  const updateInstrumentName = async (id: string, payload: InstrumentNameUpdate) => {
     try {
       const res = await fetch(`/api/instrument-names/${id}`, {
         method: 'PUT',
@@ -57,7 +57,7 @@ export const useInstrumentNames = () => {
     }
   }
 
-  const deleteInstrumentName = async (id: number) => {
+  const deleteInstrumentName = async (id: string) => {
     try {
       const res = await fetch(`/api/instrument-names/${id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Failed to delete instrument name')
