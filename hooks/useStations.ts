@@ -7,17 +7,25 @@ export const useStations = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchStations = async () => {
+  const fetchStations = async (opts?: { q?: string; page?: number; pageSize?: number }) => {
     try {
       setLoading(true)
-      const res = await fetch('/api/stations')
+      const params = new URLSearchParams()
+      if (opts?.q) params.set('q', opts.q)
+      if (opts?.page) params.set('page', String(opts.page))
+      if (opts?.pageSize) params.set('pageSize', String(opts.pageSize))
+      const qs = params.toString()
+      const res = await fetch(`/api/stations${qs ? `?${qs}` : ''}`)
       if (!res.ok) throw new Error('Failed to fetch stations')
-      const data = await res.json()
+      const payload = await res.json()
+      const data = Array.isArray(payload) ? payload : (payload?.data ?? [])
       setStations(data)
       setError(null)
+      return payload
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'An error occurred'
       setError(msg)
+      return { data: [], total: 0, page: 1, pageSize: 10, totalPages: 1 }
     } finally {
       setLoading(false)
     }
@@ -104,5 +112,5 @@ export const useStations = () => {
 
   useEffect(() => { fetchStations() }, [])
 
-  return { stations, loading, error, addStation, updateStation, deleteStation, refetch: fetchStations }
+  return { stations, loading, error, addStation, updateStation, deleteStation, refetch: fetchStations, fetchStations }
 }

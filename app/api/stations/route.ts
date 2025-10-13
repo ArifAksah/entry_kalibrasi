@@ -14,15 +14,43 @@ const supabaseAdmin = createClient(
   }
 )
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { data, error } = await supabase
+    // Support server-side search and pagination
+    // Query params: q (string), page (number, default 1), pageSize (number, default 10)
+    const { searchParams } = new URL(request.url)
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
+    const pageSize = Math.max(1, Math.min(100, parseInt(searchParams.get('pageSize') || '10', 10) || 10))
+    const search = (searchParams.get('q') || '').trim()
+
+    const base = supabase
       .from('station')
-      .select('*')
+      .select('*', { count: 'exact' })
+
+    const qb = search
+      ? base.or(
+          [
+            `station_id.ilike.%${search}%`,
+            `name.ilike.%${search}%`,
+            `type.ilike.%${search}%`,
+            `address.ilike.%${search}%`,
+            `region.ilike.%${search}%`,
+            `province.ilike.%${search}%`,
+            `regency.ilike.%${search}%`,
+          ].join(',')
+        )
+      : base
+
+    const start = (page - 1) * pageSize
+    const end = start + pageSize - 1
+
+    const { data, error, count } = await qb
       .order('created_at', { ascending: false })
+      .range(start, end)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data)
+    const total = count || 0
+    return NextResponse.json({ data: Array.isArray(data) ? data : [], total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) })
   } catch (e) {
     return NextResponse.json({ error: 'Failed to fetch stations' }, { status: 500 })
   }

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useStations } from '../../../hooks/useStations'
 import { Station, StationInsert, Personel } from '../../../lib/supabase'
 import { supabase } from '../../../lib/supabase'
@@ -10,12 +10,16 @@ import Breadcrumb from '../../../components/ui/Breadcrumb'
 import { usePermissions } from '../../../hooks/usePermissions'
 
 const StationsCRUD: React.FC = () => {
-  const { stations, loading, error, addStation, updateStation, deleteStation } = useStations()
+  const { stations, loading, error, addStation, updateStation, deleteStation, fetchStations } = useStations()
   const { can, canEndpoint } = usePermissions()
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editing, setEditing] = useState<Station | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const pageSize = 10
+  const [currentPage, setCurrentPage] = useState(1)
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [personel, setPersonel] = useState<Personel[]>([])
   const [personelMap, setPersonelMap] = useState<Record<string, string>>({})
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -68,7 +72,48 @@ const StationsCRUD: React.FC = () => {
 
     getCurrentUser()
     fetchPersonel()
+    // initial server-side fetch
+    fetchStations({ page: 1, pageSize })
   }, [])
+
+  const filteredStations = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return stations
+    return stations.filter(s => {
+      const hay = [
+        s.station_id,
+        s.name,
+        (s as any).type,
+        s.address,
+        s.region,
+        s.province,
+        s.regency
+      ].map(v => String(v ?? '').toLowerCase()).join(' ')
+      return hay.includes(q)
+    })
+  }, [stations, search])
+
+  // Ensure current page stays within range when data changes
+  // debounce search to avoid losing focus/loading flicker
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  useEffect(() => {
+    // server-side fetch on debounced search/page change
+    fetchStations({ q: debouncedSearch, page: currentPage, pageSize })
+  }, [debouncedSearch, currentPage])
+
+  const totalPages = useMemo(() => {
+    // client-side fallback; server can also return totalPages, but we keep UI safe
+    return Math.max(1, Math.ceil(filteredStations.length / pageSize))
+  }, [filteredStations])
+  const pagedStations = useMemo(() => {
+    // after server fetch, stations already limited; still slice to be safe
+    const start = (currentPage - 1) * pageSize
+    return filteredStations.slice(start, start + pageSize)
+  }, [filteredStations, currentPage])
 
   const openModal = (item?: Station) => {
     if (item) {
@@ -143,13 +188,7 @@ const StationsCRUD: React.FC = () => {
     try { await deleteStation(id) } catch {}
   }
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    )
-  }
+  // Note: avoid unmounting the UI on loading; show inline indicator instead
 
   return (
     <div className="space-y-6">
@@ -304,16 +343,27 @@ const StationsCRUD: React.FC = () => {
         {can('instrument','read') && null}
         {can('certificate','read') && null}
         {can('sensor','read') && null}
-        {can('station','create') && (
-          <button onClick={() => openModal()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add New</button>
-        )}
+        <div className="flex items-center gap-3">
+          <input
+            value={search}
+            onChange={e => { setSearch(e.target.value); setCurrentPage(1) }}
+            placeholder="Search station..."
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {loading && (
+            <span className="text-sm text-gray-500">Loading...</span>
+          )}
+          {can('station','create') && (
+            <button onClick={() => openModal()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add New</button>
+          )}
+        </div>
       </div>
 
       {error && (<div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>)}
 
       <Card>
         <Table headers={[ 'Station ID', 'Name', 'Type', 'Address', 'Region', 'Province', 'Created By', 'Actions' ]}>
-          {stations.map((item) => (
+          {pagedStations.map((item) => (
             <tr key={item.id} className="hover:bg-gray-50">
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.station_id}</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.name}</td>
@@ -333,6 +383,34 @@ const StationsCRUD: React.FC = () => {
             </tr>
           ))}
         </Table>
+        {/* Pagination controls */}
+        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
+          <div className="text-sm text-gray-600">
+            Page <span className="font-medium">{currentPage}</span> of <span className="font-medium">{totalPages}</span>
+          </div>
+          <div className="inline-flex items-center gap-2">
+            <button
+              className={`px-3 py-1 rounded border ${currentPage === 1 ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(1)}
+            >First</button>
+            <button
+              className={`px-3 py-1 rounded border ${currentPage === 1 ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            >Prev</button>
+            <button
+              className={`px-3 py-1 rounded border ${currentPage === totalPages ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            >Next</button>
+            <button
+              className={`px-3 py-1 rounded border ${currentPage === totalPages ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(totalPages)}
+            >Last</button>
+          </div>
+        </div>
       </Card>
 
       {isModalOpen && can('station', editing ? 'update' : 'create') && (
