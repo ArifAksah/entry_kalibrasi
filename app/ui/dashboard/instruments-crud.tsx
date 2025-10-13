@@ -1,12 +1,12 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useInstruments } from '../../../hooks/useInstruments'
 import { Instrument, InstrumentInsert } from '../../../lib/supabase'
 import { usePermissions } from '../../../hooks/usePermissions'
 
 const InstrumentsCRUD: React.FC = () => {
-  const { instruments, loading, error, addInstrument, updateInstrument, deleteInstrument } = useInstruments()
+  const { instruments, loading, error, addInstrument, updateInstrument, deleteInstrument, fetchInstruments } = useInstruments()
   const { can, canEndpoint } = usePermissions()
 
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -19,6 +19,30 @@ const InstrumentsCRUD: React.FC = () => {
     others: '',
     name: '',
   })
+  const pageSize = 10
+  const [currentPage, setCurrentPage] = useState(1)
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  useEffect(() => {
+    fetchInstruments({ q: debouncedSearch, page: currentPage, pageSize })
+  }, [debouncedSearch, currentPage])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return instruments
+    return instruments.filter(it => `${it.manufacturer} ${it.type} ${it.serial_number} ${it.name} ${it.others ?? ''}`.toLowerCase().includes(q))
+  }, [instruments, search])
+
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(filtered.length / pageSize)), [filtered])
+  const paged = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return filtered.slice(start, start + pageSize)
+  }, [filtered, currentPage])
 
   const openModal = (item?: Instrument) => {
     if (item) {
@@ -77,14 +101,23 @@ const InstrumentsCRUD: React.FC = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Instruments</h2>
-        {can('instrument','create') && (
-          <button 
-            onClick={() => openModal()} 
-            className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-4 py-2 rounded-lg transition-all duration-200 shadow hover:shadow-md font-medium text-sm"
-          >
-            Add New
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <input
+            value={search}
+            onChange={e => { setSearch(e.target.value); setCurrentPage(1) }}
+            placeholder="Search instruments..."
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {loading && <span className="text-sm text-gray-500">Loading...</span>}
+          {can('instrument','create') && (
+            <button 
+              onClick={() => openModal()} 
+              className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-4 py-2 rounded-lg transition-all duration-200 shadow hover:shadow-md font-medium text-sm"
+            >
+              Add New
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -119,7 +152,7 @@ const InstrumentsCRUD: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {instruments.map((item) => (
+              {paged.map((item) => (
                 <tr key={item.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {item.manufacturer}
@@ -158,6 +191,16 @@ const InstrumentsCRUD: React.FC = () => {
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-white rounded-b-lg shadow">
+        <div className="text-sm text-gray-600">Page <span className="font-medium">{currentPage}</span> of <span className="font-medium">{totalPages}</span></div>
+        <div className="inline-flex items-center gap-2">
+          <button className={`px-3 py-1 rounded border ${currentPage===1?'text-gray-400 border-gray-200 cursor-not-allowed':'text-gray-700 border-gray-300 hover:bg-gray-50'}`} disabled={currentPage===1} onClick={()=>setCurrentPage(1)}>First</button>
+          <button className={`px-3 py-1 rounded border ${currentPage===1?'text-gray-400 border-gray-200 cursor-not-allowed':'text-gray-700 border-gray-300 hover:bg-gray-50'}`} disabled={currentPage===1} onClick={()=>setCurrentPage(p=>Math.max(1,p-1))}>Prev</button>
+          <button className={`px-3 py-1 rounded border ${currentPage===totalPages?'text-gray-400 border-gray-200 cursor-not-allowed':'text-gray-700 border-gray-300 hover:bg-gray-50'}`} disabled={currentPage===totalPages} onClick={()=>setCurrentPage(p=>Math.min(totalPages,p+1))}>Next</button>
+          <button className={`px-3 py-1 rounded border ${currentPage===totalPages?'text-gray-400 border-gray-200 cursor-not-allowed':'text-gray-700 border-gray-300 hover:bg-gray-50'}`} disabled={currentPage===totalPages} onClick={()=>setCurrentPage(totalPages)}>Last</button>
         </div>
       </div>
 

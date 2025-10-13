@@ -9,11 +9,16 @@ export const useSensors = () => {
   const [error, setError] = useState<string | null>(null)
 
   // Fetch all sensors
-  const fetchSensors = async () => {
+  const fetchSensors = async (opts?: { q?: string; page?: number; pageSize?: number }) => {
     try {
       setLoading(true)
       setError(null)
-      const response = await fetch('/api/sensors')
+      const params = new URLSearchParams()
+      if (opts?.q) params.set('q', opts.q)
+      if (opts?.page) params.set('page', String(opts.page))
+      if (opts?.pageSize) params.set('pageSize', String(opts.pageSize))
+      const qs = params.toString()
+      const response = await fetch(`/api/sensors${qs ? `?${qs}` : ''}`)
       const payload = await response.json()
 
       if (!response.ok) {
@@ -22,8 +27,10 @@ export const useSensors = () => {
 
       const list = Array.isArray(payload) ? payload : (payload?.data || [])
       setSensors(list)
+      return payload
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
+      return { data: [], total: 0, page: 1, pageSize: 10, totalPages: 1 }
     } finally {
       setLoading(false)
     }

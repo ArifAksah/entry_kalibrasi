@@ -2,19 +2,43 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '../../../lib/supabase'
 
 // GET - Get all sensors
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { data, error } = await supabase
+    const { searchParams } = new URL(request.url)
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
+    const pageSize = Math.max(1, Math.min(100, parseInt(searchParams.get('pageSize') || '10', 10) || 10))
+    const q = (searchParams.get('q') || '').trim()
+
+    const base = supabase
       .from('sensor')
-      .select('*')
+      .select('*', { count: 'exact' })
+
+    const qb = q
+      ? base.or(
+          [
+            `name.ilike.%${q}%`,
+            `manufacturer.ilike.%${q}%`,
+            `type.ilike.%${q}%`,
+            `serial_number.ilike.%${q}%`,
+            `range_capacity.ilike.%${q}%`,
+            `range_capacity_unit.ilike.%${q}%`,
+          ].join(',')
+        )
+      : base
+
+    const start = (page - 1) * pageSize
+    const end = start + pageSize - 1
+
+    const { data, error, count } = await qb
       .order('created_at', { ascending: false })
+      .range(start, end)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    // Return the array directly for consistency with other endpoints
-    return NextResponse.json(data)
+    const total = count || 0
+    return NextResponse.json({ data: Array.isArray(data) ? data : [], total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) })
   } catch (error) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

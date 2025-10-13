@@ -6,17 +6,25 @@ export const useInstruments = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchInstruments = async () => {
+  const fetchInstruments = async (opts?: { q?: string; page?: number; pageSize?: number }) => {
     try {
       setLoading(true)
-      const res = await fetch('/api/instruments')
+      const params = new URLSearchParams()
+      if (opts?.q) params.set('q', opts.q)
+      if (opts?.page) params.set('page', String(opts.page))
+      if (opts?.pageSize) params.set('pageSize', String(opts.pageSize))
+      const qs = params.toString()
+      const res = await fetch(`/api/instruments${qs ? `?${qs}` : ''}`)
       if (!res.ok) throw new Error('Failed to fetch instruments')
-      const data = await res.json()
+      const payload = await res.json()
+      const data = Array.isArray(payload) ? payload : (payload?.data ?? [])
       setInstruments(data)
       setError(null)
+      return payload
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'An error occurred'
       setError(msg)
+      return { data: [], total: 0, page: 1, pageSize: 10, totalPages: 1 }
     } finally {
       setLoading(false)
     }
@@ -72,9 +80,9 @@ export const useInstruments = () => {
     }
   }
 
-  useEffect(() => { fetchInstruments() }, [])
+  useEffect(() => { fetchInstruments({ page: 1, pageSize: 10 }) }, [])
 
-  return { instruments, loading, error, addInstrument, updateInstrument, deleteInstrument, refetch: fetchInstruments }
+  return { instruments, loading, error, addInstrument, updateInstrument, deleteInstrument, refetch: fetchInstruments, fetchInstruments }
 }
 
 

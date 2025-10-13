@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useSensors } from '../../../hooks/useSensors'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { Sensor, SensorInsert } from '../../../lib/supabase'
@@ -9,7 +9,7 @@ import Table from '../../../components/ui/Table'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
 
 const SensorsCRUD: React.FC = () => {
-  const { sensors, loading, error, addSensor, updateSensor, deleteSensor } = useSensors()
+  const { sensors, loading, error, addSensor, updateSensor, deleteSensor, fetchSensors } = useSensors()
   const { can, canEndpoint } = usePermissions()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingSensor, setEditingSensor] = useState<Sensor | null>(null)
@@ -31,6 +31,35 @@ const SensorsCRUD: React.FC = () => {
     is_standard: false as any
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const pageSize = 10
+  const [currentPage, setCurrentPage] = useState(1)
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  useEffect(() => {
+    // initial server fetch
+    fetchSensors({ page: 1, pageSize })
+  }, [])
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  useEffect(() => {
+    fetchSensors({ q: debouncedSearch, page: currentPage, pageSize })
+  }, [debouncedSearch, currentPage])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return sensors
+    return sensors.filter(s => `${s.name} ${s.manufacturer} ${s.type} ${s.serial_number}`.toLowerCase().includes(q))
+  }, [sensors, search])
+
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(filtered.length / pageSize)), [filtered])
+  const paged = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return filtered.slice(start, start + pageSize)
+  }, [filtered, currentPage])
 
   const handleOpenModal = (sensor?: Sensor) => {
     if (sensor) {
@@ -146,16 +175,25 @@ const SensorsCRUD: React.FC = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <Breadcrumb items={[{ label: 'Sensors', href: '#' }, { label: 'Manager' }]} />
-        {can('sensor','create') && (
-          <button onClick={() => handleOpenModal()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add New</button>
-        )}
+        <div className="flex items-center gap-3">
+          <input
+            value={search}
+            onChange={e => { setSearch(e.target.value); setCurrentPage(1) }}
+            placeholder="Search sensors..."
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {loading && <span className="text-sm text-gray-500">Loading...</span>}
+          {can('sensor','create') && (
+            <button onClick={() => handleOpenModal()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add New</button>
+          )}
+        </div>
       </div>
 
       {error && (<div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>)}
 
       <Card>
         <Table headers={[ 'Name', 'Manufacturer', 'Type', 'Serial Number', 'Range Capacity', 'Standard?', 'Actions' ]}>
-          {sensors.map((sensor) => (
+          {paged.map((sensor) => (
             <tr key={sensor.id} className="hover:bg-gray-50">
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{sensor.name || 'N/A'}</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{sensor.manufacturer}</td>
@@ -174,6 +212,15 @@ const SensorsCRUD: React.FC = () => {
             </tr>
           ))}
         </Table>
+        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
+          <div className="text-sm text-gray-600">Page <span className="font-medium">{currentPage}</span> of <span className="font-medium">{totalPages}</span></div>
+          <div className="inline-flex items-center gap-2">
+            <button className={`px-3 py-1 rounded border ${currentPage===1?'text-gray-400 border-gray-200 cursor-not-allowed':'text-gray-700 border-gray-300 hover:bg-gray-50'}`} disabled={currentPage===1} onClick={()=>setCurrentPage(1)}>First</button>
+            <button className={`px-3 py-1 rounded border ${currentPage===1?'text-gray-400 border-gray-200 cursor-not-allowed':'text-gray-700 border-gray-300 hover:bg-gray-50'}`} disabled={currentPage===1} onClick={()=>setCurrentPage(p=>Math.max(1,p-1))}>Prev</button>
+            <button className={`px-3 py-1 rounded border ${currentPage===totalPages?'text-gray-400 border-gray-200 cursor-not-allowed':'text-gray-700 border-gray-300 hover:bg-gray-50'}`} disabled={currentPage===totalPages} onClick={()=>setCurrentPage(p=>Math.min(totalPages,p+1))}>Next</button>
+            <button className={`px-3 py-1 rounded border ${currentPage===totalPages?'text-gray-400 border-gray-200 cursor-not-allowed':'text-gray-700 border-gray-300 hover:bg-gray-50'}`} disabled={currentPage===totalPages} onClick={()=>setCurrentPage(totalPages)}>Last</button>
+          </div>
+        </div>
       </Card>
 
       {/* Modal */}
