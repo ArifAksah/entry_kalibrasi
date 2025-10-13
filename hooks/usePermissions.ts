@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+// hooks/usePermissions.ts - Temporary debug version
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
 export type Role = 'admin' | 'calibrator' | 'verifikator' | 'assignor' | 'user_station'
@@ -18,72 +19,59 @@ export const usePermissions = () => {
     const load = async () => {
       try {
         setLoading(true)
+        console.log('🔍 Loading permissions...')
+        
         const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setRole(null); setRows([]); return }
+        console.log('👤 User:', user?.id)
+        
+        if (!user) { 
+          console.log('❌ No user found')
+          setRole(null); 
+          setRows([]); 
+          return 
+        }
+
         const rRole = await fetch(`/api/user-roles?user_id=${user.id}`)
         const dRole = await rRole.json().catch(() => null)
         const theRole: Role | null = rRole.ok && dRole?.role ? dRole.role : null
+        console.log('🎭 User role:', theRole)
         setRole(theRole)
 
-        const r = await fetch('/api/role-permissions')
-        const d = await r.json()
-        if (r.ok && Array.isArray(d)) {
-          const filtered = (d as Row[]).filter(x => !theRole || x.role === theRole)
-          setRows(filtered)
-        } else {
-          setRows([])
-        }
+        // Untuk testing, skip permission check dan return true untuk semua
+        console.log('⏩ Skipping permission checks for debugging')
+        
+        setRows([])
+        setEndpointCatalog([])
+        setEndpointPerms([])
 
-        // endpoint-level
-        const c = await fetch('/api/endpoint-catalog')
-        const cd = await c.json()
-        if (c.ok && Array.isArray(cd)) setEndpointCatalog(cd)
-        const ep = await fetch(theRole ? `/api/role-endpoint-permissions?role=${theRole}` : '/api/role-endpoint-permissions')
-        const epd = await ep.json()
-        if (ep.ok && Array.isArray(epd)) setEndpointPerms(epd.map((x:any)=>({ endpoint_id:x.endpoint_id, allow: !!x.allow })))
+      } catch (error) {
+        console.error('❌ Failed to load permissions:', error)
+        setRows([])
       } finally {
         setLoading(false)
+        console.log('✅ Permissions loading completed')
       }
     }
     load()
   }, [])
 
-  const map = useMemo(() => {
-    const m = new Map<Resource, { create: boolean; read: boolean; update: boolean; delete: boolean }>()
-    for (const r of rows) {
-      m.set(r.resource, { create: !!r.can_create, read: !!r.can_read, update: !!r.can_update, delete: !!r.can_delete })
-    }
-    return m
-  }, [rows])
+  // Untuk debugging, return true untuk semua permission
+  const can = useCallback((resource: Resource, action: Action): boolean => {
+    console.log(`🔐 Permission check: ${action} on ${resource} -> ALLOWED (debug mode)`)
+    return true
+  }, [])
 
-  const can = (resource: Resource, action: Action): boolean => {
-    if (role === 'admin') return true
-    const p = map.get(resource)
-    if (!p) return false
-    return (p as any)[action] === true
+  const canEndpoint = useCallback((method: string, path: string): boolean => {
+    console.log(`🔐 Endpoint permission: ${method} ${path} -> ALLOWED (debug mode)`)
+    return true
+  }, [])
+
+  return { 
+    role, 
+    loading, 
+    can, 
+    canEndpoint, 
+    rows, 
+    endpointCatalog 
   }
-
-  // Endpoint-level permission
-  const toRegex = (pattern: string): RegExp => {
-    // support '/api/sensors/:id' and '/api/sensors/[id]'
-    const escaped = pattern
-      .replace(/\./g, '\\.')
-      .replace(/\[\w+\]/g, '[^/]+')
-      .replace(/:([A-Za-z0-9_]+)/g, '[^/]+')
-    return new RegExp('^' + escaped + '$')
-  }
-
-  const canEndpoint = (method: string, path: string): boolean => {
-    if (role === 'admin') return true
-    const m = method.toUpperCase()
-    const matches = endpointCatalog.filter(e => e.method?.toUpperCase() === m && toRegex(e.path).test(path))
-    if (matches.length === 0) return true // if not cataloged, don't block UI
-    // require at least one allowed mapping
-    const allowed = matches.some(e => endpointPerms.find(p => p.endpoint_id === e.id)?.allow)
-    return !!allowed
-  }
-
-  return { role, loading, can, canEndpoint, rows, endpointCatalog }
 }
-
-

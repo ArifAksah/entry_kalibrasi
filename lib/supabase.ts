@@ -33,6 +33,7 @@ export interface Sensor {
   funnel_area: number
   funnel_area_unit: string
   name: string // Name from sensor_names table
+  is_standard: boolean   // ✅ tambahkan ini
 }
 
 export type SensorInsert = Omit<Sensor, 'id' | 'created_at'>

@@ -4,11 +4,10 @@ import React, { useState, useEffect } from 'react'
 import { useStations } from '../../../hooks/useStations'
 import { Station, StationInsert, Personel } from '../../../lib/supabase'
 import { supabase } from '../../../lib/supabase'
+import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
 import { usePermissions } from '../../../hooks/usePermissions'
-import { Modal } from '../../../components/ui/Modal'
-import { Input, Textarea, Select } from '../../../components/ui/Input'
 
 const StationsCRUD: React.FC = () => {
   const { stations, loading, error, addStation, updateStation, deleteStation } = useStations()

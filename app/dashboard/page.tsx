@@ -7,7 +7,6 @@ import StatsCards from '../ui/dashboard/stats-cards';
 import Chart from '../ui/dashboard/chart';
 import DataTable from '../ui/dashboard/data-table';
 import SensorNamesCRUD from '../ui/dashboard/sensor-names-crud';
-import Breadcrumb from '../../components/ui/Breadcrumb';
 
 const DashboardPage: React.FC = () => {
   return (
@@ -16,7 +15,6 @@ const DashboardPage: React.FC = () => {
       <div className="main-content">
         <Header />
         <div className="p-6">
-          <Breadcrumb items={[{ label: 'Dashboard' }]} />
           {/* Welcome Section */}
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard Overview 📊</h1>

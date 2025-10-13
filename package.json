@@ -10,14 +10,9 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
-    "@types/nodemailer": "^7.0.2",
-    "@types/uuid": "^10.0.0",
     "next": "latest",
-    "nodemailer": "^7.0.9",
     "react": "latest",
-    "react-dom": "^19.2.0",
-    "react-icons": "^5.5.0",
-    "uuid": "^13.0.0"
+    "react-dom": "latest"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.13",

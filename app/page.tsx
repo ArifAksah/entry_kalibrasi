@@ -23,7 +23,7 @@ const HomePage: React.FC = () => {
           {/* Welcome Section */}
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, {displayName}! 👋</h1>
-            <p className="text-gray-600">Overview of SIKAP-SV metrics and recent activity.</p>
+            <p className="text-gray-600">Overview of SIKAP-MKG metrics and recent activity.</p>
           </div>
 
           {/* Stats Cards */}

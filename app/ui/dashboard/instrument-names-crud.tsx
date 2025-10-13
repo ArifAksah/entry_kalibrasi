@@ -83,9 +83,9 @@ const InstrumentNamesCRUD: React.FC = () => {
         <h2 className="text-2xl font-bold text-gray-900">Instrument Names</h2>
         <button
           onClick={() => handleOpenModal()}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200"
+          className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-4 py-2 rounded-lg transition-all duration-200 shadow hover:shadow-md font-medium text-sm"
         >
-          Add New Instrument Name
+          Add New
         </button>
       </div>
 
@@ -123,13 +123,13 @@ const InstrumentNamesCRUD: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                     <button
                       onClick={() => handleOpenModal(instrumentName)}
-                      className="text-blue-600 hover:text-blue-900 transition-colors duration-200"
+                      className="text-blue-600 hover:text-blue-900 transition-colors duration-200 font-medium"
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => handleDelete(instrumentName.id)}
-                      className="text-red-600 hover:text-red-900 transition-colors duration-200"
+                      className="text-red-600 hover:text-red-900 transition-colors duration-200 font-medium"
                     >
                       Delete
                     </button>
@@ -141,70 +141,94 @@ const InstrumentNamesCRUD: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal */}
+      {/* Modal dengan ambient light yang lebih kecil */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              {editingInstrumentName ? 'Edit Instrument Name' : 'Add New Instrument Name'}
-            </h3>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="relative w-full max-w-2xl mx-auto">
+            {/* Ambient Light Effect yang lebih kecil */}
+            <div className="absolute -inset-2 bg-gradient-to-r from-blue-600/20 to-cyan-600/20 rounded-xl blur-lg -z-10"></div>
             
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Pilih Instrument (tabel instrument)</label>
-                <select
-                  value={formData.selectedInstrumentId}
-                  onChange={(e) => {
-                    const selected = instruments.find(i => String(i.id) === e.target.value)
-                    setFormData({
-                      selectedInstrumentId: e.target.value,
-                      name: selected ? selected.name : ''
-                    })
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">-- Pilih Instrument --</option>
-                  {instruments.map(i => (
-                    <option key={i.id} value={String(i.id)}>
-                      {i.name} — {i.manufacturer} / {i.type} / SN {i.serial_number}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-gray-500">Memilih instrument akan otomatis mengisi nama di bawah.</p>
+            {/* Modal Container */}
+            <div className="bg-white rounded-xl shadow-2xl relative overflow-hidden">
+              {/* Header dengan gradient */}
+              <div className="bg-gradient-to-r from-slate-800 to-blue-900 px-6 py-4">
+                <h3 className="text-xl font-semibold text-white">
+                  {editingInstrumentName ? 'Edit Instrument Name' : 'Add New Instrument Name'}
+                </h3>
+                <p className="text-blue-200 text-sm mt-1">
+                  {editingInstrumentName ? 'Update existing instrument name' : 'Create new instrument name'}
+                </p>
               </div>
+              
+              <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Pilih Instrument (tabel instrument)
+                  </label>
+                  <select
+                    value={formData.selectedInstrumentId}
+                    onChange={(e) => {
+                      const selected = instruments.find(i => String(i.id) === e.target.value)
+                      setFormData({
+                        selectedInstrumentId: e.target.value,
+                        name: selected ? selected.name : formData.name
+                      })
+                    }}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  >
+                    <option value="">-- Pilih Instrument --</option>
+                    {instruments.map(i => (
+                      <option key={i.id} value={String(i.id)}>
+                        {i.name} — {i.manufacturer} / {i.type} / SN {i.serial_number}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-sm text-gray-500">
+                    Memilih instrument akan otomatis mengisi nama di bawah.
+                  </p>
+                </div>
 
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                  Nama yang disimpan ke instrument_names
-                </label>
-                <input
-                  type="text"
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Masukkan nama instrument untuk disimpan"
-                  required
-                />
-              </div>
+                <div>
+                  <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
+                    Nama yang disimpan ke instrument_names
+                  </label>
+                  <input
+                    type="text"
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    placeholder="Masukkan nama instrument untuk disimpan"
+                    required
+                  />
+                </div>
 
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors duration-200"
-                >
-                  {isSubmitting ? 'Saving...' : editingInstrumentName ? 'Update' : 'Create'}
-                </button>
-              </div>
-            </form>
+                <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={handleCloseModal}
+                    className="px-6 py-3 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all duration-200 hover:shadow-md"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || !formData.name.trim()}
+                    className="px-6 py-3 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-all duration-200 hover:shadow-md"
+                  >
+                    {isSubmitting ? (
+                      <span className="flex items-center">
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Saving...
+                      </span>
+                    ) : editingInstrumentName ? 'Update' : 'Create'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}

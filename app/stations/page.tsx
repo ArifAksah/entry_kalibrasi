@@ -5,7 +5,6 @@ import ProtectedRoute from '../../components/ProtectedRoute';
 import SideNav from '../ui/dashboard/sidenav';
 import Header from '../ui/dashboard/header';
 import StationsCRUD from '../ui/dashboard/stations-crud';
-import Breadcrumb from '../../components/ui/Breadcrumb';
 
 const StationsPage: React.FC = () => {
   return (
@@ -15,7 +14,6 @@ const StationsPage: React.FC = () => {
         <div className="bg-gray-50">
           <Header />
           <div className="p-6 max-w-7xl mx-auto">
-            <Breadcrumb items={[{ label: 'Dashboard', href: '/' }, { label: 'Stations' }]} />
             <h1 className="text-3xl font-bold text-gray-900 mb-6">Station Management</h1>
             <StationsCRUD />
           </div>
