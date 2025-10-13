@@ -221,7 +221,7 @@ const LoginPage: React.FC = () => {
             {/* Footer */}
             <div className="mt-8 pt-6 border-t border-slate-700/50">
               <p className="text-center text-sm text-slate-400">
-                © 2024 BMKG - Kalibrasi & Instrumentasi
+                © 2025 BMKG - Direktorat Data dan Komputasi 
               </p>
             </div>
           </div>
