@@ -51,9 +51,6 @@ export async function PUT(
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     return NextResponse.json(data)
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data)
   } catch (e) {
     return NextResponse.json({ error: 'Failed to update instrument' }, { status: 500 })
   }
@@ -65,7 +62,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('instrument')
       .delete()
       .eq('id', id)

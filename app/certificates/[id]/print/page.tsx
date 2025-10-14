@@ -14,6 +14,7 @@ type Cert = {
   station: number | null
   instrument: number | null
   authorized_by: string | null
+  station_address?: string | null
 }
 
 type Station = {
@@ -50,6 +51,7 @@ const PrintCertificatePage: React.FC = () => {
   const [personel, setPersonel] = useState<Personel[]>([])
 
   const station = useMemo(() => stations.find(s => s.id === (cert?.station ?? -1)) || null, [stations, cert])
+  const resolvedStationAddress = useMemo(() => (cert?.station_address ?? null) || (station?.address ?? null), [cert, station])
   const instrument = useMemo(() => instruments.find(i => i.id === (cert?.instrument ?? -1)) || null, [instruments, cert])
   const authorized = useMemo(() => personel.find(p => p.id === (cert?.authorized_by ?? '')) || null, [personel, cert])
 
@@ -62,19 +64,32 @@ const PrintCertificatePage: React.FC = () => {
     }
     const load = async () => {
       try {
-        const [cRes, sRes, iRes, pRes] = await Promise.all([
+        const [cRes, iRes, pRes] = await Promise.all([
           fetch(`/api/certificates/${id}`),
-          fetch('/api/stations'),
           fetch('/api/instruments'),
           fetch('/api/personel'),
         ])
         const c = await cRes.json()
-        const s = await sRes.json()
         const i = await iRes.json()
         const p = await pRes.json()
         if (!cRes.ok) throw new Error(c?.error || 'Failed to load certificate')
         setCert(c)
-        setStations(Array.isArray(s) ? s : [])
+        // Fetch all stations across pages to ensure mapping available
+        try {
+          const first = await fetch('/api/stations?page=1&pageSize=100')
+          if (first.ok) {
+            const fj = await first.json()
+            const firstData = Array.isArray(fj) ? fj : (fj?.data ?? [])
+            const totalPages = (Array.isArray(fj) ? 1 : (fj?.totalPages ?? 1)) as number
+            if (totalPages <= 1) {
+              setStations(firstData)
+            } else {
+              const rest = await Promise.all(Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(p => fetch(`/api/stations?page=${p}&pageSize=100`).then(r => r.ok ? r.json() : { data: [] })))
+              const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
+              setStations([...firstData, ...restData])
+            }
+          }
+        } catch {}
         setInstruments(Array.isArray(i) ? i : [])
         setPersonel(Array.isArray(p) ? p : [])
         setTimeout(() => window.print(), 300)
@@ -178,10 +193,10 @@ const PrintCertificatePage: React.FC = () => {
               <td className="w-1/3 border p-2">Nama Stasiun</td>
               <td className="border p-2">{station ? `${station.name} (${station.station_id})` : '-'}</td>
             </tr>
-            {station?.address && (
+            {resolvedStationAddress && (
               <tr>
                 <td className="border p-2">Alamat</td>
-                <td className="border p-2">{station.address}</td>
+                <td className="border p-2">{resolvedStationAddress}</td>
               </tr>
             )}
             {(station?.province || station?.regency || station?.region) && (
@@ -305,7 +320,7 @@ const PrintCertificatePage: React.FC = () => {
                     <div className="font-semibold leading-4">Alamat</div>
                     <div className="text-[10px] italic -mt-0.5">Address</div>
                   </td>
-                  <td className="align-top">: {station?.address || '-'}</td>
+                  <td className="align-top">: {resolvedStationAddress || '-'}</td>
                 </tr>
               </tbody>
             </table>

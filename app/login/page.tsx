@@ -218,11 +218,14 @@ const LoginPage: React.FC = () => {
               </div>
             </form>
 
+            {/* Links */}
+            <div className="mt-6 flex items-center justify-between">
+              <a href="/forgot-password" className="text-sm text-blue-300 hover:text-white">Lupa password?</a>
+              <div />
+            </div>
             {/* Footer */}
-            <div className="mt-8 pt-6 border-t border-slate-700/50">
-              <p className="text-center text-sm text-slate-400">
-                © 2025 BMKG - Direktorat Data dan Komputasi 
-              </p>
+            <div className="mt-6 pt-6 border-t border-slate-700/50">
+              <p className="text-center text-sm text-slate-400">© 2025 BMKG - Direktorat Data dan Komputasi</p>
             </div>
           </div>
         </div>

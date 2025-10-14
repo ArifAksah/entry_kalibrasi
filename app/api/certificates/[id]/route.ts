@@ -50,7 +50,8 @@ export async function PUT(
       authorized_by,
       verifikator_1,
       verifikator_2,
-      results
+      results,
+      station_address
     } = body
 
     if (!no_certificate || !no_order || !no_identification || !issue_date) {
@@ -59,11 +60,12 @@ export async function PUT(
       }, { status: 400 })
     }
 
-    // Validate station foreign key if provided
+    // Validate station foreign key if provided and fetch address
+    let resolvedStationAddress: string | null = null
     if (station) {
       const { data: stationData, error: stationError } = await supabaseAdmin
         .from('station')
-        .select('id')
+        .select('id, address')
         .eq('id', station)
         .single()
 
@@ -72,6 +74,7 @@ export async function PUT(
           error: 'Station does not exist. Please select a valid station.',
         }, { status: 400 })
       }
+      resolvedStationAddress = stationData.address ?? null
     }
 
     // Validate instrument foreign key if provided
@@ -135,7 +138,7 @@ export async function PUT(
     // Fetch current certificate version
     const { data: current, error: curErr } = await supabaseAdmin
       .from('certificate')
-      .select('version, no_certificate, no_order, no_identification, issue_date, station, instrument, results')
+      .select('version, no_certificate, no_order, no_identification, issue_date, station, instrument, station_address, results')
       .eq('id', id)
       .maybeSingle()
 
@@ -149,6 +152,7 @@ export async function PUT(
         current.issue_date !== issue_date ||
         (current.station ?? null) !== (station ? parseInt(station) : null) ||
         (current.instrument ?? null) !== (instrument ? parseInt(instrument) : null) ||
+        (current.station_address ?? null) !== ((resolvedStationAddress ?? station_address) ?? null) ||
         JSON.stringify(current.results ?? null) !== JSON.stringify(results ?? null)
       return changed ? (prev + 1) : prev
     })()
@@ -165,6 +169,7 @@ export async function PUT(
         issue_date, 
         station: station ? parseInt(station) : null, 
         instrument: instrument ? parseInt(instrument) : null,
+        station_address: (resolvedStationAddress ?? station_address) ?? null,
         results: results ?? null,
         version: nextVersion
       })

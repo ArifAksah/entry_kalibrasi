@@ -72,7 +72,8 @@ export async function POST(request: NextRequest) {
       authorized_by,
       verifikator_1,
       verifikator_2,
-      results
+      results,
+      station_address
     } = body
 
     if (!no_certificate || !no_order || !no_identification || !issue_date) {
@@ -88,11 +89,12 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Validate station foreign key if provided
+    // Validate station foreign key if provided and fetch address
+    let resolvedStationAddress: string | null = null
     if (station) {
       const { data: stationData, error: stationError } = await supabaseAdmin
         .from('station')
-        .select('id')
+        .select('id, address')
         .eq('id', station)
         .single()
 
@@ -101,6 +103,7 @@ export async function POST(request: NextRequest) {
           error: 'Station does not exist. Please select a valid station.',
         }, { status: 400 })
       }
+      resolvedStationAddress = stationData.address ?? null
     }
 
     // Validate instrument foreign key if provided
@@ -179,6 +182,7 @@ export async function POST(request: NextRequest) {
         issue_date, 
         station: station ? parseInt(station) : null, 
         instrument: instrument ? parseInt(instrument) : null,
+        station_address: (resolvedStationAddress ?? station_address) ?? null,
         results: results ?? null,
         version: 1
       })

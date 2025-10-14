@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
+    "@types/nodemailer": "^7.0.2",
     "next": "latest",
+    "nodemailer": "^7.0.9",
     "react": "latest",
     "react-dom": "latest",
     "styled-components": "^6.1.19"

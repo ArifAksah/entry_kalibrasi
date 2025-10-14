@@ -20,6 +20,20 @@ if (!supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+// Admin client for server-side operations
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || ''
+
+if (!supabaseServiceKey) {
+  console.warn('SUPABASE_SERVICE_ROLE_KEY not found. Admin operations may fail.')
+}
+
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+})
+
 // Database types
 export interface SensorName {
   id: string
@@ -125,6 +139,7 @@ export interface Certificate {
   authorized_by: string | null
   verifikator_1: string | null
   verifikator_2: string | null
+  station_address?: string | null
   results?: any
   version?: number
 }

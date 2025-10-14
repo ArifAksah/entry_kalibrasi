@@ -208,14 +208,6 @@ const SensorsCRUD: React.FC = () => {
     }))
   }
 
-  // Pagination calculations
-  const indexOfLastItem = currentPage * itemsPerPage
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage
-  const currentSensors = sensors.slice(indexOfFirstItem, indexOfLastItem)
-  const totalPages = Math.ceil(sensors.length / itemsPerPage)
-
-  const paginate = (pageNumber: number) => setCurrentPage(pageNumber)
-
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">

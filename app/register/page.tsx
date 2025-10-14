@@ -28,9 +28,21 @@ const RegisterPage: React.FC = () => {
   useEffect(() => {
     const loadStations = async () => {
       try {
-        const r = await fetch('/api/stations')
+        const r = await fetch('/api/stations?page=1&pageSize=100')
         const d = await r.json()
-        if (r.ok && Array.isArray(d)) setStations(d)
+        if (r.ok) {
+          const first = Array.isArray(d) ? d : (d?.data ?? [])
+          // if there are multiple pages, fetch them all quickly
+          const totalPages = (Array.isArray(d) ? 1 : (d?.totalPages ?? 1)) as number
+          if (totalPages > 1) {
+            const rest = await Promise.all(Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
+              .map(p => fetch(`/api/stations?page=${p}&pageSize=100`).then(res => res.ok ? res.json() : { data: [] })))
+            const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
+            setStations([...first, ...restData])
+          } else {
+            setStations(first)
+          }
+        }
       } catch {}
     }
     loadStations()
@@ -63,10 +75,12 @@ const RegisterPage: React.FC = () => {
     e.preventDefault()
     setLoading(true); setError(null); setSuccess(null)
     try {
+      const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/confirm-email` : undefined
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: form.email,
         password: form.password,
         options: {
+          emailRedirectTo: redirectTo,
           data: { name: form.name, phone: form.phone, position: form.position, nip: form.nip },
         },
       })
@@ -92,11 +106,16 @@ const RegisterPage: React.FC = () => {
 
       // Assign role via admin endpoint
       if (form.role) {
-        await fetch('/api/user-roles', {
+        if (form.role === 'user_station' && !form.station_id) {
+          throw new Error('Untuk role user_station, wajib memilih Station.')
+        }
+        const roleRes = await fetch('/api/user-roles', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ user_id: userId, role: form.role, station_id: form.station_id ? parseInt(form.station_id as any) : null })
         })
+        const roleBody = await roleRes.json().catch(()=>({}))
+        if (!roleRes.ok) throw new Error(roleBody?.error || 'Gagal menyimpan role user')
       }
 
       setSuccess('Registration successful. Please check your email to confirm.')

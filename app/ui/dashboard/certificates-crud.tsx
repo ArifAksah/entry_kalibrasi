@@ -238,6 +238,7 @@ const CertificatesCRUD: React.FC = () => {
     issue_date: '',
     station: null,
     instrument: null,
+    station_address: null as any,
   })
 
   // Derived instrument details (read-only preview)
@@ -348,17 +349,28 @@ const CertificatesCRUD: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [stationsRes, instrumentsRes, sensorsRes, personelRes] = await Promise.all([
-          fetch('/api/stations'),
+        // Fetch all stations across pages to ensure every certificate can resolve station name
+        const fetchAllStations = async () => {
+          const first = await fetch('/api/stations?page=1&pageSize=100')
+          if (!first.ok) return { data: [], total: 0, pageSize: 100, totalPages: 1 }
+          const firstJson = await first.json()
+          const firstData = Array.isArray(firstJson) ? firstJson : (firstJson?.data ?? [])
+          const totalPages = (Array.isArray(firstJson) ? 1 : (firstJson?.totalPages ?? 1)) as number
+          if (totalPages <= 1) return { data: firstData, total: (firstJson?.total ?? firstData.length) as number, pageSize: 100, totalPages }
+          const restPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
+          const rest = await Promise.all(restPages.map(p => fetch(`/api/stations?page=${p}&pageSize=100`).then(r => r.ok ? r.json() : { data: [] })))
+          const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
+          return { data: [...firstData, ...restData], total: (firstJson?.total ?? (firstData.length + restData.length)) as number, pageSize: 100, totalPages }
+        }
+
+        const [stationsAll, instrumentsRes, sensorsRes, personelRes] = await Promise.all([
+          fetchAllStations(),
           fetch('/api/instruments'),
           fetch('/api/sensors'),
           fetch('/api/personel'),
         ])
         
-        if (stationsRes.ok) {
-          const stationsData = await stationsRes.json()
-          setStations(Array.isArray(stationsData) ? stationsData : (stationsData?.data ?? []))
-        }
+        setStations(Array.isArray(stationsAll) ? stationsAll : (stationsAll as any)?.data ?? [])
         
         if (instrumentsRes.ok) {
           const instrumentsData = await instrumentsRes.json()
@@ -420,6 +432,7 @@ const CertificatesCRUD: React.FC = () => {
         issue_date: item.issue_date,
         station: item.station,
         instrument: item.instrument,
+        station_address: (item as any).station_address ?? (item.station ? stations.find(s=>s.id===item.station)?.address ?? null : null),
       })
       const savedResults = (item as any).results || []
       setResults(savedResults.length > 0 ? savedResults : [{
@@ -449,6 +462,7 @@ const CertificatesCRUD: React.FC = () => {
         issue_date: '',
         station: null,
         instrument: null,
+        station_address: null as any,
       })
       setResults([{
         sensorId: null, 
@@ -811,10 +825,28 @@ const CertificatesCRUD: React.FC = () => {
                       <label className="block text-xs font-semibold text-gray-700">Stasiun</label>
                       <SearchableDropdown
                         value={form.station}
-                        onChange={(value) => setForm({ ...form, station: value as number | null })}
+                        onChange={(value) => {
+                          const selectedId = (value as number | null)
+                          const st = stations.find(s => s.id === selectedId)
+                          setForm({ 
+                            ...form, 
+                            station: selectedId, 
+                            station_address: st ? (st as any).address ?? null : null 
+                          })
+                        }}
                         options={stations.map(s => ({ id: s.id, name: s.name, station_id: s.station_id }))}
                         placeholder="Pilih Stasiun"
                         searchPlaceholder="Cari stasiun..."
+                      />
+                    </div>
+
+                    <div className="space-y-1 md:col-span-2">
+                      <label className="block text-xs font-semibold text-gray-700">Alamat Stasiun</label>
+                      <textarea
+                        value={(form as any).station_address || (form.station ? (stations.find(s=>s.id===form.station)?.address ?? '') : '')}
+                        readOnly
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700 text-sm"
+                        rows={2}
                       />
                     </div>
 
@@ -876,18 +908,18 @@ const CertificatesCRUD: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Nama Instrumen</label>
-                      <select 
-                        value={form.instrument || ''} 
-                        onChange={e=>setForm({ ...form, instrument: e.target.value ? parseInt(e.target.value) : null })} 
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] focus:border-transparent transition-all duration-200 bg-white text-sm"
-                      >
-                        <option value="">Pilih nama</option>
-                        {instruments.map(i => (
-                          <option key={i.id} value={i.id}>
-                            {(i as any).name || 'Instrument'}{(i as any).type ? ` - ${(i as any).type}` : ''}
-                          </option>
-                        ))}
-                      </select>
+                      <SearchableDropdown
+                        value={form.instrument}
+                        onChange={(value) => setForm({ ...form, instrument: value as number | null })}
+                        options={instruments.map(i => ({
+                          id: i.id,
+                          name: (i as any).name || 'Instrument',
+                          // Reuse station_id slot for secondary info in dropdown/search
+                          station_id: `${(i as any).type || ''} ${(i as any).serial_number || ''} ${(i as any).manufacturer || ''}`.trim()
+                        }))}
+                        placeholder="Pilih Instrumen"
+                        searchPlaceholder="Cari instrumen (nama/tipe/serial/pabrikan)..."
+                      />
                     </div>
 
                     {[
@@ -942,18 +974,21 @@ const CertificatesCRUD: React.FC = () => {
                       <div key={idx} className="border border-gray-200 bg-gray-50/50 rounded-lg p-3 hover:bg-white transition-all duration-200">
                         <div className="flex items-center justify-between mb-3">
                           <h4 className="font-semibold text-gray-900 text-xs uppercase tracking-wide">Sensor #{idx + 1}</h4>
-                          <select 
-                            value={r.sensorId || ''} 
-                            onChange={e=>applySensorToResult(idx, e.target.value ? parseInt(e.target.value) : null)} 
-                            className="px-2 py-1 border border-gray-300 rounded text-xs bg-white focus:outline-none focus:ring-1 focus:ring-[#1e377c]"
-                          >
-                            <option value="">Pilih Sensor</option>
-                            {sensors.map(s => (
-                              <option key={s.id} value={s.id}>
-                                ID {s.id}{s.name ? ` - ${s.name}` : ''}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="w-64">
+                            <SearchableDropdown
+                              value={r.sensorId}
+                              onChange={(value) => applySensorToResult(idx, value as number | null)}
+                              options={sensors.map((s: any) => ({
+                                id: s.id,
+                                name: s.name || s.type || `Sensor ${s.id}`,
+                                // Put extra searchable info in station_id field for the dropdown's filter
+                                station_id: `${s.manufacturer || ''} ${s.type || ''} ${s.serial_number || ''} ID:${s.id}`.trim()
+                              }))}
+                              placeholder="Pilih Sensor"
+                              searchPlaceholder="Cari sensor (nama/tipe/serial/pabrikan)..."
+                              className="text-xs"
+                            />
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-3">

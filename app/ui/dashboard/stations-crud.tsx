@@ -64,6 +64,8 @@ const StationsCRUD: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const pageSize = 10
   const [currentPage, setCurrentPage] = useState(1)
+  const [serverTotal, setServerTotal] = useState(0)
+  const [serverTotalPages, setServerTotalPages] = useState(1)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [personel, setPersonel] = useState<Personel[]>([])
@@ -148,35 +150,34 @@ const StationsCRUD: React.FC = () => {
 
   useEffect(() => {
     // server-side fetch on debounced search/page change
-    fetchStations({ q: debouncedSearch, page: currentPage, pageSize })
+    const run = async () => {
+      const payload = await fetchStations({ q: debouncedSearch, page: currentPage, pageSize })
+      const isArray = Array.isArray(payload)
+      setServerTotal(isArray ? (stations?.length || 0) : (payload?.total ?? 0))
+      setServerTotalPages(isArray ? 1 : (payload?.totalPages ?? 1))
+    }
+    run()
   }, [debouncedSearch, currentPage])
 
-  const totalPages = useMemo(() => {
-    // client-side fallback; server can also return totalPages, but we keep UI safe
-    return Math.max(1, Math.ceil(filteredStations.length / pageSize))
-  }, [filteredStations])
-  const pagedStations = useMemo(() => {
-    // after server fetch, stations already limited; still slice to be safe
-    const start = (currentPage - 1) * pageSize
-    return filteredStations.slice(start, start + pageSize)
-  }, [filteredStations, currentPage])
+  const totalPages = serverTotalPages
+  const pagedStations = stations // server already returns paginated slice
 
   const openModal = (item?: Station) => {
     if (item) {
       setEditing(item)
       setForm({
-        station_id: item.station_id,
-        name: item.name,
-        address: item.address,
-        type: (item as any).type || '' as any,
-        latitude: item.latitude,
-        longitude: item.longitude,
-        elevation: item.elevation,
-        time_zone: item.time_zone,
-        region: item.region,
-        province: item.province,
-        regency: item.regency,
-        created_by: item.created_by,
+        station_id: (item as any).station_id ?? '',
+        name: (item as any).name ?? '',
+        address: (item as any).address ?? '',
+        type: ((item as any).type ?? '') as any,
+        latitude: typeof (item as any).latitude === 'number' ? (item as any).latitude : 0,
+        longitude: typeof (item as any).longitude === 'number' ? (item as any).longitude : 0,
+        elevation: typeof (item as any).elevation === 'number' ? (item as any).elevation : 0,
+        time_zone: (item as any).time_zone ?? '',
+        region: (item as any).region ?? '',
+        province: (item as any).province ?? '',
+        regency: (item as any).regency ?? '',
+        created_by: (item as any).created_by ?? (currentUserId || ''),
       })
     } else {
       setEditing(null)
@@ -237,8 +238,7 @@ const StationsCRUD: React.FC = () => {
       console.error('Error deleting station:', e)
     }
   }
-
-<<<<<<< HEAD
+ 
   // Note: avoid unmounting the UI on loading; show inline indicator instead
 
   return (
@@ -406,33 +406,6 @@ const StationsCRUD: React.FC = () => {
           )}
           {can('station','create') && (
             <button onClick={() => openModal()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add New</button>
-=======
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1e377c]"></div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-4 max-w-full overflow-hidden">
-      {/* Header dengan background putih dan aksen biru elegan */}
-      <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-4 relative overflow-hidden">
-        <BatikBackground />
-        <div className="relative z-10 flex justify-between items-center">
-          <div>
-            <Breadcrumb items={[{ label: 'Stations', href: '#' }, { label: 'Manager' }]} />
-          </div>
-          {can('station','create') && (
-            <button 
-              onClick={() => openModal()} 
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] text-white rounded-lg hover:from-[#2a4a9d] hover:to-[#1e377c] transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 text-sm"
-            >
-              <PlusIcon className="w-4 h-4" />
-              <span className="font-semibold">Add New Station</span>
-            </button>
->>>>>>> ayp
           )}
         </div>
       </div>
@@ -443,7 +416,6 @@ const StationsCRUD: React.FC = () => {
         </div>
       )}
 
-<<<<<<< HEAD
       <Card>
         <Table headers={[ 'Station ID', 'Name', 'Type', 'Address', 'Region', 'Province', 'Created By', 'Actions' ]}>
           {pagedStations.map((item) => (
@@ -495,62 +467,6 @@ const StationsCRUD: React.FC = () => {
           </div>
         </div>
       </Card>
-=======
-      {/* Tabel dengan card elegan */}
-      <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-full">
-            <thead>
-              <tr className="bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] text-white">
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Station ID</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Name</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Type</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Address</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Region</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Province</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Created By</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {stations.map((item) => (
-                <tr key={item.id} className="hover:bg-blue-50/30 transition-colors duration-200">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.station_id}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{item.name}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{(item as any).type || '-'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate" title={item.address}>
-                    {item.address}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{item.region}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{item.province}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{personelMap[item.created_by] || 'Unknown'}</td>
-                  <td className="px-4 py-3 text-sm font-medium space-x-1">
-                    {can('station','update') && canEndpoint('PUT', `/api/stations/${item.id}`) && (
-                      <button 
-                        onClick={() => openModal(item)} 
-                        className="inline-flex items-center p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all duration-200 border border-transparent hover:border-blue-200"
-                        title="Edit Station"
-                      >
-                        <EditIcon className="w-4 h-4" />
-                      </button>
-                    )}
-                    {can('station','delete') && canEndpoint('DELETE', `/api/stations/${item.id}`) && (
-                      <button 
-                        onClick={() => handleDelete(item.id)} 
-                        className="inline-flex items-center p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200 border border-transparent hover:border-red-200"
-                        title="Delete Station"
-                      >
-                        <TrashIcon className="w-4 h-4" />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
->>>>>>> ayp
 
       {/* Modal dengan desain elegan */}
       {isModalOpen && can('station', editing ? 'update' : 'create') && (
