@@ -1,18 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '../../../lib/supabase'
-import { createClient } from '@supabase/supabase-js'
-
-// Service role client for admin operations
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-)
+import { supabaseAdmin } from '../../../lib/supabase'
 
 export async function GET() {
   try {
@@ -50,4 +37,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create personel' }, { status: 500 })
   }
 }
-

@@ -23,6 +23,13 @@ const TrashIcon = ({ className = "" }) => (
   </svg>
 )
 
+const ViewIcon = ({ className = "" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+  </svg>
+)
+
 const PrinterIcon = ({ className = "" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -324,6 +331,8 @@ const CertificatesCRUD: React.FC = () => {
         name: sensor.name,
         created_at: sensor.created_at,
       } : undefined,
+      // Auto-fill calibration place based on sensor location or default
+      place: sensor ? `Laboratorium Kalibrasi BMKG - ${sensor.name || sensor.type || 'Sensor'}` : '',
     })
   }
 
@@ -657,8 +666,19 @@ const CertificatesCRUD: React.FC = () => {
                   </td>
                   <td className="px-4 py-3 text-sm font-medium space-x-1">
                     <a 
+                      href={`/certificates/${item.id}/view`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all duration-200 border border-transparent hover:border-blue-200"
+                      title="View Certificate"
+                    >
+                      <ViewIcon className="w-4 h-4" />
+                    </a>
+                    
+                    <a 
                       href={`/certificates/${item.id}/print`} 
                       target="_blank" 
+                      rel="noopener noreferrer"
                       className="inline-flex items-center p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200 border border-transparent hover:border-green-200"
                       title="Print Certificate"
                     >
@@ -991,6 +1011,216 @@ const CertificatesCRUD: React.FC = () => {
                           </div>
                         </div>
 
+                        {/* Sensor Details - Editable fields with auto-fill */}
+                        {r.sensorDetails && (
+                          <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <div className="flex items-center justify-between mb-2">
+                              <h5 className="text-xs font-semibold text-blue-900">Detail Sensor (Dapat Diedit)</h5>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const originalSensor = sensors.find((s: any) => s.id === r.sensorId) as unknown as Sensor | undefined
+                                  if (originalSensor) {
+                                    updateResult(idx, {
+                                      sensorDetails: {
+                                        id: originalSensor.id,
+                                        manufacturer: originalSensor.manufacturer,
+                                        type: originalSensor.type,
+                                        serial_number: originalSensor.serial_number,
+                                        range_capacity: originalSensor.range_capacity,
+                                        range_capacity_unit: originalSensor.range_capacity_unit,
+                                        graduating: originalSensor.graduating,
+                                        graduating_unit: originalSensor.graduating_unit,
+                                        funnel_diameter: originalSensor.funnel_diameter,
+                                        funnel_diameter_unit: originalSensor.funnel_diameter_unit,
+                                        funnel_area: originalSensor.funnel_area,
+                                        funnel_area_unit: originalSensor.funnel_area_unit,
+                                        volume_per_tip: originalSensor.volume_per_tip,
+                                        volume_per_tip_unit: originalSensor.volume_per_tip_unit,
+                                        name: originalSensor.name,
+                                        created_at: originalSensor.created_at,
+                                      }
+                                    })
+                                  }
+                                }}
+                                className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                                title="Reset ke nilai asli dari database"
+                              >
+                                Reset ke Default
+                              </button>
+                        </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div className="space-y-2">
+                                <div className="space-y-1">
+                                  <label className="block text-xs font-medium text-gray-600">Nama Sensor</label>
+                                  <input
+                                    type="text"
+                                    value={r.sensorDetails.name || ''}
+                                    onChange={(e) => updateResult(idx, { 
+                                      sensorDetails: { ...r.sensorDetails!, name: e.target.value }
+                                    })}
+                                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                                    placeholder="Nama sensor"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="block text-xs font-medium text-gray-600">Pabrikan</label>
+                                  <input
+                                    type="text"
+                                    value={r.sensorDetails.manufacturer || ''}
+                                    onChange={(e) => updateResult(idx, { 
+                                      sensorDetails: { ...r.sensorDetails!, manufacturer: e.target.value }
+                                    })}
+                                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                                    placeholder="Pabrikan"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="block text-xs font-medium text-gray-600">Tipe</label>
+                                  <input
+                                    type="text"
+                                    value={r.sensorDetails.type || ''}
+                                    onChange={(e) => updateResult(idx, { 
+                                      sensorDetails: { ...r.sensorDetails!, type: e.target.value }
+                                    })}
+                                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                                    placeholder="Tipe sensor"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="block text-xs font-medium text-gray-600">Serial Number</label>
+                                  <input
+                                    type="text"
+                                    value={r.sensorDetails.serial_number || ''}
+                                    onChange={(e) => updateResult(idx, { 
+                                      sensorDetails: { ...r.sensorDetails!, serial_number: e.target.value }
+                                    })}
+                                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                                    placeholder="Serial number"
+                                  />
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <div className="space-y-1">
+                                  <label className="block text-xs font-medium text-gray-600">Range/Kapasitas</label>
+                                  <div className="flex gap-1">
+                                    <input
+                                      type="text"
+                                      value={r.sensorDetails.range_capacity || ''}
+                                      onChange={(e) => updateResult(idx, { 
+                                        sensorDetails: { ...r.sensorDetails!, range_capacity: e.target.value }
+                                      })}
+                                      className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                                      placeholder="Nilai"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={r.sensorDetails.range_capacity_unit || ''}
+                                      onChange={(e) => updateResult(idx, { 
+                                        sensorDetails: { ...r.sensorDetails!, range_capacity_unit: e.target.value }
+                                      })}
+                                      className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                                      placeholder="Unit"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="block text-xs font-medium text-gray-600">Graduating</label>
+                                  <div className="flex gap-1">
+                                    <input
+                                      type="text"
+                                      value={r.sensorDetails.graduating || ''}
+                                      onChange={(e) => updateResult(idx, { 
+                                        sensorDetails: { ...r.sensorDetails!, graduating: e.target.value }
+                                      })}
+                                      className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                                      placeholder="Nilai"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={r.sensorDetails.graduating_unit || ''}
+                                      onChange={(e) => updateResult(idx, { 
+                                        sensorDetails: { ...r.sensorDetails!, graduating_unit: e.target.value }
+                                      })}
+                                      className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                                      placeholder="Unit"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="block text-xs font-medium text-gray-600">Diameter Corong</label>
+                                  <div className="flex gap-1">
+                                    <input
+                                      type="number"
+                                      value={r.sensorDetails.funnel_diameter || ''}
+                                      onChange={(e) => updateResult(idx, { 
+                                        sensorDetails: { ...r.sensorDetails!, funnel_diameter: parseFloat(e.target.value) || 0 }
+                                      })}
+                                      className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                                      placeholder="Nilai"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={r.sensorDetails.funnel_diameter_unit || ''}
+                                      onChange={(e) => updateResult(idx, { 
+                                        sensorDetails: { ...r.sensorDetails!, funnel_diameter_unit: e.target.value }
+                                      })}
+                                      className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                                      placeholder="Unit"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="block text-xs font-medium text-gray-600">Volume per Tip</label>
+                                  <div className="flex gap-1">
+                                    <input
+                                      type="text"
+                                      value={r.sensorDetails.volume_per_tip || ''}
+                                      onChange={(e) => updateResult(idx, { 
+                                        sensorDetails: { ...r.sensorDetails!, volume_per_tip: e.target.value }
+                                      })}
+                                      className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                                      placeholder="Nilai"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={r.sensorDetails.volume_per_tip_unit || ''}
+                                      onChange={(e) => updateResult(idx, { 
+                                        sensorDetails: { ...r.sensorDetails!, volume_per_tip_unit: e.target.value }
+                                      })}
+                                      className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                                      placeholder="Unit"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="block text-xs font-medium text-gray-600">Luas Corong</label>
+                                  <div className="flex gap-1">
+                                    <input
+                                      type="number"
+                                      value={r.sensorDetails.funnel_area || ''}
+                                      onChange={(e) => updateResult(idx, { 
+                                        sensorDetails: { ...r.sensorDetails!, funnel_area: parseFloat(e.target.value) || 0 }
+                                      })}
+                                      className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                                      placeholder="Nilai"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={r.sensorDetails.funnel_area_unit || ''}
+                                      onChange={(e) => updateResult(idx, { 
+                                        sensorDetails: { ...r.sensorDetails!, funnel_area_unit: e.target.value }
+                                      })}
+                                      className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                                      placeholder="Unit"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-3">
                           {[
                             { label: 'Tanggal Mulai', value: r.startDate, onChange: (e: any) => updateResult(idx, { startDate: e.target.value }), type: 'date' },
@@ -1011,9 +1241,61 @@ const CertificatesCRUD: React.FC = () => {
 
                         <div className="flex flex-wrap gap-1">
                           {[
-                            { label: 'Kondisi Lingkungan', onClick: () => { setEnvDraft(r.environment.length ? r.environment : [{ key: '', value: '' }]); setEnvEditIndex(idx) } },
-                            { label: 'Tabel Hasil', onClick: () => { setTableDraft(r.table.length ? r.table : [{ title: '', rows: [{ key: '', unit: '', value: '' }] }]); setTableEditIndex(idx) } },
-                            { label: 'Catatan', onClick: () => { setNoteDraft({ ...r.notesForm, standardInstruments: r.notesForm.standardInstruments || [] }); setNoteEditIndex(idx) } },
+                            { label: 'Kondisi Lingkungan', onClick: () => { 
+                              // Auto-suggest environment conditions based on sensor type
+                              const suggestedEnv = r.sensorDetails ? [
+                                { key: 'Suhu', value: '20 ± 2°C' },
+                                { key: 'Kelembaban', value: '45-75% RH' },
+                                { key: 'Tekanan', value: '1013.25 ± 10 hPa' },
+                                { key: 'Sensor Type', value: r.sensorDetails.type || '' },
+                                { key: 'Range', value: `${r.sensorDetails.range_capacity || ''} ${r.sensorDetails.range_capacity_unit || ''}` }
+                              ] : [{ key: '', value: '' }];
+                              setEnvDraft(r.environment.length ? r.environment : suggestedEnv); 
+                              setEnvEditIndex(idx) 
+                            } },
+                            { label: 'Tabel Hasil', onClick: () => { 
+                              // Auto-suggest table structure based on sensor type
+                              const suggestedTable = r.sensorDetails ? [
+                                {
+                                  title: 'Hasil Pengukuran',
+                                  rows: [
+                                    { key: 'Range Pengukuran', unit: r.sensorDetails.range_capacity_unit || '', value: r.sensorDetails.range_capacity || '' },
+                                    { key: 'Resolusi', unit: r.sensorDetails.graduating_unit || '', value: r.sensorDetails.graduating || '' },
+                                    { key: 'Akurasi', unit: '%', value: '± 0.5' },
+                                    { key: 'Repeatability', unit: '%', value: '± 0.2' },
+                                    { key: 'Hysteresis', unit: '%', value: '± 0.3' }
+                                  ]
+                                },
+                                {
+                                  title: 'Kondisi Kalibrasi',
+                                  rows: [
+                                    { key: 'Suhu', unit: '°C', value: '20 ± 2' },
+                                    { key: 'Kelembaban', unit: '% RH', value: '45-75' },
+                                    { key: 'Tekanan', unit: 'hPa', value: '1013.25 ± 10' }
+                                  ]
+                                }
+                              ] : [{ title: '', rows: [{ key: '', unit: '', value: '' }] }];
+                              setTableDraft(r.table.length ? r.table : suggestedTable); 
+                              setTableEditIndex(idx) 
+                            } },
+                            { label: 'Catatan', onClick: () => { 
+                              // Auto-suggest notes based on sensor data
+                              const suggestedNotes = r.sensorDetails ? {
+                                traceable_to_si_through: 'NIST Traceable Standards',
+                                reference_document: 'ISO/IEC 17025:2017',
+                                calibration_methode: `Kalibrasi ${r.sensorDetails.type || 'Sensor'} menggunakan metode komparasi langsung`,
+                                others: `Sensor ${r.sensorDetails.name || r.sensorDetails.type || ''} dengan serial number ${r.sensorDetails.serial_number || ''} dari pabrikan ${r.sensorDetails.manufacturer || ''}`,
+                                standardInstruments: r.notesForm.standardInstruments || []
+                              } : { 
+                                traceable_to_si_through: '', 
+                                reference_document: '', 
+                                calibration_methode: '', 
+                                others: '', 
+                                standardInstruments: r.notesForm.standardInstruments || [] 
+                              };
+                              setNoteDraft(suggestedNotes); 
+                              setNoteEditIndex(idx) 
+                            } },
                           ].map((button, btnIdx) => (
                             <button 
                               key={btnIdx}
