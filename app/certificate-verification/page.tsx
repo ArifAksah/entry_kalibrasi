@@ -9,12 +9,15 @@ import CertificateVerificationCRUD from '../ui/dashboard/certificate-verificatio
 const CertificateVerificationPage: React.FC = () => {
   return (
     <ProtectedRoute>
-      <div className="min-h-screen grid grid-cols-[260px_1fr]">
+      <div className="dashboard-container">
         <SideNav />
-        <div className="bg-gray-50">
+        <div className="main-content">
           <Header />
           <div className="p-6 max-w-7xl mx-auto">
-            <h1 className="text-3xl font-bold text-gray-900 mb-6">Certificate Verification</h1>
+            <div className="mb-6">
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Certificate Verification</h1>
+              <p className="text-gray-600">Review and verify certificates assigned to you</p>
+            </div>
             <CertificateVerificationCRUD />
           </div>
         </div>
@@ -24,4 +27,3 @@ const CertificateVerificationPage: React.FC = () => {
 };
 
 export default CertificateVerificationPage;
-

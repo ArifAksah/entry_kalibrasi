@@ -116,17 +116,62 @@ const SideNav: React.FC = () => {
     if (loading) return [];
     
     console.log('Current role:', role);
-    console.log('Permission check for /api/instruments:', canEndpoint('GET', '/api/instruments'));
     
-    // Untuk sementara, tampilkan semua menu tanpa permission check
-    return sections.map(section => ({
-      ...section,
-      items: section.items.filter(item => {
-        if (item.href === '/') return true;
+    // Filter sections based on user role
+    const roleBasedSections = sections.map(section => {
+      if (section.title === 'Overview') {
+        return section; // Dashboard always available
+      }
+      
+      if (section.title === 'Administration') {
+        // Only admin can see administration section
+        if (role === 'admin') {
+          return section;
+        }
+        return { ...section, items: [] };
+      }
+      
+      if (section.title === 'Documents') {
+        // Filter certificates based on role
+        const filteredItems = section.items.filter(item => {
+          if (item.name === 'Certificates') {
+            // All roles can see certificates, but content will be filtered
+            return true;
+          }
+          if (item.name === 'Letters') {
+            // Only admin and assignor can see letters
+            return role === 'admin' || role === 'assignor';
+          }
+          return true;
+        });
+        
+        // Add Certificate Verification for verifikator role
+        if (role === 'verifikator') {
+          filteredItems.push({
+            name: 'Certificate Verification',
+            href: '/certificate-verification',
+            icon: Icon.check
+          });
+        }
+        
+        return { ...section, items: filteredItems };
+      }
+      
+      // For other sections, check permissions
+      const filteredItems = section.items.filter(item => {
+        // Instruments, Sensors, Stations - all roles can see
+        if (['Instruments', 'Sensors', 'Stations'].includes(item.name)) {
+          return true;
+        }
+        
         return true;
-      })
-    })).filter(section => section.items.length > 0);
-  }, [loading, canEndpoint, role]);
+      });
+      
+      return { ...section, items: filteredItems };
+    }).filter(section => section.items.length > 0);
+    
+    return roleBasedSections;
+  }, [loading, role]);
 
   if (loading) {
     return (
