@@ -7,6 +7,21 @@ const supabaseAdmin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 )
 
+// Helper to create notifications
+const createNotification = async (userId: string, message: string, link: string) => {
+    if (!userId) return;
+    try {
+        await supabaseAdmin.from('notifications').insert({
+            user_id: userId,
+            message,
+            link
+        });
+    } catch (error) {
+        console.error(`Failed to create notification for user ${userId}:`, error);
+    }
+};
+
+
 // GET - Get all certificate verifications
 export async function GET() {
   try {
@@ -64,7 +79,7 @@ export async function POST(request: NextRequest) {
     // Validate certificate exists
     const { data: certData, error: certError } = await supabaseAdmin
       .from('certificate')
-      .select('id, verifikator_1, verifikator_2, authorized_by, version')
+      .select('id, no_certificate, verifikator_1, verifikator_2, authorized_by, version')
       .eq('id', certificate_id)
       .single()
 
@@ -195,8 +210,35 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    
+    // Create notifications based on status
+    const link = `/certificates/${certificate_id}/view`;
+    if (status === 'approved') {
+        if (verification_level === 1 && certData.verifikator_2) {
+            await createNotification(certData.verifikator_2, `Sertifikat ${certData.no_certificate} telah disetujui oleh Verifikator 1 dan siap untuk verifikasi Anda.`, link);
+        } else if (verification_level === 2 && certData.authorized_by) {
+            await createNotification(certData.authorized_by, `Sertifikat ${certData.no_certificate} telah disetujui oleh Verifikator 2 dan siap untuk otorisasi final.`, link);
+        } else if (verification_level === 3 && certData.authorized_by) {
+            // Notify the creator/assignor that it's fully approved. For simplicity, we'll notify all involved.
+            const recipients = Array.from(new Set([certData.verifikator_1, certData.verifikator_2, certData.authorized_by]));
+            for (const recipientId of recipients) {
+                if (recipientId) {
+                    await createNotification(recipientId, `Sertifikat ${certData.no_certificate} telah sepenuhnya disetujui.`, link);
+                }
+            }
+        }
+    } else if (status === 'rejected') {
+        const recipients = Array.from(new Set([certData.verifikator_1, certData.verifikator_2, certData.authorized_by]));
+        for (const recipientId of recipients) {
+            if (recipientId) {
+                await createNotification(recipientId, `Sertifikat ${certData.no_certificate} telah ditolak oleh ${user.email}.`, link);
+            }
+        }
+    }
+
     return NextResponse.json(data, { status: 201 })
   } catch (e) {
     return NextResponse.json({ error: 'Failed to create certificate verification' }, { status: 500 })
   }
 }
+

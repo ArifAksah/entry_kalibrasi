@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '../../../lib/supabase'
 import { createClient } from '@supabase/supabase-js'
+import { sendAssignmentNotificationEmail } from '../../../lib/email'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -190,6 +191,30 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // Kirim notifikasi email
+    const sendNotification = async (userId: string, role: string, certificateNumber: string, certificateId: number) => {
+      const { data: personelData, error: personelError } = await supabaseAdmin
+        .from('personel')
+        .select('email')
+        .eq('id', userId)
+        .single();
+
+      if (!personelError && personelData && personelData.email) {
+        await sendAssignmentNotificationEmail(personelData.email, role, certificateNumber, certificateId);
+      }
+    };
+
+    if (authorized_by) {
+      await sendNotification(authorized_by, 'Authorized By', no_certificate, data.id);
+    }
+    if (verifikator_1) {
+      await sendNotification(verifikator_1, 'Verifikator 1', no_certificate, data.id);
+    }
+    if (verifikator_2) {
+      await sendNotification(verifikator_2, 'Verifikator 2', no_certificate, data.id);
+    }
+    
     return NextResponse.json(data, { status: 201 })
   } catch (e) {
     return NextResponse.json({ error: 'Failed to create certificate' }, { status: 500 })

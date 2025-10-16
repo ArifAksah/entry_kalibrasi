@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '../../../../lib/supabase'
 import { createClient } from '@supabase/supabase-js'
+import { sendAssignmentNotificationEmail } from '../../../../lib/email'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -58,6 +59,17 @@ export async function PUT(
       return NextResponse.json({
         error: 'Certificate number, order number, identification number, and issue date are required',
       }, { status: 400 })
+    }
+
+    // Get current certificate data before updating
+    const { data: currentCertificate, error: currentError } = await supabaseAdmin
+        .from('certificate')
+        .select('authorized_by, verifikator_1, verifikator_2, version, no_certificate, no_order, no_identification, issue_date, station, instrument, station_address, results')
+        .eq('id', id)
+        .single();
+
+    if (currentError) {
+        return NextResponse.json({ error: 'Certificate not found' }, { status: 404 });
     }
 
     // Validate station foreign key if provided and fetch address
@@ -135,25 +147,17 @@ export async function PUT(
     }
 
     // Auto-increment version when content changes meaningfully
-    // Fetch current certificate version
-    const { data: current, error: curErr } = await supabaseAdmin
-      .from('certificate')
-      .select('version, no_certificate, no_order, no_identification, issue_date, station, instrument, station_address, results')
-      .eq('id', id)
-      .maybeSingle()
-
     const nextVersion = (() => {
-      const prev = current?.version ?? 1
-      // If any primary fields changed, bump version
-      const changed = !current ||
-        current.no_certificate !== no_certificate ||
-        current.no_order !== no_order ||
-        current.no_identification !== no_identification ||
-        current.issue_date !== issue_date ||
-        (current.station ?? null) !== (station ? parseInt(station) : null) ||
-        (current.instrument ?? null) !== (instrument ? parseInt(instrument) : null) ||
-        (current.station_address ?? null) !== ((resolvedStationAddress ?? station_address) ?? null) ||
-        JSON.stringify(current.results ?? null) !== JSON.stringify(results ?? null)
+      const prev = currentCertificate?.version ?? 1
+      const changed = !currentCertificate ||
+        currentCertificate.no_certificate !== no_certificate ||
+        currentCertificate.no_order !== no_order ||
+        currentCertificate.no_identification !== no_identification ||
+        currentCertificate.issue_date !== issue_date ||
+        (currentCertificate.station ?? null) !== (station ? parseInt(station) : null) ||
+        (currentCertificate.instrument ?? null) !== (instrument ? parseInt(instrument) : null) ||
+        (currentCertificate.station_address ?? null) !== ((resolvedStationAddress ?? station_address) ?? null) ||
+        JSON.stringify(currentCertificate.results ?? null) !== JSON.stringify(results ?? null)
       return changed ? (prev + 1) : prev
     })()
 
@@ -178,6 +182,36 @@ export async function PUT(
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    
+    // Kirim notifikasi email jika ada perubahan
+    const sendNotification = async (userId: string, role: string, certificateNumber: string, certificateId: number) => {
+        const { data: personelData, error: personelError } = await supabaseAdmin
+          .from('personel')
+          .select('email')
+          .eq('id', userId)
+          .single();
+  
+        if (!personelError && personelData && personelData.email) {
+            try {
+                await sendAssignmentNotificationEmail(personelData.email, role, certificateNumber, certificateId);
+            } catch (emailError) {
+                console.error(`Failed to send notification to ${role} (${personelData.email}):`, emailError);
+            }
+        }
+    };
+
+    if (currentCertificate) {
+        if (authorized_by && authorized_by !== currentCertificate.authorized_by) {
+            await sendNotification(authorized_by, 'Authorized By', no_certificate, data.id);
+        }
+        if (v1 && v1 !== currentCertificate.verifikator_1) {
+            await sendNotification(v1, 'Verifikator 1', no_certificate, data.id);
+        }
+        if (v2 && v2 !== currentCertificate.verifikator_2) {
+            await sendNotification(v2, 'Verifikator 2', no_certificate, data.id);
+        }
+    }
+
     return NextResponse.json(data)
   } catch (e) {
     return NextResponse.json({ error: 'Failed to update certificate' }, { status: 500 })

@@ -120,3 +120,63 @@ export async function sendPasswordResetConfirmationEmail(email: string) {
     throw new Error('Gagal mengirim email konfirmasi')
   }
 }
+
+export async function sendAssignmentNotificationEmail(email: string, role: string, certificateNumber: string, certificateId: number) {
+  const subject = `Anda telah ditugaskan sebagai ${role} untuk Sertifikat ${certificateNumber}`;
+  const certificateUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/certificates/${certificateId}/view`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="background: linear-gradient(135deg, #1e293b, #1e40af); padding: 30px; border-radius: 10px; text-align: center;">
+        <h1 style="color: white; margin: 0; font-size: 24px;">BMKG - Sistem Kalibrasi</h1>
+        <p style="color: #cbd5e1; margin: 10px 0 0 0;">Direktorat Data dan Komputasi</p>
+      </div>
+      <div style="background: white; padding: 30px; border-radius: 10px; margin-top: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <h2 style="color: #1e293b; margin-top: 0;">Pemberitahuan Tugas Baru</h2>
+        <p style="color: #64748b; line-height: 1.6;">
+          Anda telah ditugaskan sebagai ${role} untuk sertifikat dengan nomor:
+        </p>
+        <div style="text-align: center; margin: 30px 0;">
+          <p style="background: #f1f5f9; color: #1e293b; padding: 12px 30px; border-radius: 6px; display: inline-block; font-weight: bold; font-size: 18px;">
+            ${certificateNumber}
+          </p>
+        </div>
+        <p style="color: #64748b; font-size: 14px; line-height: 1.6;">
+          Silakan klik tombol di bawah ini untuk melihat detail sertifikat:
+        </p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${certificateUrl}" 
+             style="background: #2563eb; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+            Lihat Sertifikat
+          </a>
+        </div>
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
+        <p style="color: #64748b; font-size: 12px; line-height: 1.6;">
+          <strong>Catatan:</strong><br>
+          • Jika Anda merasa ada kesalahan, hubungi administrator sistem.
+        </p>
+      </div>
+      <div style="text-align: center; margin-top: 20px;">
+        <p style="color: #64748b; font-size: 12px;">
+          © 2025 BMKG - Direktorat Data dan Komputasi
+        </p>
+      </div>
+    </div>
+  `;
+
+  const mailOptions = {
+    from: 'noreplybmkg@gmail.com',
+    to: email,
+    subject: subject,
+    html: html
+  };
+
+  try {
+    const result = await transporter.sendMail(mailOptions);
+    console.log(`Assignment notification email sent to ${email}:`, result.messageId);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error(`Error sending assignment notification email to ${email}:`, error);
+    throw new Error('Gagal mengirim email notifikasi tugas');
+  }
+}
