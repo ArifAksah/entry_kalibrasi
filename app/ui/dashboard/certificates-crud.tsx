@@ -8,7 +8,9 @@ import { Certificate, CertificateInsert, Station, Instrument, Sensor } from '../
 import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
+import Alert from '../../../components/ui/Alert'
 import { usePermissions } from '../../../hooks/usePermissions'
+import { useAlert } from '../../../hooks/useAlert'
 
 // SVG Icons untuk tampilan yang lebih elegan
 const EditIcon = ({ className = "" }) => (
@@ -222,6 +224,7 @@ const CertificatesCRUD: React.FC = () => {
   const { completeRepair, resetVerification } = useCertificateVerification()
   const { user } = useAuth()
   const { can, canEndpoint } = usePermissions()
+  const { alert, showSuccess, showError, showWarning, hideAlert } = useAlert()
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editing, setEditing] = useState<Certificate | null>(null)
@@ -502,7 +505,7 @@ const CertificatesCRUD: React.FC = () => {
     if (!form.no_certificate || !form.no_order || !form.no_identification || !form.issue_date) return
     
     if (!(form as any).verifikator_1 || !(form as any).verifikator_2) {
-      alert('Verifikator 1 dan Verifikator 2 harus dipilih')
+      showError('Verifikator 1 dan Verifikator 2 harus dipilih')
       return
     }
     
@@ -537,10 +540,12 @@ const CertificatesCRUD: React.FC = () => {
     const result = await completeRepair(certificate.id, 'Repair completed')
     
     if (result.success) {
-      alert('Perbaikan berhasil diselesaikan!')
-      window.location.reload()
+      showSuccess('Perbaikan berhasil diselesaikan!')
+      setTimeout(() => {
+        window.location.reload()
+      }, 2000)
     } else {
-      alert('Gagal menyelesaikan perbaikan: ' + (result.error || 'Unknown error'))
+      showError('Gagal menyelesaikan perbaikan: ' + (result.error || 'Unknown error'))
     }
   }
 
@@ -550,10 +555,12 @@ const CertificatesCRUD: React.FC = () => {
     const result = await resetVerification(certificate.id)
     
     if (result.success) {
-      alert('Verifikasi berhasil direset!')
-      window.location.reload()
+      showSuccess('Verifikasi berhasil direset!')
+      setTimeout(() => {
+        window.location.reload()
+      }, 2000)
     } else {
-      alert('Gagal mereset verifikasi: ' + (result.error || 'Unknown error'))
+      showError('Gagal mereset verifikasi: ' + (result.error || 'Unknown error'))
     }
   }
 
@@ -567,6 +574,17 @@ const CertificatesCRUD: React.FC = () => {
 
   return (
     <div className="space-y-4 max-w-full overflow-hidden">
+      {/* Alert Component */}
+      {alert.show && (
+        <Alert
+          type={alert.type}
+          message={alert.message}
+          onClose={hideAlert}
+          autoHide={alert.autoHide}
+          duration={alert.duration}
+        />
+      )}
+
       {/* Header dengan background putih dan aksen biru elegan */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-4 relative overflow-hidden">
         <BatikBackground />
@@ -685,16 +703,6 @@ const CertificatesCRUD: React.FC = () => {
                       <PrinterIcon className="w-4 h-4" />
                     </a>
                     
-                    {can('certificate','update') && canEndpoint('PUT', `/api/certificates/${item.id}`) && 
-                     (item as any).repair_status !== 'pending' && (item as any).repair_status !== 'completed' && (
-                      <button 
-                        onClick={() => openModal(item)} 
-                        className="inline-flex items-center p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all duration-200 border border-transparent hover:border-blue-200"
-                        title="Edit Certificate"
-                      >
-                        <EditIcon className="w-4 h-4" />
-                      </button>
-                    )}
                     
                     {can('certificate','delete') && canEndpoint('DELETE', `/api/certificates/${item.id}`) && (
                       <button 

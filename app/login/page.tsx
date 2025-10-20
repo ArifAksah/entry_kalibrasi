@@ -5,15 +5,17 @@ import Image from 'next/image';
 import bmkgLogo from '../logo-bmkg-w.png';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
+import Alert from '../../components/ui/Alert';
+import { useAlert } from '../../hooks/useAlert';
 
 const LoginPage: React.FC = () => {
   const router = useRouter();
+  const { alert, showError, showSuccess, hideAlert } = useAlert();
   const [form, setForm] = useState({
     email: '',
     password: '',
   });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -28,7 +30,7 @@ const LoginPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError(null);
+    hideAlert();
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -37,8 +39,8 @@ const LoginPage: React.FC = () => {
       });
 
       if (error) {
-        setError(error.message);
-        return;
+        showError(error.message)
+        return
       }
 
       if (data.user) {
@@ -49,15 +51,18 @@ const LoginPage: React.FC = () => {
           .single();
 
         if (personelError || !personelData) {
-          setError('User not found in system. Please contact administrator.');
+          showError('User not found in system. Please contact administrator.')
           await supabase.auth.signOut();
           return;
         }
 
-        router.push('/');
+        showSuccess(`Welcome back, ${personelData.name}!`)
+        setTimeout(() => {
+          router.push('/')
+        }, 2000)
       }
     } catch (e) {
-      setError('An unexpected error occurred');
+      showError('An unexpected error occurred')
     } finally {
       setLoading(false);
     }
@@ -65,6 +70,18 @@ const LoginPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
+      {/* Alert Component */}
+      {alert.show && (
+        <div className="fixed top-4 right-4 z-50">
+          <Alert
+            type={alert.type}
+            message={alert.message}
+            onClose={hideAlert}
+            autoHide={alert.autoHide}
+            duration={alert.duration}
+          />
+        </div>
+      )}
       {/* Animated Background Elements - Theme Peralatan BMKG */}
       <div className="absolute inset-0 overflow-hidden">
         {/* Radar Scan Animation */}
@@ -127,16 +144,6 @@ const LoginPage: React.FC = () => {
 
             {/* Login Form */}
             <form className="space-y-6" method="post" onSubmit={handleSubmit}>
-              {error && (
-                <div className="bg-red-500/20 backdrop-blur-sm border border-red-400/50 text-red-200 px-4 py-3 rounded-xl transform transition-all duration-300 animate-shake">
-                  <div className="flex items-center">
-                    <svg className="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                    </svg>
-                    <span className="font-medium">{error}</span>
-                  </div>
-                </div>
-              )}
 
               {/* Email Input with Floating Animation */}
               <div className="space-y-2">

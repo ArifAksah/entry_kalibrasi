@@ -135,7 +135,11 @@ const SideNav: React.FC = () => {
         // Filter certificates based on role
         const filteredItems = section.items.filter(item => {
           if (item.name === 'Certificates') {
-            // All roles can see certificates, but content will be filtered
+            // Hide certificates for verifikator and assignor - they focus on verification
+            if (role === 'verifikator' || role === 'assignor') {
+              return false;
+            }
+            // Other roles can see certificates
             return true;
           }
           if (item.name === 'Letters') {
@@ -145,8 +149,8 @@ const SideNav: React.FC = () => {
           return true;
         });
         
-        // Add Certificate Verification for verifikator role
-        if (role === 'verifikator') {
+        // Add Certificate Verification for verifikator and assignor roles
+        if (role === 'verifikator' || role === 'assignor') {
           filteredItems.push({
             name: 'Certificate Verification',
             href: '/certificate-verification',

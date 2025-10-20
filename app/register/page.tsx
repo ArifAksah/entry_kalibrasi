@@ -4,9 +4,12 @@ import React, { useEffect, useState } from 'react';
 import ProtectedRoute from '../../components/ProtectedRoute';
 import SideNav from '../ui/dashboard/sidenav';
 import Header from '../ui/dashboard/header';
+import Alert from '../../components/ui/Alert';
+import { useAlert } from '../../hooks/useAlert';
 import { supabase } from '../../lib/supabase';
 
 const RegisterPage: React.FC = () => {
+  const { alert, showSuccess, showError, showWarning, hideAlert } = useAlert()
   const [form, setForm] = useState({
     name: '',
     nip: '',
@@ -18,8 +21,6 @@ const RegisterPage: React.FC = () => {
     station_id: '' as any,
   })
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
   const [showPass, setShowPass] = useState(false)
   const [pwStrength, setPwStrength] = useState<{ score: number; label: string; color: string }>({ score: 0, label: 'Very weak', color: 'bg-red-500' })
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -73,7 +74,8 @@ const RegisterPage: React.FC = () => {
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true); setError(null); setSuccess(null)
+    setLoading(true)
+    hideAlert()
     try {
       const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/confirm-email` : undefined
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
@@ -118,10 +120,10 @@ const RegisterPage: React.FC = () => {
         if (!roleRes.ok) throw new Error(roleBody?.error || 'Gagal menyimpan role user')
       }
 
-      setSuccess('Registration successful. Please check your email to confirm.')
+      showSuccess('Registration successful. Please check your email to confirm.')
       setForm({ name: '', nip: '', position: '', phone: '', email: '', password: '', role: '' as any, station_id: '' as any })
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Registration failed')
+      showError(e instanceof Error ? e.message : 'Registration failed')
     } finally {
       setLoading(false)
     }
@@ -134,6 +136,16 @@ const RegisterPage: React.FC = () => {
         <div className="bg-gray-50">
           <Header />
           <div className="p-6 max-w-4xl mx-auto">
+            {/* Alert Component */}
+            {alert.show && (
+              <Alert
+                type={alert.type}
+                message={alert.message}
+                onClose={hideAlert}
+                autoHide={alert.autoHide}
+                duration={alert.duration}
+              />
+            )}
           <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
             <div className="px-6 py-5 bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
               <h1 className="text-2xl font-bold text-gray-900">User Registration</h1>

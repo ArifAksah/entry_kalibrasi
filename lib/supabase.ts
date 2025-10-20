@@ -121,9 +121,11 @@ export interface Instrument {
   serial_number: string
   others?: string | null
   name: string
+  station_id?: number | null
+  station?: Station | null
 }
 
-export type InstrumentInsert = Omit<Instrument, 'id' | 'created_at'>
+export type InstrumentInsert = Omit<Instrument, 'id' | 'created_at' | 'station'>
 export type InstrumentUpdate = Partial<InstrumentInsert>
 
 // Certificate

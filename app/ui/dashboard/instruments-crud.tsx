@@ -2,11 +2,13 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { useInstruments } from '../../../hooks/useInstruments'
-import { Instrument, InstrumentInsert } from '../../../lib/supabase'
+import { Instrument, InstrumentInsert, Station } from '../../../lib/supabase'
 import { usePermissions } from '../../../hooks/usePermissions'
+import { useStations } from '../../../hooks/useStations'
 
 const InstrumentsCRUD: React.FC = () => {
   const { instruments, loading, error, addInstrument, updateInstrument, deleteInstrument, fetchInstruments } = useInstruments()
+  const { stations, loading: stationsLoading } = useStations()
   const { can, canEndpoint } = usePermissions()
 
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -18,6 +20,7 @@ const InstrumentsCRUD: React.FC = () => {
     serial_number: '',
     others: '',
     name: '',
+    station_id: null,
   })
   const pageSize = 10
   const [currentPage, setCurrentPage] = useState(1)
@@ -35,7 +38,7 @@ const InstrumentsCRUD: React.FC = () => {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return instruments
-    return instruments.filter(it => `${it.manufacturer} ${it.type} ${it.serial_number} ${it.name} ${it.others ?? ''}`.toLowerCase().includes(q))
+    return instruments.filter(it => `${it.manufacturer} ${it.type} ${it.serial_number} ${it.name} ${it.others ?? ''} ${it.station?.name ?? ''}`.toLowerCase().includes(q))
   }, [instruments, search])
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(filtered.length / pageSize)), [filtered])
@@ -53,10 +56,11 @@ const InstrumentsCRUD: React.FC = () => {
         serial_number: item.serial_number,
         others: item.others ?? '',
         name: item.name,
+        station_id: item.station_id,
       })
     } else {
       setEditing(null)
-      setForm({ manufacturer: '', type: '', serial_number: '', others: '', name: '' })
+      setForm({ manufacturer: '', type: '', serial_number: '', others: '', name: '', station_id: null })
     }
     setIsModalOpen(true)
   }
@@ -144,6 +148,9 @@ const InstrumentsCRUD: React.FC = () => {
                   Serial No.
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Station
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Others
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -166,7 +173,9 @@ const InstrumentsCRUD: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {item.serial_number}
                   </td>
-                  
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {item.station?.name ?? '-'}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {item.others ?? '-'}
                   </td>
@@ -270,6 +279,22 @@ const InstrumentsCRUD: React.FC = () => {
                       placeholder="Enter instrument name" 
                       required 
                     />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Station
+                    </label>
+                    <select
+                      value={form.station_id ?? ''}
+                      onChange={e => setForm({ ...form, station_id: e.target.value ? Number(e.target.value) : null })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                      disabled={stationsLoading}
+                    >
+                      <option value="">Select a station</option>
+                      {stations.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
