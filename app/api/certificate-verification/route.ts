@@ -130,10 +130,12 @@ export async function POST(request: NextRequest) {
 
     // Block if any rejection exists for this certificate (must revise first)
     {
+      const effectiveVersion = certificate_version ?? certData.version ?? 1
       const { data: anyVerif, error: anyErr } = await supabaseAdmin
         .from('certificate_verification')
-        .select('status, verification_level')
+        .select('status, verification_level, certificate_version')
         .eq('certificate_id', certificate_id)
+        .eq('certificate_version', effectiveVersion)
 
       if (!anyErr && anyVerif?.some(v => v.status === 'rejected')) {
         return NextResponse.json({
@@ -181,12 +183,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if verification already exists for this level
+    const effectiveVersion = certificate_version ?? certData.version ?? 1
     const { data: existingVerification, error: existingError } = await supabaseAdmin
       .from('certificate_verification')
       .select('id')
       .eq('certificate_id', certificate_id)
       .eq('verification_level', verification_level)
-      .single()
+      .eq('certificate_version', effectiveVersion)
+      .maybeSingle()
 
     if (existingVerification) {
       return NextResponse.json({
@@ -204,7 +208,7 @@ export async function POST(request: NextRequest) {
         rejection_reason: rejection_reason || null,
         approval_notes: approval_notes || null,
         verified_by: actualVerifiedBy,
-        certificate_version: certificate_version ?? certData.version ?? 1
+        certificate_version: effectiveVersion
       })
       .select()
       .single()

@@ -10,6 +10,18 @@ export const useStations = () => {
   const fetchStations = async (opts?: { q?: string; page?: number; pageSize?: number }) => {
     try {
       setLoading(true)
+      
+      // If no search query, use the all endpoint to get all stations
+      if (!opts?.q) {
+        const res = await fetch('/api/stations/all')
+        if (!res.ok) throw new Error('Failed to fetch all stations')
+        const data = await res.json()
+        setStations(Array.isArray(data) ? data : [])
+        setError(null)
+        return { data: Array.isArray(data) ? data : [], total: Array.isArray(data) ? data.length : 0, page: 1, pageSize: Array.isArray(data) ? data.length : 0, totalPages: 1 }
+      }
+      
+      // For search queries, use the regular paginated endpoint
       const params = new URLSearchParams()
       if (opts?.q) params.set('q', opts.q)
       if (opts?.page) params.set('page', String(opts.page))

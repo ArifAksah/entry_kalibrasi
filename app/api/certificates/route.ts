@@ -180,12 +180,16 @@ export async function POST(request: NextRequest) {
         authorized_by: authorizedPersonId, 
         verifikator_1: v1, 
         verifikator_2: v2, 
+        assignor: authorizedPersonId, // Set assignor same as authorized_by
         issue_date, 
         station: station ? parseInt(station) : null, 
         instrument: instrument ? parseInt(instrument) : null,
         station_address: (resolvedStationAddress ?? station_address) ?? null,
         results: results ?? null,
-        version: 1
+        version: 1,
+        status: 'draft', // Set status to draft for new certificates
+        draft_created_at: new Date().toISOString(),
+        sent_by: user.id // Set sent_by to current user
       })
       .select()
       .single()

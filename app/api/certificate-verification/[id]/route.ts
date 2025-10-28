@@ -36,10 +36,12 @@ interface CertificateVerification {
 // =======================
 // GET - Get all certificate verifications or specific one
 // =======================
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
+    const { id } = await params
 
     if (id) {
       // Get specific certificate verification
@@ -47,11 +49,11 @@ export async function GET(request: NextRequest) {
         .from('certificate_verification')
         .select(`
           *,
-          certificates:certificate_id (
+          certificate:certificate_id (
             id,
-            certificate_number,
-            customer_name,
-            instrument_name,
+            no_certificate,
+            no_order,
+            no_identification,
             verifikator_1,
             verifikator_2,
             authorized_by,
@@ -71,11 +73,11 @@ export async function GET(request: NextRequest) {
         .from('certificate_verification')
         .select(`
           *,
-          certificates:certificate_id (
+          certificate:certificate_id (
             id,
-            certificate_number,
-            customer_name,
-            instrument_name
+            no_certificate,
+            no_order,
+            no_identification
           )
         `)
         .order('created_at', { ascending: false })
@@ -124,8 +126,8 @@ export async function POST(request: NextRequest) {
 
     // Get certificate data with all necessary fields
     const { data: certData, error: certError } = await supabaseAdmin
-      .from('certificates')
-      .select('id, certificate_number, verifikator_1, verifikator_2, authorized_by, version')
+      .from('certificate')
+      .select('id, no_certificate, verifikator_1, verifikator_2, authorized_by, version')
       .eq('id', certificate_id)
       .single()
 
@@ -207,10 +209,12 @@ export async function POST(request: NextRequest) {
 // =======================
 // PUT - Update certificate verification by ID
 // =======================
-export async function PUT(request: NextRequest) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
+    const { id } = await params
 
     if (!id) {
       return NextResponse.json({ error: 'ID is required' }, { status: 400 })
@@ -270,6 +274,46 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    // If Verifikator 1 approved after a rejection from Verifikator 2,
+    // reset Verifikator 2 status back to 'pending' for the same certificate (and version if available)
+    try {
+      if (status === 'approved' && currentVerification.verification_level === 1) {
+        const certVersion = (currentVerification as any).certificate_version ?? null
+
+        let query = supabaseAdmin
+          .from('certificate_verification')
+          .update({
+            status: 'pending',
+            notes: null,
+            rejection_reason: null,
+            // Clear optional detailed rejection fields if they exist
+            rejection_reason_detailed: null,
+            rejection_destination: null,
+            rejection_timestamp: null,
+            approval_notes: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('certificate_id', currentVerification.certificate_id)
+          .eq('verification_level', 2)
+          .eq('status', 'rejected')
+
+        // Scope to same certificate version if present
+        if (certVersion !== null) {
+          // @ts-ignore - column may exist in DB even if not in TS type
+          query = query.eq('certificate_version', certVersion)
+        }
+
+        const { error: resetErr } = await query
+        if (resetErr) {
+          // Do not fail the main request; log for debugging
+          console.error('Failed to reset Verifikator 2 status to pending:', resetErr)
+        }
+      }
+    } catch (resetCatchErr) {
+      console.error('Error while attempting to reset V2 status:', resetCatchErr)
+      // swallow
+    }
+
     return NextResponse.json(data)
   } catch (e) {
     console.error('Error updating verification:', e)
@@ -280,10 +324,12 @@ export async function PUT(request: NextRequest) {
 // =======================
 // DELETE - Delete certificate verification by ID
 // =======================
-export async function DELETE(request: NextRequest) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
+    const { id } = await params
 
     if (!id) {
       return NextResponse.json({ error: 'ID is required' }, { status: 400 })

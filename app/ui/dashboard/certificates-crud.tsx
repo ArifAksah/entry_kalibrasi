@@ -11,6 +11,7 @@ import Breadcrumb from '../../../components/ui/Breadcrumb'
 import Alert from '../../../components/ui/Alert'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useAlert } from '../../../hooks/useAlert'
+import { useRouter } from 'next/navigation'
 
 // SVG Icons untuk tampilan yang lebih elegan
 const EditIcon = ({ className = "" }) => (
@@ -22,6 +23,12 @@ const EditIcon = ({ className = "" }) => (
 const TrashIcon = ({ className = "" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+  </svg>
+)
+
+const ImageIcon = ({ className = "" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
   </svg>
 )
 
@@ -225,10 +232,14 @@ const CertificatesCRUD: React.FC = () => {
   const { user } = useAuth()
   const { can, canEndpoint } = usePermissions()
   const { alert, showSuccess, showError, showWarning, hideAlert } = useAlert()
+  const router = useRouter()
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editing, setEditing] = useState<Certificate | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isDeleting, setIsDeleting] = useState<number | null>(null)
+  const [submitDisabled, setSubmitDisabled] = useState(false)
+  const [isImageUploading, setIsImageUploading] = useState(false)
   const [stations, setStations] = useState<Station[]>([])
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [sensors, setSensors] = useState<Array<{ id: number; name?: string | null }>>([])
@@ -265,6 +276,7 @@ const CertificatesCRUD: React.FC = () => {
     place: string
     environment: KV[]
     table: TableSection[]
+    images: Array<{ url: string; caption: string }>
     notesForm: { 
       traceable_to_si_through: string; 
       reference_document: string; 
@@ -283,6 +295,7 @@ const CertificatesCRUD: React.FC = () => {
       place: '', 
       environment: [], 
       table: [], 
+      images: [],
       notesForm: { 
         traceable_to_si_through: '', 
         reference_document: '', 
@@ -300,6 +313,7 @@ const CertificatesCRUD: React.FC = () => {
     place: '', 
     environment: [], 
     table: [], 
+    images: [],
     notesForm: { 
       traceable_to_si_through: '', 
       reference_document: '', 
@@ -309,8 +323,51 @@ const CertificatesCRUD: React.FC = () => {
     } 
   }])
   
+  const removeResult = (idx: number) => {
+    if (results.length > 1) {
+      setResults(prev => prev.filter((_, i) => i !== idx))
+    }
+  }
+  
+  const addImage = (resultIdx: number) => {
+    setResults(prev => prev.map((r, i) => 
+      i === resultIdx 
+        ? { ...r, images: [...(r.images || []), { url: '', caption: '' }] }
+        : r
+    ))
+  }
+  
+  const removeImage = (resultIdx: number, imageIdx: number) => {
+    setResults(prev => prev.map((r, i) => 
+      i === resultIdx 
+        ? { ...r, images: (r.images || []).filter((_, idx) => idx !== imageIdx) }
+        : r
+    ))
+  }
+  
+  const updateImage = (resultIdx: number, imageIdx: number, field: 'url' | 'caption', value: string) => {
+    setResults(prev => prev.map((r, i) => 
+      i === resultIdx 
+        ? { 
+            ...r, 
+            images: (r.images || []).map((img, idx) => 
+              idx === imageIdx ? { ...img, [field]: value } : img
+            )
+          }
+        : r
+    ))
+  }
+  
   const updateResult = (idx: number, patch: Partial<ResultItem>) => 
     setResults(prev => prev.map((r, i) => i === idx ? { ...r, ...patch } : r))
+
+  // Helper function to get selected station type (normalized)
+  // Returns lowercased, trimmed string; empty string when not set
+  const getSelectedStationType = () => {
+    const selectedStation = form.station ? stations.find(s => s.id === form.station) : undefined
+    const raw = (selectedStation?.type ?? '').toString()
+    return raw.trim().toLowerCase()
+  }
 
   const applySensorToResult = (idx: number, sensorId: number | null) => {
     const sensor = sensors.find((s: any) => s.id === sensorId) as unknown as Sensor | undefined
@@ -358,6 +415,35 @@ const CertificatesCRUD: React.FC = () => {
   const [tableDraft, setTableDraft] = useState<TableSection[]>([])
 
   // Fetch data
+
+  // Deep-link support: open edit modal when visiting /certificates?edit=<id>
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const editId = params.get('edit')
+      if (editId) {
+        const idNum = parseInt(editId)
+        if (!isNaN(idNum)) {
+          const cert = certificates.find(c => c.id === idNum)
+          if (cert) {
+            openModal(cert)
+          }
+        }
+      }
+    } catch {}
+  }, [certificates])
+
+  // Check if edit came from certificate verification page
+  const isEditFromVerification = () => {
+    if (typeof window === 'undefined') return false
+    try {
+      const params = new URLSearchParams(window.location.search)
+      return params.get('from') === 'verification'
+    } catch {
+      return false
+    }
+  }
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -454,6 +540,7 @@ const CertificatesCRUD: React.FC = () => {
         place: '', 
         environment: [], 
         table: [], 
+        images: [],
         notesForm: { 
           traceable_to_si_through: '', 
           reference_document: '', 
@@ -483,6 +570,7 @@ const CertificatesCRUD: React.FC = () => {
         place: '', 
         environment: [], 
         table: [], 
+        images: [],
         notesForm: { 
           traceable_to_si_through: '', 
           reference_document: '', 
@@ -502,35 +590,108 @@ const CertificatesCRUD: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.no_certificate || !form.no_order || !form.no_identification || !form.issue_date) return
+    
+    // Prevent multiple submissions
+    if (submitDisabled || isSubmitting) return
+    
+    if (!form.no_certificate || !form.no_order || !form.no_identification || !form.issue_date) {
+      showError('Semua field yang wajib diisi harus diisi')
+      return
+    }
     
     if (!(form as any).verifikator_1 || !(form as any).verifikator_2) {
       showError('Verifikator 1 dan Verifikator 2 harus dipilih')
       return
     }
     
+    // Validasi: assignor, verifikator 1, dan verifikator 2 tidak boleh sama
+    const assignor = form.authorized_by
+    const verifikator1 = (form as any).verifikator_1
+    const verifikator2 = (form as any).verifikator_2
+    
+    if (assignor && verifikator1 && assignor === verifikator1) {
+      showError('Assignor tidak boleh sama dengan Verifikator 1')
+      return
+    }
+    
+    if (assignor && verifikator2 && assignor === verifikator2) {
+      showError('Assignor tidak boleh sama dengan Verifikator 2')
+      return
+    }
+    
+    if (verifikator1 && verifikator2 && verifikator1 === verifikator2) {
+      showError('Verifikator 1 tidak boleh sama dengan Verifikator 2')
+      return
+    }
+    
     setIsSubmitting(true)
+    setSubmitDisabled(true)
+    
     try {
       const payload = { ...form, results }
+      
+      // Update instrument name if instrument is selected
+      if (form.instrument) {
+        const selectedInstrument = instruments.find(i => i.id === form.instrument)
+        if (selectedInstrument && (!selectedInstrument.name || selectedInstrument.name === 'Instrument')) {
+          // Generate name from manufacturer + type + serial
+          const generatedName = `${selectedInstrument.manufacturer || 'Unknown'} ${selectedInstrument.type || 'Instrument'} ${selectedInstrument.serial_number || ''}`.trim()
+          
+          try {
+            await fetch(`/api/instruments/${form.instrument}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                ...selectedInstrument, 
+                name: generatedName 
+              })
+            })
+            console.log('Updated instrument name:', generatedName)
+          } catch (error) {
+            console.error('Failed to update instrument name:', error)
+          }
+        }
+      }
+      
       if (editing) {
         await updateCertificate(editing.id, payload as any)
+        showSuccess('Certificate berhasil diperbarui!')
+        
+        // If edit came from certificate verification, redirect back there
+        if (isEditFromVerification()) {
+          closeModal()
+          router.push('/certificate-verification')
+          return
+        }
       } else {
         await addCertificate(payload as any)
+        showSuccess('Certificate berhasil dibuat!')
       }
       closeModal()
     } catch (e) {
       console.error('Error submitting certificate:', e)
+      const errorMessage = e instanceof Error ? e.message : 'Terjadi kesalahan saat menyimpan certificate'
+      showError(errorMessage)
     } finally {
       setIsSubmitting(false)
+      // Re-enable submit after 2 seconds to prevent rapid clicking
+      setTimeout(() => setSubmitDisabled(false), 2000)
     }
   }
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Delete this certificate?')) return
+    if (!confirm('Apakah Anda yakin ingin menghapus certificate ini?')) return
+    
+    setIsDeleting(id)
     try { 
-      await deleteCertificate(id) 
+      await deleteCertificate(id)
+      showSuccess('Certificate berhasil dihapus!')
     } catch (e) {
       console.error('Error deleting certificate:', e)
+      const errorMessage = e instanceof Error ? e.message : 'Terjadi kesalahan saat menghapus certificate'
+      showError(errorMessage)
+    } finally {
+      setIsDeleting(null)
     }
   }
 
@@ -595,10 +756,24 @@ const CertificatesCRUD: React.FC = () => {
           {can('certificate','create') && (
             <button 
               onClick={() => openModal()} 
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] text-white rounded-lg hover:from-[#2a4a9d] hover:to-[#1e377c] transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 text-sm"
+              disabled={isSubmitting}
+              className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 text-sm ${
+                isSubmitting 
+                  ? 'bg-gray-400 cursor-not-allowed' 
+                  : 'bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c]'
+              }`}
             >
-              <PlusIcon className="w-4 h-4" />
-              <span className="font-semibold">Create New</span>
+              {isSubmitting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <span className="font-semibold">Processing...</span>
+                </>
+              ) : (
+                <>
+                  <PlusIcon className="w-4 h-4" />
+                  <span className="font-semibold">Create New</span>
+                </>
+              )}
             </button>
           )}
         </div>
@@ -616,37 +791,43 @@ const CertificatesCRUD: React.FC = () => {
           <table className="w-full min-w-full">
             <thead>
               <tr className="bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] text-white">
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Certificate No</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Order No</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Identification</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Issue Date</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Station</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Instrument</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Verification</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Notes</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Repair</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Certificate</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Station & Instrument</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Verification Status</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Workflow Status</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {currentCertificates.map((item) => (
                 <tr key={item.id} className="hover:bg-blue-50/30 transition-colors duration-200">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.no_certificate}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{item.no_order}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{item.no_identification}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {new Date(item.issue_date).toLocaleDateString('id-ID')}
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium text-gray-900">
+                        {item.no_certificate}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {item.no_order} • {item.no_identification}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {new Date(item.issue_date).toLocaleDateString('id-ID')}
+                      </span>
+                    </div>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {item.station ? stations.find(s => s.id === item.station)?.name || 'Unknown' : '-'}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {item.instrument ? instruments.find(i => i.id === item.instrument)?.name || 'Unknown' : '-'}
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col">
+                      <span className="text-sm text-gray-900">
+                        {item.station ? stations.find(s => s.id === item.station)?.name || 'Unknown' : '-'}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {item.instrument ? instruments.find(i => i.id === item.instrument)?.name || 'Unknown' : '-'}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-sm">
                     <div className="flex flex-col space-y-1">
                       <div className="flex items-center space-x-1">
-                        <span className="text-xs font-medium text-gray-500">V1:</span>
+                        <span className="text-xs font-medium text-gray-500">Verifikator 1:</span>
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${
                           (item as any).verifikator_1_status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' :
                           (item as any).verifikator_1_status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
@@ -656,7 +837,7 @@ const CertificatesCRUD: React.FC = () => {
                         </span>
                       </div>
                       <div className="flex items-center space-x-1">
-                        <span className="text-xs font-medium text-gray-500">V2:</span>
+                        <span className="text-xs font-medium text-gray-500">Verifikator 2:</span>
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${
                           (item as any).verifikator_2_status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' :
                           (item as any).verifikator_2_status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
@@ -667,22 +848,34 @@ const CertificatesCRUD: React.FC = () => {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 max-w-[200px]">
-                    <div className="truncate" title={(item as any).verification_notes || (item as any).rejection_reason || '-'}>
-                      {(item as any).verification_notes || (item as any).rejection_reason || '-'}
-                    </div>
-                  </td>
                   <td className="px-4 py-3 text-sm">
                     <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${
-                      (item as any).repair_status === 'completed' ? 'bg-green-50 text-green-700 border-green-200' :
-                      (item as any).repair_status === 'pending' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                      (item as any).repair_status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
+                      item.status === 'draft' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                      item.status === 'sent' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                      item.status === 'verified' ? 'bg-green-50 text-green-700 border-green-200' :
+                      item.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
+                      item.status === 'completed' ? 'bg-purple-50 text-purple-700 border-purple-200' :
                       'bg-gray-50 text-gray-700 border-gray-200'
                     }`}>
-                      {(item as any).repair_status || 'none'}
+                      {item.status || 'draft'}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm font-medium space-x-1">
+                    {/* Draft View Button - only show for draft status */}
+                    {item.status === 'draft' && (
+                      <a 
+                        href={`/draft-view?certificate=${item.id}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center p-1.5 text-yellow-600 hover:text-yellow-800 hover:bg-yellow-50 rounded-lg transition-all duration-200 border border-transparent hover:border-yellow-200"
+                        title="View Draft"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </a>
+                    )}
+                    
                     <a 
                       href={`/certificates/${item.id}/view`} 
                       target="_blank" 
@@ -703,14 +896,33 @@ const CertificatesCRUD: React.FC = () => {
                       <PrinterIcon className="w-4 h-4" />
                     </a>
                     
+                    {/* Edit Button - only show for draft status */}
+                    {item.status === 'draft' && can('certificate','update') && (
+                      <button 
+                        onClick={() => openModal(item)} 
+                        className="inline-flex items-center p-1.5 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-all duration-200 border border-transparent hover:border-purple-200"
+                        title="Edit Certificate"
+                      >
+                        <EditIcon className="w-4 h-4" />
+                      </button>
+                    )}
                     
                     {can('certificate','delete') && canEndpoint('DELETE', `/api/certificates/${item.id}`) && (
                       <button 
                         onClick={() => handleDelete(item.id)} 
-                        className="inline-flex items-center p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200 border border-transparent hover:border-red-200"
-                        title="Delete Certificate"
+                        disabled={isDeleting === item.id}
+                        className={`inline-flex items-center p-1.5 rounded-lg transition-all duration-200 border border-transparent ${
+                          isDeleting === item.id
+                            ? 'text-gray-400 cursor-not-allowed bg-gray-50'
+                            : 'text-red-600 hover:text-red-800 hover:bg-red-50 hover:border-red-200'
+                        }`}
+                        title={isDeleting === item.id ? "Deleting..." : "Delete Certificate"}
                       >
-                        <TrashIcon className="w-4 h-4" />
+                        {isDeleting === item.id ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
+                        ) : (
+                          <TrashIcon className="w-4 h-4" />
+                        )}
                       </button>
                     )}
                     
@@ -1002,20 +1214,32 @@ const CertificatesCRUD: React.FC = () => {
                       <div key={idx} className="border border-gray-200 bg-gray-50/50 rounded-lg p-3 hover:bg-white transition-all duration-200">
                         <div className="flex items-center justify-between mb-3">
                           <h4 className="font-semibold text-gray-900 text-xs uppercase tracking-wide">Sensor #{idx + 1}</h4>
-                          <div className="w-64">
-                            <SearchableDropdown
-                              value={r.sensorId}
-                              onChange={(value) => applySensorToResult(idx, value as number | null)}
-                              options={sensors.map((s: any) => ({
-                                id: s.id,
-                                name: s.name || s.type || `Sensor ${s.id}`,
-                                // Put extra searchable info in station_id field for the dropdown's filter
-                                station_id: `${s.manufacturer || ''} ${s.type || ''} ${s.serial_number || ''} ID:${s.id}`.trim()
-                              }))}
-                              placeholder="Pilih Sensor"
-                              searchPlaceholder="Cari sensor (nama/tipe/serial/pabrikan)..."
-                              className="text-xs"
-                            />
+                          <div className="flex items-center gap-2">
+                            <div className="w-64">
+                              <SearchableDropdown
+                                value={r.sensorId}
+                                onChange={(value) => applySensorToResult(idx, value as number | null)}
+                                options={sensors.map((s: any) => ({
+                                  id: s.id,
+                                  name: s.name || s.type || `Sensor ${s.id}`,
+                                  // Put extra searchable info in station_id field for the dropdown's filter
+                                  station_id: `${s.manufacturer || ''} ${s.type || ''} ${s.serial_number || ''} ID:${s.id}`.trim()
+                                }))}
+                                placeholder="Pilih Sensor"
+                                searchPlaceholder="Cari sensor (nama/tipe/serial/pabrikan)..."
+                                className="text-xs"
+                              />
+                            </div>
+                            {results.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeResult(idx)}
+                                className="inline-flex items-center p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200 border border-transparent hover:border-red-200"
+                                title="Hapus Sensor"
+                              >
+                                <TrashIcon className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -1331,13 +1555,17 @@ const CertificatesCRUD: React.FC = () => {
                   </button>
                   <button 
                     type="submit" 
-                    disabled={isSubmitting} 
-                    className="flex items-center gap-1 px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c] rounded-lg transition-all duration-200 shadow hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isSubmitting || submitDisabled} 
+                    className={`flex items-center gap-1 px-4 py-2 text-xs font-semibold text-white rounded-lg transition-all duration-200 shadow hover:shadow-lg ${
+                      isSubmitting || submitDisabled
+                        ? 'bg-gray-400 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c]'
+                    }`}
                   >
                     {isSubmitting ? (
                       <>
                         <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-                        Saving...
+                        {editing ? 'Updating...' : 'Creating...'}
                       </>
                     ) : editing ? 'Update Certificate' : 'Create Certificate'}
                   </button>
@@ -1550,13 +1778,112 @@ const CertificatesCRUD: React.FC = () => {
                   </div>
                 ))}
                 
-                <button 
-                  onClick={() => setTableDraft(prev => [...prev, { title: '', rows: [{ key: '', unit: '', value: '' }] }])}
-                  className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg hover:border-[#1e377c] hover:bg-blue-50 transition-all duration-200 text-sm text-gray-600 hover:text-[#1e377c] w-full justify-center"
-                >
-                  <PlusIcon className="w-4 h-4" />
-                  Tambah Bagian Tabel Baru
-                </button>
+                {/* Conditional content based on station type */}
+                {/* Default (empty/unknown) and all non-geofisika types show Images section. Only geofisika shows Table section. */}
+                {getSelectedStationType() === 'geofisika' ? (
+                  <button 
+                    onClick={() => setTableDraft(prev => [...prev, { title: '', rows: [{ key: '', unit: '', value: '' }] }])}
+                    className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg hover:border-[#1e377c] hover:bg-blue-50 transition-all duration-200 text-sm text-gray-600 hover:text-[#1e377c] w-full justify-center"
+                  >
+                    <PlusIcon className="w-4 h-4" />
+                    Tambah Bagian Tabel Baru
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-sm font-semibold text-gray-900">Gambar dan Caption</h4>
+                        <button
+                          type="button"
+                          onClick={() => addImage(tableEditIndex)}
+                          className="flex items-center gap-1 px-2 py-1 bg-[#1e377c] text-white rounded-lg hover:bg-[#2a4a9d] transition-all duration-200 text-xs font-semibold"
+                        >
+                          <ImageIcon className="w-3 h-3" />
+                          <span>Tambah Gambar</span>
+                        </button>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        {(results[tableEditIndex]?.images || []).map((image, imgIdx) => (
+                          <div key={imgIdx} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                            <div className="flex items-center justify-between mb-2">
+                              <h5 className="text-xs font-semibold text-gray-700">Gambar #{imgIdx + 1}</h5>
+                              <button
+                                type="button"
+                                onClick={() => removeImage(tableEditIndex, imgIdx)}
+                                className="inline-flex items-center p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-all duration-200"
+                                title="Hapus Gambar"
+                              >
+                                <TrashIcon className="w-3 h-3" />
+                              </button>
+                            </div>
+                            
+                            <div className="space-y-2">
+                              <div className="space-y-1">
+                                <label className="block text-xs font-medium text-gray-600">Upload Gambar</label>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={async (e) => {
+                                      if (!e.target.files || e.target.files.length === 0) return
+                                      const file = e.target.files[0]
+                                      setIsImageUploading(true)
+                                      try {
+                                        const formData = new FormData()
+                                        formData.append('file', file)
+                                        formData.append('folder', `certificate-${editing ? editing.id : 'new'}`)
+                                        const res = await fetch('/api/uploads/certificates', { method: 'POST', body: formData })
+                                        const data = await res.json()
+                                        if (!res.ok) {
+                                          showError(data?.error || 'Gagal mengupload gambar')
+                                        } else {
+                                          updateImage(tableEditIndex, imgIdx, 'url', data.url)
+                                          showSuccess('Gambar berhasil diupload')
+                                        }
+                                      } catch (err) {
+                                        showError('Gagal mengupload gambar')
+                                      } finally {
+                                        setIsImageUploading(false)
+                                      }
+                                    }}
+                                    className="block w-full text-xs text-gray-700 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#1e377c] file:text-white hover:file:bg-[#2a4a9d]"
+                                  />
+                                  {isImageUploading && (
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#1e377c]"></div>
+                                  )}
+                                </div>
+
+                                {image.url && (
+                                  <div className="mt-2">
+                                    <img src={image.url} alt={`preview-${imgIdx}`} className="max-h-32 rounded border border-gray-200" />
+                                  </div>
+                                )}
+                              </div>
+                              
+                              <div className="space-y-1">
+                                <label className="block text-xs font-medium text-gray-600">Caption</label>
+                                <textarea
+                                  placeholder="Deskripsi gambar..."
+                                  value={image.caption}
+                                  onChange={(e) => updateImage(tableEditIndex, imgIdx, 'caption', e.target.value)}
+                                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                                  rows={2}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        
+                        {(!results[tableEditIndex]?.images || (results[tableEditIndex]?.images || []).length === 0) && (
+                          <div className="text-center py-4 text-gray-500 text-sm">
+                            Belum ada gambar yang ditambahkan
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

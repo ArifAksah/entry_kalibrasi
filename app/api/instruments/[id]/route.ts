@@ -34,7 +34,7 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { manufacturer, type, serial_number, others, name } = body
+    const { manufacturer, type, serial_number, others, name, station_id, memiliki_lebih_satu } = body
 
     if (!manufacturer || !type || !serial_number || !name) {
       return NextResponse.json({
@@ -44,9 +44,17 @@ export async function PUT(
 
     const { data, error } = await supabaseAdmin
       .from('instrument')
-      .update({ manufacturer, type, serial_number, others, name })
+      .update({ 
+        manufacturer, 
+        type, 
+        serial_number, 
+        others, 
+        name, 
+        station_id: station_id ? parseInt(station_id as any) : null,
+        memiliki_lebih_satu: memiliki_lebih_satu || false
+      })
       .eq('id', id)
-      .select()
+      .select('*, station(id, name)')
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })

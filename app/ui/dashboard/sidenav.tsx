@@ -17,11 +17,6 @@ const Icon = {
       <path d="M12 7.5v4.5l3 3" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   ),
-  sensor: (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M12 3v18M3 12h18" strokeLinecap="round"/>
-    </svg>
-  ),
   list: (
     <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
       <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round"/>
@@ -76,12 +71,6 @@ const sections: NavSection[] = [
     ],
   },
   {
-    title: 'Sensors',
-    items: [
-      { name: 'Sensors', href: '/sensors', icon: Icon.sensor },
-    ],
-  },
-  {
     title: 'Stations',
     items: [
       { name: 'Stations', href: '/stations', icon: Icon.building },
@@ -91,6 +80,7 @@ const sections: NavSection[] = [
     title: 'Documents',
     items: [
       { name: 'Certificates', href: '/certificates', icon: Icon.doc },
+      { name: 'Draft View', href: '/draft-view', icon: Icon.beaker },
       { name: 'Letters', href: '/letters', icon: Icon.mail },
     ],
   },
@@ -101,6 +91,7 @@ const sections: NavSection[] = [
       { name: 'Endpoint Permissions', href: '/endpoint-permissions', icon: Icon.list },
       { name: 'Registrasi Personel', href: '/register', icon: Icon.mail },
       { name: 'Manajemen Personel', href: '/personel', icon: Icon.doc },
+      { name: 'Assign Stations', href: '/user-stations', icon: Icon.building },
     ],
   },
 ];
@@ -142,6 +133,10 @@ const SideNav: React.FC = () => {
             // Other roles can see certificates
             return true;
           }
+          if (item.name === 'Draft View') {
+            // All roles can see draft view
+            return true;
+          }
           if (item.name === 'Letters') {
             // Only admin and assignor can see letters
             return role === 'admin' || role === 'assignor';
@@ -163,8 +158,8 @@ const SideNav: React.FC = () => {
       
       // For other sections, check permissions
       const filteredItems = section.items.filter(item => {
-        // Instruments, Sensors, Stations - all roles can see
-        if (['Instruments', 'Sensors', 'Stations'].includes(item.name)) {
+        // Instruments, Stations - all roles can see
+        if (['Instruments', 'Stations'].includes(item.name)) {
           return true;
         }
         

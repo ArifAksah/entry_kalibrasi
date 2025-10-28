@@ -1,239 +1,250 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useState } from 'react'
 import SideNav from '../ui/dashboard/sidenav'
 import Header from '../ui/dashboard/header'
 import ProtectedRoute from '../../components/ProtectedRoute'
-import { supabase } from '../../lib/supabase'
+import usePersonel, { Person } from '../../hooks/usePersonel'
 
-type Person = { id: string; name: string; email: string; phone?: string | null; position?: string | null; nip?: string | null }
-type UserRoleRow = { user_id: string; role: 'admin' | 'calibrator' | 'verifikator' | 'assignor' | 'user_station'; station_id?: number | null }
-
-const roles: UserRoleRow['role'][] = ['admin','calibrator','verifikator','assignor','user_station']
+const roles: Person['role'][] = ['admin', 'calibrator', 'verifikator', 'assignor', 'user_station']
 
 const PersonelPage: React.FC = () => {
-  const [items, setItems] = useState<Person[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const {
+    items,
+    loading,
+    error,
+    totalItems,
+    totalPages,
+    currentPage,
+    searchTerm,
+    setSearchTerm,
+    goToPage,
+    nextPage,
+    prevPage,
+    refresh,
+  } = usePersonel(1, 10)
+
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editing, setEditing] = useState<Person | null>(null)
   const [form, setForm] = useState<Person>({ id: '', name: '', email: '' })
-  const [roleMap, setRoleMap] = useState<Record<string, UserRoleRow>>({})
   const [savingRole, setSavingRole] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
-
-  const fetchAll = async () => {
-    try {
-      setLoading(true)
-      const r = await fetch('/api/personel')
-      const d = await r.json()
-      if (!r.ok) throw new Error(d?.error || 'Failed to load personel')
-      setItems(Array.isArray(d) ? d : [])
-      // fetch roles
-      const roleEntries: Record<string, UserRoleRow> = {}
-      await Promise.all((Array.isArray(d) ? d : []).map(async (p: Person) => {
-        const rr = await fetch(`/api/user-roles?user_id=${p.id}`)
-        const rd = await rr.json().catch(() => null)
-        if (rr.ok && rd) roleEntries[p.id] = rd
-      }))
-      setRoleMap(roleEntries)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load')
-    } finally { setLoading(false) }
-  }
-
-  useEffect(() => { fetchAll() }, [])
-
-  const filteredItems = useMemo(() => {
-    if (!searchQuery) return items;
-    return items.filter(item =>
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.position?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [items, searchQuery]);
-
-  const paginatedItems = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredItems.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredItems, currentPage, itemsPerPage]);
-
-  const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
 
   const openModal = (p?: Person) => {
-    if (p) { setEditing(p); setForm({ id: p.id, name: p.name, email: p.email, phone: p.phone || '', position: p.position || '', nip: p.nip || '' }) }
-    else { setEditing(null); setForm({ id: '', name: '', email: '', phone: '', position: '', nip: '' }) }
+    if (p) {
+      setEditing(p)
+      setForm({ ...p, phone: p.phone || '', position: p.position || '', nip: p.nip || '' })
+    } else {
+      setEditing(null)
+      setForm({ id: '', name: '', email: '', phone: '', position: '', nip: '' })
+    }
     setIsModalOpen(true)
   }
-  const closeModal = () => { setIsModalOpen(false); setEditing(null) }
+
+  const closeModal = () => {
+    setIsModalOpen(false)
+    setEditing(null)
+  }
 
   const savePerson = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!editing) return
     try {
-      setError(null)
-      if (!form.name || !form.email) throw new Error('Name and email are required')
-      if (!editing) throw new Error('Use registration to create new user')
-      const r = await fetch(`/api/personel/${editing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: form.name, email: form.email, phone: form.phone, position: form.position, nip: form.nip }) })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d?.error || 'Failed to update')
-      await fetchAll()
+      const response = await fetch(`/api/personel/${editing.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          name: form.name, 
+          email: form.email, 
+          phone: form.phone, 
+          position: form.position, 
+          nip: form.nip 
+        }),
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to update personel')
+      }
       closeModal()
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to save') }
+      refresh() // Refresh data after saving
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to save')
+    }
   }
 
   const removePerson = async (id: string) => {
-    if (!confirm('Delete this personel?')) return
+    if (!confirm('Are you sure you want to delete this person?')) return
     try {
-      const r = await fetch(`/api/personel/${id}`, { method: 'DELETE' })
-      const d = await r.json().catch(() => null)
-      if (!r.ok) throw new Error(d?.error || 'Failed to delete')
-      await fetchAll()
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to delete') }
+      const response = await fetch(`/api/personel/${id}`, { method: 'DELETE' })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to delete personel')
+      }
+      refresh() // Refresh data after deleting
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete')
+    }
   }
 
-  const saveRole = async (user_id: string, role: UserRoleRow['role']) => {
+  const saveRole = async (user_id: string, role: Person['role']) => {
+    setSavingRole(user_id)
     try {
-      setSavingRole(user_id)
-      const r = await fetch('/api/user-roles', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id, role }) })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d?.error || 'Failed to save role')
-      setRoleMap(prev => ({ ...prev, [user_id]: d }))
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Failed to save role')
-    } finally { setSavingRole(null) }
+      const response = await fetch('/api/user-roles', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id, role }),
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save role')
+      }
+      refresh() // Refresh to show the updated role
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to save role')
+    } finally {
+      setSavingRole(null)
+    }
   }
-
-  if (loading) return (
-    <ProtectedRoute>
-      <div className="min-h-screen grid grid-cols-[260px_1fr]">
-        <SideNav />
-        <div className="bg-gray-50"><Header /><div className="p-6">Loading...</div></div>
-      </div>
-    </ProtectedRoute>
-  )
 
   return (
     <ProtectedRoute>
       <div className="min-h-screen grid grid-cols-[260px_1fr]">
         <SideNav />
-        <div className="bg-gray-50">
+        <div className="bg-gray-50/50">
           <Header />
-          <div className="p-6 max-w-7xl mx-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h1 className="text-2xl font-bold">Manajemen Personel</h1>
-              <a href="/register" className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors duration-300">Registrasi Baru</a>
-            </div>
-            {error && <div className="mb-3 text-red-600 bg-red-100 border border-red-200 p-3 rounded-lg">{error}</div>}
-            <div className="mb-4">
-              <input
-                type="text"
-                placeholder="Cari personel..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="overflow-x-auto border rounded-lg bg-white shadow-md">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="px-6 py-3 text-left font-semibold">Nama</th>
-                    <th className="px-6 py-3 text-left font-semibold">Email</th>
-                    <th className="px-6 py-3 text-left font-semibold">Telepon</th>
-                    <th className="px-6 py-3 text-left font-semibold">Posisi</th>
-                    <th className="px-6 py-3 text-left font-semibold">Role</th>
-                    <th className="px-6 py-3 text-left font-semibold">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {paginatedItems.map(p => (
-                    <tr key={p.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">{p.name}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">{p.email}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">{p.phone || '-'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">{p.position || '-'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <select value={roleMap[p.id]?.role || ''} onChange={(e)=>saveRole(p.id, e.target.value as any)} className="px-2 py-1 border rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
-                          <option value="">- pilih -</option>
-                          {roles.map(r => <option key={r} value={r}>{r}</option>)}
-                        </select>
-                        {savingRole===p.id && <span className="ml-2 text-gray-500 text-xs">Menyimpan...</span>}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap space-x-2">
-                        <button onClick={()=>openModal(p)} className="text-blue-600 hover:text-blue-800 font-semibold">Edit</button>
-                        <button onClick={()=>removePerson(p.id)} className="text-red-600 hover:text-red-800 font-semibold">Hapus</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="flex justify-between items-center mt-4">
-              <span className="text-sm text-gray-700">
-                Halaman {currentPage} dari {totalPages}
-              </span>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
-                  className="px-3 py-1 border rounded-lg text-sm bg-white hover:bg-gray-100 disabled:opacity-50"
-                >
-                  Sebelumnya
-                </button>
-                <button
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                  className="px-3 py-1 border rounded-lg text-sm bg-white hover:bg-gray-100 disabled:opacity-50"
-                >
-                  Berikutnya
-                </button>
+          <main className="p-4 sm:p-6 lg:p-8">
+            <div className="max-w-7xl mx-auto">
+              <div className="flex items-center justify-between mb-6">
+                <h1 className="text-2xl font-bold text-gray-800">Manajemen Personel</h1>
+                <a href="/register" className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-colors">Registrasi Baru</a>
               </div>
-            </div>
 
-            {isModalOpen && (
-              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-                <div className="bg-white w-full max-w-2xl rounded-lg shadow-xl">
-                  <div className="p-6 border-b">
-                    <h3 className="text-xl font-bold">Edit Personel</h3>
-                  </div>
-                  <form onSubmit={savePerson}>
-                    <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Nama</label>
-                        <input value={form.name} onChange={e=>setForm({ ...form, name: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                        <input type="email" value={form.email} onChange={e=>setForm({ ...form, email: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Telepon</label>
-                        <input value={form.phone || ''} onChange={e=>setForm({ ...form, phone: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Posisi</label>
-                        <input value={form.position || ''} onChange={e=>setForm({ ...form, position: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">NIP</label>
-                        <input value={form.nip || ''} onChange={e=>setForm({ ...form, nip: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      </div>
-                    </div>
-                    <div className="p-6 bg-gray-50 flex justify-end gap-3 rounded-b-lg">
-                      <button type="button" onClick={closeModal} className="px-4 py-2 border rounded-lg text-sm font-semibold bg-white hover:bg-gray-100">Batal</button>
-                      <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">Simpan</button>
-                    </div>
-                  </form>
+              <div className="bg-white p-6 rounded-xl shadow-md">
+                <div className="mb-4">
+                    <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Cari berdasarkan nama atau email..."
+                        className="w-full max-w-sm px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                    />
                 </div>
+
+                {error && <div className="mb-4 text-red-600 bg-red-100 p-3 rounded-lg">Error: {error}</div>}
+
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm text-left text-gray-700">
+                    <thead className="bg-gray-100 text-gray-600 uppercase text-xs font-medium">
+                      <tr>
+                        <th className="px-6 py-3">Nama</th>
+                        <th className="px-6 py-3">Kontak</th>
+                        <th className="px-6 py-3">Posisi</th>
+                        <th className="px-6 py-3">Role</th>
+                        <th className="px-6 py-3 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loading ? (
+                        [...Array(limit)].map((_, i) => (
+                          <tr key={i} className="border-b border-gray-200 animate-pulse">
+                            <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-3/4"></div></td>
+                            <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-full"></div></td>
+                            <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-1/2"></div></td>
+                            <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-1/4"></div></td>
+                            <td className="px-6 py-4"><div className="h-8 bg-gray-200 rounded w-full"></div></td>
+                          </tr>
+                        ))
+                      ) : (
+                        items.map(p => (
+                          <tr key={p.id} className="border-b border-gray-200 hover:bg-gray-50">
+                            <td className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">
+                              {p.name}
+                              {p.nip && <div className="text-xs text-gray-500">NIP: {p.nip}</div>}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div>{p.email}</div>
+                              <div className="text-xs text-gray-500">{p.phone}</div>
+                            </td>
+                            <td className="px-6 py-4">{p.position || '-'}</td>
+                            <td className="px-6 py-4">
+                              <select 
+                                value={p.role || ''} 
+                                onChange={(e) => saveRole(p.id, e.target.value as any)} 
+                                className="px-2 py-1 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+                                disabled={savingRole === p.id}
+                              >
+                                <option value="">- Pilih Role -</option>
+                                {roles.map(r => <option key={r} value={r}>{r}</option>)}
+                              </select>
+                              {savingRole === p.id && <span className="ml-2 text-xs text-gray-500">Menyimpan...</span>}
+                            </td>
+                            <td className="px-6 py-4 text-center space-x-2">
+                              <button onClick={() => openModal(p)} className="font-medium text-blue-600 hover:underline">Edit</button>
+                              <button onClick={() => removePerson(p.id)} className="font-medium text-red-600 hover:underline">Hapus</button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {!loading && totalItems > 0 && (
+                  <div className="flex items-center justify-between pt-4">
+                    <span className="text-sm text-gray-600">
+                      Menampilkan {items.length} dari {totalItems} personel
+                    </span>
+                    <div className="flex items-center space-x-2">
+                      <button onClick={prevPage} disabled={currentPage === 1} className="px-3 py-1 border rounded-md bg-white hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Sebelumnya
+                      </button>
+                      <span className="text-sm font-medium">Halaman {currentPage} dari {totalPages}</span>
+                      <button onClick={nextPage} disabled={currentPage === totalPages} className="px-3 py-1 border rounded-md bg-white hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Berikutnya
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          </main>
         </div>
       </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
+          <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl p-6 m-4">
+            <h3 className="text-xl font-semibold mb-6 text-gray-800">Edit Personel</h3>
+            <form onSubmit={savePerson} className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nama</label>
+                <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                <input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Position</label>
+                <input value={form.position || ''} onChange={e => setForm({ ...form, position: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">NIP</label>
+                <input value={form.nip || ''} onChange={e => setForm({ ...form, nip: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div className="sm:col-span-2 flex justify-end gap-3 pt-4 mt-2 border-t">
+                <button type="button" onClick={closeModal} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors">Batal</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-colors">Simpan Perubahan</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </ProtectedRoute>
   )
 }
 
-export default PersonelPage;
+export default PersonelPage

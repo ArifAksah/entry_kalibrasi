@@ -20,10 +20,12 @@ export async function GET(request: NextRequest) {
     // Query params: q (string), page (number, default 1), pageSize (number, default 10)
     const { searchParams } = new URL(request.url)
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
-    const pageSize = Math.max(1, Math.min(100, parseInt(searchParams.get('pageSize') || '10', 10) || 10))
+    const requestedPageSize = parseInt(searchParams.get('pageSize') || '10', 10) || 10
+    // Allow larger page sizes for assignment purposes
+    const pageSize = requestedPageSize > 1000 ? requestedPageSize : Math.max(1, Math.min(1000, requestedPageSize))
     const search = (searchParams.get('q') || '').trim()
 
-    const base = supabase
+    const base = supabaseAdmin
       .from('station')
       .select('*', { count: 'exact' })
 
@@ -48,8 +50,12 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
       .range(start, end)
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      console.error('Error fetching stations:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
     const total = count || 0
+    console.log(`Fetched ${data?.length || 0} stations (page ${page}, pageSize ${pageSize}, total ${total})`)
     return NextResponse.json({ data: Array.isArray(data) ? data : [], total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) })
   } catch (e) {
     return NextResponse.json({ error: 'Failed to fetch stations' }, { status: 500 })

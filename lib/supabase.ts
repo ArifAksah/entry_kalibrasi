@@ -121,8 +121,9 @@ export interface Instrument {
   serial_number: string
   others?: string | null
   name: string
-  station_id?: number | null
-  station?: Station | null
+  station_id?: number | null // Foreign key column
+  station?: Station | null // Relasi data (opsional)
+  memiliki_lebih_satu?: boolean // Field untuk mengontrol tampilan sensor
 }
 
 export type InstrumentInsert = Omit<Instrument, 'id' | 'created_at' | 'station'>
@@ -144,6 +145,12 @@ export interface Certificate {
   station_address?: string | null
   results?: any
   version?: number
+  // New draft workflow fields
+  status?: 'draft' | 'sent' | 'verified' | 'rejected' | 'completed'
+  draft_created_at?: string
+  sent_to_verifiers_at?: string
+  sent_by?: string
+  assignor?: string
 }
 
 export type CertificateInsert = Omit<Certificate, 'id' | 'created_at' | 'version'>

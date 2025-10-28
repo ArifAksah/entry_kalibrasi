@@ -170,6 +170,7 @@ export async function PUT(
         authorized_by: authorizedPersonId, 
         verifikator_1: v1, 
         verifikator_2: v2, 
+        assignor: authorizedPersonId, // Set assignor same as authorized_by
         issue_date, 
         station: station ? parseInt(station) : null, 
         instrument: instrument ? parseInt(instrument) : null,
@@ -182,6 +183,60 @@ export async function PUT(
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    
+    // If certificate was revised (version increased), reset verification status
+    if (nextVersion > (currentCertificate?.version ?? 1)) {
+      try {
+        // Delete existing verification records and create new ones with updated version
+        const { error: deleteError } = await supabaseAdmin
+          .from('certificate_verification')
+          .delete()
+          .eq('certificate_id', parseInt(id))
+        
+        if (deleteError) {
+          console.error('Error deleting old verification records:', deleteError)
+        } else {
+          console.log('Old verification records deleted for certificate:', id)
+          
+          // Create new verification records with updated version
+          if (currentCertificate?.verifikator_1 && currentCertificate?.verifikator_2) {
+            const newVerificationRecords = [
+              {
+                certificate_id: parseInt(id),
+                verification_level: 1,
+                status: 'pending',
+                verified_by: currentCertificate.verifikator_1,
+                certificate_version: nextVersion,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              },
+              {
+                certificate_id: parseInt(id),
+                verification_level: 2,
+                status: 'pending',
+                verified_by: currentCertificate.verifikator_2,
+                certificate_version: nextVersion,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              }
+            ]
+            
+            const { error: insertError } = await supabaseAdmin
+              .from('certificate_verification')
+              .insert(newVerificationRecords)
+            
+            if (insertError) {
+              console.error('Error creating new verification records:', insertError)
+            } else {
+              console.log('New verification records created for certificate:', id, 'version:', nextVersion)
+            }
+          }
+        }
+      } catch (resetErr) {
+        console.error('Error resetting verification status:', resetErr)
+        // Don't fail the request, just log the error
+      }
+    }
     
     // Kirim notifikasi email jika ada perubahan
     const sendNotification = async (userId: string, role: string, certificateNumber: string, certificateId: number) => {

@@ -24,5 +24,3 @@ const InstrumentsPage: React.FC = () => {
 };
 
 export default InstrumentsPage;
-
-
