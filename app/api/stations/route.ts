@@ -1,18 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '../../../lib/supabase'
-import { createClient } from '@supabase/supabase-js'
+import { supabaseAdmin } from '../../../lib/supabase'
 
-// Service role client for admin operations
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-)
+// Using shared supabaseAdmin (with env fallbacks) for admin operations
 
 export async function GET(request: NextRequest) {
   try {
@@ -52,12 +41,20 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('Error fetching stations:', error)
+      if (error.message?.toLowerCase?.().includes('fetch failed')) {
+        console.warn('[stations] Supabase unreachable, returning empty list fallback.')
+        return NextResponse.json({ data: [], total: 0, page, pageSize, totalPages: 1 })
+      }
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     const total = count || 0
     console.log(`Fetched ${data?.length || 0} stations (page ${page}, pageSize ${pageSize}, total ${total})`)
     return NextResponse.json({ data: Array.isArray(data) ? data : [], total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) })
-  } catch (e) {
+  } catch (e: any) {
+    if (typeof e?.message === 'string' && e.message.toLowerCase().includes('fetch failed')) {
+      console.warn('[stations] Supabase unreachable in catch, returning empty list fallback.')
+      return NextResponse.json({ data: [], total: 0, page: 1, pageSize: 10, totalPages: 1 })
+    }
     return NextResponse.json({ error: 'Failed to fetch stations' }, { status: 500 })
   }
 }

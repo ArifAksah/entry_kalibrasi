@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '../../../lib/supabase'
-import { createClient } from '@supabase/supabase-js'
+import { supabaseAdmin } from '../../../lib/supabase'
 import { sendAssignmentNotificationEmail } from '../../../lib/email'
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-)
+// Using shared supabaseAdmin with env fallbacks for consistency
 
 export async function GET() {
   try {
@@ -16,7 +11,13 @@ export async function GET() {
       .select('*')
       .order('created_at', { ascending: false })
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      if (error.message?.toLowerCase?.().includes('fetch failed')) {
+        console.warn('[certificates] Supabase unreachable, returning empty list fallback.')
+        return NextResponse.json([])
+      }
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
 
     // Get verification status for each certificate (gracefully handle missing table)
     const certificateIds = data?.map(c => c.id) || []
@@ -49,7 +50,11 @@ export async function GET() {
     })
 
     return NextResponse.json(certificatesWithStatus)
-  } catch (e) {
+  } catch (e: any) {
+    if (typeof e?.message === 'string' && e.message.toLowerCase().includes('fetch failed')) {
+      console.warn('[certificates] Supabase unreachable in catch, returning empty list fallback.')
+      return NextResponse.json([])
+    }
     return NextResponse.json({ error: 'Failed to fetch certificates' }, { status: 500 })
   }
 }

@@ -209,6 +209,9 @@ const SearchableDropdown = ({
                         className="w-full px-3 py-2 text-left hover:bg-blue-50 border-b border-gray-100 first:border-b-0 text-sm"
                       >
                         <div className="font-medium text-gray-900">{option.name}</div>
+                        {option.station_id ? (
+                          <div className="text-xs text-gray-500 mt-0.5">{option.station_id}</div>
+                        ) : null}
                       </button>
                     ))}
                   </div>
@@ -1042,26 +1045,8 @@ const CertificatesCRUD: React.FC = () => {
                     <h3 className="text-base font-bold text-gray-900">Certificate Data</h3>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {[
-                      { label: 'No. Sertifikat *', value: form.no_certificate, onChange: (e: any) => setForm({ ...form, no_certificate: e.target.value }), type: 'text', required: true },
-                      { label: 'No. Order *', value: form.no_order, onChange: (e: any) => setForm({ ...form, no_order: e.target.value }), type: 'text', required: true },
-                      { label: 'No. Identifikasi *', value: form.no_identification, onChange: (e: any) => setForm({ ...form, no_identification: e.target.value }), type: 'text', required: true },
-                      { label: 'Tanggal Terbit *', value: form.issue_date, onChange: (e: any) => setForm({ ...form, issue_date: e.target.value }), type: 'date', required: true },
-                    ].map((field, index) => (
-                      <div key={index} className="space-y-1">
-                        <label className="block text-xs font-semibold text-gray-700">{field.label}</label>
-                        <input
-                          required={field.required}
-                          type={field.type}
-                          value={field.value}
-                          onChange={field.onChange}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] focus:border-transparent transition-all duration-200 bg-white text-sm"
-                        />
-                      </div>
-                    ))}
-                    
-                    {/* Select fields */}
-                    <div className="space-y-1">
+                    {/* Stasiun di paling atas */}
+                    <div className="space-y-1 md:col-span-2">
                       <label className="block text-xs font-semibold text-gray-700">Stasiun</label>
                       <SearchableDropdown
                         value={form.station}
@@ -1090,6 +1075,24 @@ const CertificatesCRUD: React.FC = () => {
                       />
                     </div>
 
+                    {[
+                      { label: 'No. Sertifikat *', value: form.no_certificate, onChange: (e: any) => setForm({ ...form, no_certificate: e.target.value }), type: 'text', required: true },
+                      { label: 'No. Order *', value: form.no_order, onChange: (e: any) => setForm({ ...form, no_order: e.target.value }), type: 'text', required: true },
+                      { label: 'No. Identifikasi *', value: form.no_identification, onChange: (e: any) => setForm({ ...form, no_identification: e.target.value }), type: 'text', required: true },
+                      { label: 'Tanggal Terbit *', value: form.issue_date, onChange: (e: any) => setForm({ ...form, issue_date: e.target.value }), type: 'date', required: true },
+                    ].map((field, index) => (
+                      <div key={index} className="space-y-1">
+                        <label className="block text-xs font-semibold text-gray-700">{field.label}</label>
+                        <input
+                          required={field.required}
+                          type={field.type}
+                          value={field.value}
+                          onChange={field.onChange}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] focus:border-transparent transition-all duration-200 bg-white text-sm"
+                        />
+                      </div>
+                    ))}
+                    
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Authorized By</label>
                       <select 
@@ -1153,7 +1156,9 @@ const CertificatesCRUD: React.FC = () => {
                         onChange={(value) => setForm({ ...form, instrument: value as number | null })}
                         options={instruments.map(i => ({
                           id: i.id,
-                          name: (i as any).name || 'Instrument',
+                          name: ((i as any).name && (i as any).name !== 'Instrument') 
+                            ? (i as any).name 
+                            : `${(i as any).manufacturer || ''} ${(i as any).type || ''} ${(i as any).serial_number || ''}`.trim() || 'Instrument',
                           // Reuse station_id slot for secondary info in dropdown/search
                           station_id: `${(i as any).type || ''} ${(i as any).serial_number || ''} ${(i as any).manufacturer || ''}`.trim()
                         }))}
@@ -1176,16 +1181,6 @@ const CertificatesCRUD: React.FC = () => {
                         />
                       </div>
                     ))}
-
-                    <div className="md:col-span-2 space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Lainnya</label>
-                      <textarea 
-                        value={instrumentPreview.other || ''} 
-                        onChange={e=>setInstrumentPreview(prev=>({ ...prev, other: e.target.value }))} 
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] focus:border-transparent transition-all duration-200 bg-white text-sm" 
-                        rows={2} 
-                      />
-                    </div>
                   </div>
                 </div>
 
@@ -1486,6 +1481,10 @@ const CertificatesCRUD: React.FC = () => {
                               setEnvEditIndex(idx) 
                             } },
                             { label: 'Tabel Hasil', onClick: () => { 
+                              if (!form.station) { 
+                                showWarning('Pilih stasiun terlebih dahulu'); 
+                                return; 
+                              }
                               // Auto-suggest table structure based on sensor type
                               const suggestedTable = r.sensorDetails ? [
                                 {
@@ -1779,16 +1778,8 @@ const CertificatesCRUD: React.FC = () => {
                 ))}
                 
                 {/* Conditional content based on station type */}
-                {/* Default (empty/unknown) and all non-geofisika types show Images section. Only geofisika shows Table section. */}
+                {/* Show Images only for geofisika. If type selected and not geofisika, show add table button. If no station selected, show nothing. */}
                 {getSelectedStationType() === 'geofisika' ? (
-                  <button 
-                    onClick={() => setTableDraft(prev => [...prev, { title: '', rows: [{ key: '', unit: '', value: '' }] }])}
-                    className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg hover:border-[#1e377c] hover:bg-blue-50 transition-all duration-200 text-sm text-gray-600 hover:text-[#1e377c] w-full justify-center"
-                  >
-                    <PlusIcon className="w-4 h-4" />
-                    Tambah Bagian Tabel Baru
-                  </button>
-                ) : (
                   <div className="space-y-3">
                     <div className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
                       <div className="flex items-center justify-between mb-3">
@@ -1883,7 +1874,15 @@ const CertificatesCRUD: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                )}
+                ) : getSelectedStationType() ? (
+                  <button 
+                    onClick={() => setTableDraft(prev => [...prev, { title: '', rows: [{ key: '', unit: '', value: '' }] }])}
+                    className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg hover:border-[#1e377c] hover:bg-blue-50 transition-all duration-200 text-sm text-gray-600 hover:text-[#1e377c] w-full justify-center"
+                  >
+                    <PlusIcon className="w-4 h-4" />
+                    Tambah Bagian Tabel Baru
+                  </button>
+                ) : null}
               </div>
             </div>
 

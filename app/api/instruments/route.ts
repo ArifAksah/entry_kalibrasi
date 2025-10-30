@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { supabaseAdmin } from '../../../lib/supabase'
 
-// Gunakan service role client untuk menghindari masalah RLS di sisi server
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-)
+// Menggunakan shared supabaseAdmin dari lib/supabase agar memiliki fallback env dan konfigurasi konsisten
 
 export async function GET(request: NextRequest) {
   try {
@@ -47,6 +42,11 @@ export async function GET(request: NextRequest) {
       if (error.code === '42P01' || error.message.includes('relation "station" does not exist')) {
          return NextResponse.json({ error: 'Database relation error: Station data could not be joined.' }, { status: 500 });
       }
+      // Jika konektivitas ke Supabase gagal, kembalikan list kosong agar UI tetap jalan
+      if (error.message?.toLowerCase?.().includes('fetch failed')) {
+        console.warn('[instruments] Supabase unreachable, returning empty list fallback.')
+        return NextResponse.json({ data: [], total: 0, page, pageSize, totalPages: 1 })
+      }
       // Handle error RLS atau lainnya
       return NextResponse.json({ error: `Failed to fetch instruments: ${error.message}` }, { status: 500 });
     }
@@ -61,8 +61,13 @@ export async function GET(request: NextRequest) {
       totalPages: Math.max(1, Math.ceil(total / pageSize))
     });
 
-  } catch (e) {
+  } catch (e: any) {
     console.error("Catch block error in GET /api/instruments:", e); // Log exception lain
+    // Fallback ketika undici fetch gagal (misconfig URL/keys atau Supabase down)
+    if (typeof e?.message === 'string' && e.message.toLowerCase().includes('fetch failed')) {
+      console.warn('[instruments] Supabase unreachable in catch, returning empty list fallback.')
+      return NextResponse.json({ data: [], total: 0, page: 1, pageSize: 10, totalPages: 1 })
+    }
     return NextResponse.json({ error: 'Failed to fetch instruments due to an unexpected server error.' }, { status: 500 });
   }
 }

@@ -9,9 +9,19 @@ export async function GET() {
       .select('*')
       .order('created_at', { ascending: false })
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      if ((error as any).message?.toLowerCase?.().includes('fetch failed')) {
+        console.warn('[personel] Supabase unreachable, returning empty list fallback.')
+        return NextResponse.json([], { status: 200 })
+      }
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
     return NextResponse.json(data)
-  } catch (e) {
+  } catch (e: any) {
+    if (typeof e?.message === 'string' && e.message.toLowerCase().includes('fetch failed')) {
+      console.warn('[personel] Supabase unreachable in catch, returning empty list fallback.')
+      return NextResponse.json([], { status: 200 })
+    }
     return NextResponse.json({ error: 'Failed to fetch personel' }, { status: 500 })
   }
 }

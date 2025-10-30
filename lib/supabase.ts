@@ -15,7 +15,7 @@ const supabaseAnonKey =
 // supabaseUrl will default to http://localhost:7000 for local dev if not provided
 
 if (!supabaseAnonKey) {
-  throw new Error('supabaseAnonKey is required. Set NEXT_PUBLIC_SUPABASE_ANON_KEY (or ANON_KEY).')
+  console.warn('NEXT_PUBLIC_SUPABASE_ANON_KEY not found. Public client operations may fail; proceeding without throwing.')
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)

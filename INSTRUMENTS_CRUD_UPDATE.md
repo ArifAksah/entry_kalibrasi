@@ -97,3 +97,4 @@ ALTER COLUMN memiliki_lebih_satu SET NOT NULL;
 - Export/Import functionality dengan sensor data
 
 
+
