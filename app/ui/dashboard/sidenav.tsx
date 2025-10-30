@@ -80,7 +80,6 @@ const sections: NavSection[] = [
     title: 'Documents',
     items: [
       { name: 'Certificates', href: '/certificates', icon: Icon.doc },
-      { name: 'Draft View', href: '/draft-view', icon: Icon.beaker },
       { name: 'Letters', href: '/letters', icon: Icon.mail },
     ],
   },
@@ -89,7 +88,6 @@ const sections: NavSection[] = [
     items: [
       { name: 'Role Permissions', href: '/role-permissions', icon: Icon.check },
       { name: 'Endpoint Permissions', href: '/endpoint-permissions', icon: Icon.list },
-      { name: 'Registrasi Personel', href: '/register', icon: Icon.mail },
       { name: 'Manajemen Personel', href: '/personel', icon: Icon.doc },
       { name: 'Assign Stations', href: '/user-stations', icon: Icon.building },
     ],
@@ -123,28 +121,16 @@ const SideNav: React.FC = () => {
       }
       
       if (section.title === 'Documents') {
-        // Filter certificates based on role
+        // Show Certificates to all roles (list is personalized on the page)
         const filteredItems = section.items.filter(item => {
-          if (item.name === 'Certificates') {
-            // Hide certificates for verifikator and assignor - they focus on verification
-            if (role === 'verifikator' || role === 'assignor') {
-              return false;
-            }
-            // Other roles can see certificates
-            return true;
-          }
-          if (item.name === 'Draft View') {
-            // All roles can see draft view
-            return true;
-          }
           if (item.name === 'Letters') {
             // Only admin and assignor can see letters
             return role === 'admin' || role === 'assignor';
           }
-          return true;
+          return true; // Certificates stays; Draft View already removed above
         });
-        
-        // Add Certificate Verification for verifikator and assignor roles
+
+        // Keep Certificate Verification for verifikator and assignor roles
         if (role === 'verifikator' || role === 'assignor') {
           filteredItems.push({
             name: 'Certificate Verification',
@@ -152,7 +138,7 @@ const SideNav: React.FC = () => {
             icon: Icon.check
           });
         }
-        
+
         return { ...section, items: filteredItems };
       }
       

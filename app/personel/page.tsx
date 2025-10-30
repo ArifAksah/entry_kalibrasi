@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import SideNav from '../ui/dashboard/sidenav'
 import Header from '../ui/dashboard/header'
 import ProtectedRoute from '../../components/ProtectedRoute'
 import usePersonel, { Person } from '../../hooks/usePersonel'
+import { supabase } from '../../lib/supabase'
 
 const roles: Person['role'][] = ['admin', 'calibrator', 'verifikator', 'assignor', 'user_station']
 
@@ -22,12 +23,32 @@ const PersonelPage: React.FC = () => {
     nextPage,
     prevPage,
     refresh,
+    setRoleLocal,
   } = usePersonel(1, 10)
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editing, setEditing] = useState<Person | null>(null)
   const [form, setForm] = useState<Person>({ id: '', name: '', email: '' })
   const [savingRole, setSavingRole] = useState<string | null>(null)
+
+  // Registration modal state
+  const [isRegisterOpen, setIsRegisterOpen] = useState(false)
+  const [regForm, setRegForm] = useState({
+    name: '',
+    nip: '',
+    position: '',
+    phone: '',
+    email: '',
+    password: '',
+    role: '' as any,
+    station_id: '' as any,
+  })
+  const [regLoading, setRegLoading] = useState(false)
+  const [showPass, setShowPass] = useState(false)
+  const [pwStrength, setPwStrength] = useState<{ score: number; label: string; color: string }>({ score: 0, label: 'Very weak', color: 'bg-red-500' })
+  const [stations, setStations] = useState<Array<{ id: number; name: string; station_id: string }>>([])
+  const [regError, setRegError] = useState<string | null>(null)
+  const [regSuccess, setRegSuccess] = useState<string | null>(null)
 
   const openModal = (p?: Person) => {
     if (p) {
@@ -38,6 +59,108 @@ const PersonelPage: React.FC = () => {
       setForm({ id: '', name: '', email: '', phone: '', position: '', nip: '' })
     }
     setIsModalOpen(true)
+  }
+
+  // Load stations for registration modal
+  useEffect(() => {
+    if (!isRegisterOpen) return
+    const loadStations = async () => {
+      try {
+        const r = await fetch('/api/stations?page=1&pageSize=100')
+        const d = await r.json()
+        if (r.ok) {
+          const first = Array.isArray(d) ? d : (d?.data ?? [])
+          const totalPages = (Array.isArray(d) ? 1 : (d?.totalPages ?? 1)) as number
+          if (totalPages > 1) {
+            const rest = await Promise.all(Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
+              .map(p => fetch(`/api/stations?page=${p}&pageSize=100`).then(res => res.ok ? res.json() : { data: [] })))
+            const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
+            setStations([...first, ...restData])
+          } else {
+            setStations(first)
+          }
+        }
+      } catch {}
+    }
+    loadStations()
+  }, [isRegisterOpen])
+
+  // Password strength evaluation
+  useEffect(() => {
+    const pw = regForm.password
+    let score = 0
+    if (pw.length >= 8) score++
+    if (/[A-Z]/.test(pw)) score++
+    if (/[a-z]/.test(pw)) score++
+    if (/[0-9]/.test(pw)) score++
+    if (/[^A-Za-z0-9]/.test(pw)) score++
+    if (score > 4) score = 4
+    const map: Record<number, { label: string; color: string }> = {
+      0: { label: 'Very weak', color: 'bg-red-500' },
+      1: { label: 'Weak',      color: 'bg-orange-500' },
+      2: { label: 'Fair',      color: 'bg-amber-500' },
+      3: { label: 'Good',      color: 'bg-green-500' },
+      4: { label: 'Strong',    color: 'bg-emerald-600' },
+    }
+    setPwStrength({ score, ...map[score] })
+  }, [regForm.password])
+
+  const submitRegistration = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setRegLoading(true)
+    setRegError(null)
+    setRegSuccess(null)
+    try {
+      const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/confirm-email` : undefined
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: regForm.email,
+        password: regForm.password,
+        options: {
+          emailRedirectTo: redirectTo,
+          data: { name: regForm.name, phone: regForm.phone, position: regForm.position, nip: regForm.nip },
+        },
+      })
+      if (signUpError) throw new Error(signUpError.message)
+      const userId = signUpData.user?.id
+      if (!userId) throw new Error('Failed to get user id')
+
+      const res = await fetch('/api/personel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: userId,
+          name: regForm.name,
+          nip: regForm.nip,
+          position: regForm.position,
+          phone: regForm.phone,
+          email: regForm.email,
+        }),
+      })
+      const body = await res.json().catch(()=>({}))
+      if (!res.ok) throw new Error(body?.error || 'Failed to save personel profile')
+
+      if (regForm.role) {
+        if (regForm.role === 'user_station' && !regForm.station_id) {
+          throw new Error('Untuk role user_station, wajib memilih Station.')
+        }
+        const roleRes = await fetch('/api/user-roles', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId, role: regForm.role, station_id: regForm.station_id ? parseInt(regForm.station_id as any) : null })
+        })
+        const roleBody = await roleRes.json().catch(()=>({}))
+        if (!roleRes.ok) throw new Error(roleBody?.error || 'Gagal menyimpan role user')
+      }
+
+      setRegSuccess('Registrasi berhasil. Cek email untuk konfirmasi.')
+      setRegForm({ name: '', nip: '', position: '', phone: '', email: '', password: '', role: '' as any, station_id: '' as any })
+      await refresh()
+      setTimeout(() => setIsRegisterOpen(false), 800)
+    } catch (err) {
+      setRegError(err instanceof Error ? err.message : 'Registration failed')
+    } finally {
+      setRegLoading(false)
+    }
   }
 
   const closeModal = () => {
@@ -97,7 +220,7 @@ const PersonelPage: React.FC = () => {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Failed to save role')
       }
-      refresh() // Refresh to show the updated role
+      setRoleLocal(user_id, role)
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to save role')
     } finally {
@@ -115,7 +238,7 @@ const PersonelPage: React.FC = () => {
             <div className="max-w-7xl mx-auto">
               <div className="flex items-center justify-between mb-6">
                 <h1 className="text-2xl font-bold text-gray-800">Manajemen Personel</h1>
-                <a href="/register" className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-colors">Registrasi Baru</a>
+                <button onClick={() => setIsRegisterOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-colors">Registrasi Baru</button>
               </div>
 
               <div className="bg-white p-6 rounded-xl shadow-md">
@@ -144,7 +267,7 @@ const PersonelPage: React.FC = () => {
                     </thead>
                     <tbody>
                       {loading ? (
-                        [...Array(limit)].map((_, i) => (
+                        [...Array(10)].map((_, i) => (
                           <tr key={i} className="border-b border-gray-200 animate-pulse">
                             <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-3/4"></div></td>
                             <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-full"></div></td>
@@ -154,7 +277,7 @@ const PersonelPage: React.FC = () => {
                           </tr>
                         ))
                       ) : (
-                        items.map(p => (
+                        items.map((p: Person) => (
                           <tr key={p.id} className="border-b border-gray-200 hover:bg-gray-50">
                             <td className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">
                               {p.name}
@@ -238,6 +361,88 @@ const PersonelPage: React.FC = () => {
               <div className="sm:col-span-2 flex justify-end gap-3 pt-4 mt-2 border-t">
                 <button type="button" onClick={closeModal} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors">Batal</button>
                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-colors">Simpan Perubahan</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isRegisterOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
+          <div className="bg-white w-full max-w-3xl rounded-xl shadow-2xl p-6 m-4">
+            <h3 className="text-xl font-semibold mb-6 text-gray-800">Registrasi Personel Baru</h3>
+            {regError && <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{regError}</div>}
+            {regSuccess && <div className="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">{regSuccess}</div>}
+            <form onSubmit={submitRegistration} className="space-y-8">
+              <div>
+                <h4 className="text-base font-semibold text-gray-900 mb-3">Informasi Personel</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                    <input required value={regForm.name} onChange={e=>setRegForm({ ...regForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">NIP</label>
+                    <input value={regForm.nip} onChange={e=>setRegForm({ ...regForm, nip: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Position</label>
+                    <input value={regForm.position} onChange={e=>setRegForm({ ...regForm, position: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                    <input value={regForm.phone} onChange={e=>setRegForm({ ...regForm, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-base font-semibold text-gray-900 mb-3">Akun & Akses</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input required type="email" value={regForm.email} onChange={e=>setRegForm({ ...regForm, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                    <div className="relative">
+                      <input required type={showPass ? 'text' : 'password'} value={regForm.password} onChange={e=>setRegForm({ ...regForm, password: e.target.value })} className="w-full px-3 py-2 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <button type="button" onClick={()=>setShowPass(s=>!s)} className="absolute inset-y-0 right-0 px-3 text-sm text-gray-600 hover:text-gray-800">{showPass ? 'Hide' : 'Show'}</button>
+                    </div>
+                    <div className="mt-2">
+                      <div className="w-full h-2 bg-gray-200 rounded">
+                        <div className={`h-2 ${pwStrength.color} rounded`} style={{ width: `${(pwStrength.score+1)*20}%` }} />
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">Strength: {pwStrength.label}.</div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                    <select value={(regForm as any).role || ''} onChange={e=>setRegForm({ ...regForm, role: e.target.value as any })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="">Pilih Role</option>
+                      <option value="admin">Admin</option>
+                      <option value="calibrator">Calibrator</option>
+                      <option value="verifikator">Verifikator</option>
+                      <option value="assignor">Assignor</option>
+                      <option value="user_station">User Station</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Station (opsional)</label>
+                    <select value={(regForm as any).station_id || ''} onChange={e=>setRegForm({ ...regForm, station_id: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="">Tidak ada</option>
+                      {stations.map(s => (
+                        <option key={s.id} value={String(s.id)}>{s.name} ({s.station_id})</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">Khusus role user_station, pilih stasiun yang terkait.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={()=>setIsRegisterOpen(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors">Batal</button>
+                <button type="submit" disabled={regLoading} className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-colors disabled:opacity-50">{regLoading ? 'Registering...' : 'Register'}</button>
               </div>
             </form>
           </div>

@@ -514,11 +514,34 @@ const CertificatesCRUD: React.FC = () => {
     });
   }, [form.instrument, instruments]);
 
-  // Pagination calculations
+  // Pagination + personalization: only show certificates assigned to the current user
+  const isUserAssigned = (item: Certificate) => {
+    const uid = user?.id ? String(user.id) : null
+    if (!uid) return false
+    const directFields = [
+      (item as any).authorized_by,
+      (item as any).verifikator_1,
+      (item as any).verifikator_2,
+    ]
+    if (directFields.some(f => (f !== undefined && f !== null) && String(f) === uid)) return true
+
+    // Support multiple possible creator field names coming from API/DB
+    const creatorFieldCandidates = [
+      'created_by', 'creator_id', 'creator', 'createdBy', 'user_id', 'owner', 'owner_id', 'sent_by', 'assignor'
+    ] as const
+    for (const key of creatorFieldCandidates) {
+      const val = (item as any)[key]
+      if (val !== undefined && val !== null && String(val) === uid) return true
+    }
+    return false
+  }
+
+  const allowedCertificates = certificates.filter(isUserAssigned)
+
   const indexOfLastItem = currentPage * itemsPerPage
   const indexOfFirstItem = indexOfLastItem - itemsPerPage
-  const currentCertificates = certificates.slice(indexOfFirstItem, indexOfLastItem)
-  const totalPages = Math.ceil(certificates.length / itemsPerPage)
+  const currentCertificates = allowedCertificates.slice(indexOfFirstItem, indexOfLastItem)
+  const totalPages = Math.ceil(allowedCertificates.length / itemsPerPage)
 
   const openModal = (item?: Certificate) => {
     if (item) {
@@ -631,7 +654,12 @@ const CertificatesCRUD: React.FC = () => {
     setSubmitDisabled(true)
     
     try {
-      const payload = { ...form, results }
+      const payload: any = { ...form, results }
+      // Ensure creator is tracked so the creator can see their own certificates
+      if (user?.id) {
+        if (payload.sent_by == null) payload.sent_by = String(user.id)
+        if (payload.created_by == null) payload.created_by = String(user.id)
+      }
       
       // Update instrument name if instrument is selected
       if (form.instrument) {

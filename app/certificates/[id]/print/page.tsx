@@ -174,8 +174,8 @@ const PrintCertificatePage: React.FC = () => {
     return JSON.stringify(qrData)
   }, [cert, instrument, station, authorized, verifikator1, verifikator2])
 
-  // Total pages: 1 (cover) + N (per sensor) + 1 (closing page)
-  const totalPrintedPages = useMemo(() => (results?.length ?? 0) + 2, [results])
+  // Total pages: 1 (cover) + max(1, N per sensor). No separate closing page.
+  const totalPrintedPages = useMemo(() => 1 + Math.max(1, results?.length ?? 0), [results])
 
   useEffect(() => {
     const id = Number(params.id)
@@ -563,6 +563,9 @@ const PrintCertificatePage: React.FC = () => {
             </div>
           </header>
           <div className="text-xs text-center text-gray-600">Tidak ada data hasil kalibrasi</div>
+          <p className="text-center font-bold text-sm mt-8">
+            --- Akhir dari Sertifikat / <span className="italic">End of Certificate</span> ---
+          </p>
         </div>
       ) : (
         results.map((res: any, idx: number) => (
@@ -652,24 +655,34 @@ const PrintCertificatePage: React.FC = () => {
                                 </td>
                               </tr>
                             ))}
-                            {/* Environment title row */}
-                            {(envRows.length > 0) && (
+                            {/* Environment as parameter-as-header table */}
+                            {envRows.length > 0 && (
                               <tr>
                                 <td className="w-[45%]" />
                                 <td className="w-[5%]" />
-                                <td className="align-top text-sm font-bold" colSpan={2}>Kondisi Lingkungan / <span className="italic">Environment</span></td>
+                                <td className="align-top" colSpan={2}>
+                                  <div className="text-sm font-bold mb-1">Kondisi Kalibrasi / <span className="italic">Calibration Conditions</span></div>
+                                  <table className="w-full text-[10px] border-[2px] border-black border-collapse text-center">
+                                    <thead>
+                                      <tr className="font-bold">
+                                        {envRows.map((er, idx) => (
+                                          <td key={idx} className="p-1 border border-black text-left">
+                                            {er.label}<span className="italic">{er.labelEng}</span>
+                                          </td>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      <tr>
+                                        {envRows.map((er, idx) => (
+                                          <td key={idx} className="p-1 border border-black text-left">{er.value}</td>
+                                        ))}
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                </td>
                               </tr>
                             )}
-                            {envRows.map((row: { label: string; labelEng: string; value: React.ReactNode }, i: number) => (
-                              <tr key={`env-${i}`}>
-                                <td className="w-[45%]" />
-                                <td className="w-[5%]" />
-                                <td className="align-top font-semibold">
-                                  {row.label}<span className="italic">{row.labelEng}</span>
-                                </td>
-                                <td className="align-top">: {row.value}</td>
-                              </tr>
-                            ))}
                           </tbody>
                         </table>
                       )
@@ -682,16 +695,18 @@ const PrintCertificatePage: React.FC = () => {
                       <h3 className="text-sm font-bold text-center">HASIL KALIBRASI / <span className="italic">CALIBRATION RESULT</span></h3>
                       {res.table.map((sec: any, sIdx: number) => {
                         const rows = Array.isArray(sec?.rows) ? sec.rows : []
-                        const useFourCol = rows.length >= 4 && rows.slice(0,4).every((r: any) => r && 'key' in r && 'unit' in r && 'value' in r)
+                        // Parameter-as-header mode: setiap key jadi header kolom, baris berikutnya adalah value
+                        const paramHeaderMode = rows.length > 0 && rows.every((r: any) => r && ('key' in r) && ('value' in r))
                         return (
                           <div key={sIdx} className="mt-3 avoid-break">
                             <div className="text-xs font-bold mb-1">{sec?.title || `Tabel ${sIdx + 1}`}</div>
-                            {useFourCol ? (
+                            {paramHeaderMode ? (
                               <table className="w-full text-[10px] border-[2px] border-black border-collapse text-center">
                                 <thead>
                                   <tr className="font-bold">
-                                    {rows.slice(0,4).map((r: any, i: number) => {
-                                      const label = `${r?.key || '-'}` + (r?.unit ? ` ${r.unit}` : '')
+                                    {rows.map((r: any, i: number) => {
+                                      const unit = r?.unit ?? r?.satuan
+                                      const label = `${r?.key || '-'}` + (unit ? ` ${unit}` : '')
                                       return (
                                         <td key={i} className="p-1 border border-black">{label}</td>
                                       )
@@ -700,33 +715,13 @@ const PrintCertificatePage: React.FC = () => {
                                 </thead>
                                 <tbody>
                                   <tr>
-                                    {rows.slice(0,4).map((r: any, i: number) => (
-                                      <td key={i} className="p-1 border border-black">{r?.value || '-'}</td>
+                                    {rows.map((r: any, i: number) => (
+                                      <td key={i} className="p-1 border border-black">{r?.value ?? '-'}</td>
                                     ))}
                                   </tr>
                                 </tbody>
                               </table>
-                            ) : (
-                              <table className="w-full text-[10px] border-[2px] border-black text-center border-collapse">
-                                <thead>
-                                  <tr className="font-bold">
-                                    <td className="p-1 border border-black">Parameter</td>
-                                    <td className="p-1 border border-black">Nilai</td>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {rows.map((row: any, rIdx: number) => {
-                                    const label = `${row?.key || '-'}` + (row?.unit ? ` ${row.unit}` : '')
-                                    return (
-                                      <tr key={rIdx}>
-                                        <td className="p-1 border border-black text-left">{label}</td>
-                                        <td className="p-1 border border-black text-left">{row?.value || '-'}</td>
-                                      </tr>
-                                    )
-                                  })}
-                                </tbody>
-                              </table>
-                            )}
+                            ) : null}
                           </div>
                         )
                       })}
@@ -822,9 +817,38 @@ const PrintCertificatePage: React.FC = () => {
                             <div className="text-[10px] italic text-gray-700 m-0">Uncertainty of measurement is expressed at a confidence level of no less than 95 % with coverage factor k = 2.01</div>
                           </div>
                         </div>
+                        {/* Verifikasi/Validasi di akhir catatan */}
+                        <div className="mt-2">
+                          <table className="w-full text-xs">
+                            <tbody>
+                              <tr>
+                                <td className="w-[35%] align-top text-left pr-2 py-0">
+                                  <div className="font-bold leading-tight">Diverifikasi Oleh</div>
+                                  <div className="italic text-[10px] text-gray-700 leading-tight">Verified by</div>
+                                </td>
+                                <td className="w-[5%] align-top py-0">:</td>
+                                <td className="w-[60%] align-top whitespace-pre-line py-0">{verifikator1?.name || '-'}</td>
+                              </tr>
+                              <tr>
+                                <td className="align-top text-left pr-2 py-0">
+                                  <div className="font-bold leading-tight">Divalidasi Oleh</div>
+                                  <div className="italic text-[10px] text-gray-700 leading-tight">Validated by</div>
+                                </td>
+                                <td className="align-top py-0">:</td>
+                                <td className="align-top whitespace-pre-line py-0">{verifikator2?.name || '-'}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     )
                   })()}
+                  {/* End of Certificate on the last sensor page (always show on last page) */}
+                  {idx === results.length - 1 && (
+                    <p className="text-center font-bold text-sm mt-8">
+                      --- Akhir dari Sertifikat / <span className="italic">End of Certificate</span> ---
+                    </p>
+                  )}
 
               </section>
             </div>
@@ -832,95 +856,7 @@ const PrintCertificatePage: React.FC = () => {
         ))
       )}
 
-      {/* --- HALAMAN 3 --- */}
-      <div className="page-container bg-white shadow-lg my-4 print:shadow-none print:my-0">
-        {/* Header Halaman 3 */}
-        <header className="flex justify-between items-start text-xs mb-4">
-          <div className="w-[80px]">
-            <Image src={bmkgLogo} alt="BMKG" width={80} height={80} priority />
-          </div>
-          <div className="flex-1 flex justify-end items-start">
-            <table className="text-xs table-fixed ml-auto mr-0">
-              <tbody>
-                <tr>
-                  <td className="w-[55%] text-right font-bold leading-tight">
-                    <div>No. Sertifikat</div>
-                    <div className="italic font-normal">Certificate Number</div>
-                  </td>
-                  <td className="w-[5%] px-1">:</td>
-                  <td className="w-[40%]">{cert.no_certificate}</td>
-                </tr>
-                <tr>
-                  <td className="text-right font-bold leading-tight">
-                    <div>No. Order</div>
-                    <div className="italic font-normal">Order Number</div>
-                  </td>
-                  <td className="px-1">:</td>
-                  <td>{cert.no_order}</td>
-                </tr>
-                <tr>
-                  <td className="text-right font-bold leading-tight">
-                    <div>Halaman</div>
-                    <div className="italic font-normal">Page</div>
-                  </td>
-                  <td className="px-1">:</td>
-                  <td>{totalPrintedPages} dari {totalPrintedPages}</td>
-                </tr>
-              </tbody>
-            </table>
-            {/* QR di header dihilangkan sesuai permintaan */}
-          </div>
-        </header>
-
-        {/* Tidak ada gambar kalibrasi statis. Gambar hanya ditampilkan per sensor jika stasiun Geofisika. */}
-
-        {/* Catatan */}
-        <div className="mt-6">
-          <h3 className="text-sm font-bold">Catatan / <span className="italic">Notes:</span></h3>
-          <table className="w-full text-xs mt-2">
-            <tbody>
-              <tr>
-                <td className="w-[30%] align-top"><PdfLabel indo="Kalibrator" eng="Calibrator" /></td>
-                <td className="w-[5%] align-top">:</td>
-                <td className="w-[65%] align-top whitespace-pre-line">{resultData?.notesForm.standardInstruments.join('\n') || '1. Digital Inclinometer / Shenzen TOMTOP Technology\n2. Tilt Table Analog'}</td>
-              </tr>
-              <tr>
-                <td className="align-top pt-2"><PdfLabel indo="Tertelusur Ke SI melalui" eng="Traceable to SI through" /></td>
-                <td className="align-top pt-2">:</td>
-                <td className="align-top pt-2">{resultData?.notesForm.traceable_to_si_through || 'Laboratorium Kalibrasi BMKG'}</td>
-              </tr>
-              <tr>
-                <td className="align-top pt-2"><PdfLabel indo="Metode Kalibrasi" eng="Calibration Standard" /></td>
-                <td className="align-top pt-2">:</td>
-                <td className="align-top pt-2 whitespace-pre-line">{resultData?.notesForm.calibration_methode || 'Tilting, yaitu dengan memiringkan Unit Under Test (UUT)...'}</td>
-              </tr>
-              <tr>
-                <td className="align-top pt-2"><PdfLabel indo="Dokumen Acuan" eng="Reference Document" /></td>
-                <td className="align-top pt-2">:</td>
-                <td className="align-top pt-2">{resultData?.notesForm.reference_document || 'Titan User Guide April 17, 2025'}</td>
-              </tr>
-              <tr className="text-[10px] text-gray-700">
-                <td colSpan={3} className="pt-4">
-                  Sertifikat ini hanya berlaku untuk peralatan dengan identitas yang dinyatakan di atas / <span className="italic">This certificate only applies to equipment with the identity stated above.</span>
-                </td>
-              </tr>
-              <tr>
-                <td className="align-top pt-4"><PdfLabel indo="Diverifikasi oleh" eng="Verified by" /></td>
-                <td className="align-top pt-4">:</td>
-                <td className="align-top pt-4 font-semibold">
-                  1. {verifikator1?.name || '-'}<br/>
-                  2. {verifikator2?.name || '-'}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          
-          <p className="text-center font-bold text-sm mt-8">
-            --- Akhir dari Sertifikat / <span className="italic">End of Certificate</span> ---
-          </p>
-        </div>
-        
-      </div>
+      
     </div>
   )
 }

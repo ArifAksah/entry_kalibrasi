@@ -34,6 +34,17 @@ export const useCertificates = () => {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to add certificate')
+      try {
+        // Ensure creator fields exist locally so creator can see their own certificate immediately
+        const { data: userData } = await supabase.auth.getUser()
+        const uid = userData?.user?.id
+        if (uid) {
+          if (data && typeof data === 'object') {
+            if (data.created_by == null) (data as any).created_by = uid
+            if (data.sent_by == null) (data as any).sent_by = uid
+          }
+        }
+      } catch {}
       setCertificates(prev => [data, ...prev])
       setError(null)
     } catch (e) {

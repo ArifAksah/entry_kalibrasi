@@ -5,11 +5,14 @@ import { useInstruments } from '../../../hooks/useInstruments'
 import { Instrument, InstrumentInsert, Station } from '../../../lib/supabase'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useStations } from '../../../hooks/useStations'
+import Alert from '../../../components/ui/Alert'
+import { useAlert } from '../../../hooks/useAlert'
 
 const InstrumentsCRUD: React.FC = () => {
   const { instruments, loading, error, addInstrument, updateInstrument, deleteInstrument, fetchInstruments } = useInstruments()
   const { stations, loading: stationsLoading } = useStations()
   const { can, canEndpoint } = usePermissions()
+  const { alert, showSuccess, showError, hideAlert } = useAlert()
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editing, setEditing] = useState<Instrument | null>(null)
@@ -204,6 +207,7 @@ const InstrumentsCRUD: React.FC = () => {
     try {
       if (editing) {
         await updateInstrument(editing.id, form)
+        showSuccess('Instrument updated successfully')
         
         // Handle sensor data for multi-sensor instruments
         if (form.memiliki_lebih_satu && editing.id) {
@@ -237,6 +241,7 @@ const InstrumentsCRUD: React.FC = () => {
         }
       } else {
         const newInstrument = await addInstrument(form)
+        showSuccess('Instrument created successfully')
         
         // Handle sensor data for new multi-sensor instruments
         if (form.memiliki_lebih_satu && newInstrument && sensorForms.length > 0) {
@@ -251,7 +256,8 @@ const InstrumentsCRUD: React.FC = () => {
       }
       closeModal()
     } catch (e) {
-      // handled in hook
+      const msg = e instanceof Error ? e.message : 'Failed to save instrument'
+      showError(msg)
     } finally {
       setIsSubmitting(false)
     }
@@ -259,7 +265,13 @@ const InstrumentsCRUD: React.FC = () => {
 
   const handleDelete = async (id: number) => {
     if (!confirm('Are you sure you want to delete this instrument?')) return
-    try { await deleteInstrument(id) } catch {}
+    try { 
+      await deleteInstrument(id)
+      showSuccess('Instrument deleted successfully')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to delete instrument'
+      showError(msg)
+    }
   }
 
   if (loading) {
@@ -272,6 +284,15 @@ const InstrumentsCRUD: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {alert.show && (
+        <Alert 
+          type={alert.type}
+          message={alert.message}
+          onClose={hideAlert}
+          autoHide={alert.autoHide}
+          duration={alert.duration}
+        />
+      )}
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Instruments</h2>
         <div className="flex items-center gap-3">

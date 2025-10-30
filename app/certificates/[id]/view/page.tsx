@@ -449,73 +449,107 @@ const ViewCertificatePage: React.FC = () => {
                             <tr>
                               <td />
                               <td />
-                              <td className="text-sm font-bold" colSpan={2}>Kondisi Lingkungan / <span className="italic">Environment</span></td>
+                              <td className="align-top" colSpan={2}>
+                                <div className="text-sm font-bold mb-1">Kondisi Kalibrasi / <span className="italic">Calibration Conditions</span></div>
+                                <table className="w-full text-xs border-[2px] border-black border-collapse text-center">
+                                  <thead>
+                                    <tr className="font-bold">
+                                      {envRows.map((er, idx) => (
+                                        <td key={idx} className="p-1 border border-black text-left">
+                                          {er.label}<span className="italic">{er.labelEng}</span>
+                                        </td>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    <tr>
+                                      {envRows.map((er, idx) => (
+                                        <td key={idx} className="p-1 border border-black text-left">{er.value}</td>
+                                      ))}
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </td>
                             </tr>
                           )}
-                          {envRows.map((row, i) => (
-                            <tr key={`env-${i}`}>
-                              <td />
-                              <td />
-                              <td className="align-top font-semibold">{row.label}<span className="italic">{row.labelEng}</span></td>
-                              <td className="align-top">: {row.value}</td>
-                            </tr>
-                          ))}
                         </tbody>
                       </table>
                     )
                   })()}
 
-                  {/* Calibration Result Tables (units appended) */}
+                  {/* Calibration Result Tables - render as Measurement Table when possible */}
                   {Array.isArray(res?.table) && res.table.length > 0 && (
                     <div className="mt-6 space-y-3">
                       <h5 className="text-sm font-bold text-center">HASIL KALIBRASI / <span className="italic">CALIBRATION RESULT</span></h5>
                       {res.table.map((sec: any, sIdx: number) => {
                         const rows = Array.isArray(sec?.rows) ? sec.rows : []
-                        const useFourCol = rows.length >= 4 && rows.slice(0,4).every((r: any) => r && 'key' in r && 'unit' in r && 'value' in r)
+                        // Detect measurement-style rows (support either camelCase or snake_case keys)
+                        const isMeasurement = rows.length > 0 && rows.every((r: any) => (
+                          r && (
+                            ('reading' in r || 'penunjukan' in r) &&
+                            ('standard' in r || 'standar' in r) &&
+                            ('correction' in r || 'koreksi' in r) &&
+                            ('corrected' in r || 'terkoreksi' in r || 'corrected_value' in r)
+                          )
+                        ))
+                        // Generic key/value rows: render each parameter as a column header
+                        const isParamHeaderStyle = !isMeasurement && rows.length > 0 && rows.every((r: any) => r && ('key' in r) && ('value' in r))
                         return (
                           <div key={sIdx} className="mt-2">
                             <div className="text-xs font-bold mb-1">{sec?.title || `Tabel ${sIdx + 1}`}</div>
-                            {useFourCol ? (
+                            {isMeasurement ? (
                               <table className="w-full text-xs border-[2px] border-black border-collapse text-center">
                                 <thead>
                                   <tr className="font-bold">
-                                    {rows.slice(0,4).map((r: any, i: number) => {
-                                      const label = `${r?.key || '-'}` + (r?.unit ? ` ${r.unit}` : '')
-                                      return (
-                                        <td key={i} className="p-1 border border-black">{label}</td>
-                                      )
-                                    })}
+                                    <td className="p-1 border border-black">No</td>
+                                    <td className="p-1 border border-black">Penunjukan Alat</td>
+                                    <td className="p-1 border border-black">Nilai Standar</td>
+                                    <td className="p-1 border border-black">Koreksi</td>
+                                    <td className="p-1 border border-black">Nilai Terkoreksi</td>
+                                    <td className="p-1 border border-black">Satuan</td>
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  <tr>
-                                    {rows.slice(0,4).map((r: any, i: number) => (
-                                      <td key={i} className="p-1 border border-black text-left">{r?.value || '-'}</td>
-                                    ))}
-                                  </tr>
-                                </tbody>
-                              </table>
-                            ) : (
-                              <table className="w-full text-xs border-[2px] border-black text-center border-collapse">
-                                <thead>
-                                  <tr className="font-bold">
-                                    <td className="p-1 border border-black">Parameter</td>
-                                    <td className="p-1 border border-black">Nilai</td>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {rows.map((row: any, rIdx: number) => {
-                                    const label = `${row?.key || '-'}` + (row?.unit ? ` ${row.unit}` : '')
+                                  {rows.map((r: any, i: number) => {
+                                    const no = r.no ?? (i + 1)
+                                    const reading = r.reading ?? r.penunjukan ?? '-'
+                                    const standard = r.standard ?? r.standar ?? '-'
+                                    const correction = r.correction ?? r.koreksi ?? '-'
+                                    const corrected = r.corrected ?? r.terkoreksi ?? r.corrected_value ?? '-'
+                                    const unit = r.unit ?? r.satuan ?? ''
                                     return (
-                                      <tr key={rIdx}>
-                                        <td className="p-1 border border-black text-left">{label}</td>
-                                        <td className="p-1 border border-black text-left">{row?.value || '-'}</td>
+                                      <tr key={i}>
+                                        <td className="p-1 border border-black">{no}</td>
+                                        <td className="p-1 border border-black text-left">{reading}</td>
+                                        <td className="p-1 border border-black text-left">{standard}</td>
+                                        <td className="p-1 border border-black text-left">{correction}</td>
+                                        <td className="p-1 border border-black text-left">{corrected}</td>
+                                        <td className="p-1 border border-black text-left">{unit}</td>
                                       </tr>
                                     )
                                   })}
                                 </tbody>
                               </table>
-                            )}
+                            ) : isParamHeaderStyle ? (
+                              <table className="w-full text-xs border-[2px] border-black border-collapse text-center">
+                                <thead>
+                                  <tr className="font-bold">
+                                    {rows.map((r: any, i: number) => {
+                                      const unit = r?.unit ?? r?.satuan
+                                      const label = `${r?.key || '-'}` + (unit ? ` ${unit}` : '')
+                                      return <td key={i} className="p-1 border border-black">{label}</td>
+                                    })}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  <tr>
+                                    {rows.map((r: any, i: number) => (
+                                      <td key={i} className="p-1 border border-black text-left">{r?.value ?? '-'}</td>
+                                    ))}
+                                  </tr>
+                                </tbody>
+                              </table>
+                            ) : null}
                           </div>
                         )
                       })}
