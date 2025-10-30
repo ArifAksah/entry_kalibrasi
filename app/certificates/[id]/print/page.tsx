@@ -268,13 +268,14 @@ const PrintCertificatePage: React.FC = () => {
     
     .page-container {
       width: 210mm;
-      min-height: 296mm; /* Sedikit lebih kecil dari 297mm untuk menghindari overflow */
+      /* Jangan pakai min-height tetap agar tidak melebihi tinggi A4 saat ditambah padding */
+      min-height: auto;
       padding: 20mm; /* Padding standar dokumen */
       padding-bottom: 40mm; /* Ruang untuk footer static */
       margin: 0 auto;
       box-sizing: border-box;
       position: relative;
-      page-break-after: always;
+      /* Jangan paksa page break di semua container; kita atur manual di elemen tertentu */
     }
     
     /* Footer khusus untuk halaman 1 saja */
@@ -287,9 +288,7 @@ const PrintCertificatePage: React.FC = () => {
     }
     
     
-    .page-container:last-child {
-      page-break-after: avoid;
-    }
+    /* Hapus aturan last-child; break diatur manual dengan kelas */
     
     @page {
       size: A4;
@@ -308,9 +307,16 @@ const PrintCertificatePage: React.FC = () => {
       .page-container {
         margin: 0;
         padding: 20mm; /* Pastikan padding sama */
-        padding-bottom: 40mm; /* Ruang untuk footer static */
+        padding-bottom: 20mm; /* Kurangi padding bawah untuk menghindari overflow yang memicu halaman kosong */
         border: none !important;
         box-shadow: none !important;
+        page-break-after: auto; /* Jangan paksa break di akhir container */
+        break-after: auto;
+      }
+      /* Hindari page break setelah container terakhir */
+      .page-container:last-of-type {
+        page-break-after: avoid;
+        break-after: avoid;
       }
       
       /* Footer halaman 1 tetap static di mode print */
@@ -389,7 +395,7 @@ const PrintCertificatePage: React.FC = () => {
       </div>
       
       {/* --- HALAMAN 1 --- */}
-      <div className="page-container bg-white shadow-lg my-4 print:shadow-none print:my-0 relative">
+      <div className="page-container break-after-page bg-white shadow-lg my-4 print:shadow-none print:my-0 relative">
         {/* Watermark Logo BMKG */}
         <div 
           className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 watermark"
@@ -591,7 +597,7 @@ const PrintCertificatePage: React.FC = () => {
         </div>
       ) : (
         results.map((res: any, idx: number) => (
-          <div key={idx} className="page-container bg-white shadow-lg my-4 print:shadow-none print:my-0">
+          <div key={idx} className={`page-container bg-white shadow-lg my-4 print:shadow-none print:my-0 ${idx !== results.length - 1 ? 'break-after-page' : ''}`}>
             <table className="repeatable-page-table">
               <thead className="print-repeat-header">
                 <tr>
