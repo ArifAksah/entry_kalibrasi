@@ -149,18 +149,19 @@ const StationsCRUD: React.FC = () => {
   }, [search])
 
   useEffect(() => {
-    // server-side fetch on debounced search/page change
-    const run = async () => {
-      const payload = await fetchStations({ q: debouncedSearch, page: currentPage, pageSize })
-      const isArray = Array.isArray(payload)
-      setServerTotal(isArray ? (stations?.length || 0) : (payload?.total ?? 0))
-      setServerTotalPages(isArray ? 1 : (payload?.totalPages ?? 1))
+    const total = filteredStations.length
+    setServerTotal(total)
+    setServerTotalPages(Math.max(1, Math.ceil(total / pageSize)))
+    if (currentPage > Math.ceil(total / pageSize)) {
+      setCurrentPage(1)
     }
-    run()
-  }, [debouncedSearch, currentPage])
+  }, [filteredStations])
 
-  const totalPages = serverTotalPages
-  const pagedStations = stations // server already returns paginated slice
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(filteredStations.length / pageSize)), [filteredStations])
+  const pagedStations = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return filteredStations.slice(start, start + pageSize)
+  }, [filteredStations, currentPage])
 
   const openModal = (item?: Station) => {
     if (item) {
@@ -417,17 +418,19 @@ const StationsCRUD: React.FC = () => {
       )}
 
       <Card>
-        <Table headers={[ 'Station ID', 'Name', 'Type', 'Address', 'Region', 'Province', 'Created By', 'Actions' ]}>
+        <Table
+          headers={[ 'Station ID', 'Name', 'Type', 'Region', 'Province', 'Actions' ]}
+          columnClasses={[ 'w-28', 'w-48', 'w-28', 'w-40', 'w-40', 'w-28' ]}
+          tableClassName="min-w-full table-fixed divide-y divide-gray-200"
+        >
           {pagedStations.map((item) => (
             <tr key={item.id} className="hover:bg-gray-50">
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.station_id}</td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.name}</td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{(item as any).type || '-'}</td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-xs truncate">{item.address}</td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.region}</td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.province}</td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{personelMap[item.created_by] || 'Unknown'}</td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+              <td className="px-6 py-4 text-sm text-gray-900 truncate">{item.station_id}</td>
+              <td className="px-6 py-4 text-sm text-gray-900 truncate">{item.name}</td>
+              <td className="px-6 py-4 text-sm text-gray-900 truncate">{(item as any).type || '-'}</td>
+              <td className="px-6 py-4 text-sm text-gray-900 truncate">{item.region}</td>
+              <td className="px-6 py-4 text-sm text-gray-900 truncate">{item.province}</td>
+              <td className="px-6 py-4 text-sm font-medium space-x-2">
         {can('station','update') && canEndpoint('PUT', `/api/stations/${item.id}`) && (
                   <button onClick={() => openModal(item)} className="text-blue-600 hover:text-blue-900">Edit</button>
                 )}
