@@ -588,7 +588,7 @@ const InstrumentsCRUD: React.FC = () => {
                 {/* Sensor Information - Conditional */}
                 {form.memiliki_lebih_satu && (
                   <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200">
-                    <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center justify-between mb-6 sticky top-0 z-20 bg-gradient-to-r from-blue-50 to-indigo-50 -mx-6 px-6 py-3 border-b border-blue-200 shadow-sm">
                       <div className="flex items-center">
                         <div className="bg-blue-100 rounded-full p-2 mr-3">
                           <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
