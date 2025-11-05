@@ -7,6 +7,8 @@ import { usePermissions } from '../../../hooks/usePermissions'
 import { useStations } from '../../../hooks/useStations'
 import Alert from '../../../components/ui/Alert'
 import { useAlert } from '../../../hooks/useAlert'
+import Loading from '../../../components/ui/Loading'
+import Breadcrumb from '../../../components/ui/Breadcrumb'
 
 const InstrumentsCRUD: React.FC = () => {
   const { instruments, loading, error, addInstrument, updateInstrument, deleteInstrument, fetchInstruments } = useInstruments()
@@ -276,14 +278,15 @@ const InstrumentsCRUD: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
+      <Loading />
     )
   }
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <Breadcrumb items={[{ label: 'Instruments', href: '#' }, { label: 'Manager' }]} />
+      </div>
       {alert.show && (
         <Alert 
           type={alert.type}

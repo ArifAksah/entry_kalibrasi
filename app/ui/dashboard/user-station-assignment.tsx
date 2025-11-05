@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
+import Breadcrumb from '../../../components/ui/Breadcrumb'
 
 type Person = { 
   id: string
@@ -227,7 +228,10 @@ const UserStationAssignment: React.FC = () => {
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-      <div className="p-6">
+      <div className="p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <Breadcrumb items={[{ label: 'Users', href: '#' }, { label: 'Station Assignment' }]} />
+        </div>
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-sm text-red-600">{error}</p>

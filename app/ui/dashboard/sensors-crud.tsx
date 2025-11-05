@@ -7,6 +7,7 @@ import { Sensor, SensorInsert } from '../../../lib/supabase'
 import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
+import Loading from '../../../components/ui/Loading'
 
 // SVG Icons untuk tampilan yang lebih elegan
 const EditIcon = ({ className = "" }) => (
@@ -209,11 +210,7 @@ const SensorsCRUD: React.FC = () => {
   }
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1e377c]"></div>
-      </div>
-    )
+    return <Loading />
   }
 
   return (

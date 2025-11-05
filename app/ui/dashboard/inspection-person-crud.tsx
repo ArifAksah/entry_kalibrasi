@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react'
 import { useInspectionPerson } from '../../../hooks/useInspectionPerson'
 import { InspectionPerson, InspectionPersonInsert } from '../../../lib/supabase'
+import Breadcrumb from '../../../components/ui/Breadcrumb'
 
 const InspectionPersonCRUD: React.FC = () => {
   const { items, loading, error, addItem, updateItem, deleteItem } = useInspectionPerson()
@@ -73,6 +74,9 @@ const InspectionPersonCRUD: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <Breadcrumb items={[{ label: 'Inspection', href: '#' }, { label: 'Person' }]} />
+      </div>
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Inspection Person</h2>
         <button onClick={() => openModal()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add New</button>

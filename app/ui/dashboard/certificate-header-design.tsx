@@ -3,6 +3,7 @@
 import React from 'react'
 import Image from 'next/image'
 import bmkgLogo from '../../bmkg.png'
+import Breadcrumb from '../../../components/ui/Breadcrumb'
 
 // Certificate Header Component dengan gaya dari gambar
 const CertificateHeaderDesign: React.FC<{
@@ -45,21 +46,11 @@ const CertificateHeaderDesign: React.FC<{
 
       {/* Breadcrumb Navigation */}
       <div className="bg-gray-50 border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <nav className="flex items-center space-x-2 py-3">
-            {breadcrumb.map((item, index) => (
-              <React.Fragment key={index}>
-                <span className={`text-sm ${index === breadcrumb.length - 1 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
-                  {item}
-                </span>
-                {index < breadcrumb.length - 1 && (
-                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                )}
-              </React.Fragment>
-            ))}
-          </nav>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+          <Breadcrumb 
+            items={breadcrumb.map((label) => ({ label }))}
+            size="sm"
+          />
         </div>
       </div>
 

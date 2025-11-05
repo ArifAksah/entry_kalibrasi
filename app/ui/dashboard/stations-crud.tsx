@@ -7,6 +7,7 @@ import { supabase } from '../../../lib/supabase'
 import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
+import Loading from '../../../components/ui/Loading'
 import { usePermissions } from '../../../hooks/usePermissions'
 
 // SVG Icons untuk tampilan yang lebih elegan

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { useInstrumentNames } from '../../../hooks/useInstrumentNames'
 import { InstrumentName, InstrumentNameInsert } from '../../../lib/supabase'
 import { useInstruments } from '../../../hooks/useInstruments'
+import Breadcrumb from '../../../components/ui/Breadcrumb'
 
 const InstrumentNamesCRUD: React.FC = () => {
   const {
@@ -79,6 +80,9 @@ const InstrumentNamesCRUD: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <Breadcrumb items={[{ label: 'Instruments', href: '#' }, { label: 'Names' }]} />
+      </div>
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Instrument Names</h2>
         <button
