@@ -23,7 +23,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { no_letter, instrument, owner, issue_date, inspection_result, authorized_by } = body
+    const { no_letter, instrument, owner, issue_date, inspection_result, authorized_by, approver_name, inspection_payload, verification } = body
 
     if (instrument) {
       const { data: inst, error: instErr } = await supabaseAdmin
@@ -63,7 +63,17 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabaseAdmin
       .from('letter')
-      .insert({ no_letter, instrument: instrument || null, owner: owner || null, issue_date: issue_date || null, inspection_result: inspection_result || null, authorized_by: authorized_by || null })
+      .insert({ 
+        no_letter, 
+        instrument: instrument || null, 
+        owner: owner || null, 
+        issue_date: issue_date || null, 
+        inspection_result: inspection_result || null, 
+        authorized_by: authorized_by || null,
+        approver_name: approver_name || null,
+        inspection_payload: inspection_payload || null,
+        verification: verification || null
+      })
       .select()
       .single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

@@ -177,6 +177,9 @@ export interface Letter {
   issue_date: string | null
   inspection_result: number | null
   authorized_by: string | null
+  approver_name?: string | null
+  inspection_payload?: any | null
+  verification?: any[] | null
 }
 
 export type LetterInsert = Omit<Letter, 'id' | 'created_at'>
