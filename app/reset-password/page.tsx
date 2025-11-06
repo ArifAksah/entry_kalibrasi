@@ -1,11 +1,11 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Alert from '../../components/ui/Alert'
 import { useAlert } from '../../hooks/useAlert'
 
-const ResetPasswordPage: React.FC = () => {
+const ResetPasswordContent: React.FC = () => {
   const router = useRouter()
   const params = useSearchParams()
   const { alert, showSuccess, showError, hideAlert } = useAlert()
@@ -98,6 +98,18 @@ const ResetPasswordPage: React.FC = () => {
         </form>
       </div>
     </div>
+  )
+}
+
+const ResetPasswordPage: React.FC = () => {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    }>
+      <ResetPasswordContent />
+    </Suspense>
   )
 }
 

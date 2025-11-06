@@ -65,7 +65,7 @@ const RejectionModal: React.FC<RejectionModalProps> = ({
       setRejectionOptions(data.options || [])
     } catch (error) {
       console.error('Error loading rejection options:', error)
-      showAlert('error', 'Gagal memuat opsi penolakan')
+      showAlert({ type: 'error', message: 'Gagal memuat opsi penolakan' })
     } finally {
       setLoadingOptions(false)
     }
@@ -82,7 +82,7 @@ const RejectionModal: React.FC<RejectionModalProps> = ({
     e.preventDefault()
     
     if (!rejectionReason.trim()) {
-      showAlert('error', 'Alasan penolakan harus diisi')
+      showAlert({ type: 'error', message: 'Alasan penolakan harus diisi' })
       return
     }
 
@@ -98,7 +98,7 @@ const RejectionModal: React.FC<RejectionModalProps> = ({
       onClose()
     } catch (error) {
       console.error('Error submitting rejection:', error)
-      showAlert('error', 'Gagal mengirim penolakan')
+      showAlert({ type: 'error', message: 'Gagal mengirim penolakan' })
     } finally {
       setLoading(false)
     }

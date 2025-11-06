@@ -9,7 +9,7 @@ import UserStationAssignment from '../ui/dashboard/user-station-assignment'
 
 const UserStationsPage: React.FC = () => {
   return (
-    <ProtectedRoute allowedRoles={['admin']}>
+    <ProtectedRoute>
       <div className="flex h-screen">
         <SideNav />
         <div className="flex-1 overflow-auto">

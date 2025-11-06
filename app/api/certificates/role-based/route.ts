@@ -40,7 +40,7 @@ async function authenticateUser(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const { user, error: authError } = await authenticateUser(request);
-    if (authError) return NextResponse.json({ error: authError }, { status: 401 });
+    if (authError || !user) return NextResponse.json({ error: authError || 'Authentication failed' }, { status: 401 });
 
     const userRole = await getUserRole(user.id);
     if (!userRole) return NextResponse.json({ error: 'User role not found' }, { status: 404 });
@@ -127,7 +127,7 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const { user, error: authError } = await authenticateUser(request);
-    if (authError) return NextResponse.json({ error: authError }, { status: 401 });
+    if (authError || !user) return NextResponse.json({ error: authError || 'Authentication failed' }, { status: 401 });
 
     const userRole = await getUserRole(user.id);
     if (!userRole) return NextResponse.json({ error: 'User role not found' }, { status: 404 });
@@ -165,7 +165,7 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const { user, error: authError } = await authenticateUser(request);
-    if (authError) return NextResponse.json({ error: authError }, { status: 401 });
+    if (authError || !user) return NextResponse.json({ error: authError || 'Authentication failed' }, { status: 401 });
 
     const userRole = await getUserRole(user.id);
     if (!userRole) return NextResponse.json({ error: 'User role not found' }, { status: 404 });

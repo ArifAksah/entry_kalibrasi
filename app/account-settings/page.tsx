@@ -119,13 +119,19 @@ const AccountSettingsPage: React.FC = () => {
     
     if (name.includes('.')) {
       const [parent, child] = name.split('.');
-      setFormData(prev => ({
-        ...prev,
-        [parent]: {
-          ...prev[parent as keyof typeof formData],
-          [child]: type === 'checkbox' ? checked : value
+      setFormData(prev => {
+        const parentValue = prev[parent as keyof typeof formData];
+        if (typeof parentValue === 'object' && parentValue !== null) {
+          return {
+            ...prev,
+            [parent]: {
+              ...parentValue,
+              [child]: type === 'checkbox' ? checked : value
+            }
+          };
         }
-      }));
+        return prev;
+      });
     } else {
       setFormData(prev => ({
         ...prev,

@@ -696,31 +696,24 @@ const PrintCertificatePage: React.FC = () => {
                               </td>
                             </tr>
                           ))}
-                          {/* Environment as parameter-as-header table */}
+                          {/* Environment as label-value lines (no table) */}
                           {envRows.length > 0 && (
                             <tr>
                               <td className="w-[45%]" />
                               <td className="w-[5%]" />
                               <td className="align-top" colSpan={2}>
-                                <div className="text-sm font-bold mb-1">Kondisi Kalibrasi / <span className="italic">Calibration Conditions</span></div>
-                                <table className="w-full text-[10px] border-[2px] border-black border-collapse text-center">
-                                  <thead>
-                                    <tr className="font-bold">
-                                      {envRows.map((er, idx) => (
-                                        <td key={idx} className="p-1 border border-black text-left">
-                                          {er.label}<span className="italic">{er.labelEng}</span>
-                                        </td>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    <tr>
-                                      {envRows.map((er, idx) => (
-                                        <td key={idx} className="p-1 border border-black text-left">{er.value}</td>
-                                      ))}
-                                    </tr>
-                                  </tbody>
-                                </table>
+                                <div className="text-sm font-bold mb-1">Kondisi Lingkungan / <span className="italic">Environment condition</span></div>
+                                <div className="space-y-1">
+                                  {envRows.map((er, idx) => (
+                                    <div key={idx} className="grid grid-cols-[45%_5%_1fr] text-[10px]">
+                                      <div className="font-semibold">
+                                        {er.label}<span className="italic">{er.labelEng}</span>
+                                      </div>
+                                      <div>:</div>
+                                      <div>{er.value}</div>
+                                    </div>
+                                  ))}
+                                </div>
                               </td>
                             </tr>
                           )}

@@ -9,14 +9,14 @@ const supabaseAdmin = createClient(
 
 // Type definitions
 interface CertificateData {
-  id: string;
-  certificate_number: string;
-  customer_name: string;
-  instrument_name: string;
+  id: number;
+  no_certificate: string;
+  no_order?: string;
+  no_identification?: string;
   verifikator_1: string;
   verifikator_2: string;
-  authorized_by: string; // Pastikan ini ada
-  version?: string;
+  authorized_by: string;
+  version?: number;
 }
 
 interface CertificateVerification {

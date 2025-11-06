@@ -25,7 +25,7 @@ const CertificateVerificationCRUD: React.FC = () => {
   const { sensors } = useSensors()
   const { user } = useAuth()
   const { can, canEndpoint } = usePermissions()
-  const { showError, showSuccess, showWarning, hideAlert } = useAlert()
+  const { alert, showError, showSuccess, showWarning, hideAlert } = useAlert()
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
@@ -88,9 +88,9 @@ const CertificateVerificationCRUD: React.FC = () => {
     const existingStatus = certificate.verification_status.user_verification_status
     setVerificationForm({
       status: existingStatus === 'approved' ? 'approved' : 'rejected',
-      notes: certificate.verification_status.user_verification_notes || '',
-      rejection_reason: certificate.verification_status.user_verification_rejection_reason || '',
-      approval_notes: certificate.verification_status.user_verification_approval_notes || ''
+      notes: '',
+      rejection_reason: '',
+      approval_notes: ''
     })
     setIsEditModalOpen(true)
   }
@@ -304,13 +304,13 @@ const CertificateVerificationCRUD: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Alert Component */}
-      {showError.show && (
+      {alert.show && (
         <Alert
-          type={showError.type}
-          message={showError.message}
+          type={alert.type}
+          message={alert.message}
           onClose={hideAlert}
-          autoHide={showError.autoHide}
-          duration={showError.duration}
+          autoHide={alert.autoHide}
+          duration={alert.duration}
         />
       )}
 

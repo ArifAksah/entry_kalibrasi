@@ -1113,13 +1113,13 @@ const DraftViewPage: React.FC = () => {
         throw new Error(errorData.error || 'Failed to send to verifiers')
       }
 
-      showAlert('success', 'Sertifikat berhasil dikirim ke verifikator!')
+      showAlert({ type: 'success', message: 'Sertifikat berhasil dikirim ke verifikator!' })
       
       // Redirect back to certificates page after successful send
       router.push('/certificates')
     } catch (error) {
       console.error('Error sending to verifiers:', error)
-      showAlert('error', error instanceof Error ? error.message : 'Gagal mengirim ke verifikator')
+      showAlert({ type: 'error', message: error instanceof Error ? error.message : 'Gagal mengirim ke verifikator' })
       throw error
     }
   }
@@ -1165,11 +1165,11 @@ const DraftViewPage: React.FC = () => {
         responseData = { success: true }
       }
 
-      showAlert('success', 'Sertifikat berhasil diperbarui!')
+      showAlert({ type: 'success', message: 'Sertifikat berhasil diperbarui!' })
       return responseData
     } catch (error) {
       console.error('Error updating certificate:', error)
-      showAlert('error', error instanceof Error ? error.message : 'Gagal memperbarui sertifikat')
+      showAlert({ type: 'error', message: error instanceof Error ? error.message : 'Gagal memperbarui sertifikat' })
       throw error
     }
   }
