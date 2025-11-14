@@ -41,6 +41,10 @@ const CertificateVerificationCRUD: React.FC = () => {
   })
 
   const [personel, setPersonel] = useState<Array<{ id: string; name: string }>>([])
+  const [isPassphraseModalOpen, setIsPassphraseModalOpen] = useState(false)
+  const [passphrase, setPassphrase] = useState('')
+  const [isSigning, setIsSigning] = useState(false)
+  const [passphraseError, setPassphraseError] = useState<string | null>(null)
 
   useEffect(() => {
     console.log('CertificateVerificationCRUD mounted, pendingCertificates:', pendingCertificates)
@@ -151,6 +155,14 @@ const CertificateVerificationCRUD: React.FC = () => {
       // Validate rejection reason if rejecting
       if (verificationForm.status === 'rejected' && !verificationForm.rejection_reason.trim()) {
         showError('Alasan penolakan harus diisi.')
+        return
+      }
+
+      if (verificationForm.status === 'approved' && verificationLevel === 3) {
+        setIsSubmitting(false)
+        setPassphrase('')
+        setPassphraseError(null)
+        setIsPassphraseModalOpen(true)
         return
       }
 
@@ -526,7 +538,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                     </div>
                     <div>
                       <span className="font-medium text-gray-700">Issue Date:</span>
-                      <p className="text-gray-900">{new Date(selectedCertificate.issue_date).toLocaleDateString()}</p>
+                      <p className="text-gray-900">{new Date(selectedCertificate.issue_date).toISOString().slice(0, 10)}</p>
                     </div>
                     <div>
                       <span className="font-medium text-gray-700">Station:</span>
@@ -828,6 +840,115 @@ const CertificateVerificationCRUD: React.FC = () => {
           verificationLevel={getVerificationLevel(selectedCertificate) === 'Verifikator 1' ? 1 : 2}
           certificateNumber={selectedCertificate.no_certificate}
         />
+      )}
+
+      {isPassphraseModalOpen && selectedCertificate && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-md bg-white rounded-lg shadow-xl">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Masukkan Passphrase TTE</h3>
+              <button
+                onClick={() => {
+                  setIsPassphraseModalOpen(false)
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Passphrase</label>
+                <input
+                  type="password"
+                  value={passphrase}
+                  onChange={(e) => {
+                    setPassphrase(e.target.value)
+                    setPassphraseError(null)
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Masukkan passphrase TTE Anda"
+                />
+                {passphraseError && (
+                  <p className="text-sm text-red-600 mt-2">{passphraseError}</p>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end space-x-3 p-6 border-t border-gray-200 bg-gray-50">
+              <button
+                type="button"
+                onClick={() => setIsPassphraseModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isSigning}
+                onClick={async () => {
+                  if (!selectedCertificate) return
+                  if (!passphrase.trim()) {
+                    setPassphraseError('Passphrase wajib diisi')
+                    return
+                  }
+                  try {
+                    setIsSigning(true)
+                    const { data: { session } } = await (await import('../../../lib/supabase')).supabase.auth.getSession()
+                    const token = session?.access_token
+                    if (!token) {
+                      showError('Not authenticated')
+                      setIsSigning(false)
+                      return
+                    }
+                    const res = await fetch('/api/certificate-verification/sign-level-3', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                      },
+                      body: JSON.stringify({
+                        documentId: String(selectedCertificate.id),
+                        userPassphrase: passphrase
+                      })
+                    })
+                    if (res.status === 401) {
+                      setPassphraseError('Passphrase salah. Coba lagi.')
+                      setIsSigning(false)
+                      return
+                    }
+                    const data = await res.json()
+                    if (!res.ok) {
+                      const msg = data?.error || 'Gagal menandatangani dokumen'
+                      showError(msg)
+                      setIsSigning(false)
+                      return
+                    }
+                    setIsPassphraseModalOpen(false)
+                    setPassphrase('')
+                    showSuccess('Dokumen berhasil ditandatangani!')
+                    // Set localStorage flag to notify other tabs/windows
+                    localStorage.setItem('certificate_signed', JSON.stringify({
+                      certificateId: selectedCertificate.id,
+                      timestamp: Date.now()
+                    }))
+                    setTimeout(() => {
+                      window.location.reload()
+                    }, 1500)
+                  } catch (err) {
+                    showError('Terjadi kesalahan saat mengirim passphrase')
+                  } finally {
+                    setIsSigning(false)
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50"
+              >
+                {isSigning ? 'Memproses...' : 'Setuju dan Tanda Tangan'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

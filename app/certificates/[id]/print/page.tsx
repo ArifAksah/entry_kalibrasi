@@ -1,9 +1,9 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
-import QRCode from 'react-qr-code'
+import QRCodeStyling from 'qr-code-styling'
 import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
 
 // --- TIPE DATA KOMPREHENSIF ---
@@ -77,36 +77,51 @@ const PdfLabel: React.FC<{ indo: string; eng: string; className?: string }> = ({
   </div>
 )
 
-// --- Komponen QR Code dengan Logo BMKG Kecil di Tengah ---
+// --- Komponen QR Code dengan styling (modules/finder) dan logo BMKG di tengah ---
 const QRCodeWithBMKGLogo: React.FC<{ 
   value: string;
   size: number;
   logoSize?: number;
   className?: string;
-}> = ({ value, size, logoSize = 16, className = '' }) => {
-  return (
-    <div className={`relative ${className}`}>
-      <QRCode
-        value={value}
-        size={size}
-        style={{ height: "auto", maxWidth: "100%", width: "100%" }}
-        viewBox={`0 0 ${size} ${size}`}
-      />
-      {/* Logo BMKG di tengah QR code */}
-      <div 
-        className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"
-        style={{ width: `${logoSize}px`, height: `${logoSize}px` }}
-      >
-        <Image 
-          src={bmkgLogo} 
-          alt="BMKG" 
-          width={logoSize} 
-          height={logoSize}
-          className="w-full h-full object-contain"
-        />
-      </div>
-    </div>
-  )
+  fgColor?: string; // warna modul (merah/hitam)
+}> = ({ value, size, logoSize = 16, className = '', fgColor = '#000000' }) => {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const qrRef = useRef<QRCodeStyling | null>(null)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+    if (!qrRef.current) {
+      qrRef.current = new QRCodeStyling({
+        width: size,
+        height: size,
+        type: 'canvas',
+        data: value || ' ',
+        backgroundOptions: { color: '#FFFFFF' },
+        dotsOptions: { color: fgColor || '#000000', type: 'square' },
+        cornersSquareOptions: { color: '#000000', type: 'square' },
+        cornersDotOptions: { color: '#000000' },
+        image: bmkgLogo.src,
+        imageOptions: { crossOrigin: 'anonymous', margin: 4, imageSize: logoSize / size },
+        margin: 6,
+      })
+      qrRef.current.append(containerRef.current)
+    } else {
+      qrRef.current.update({
+        width: size,
+        height: size,
+        data: value || ' ',
+        type: 'canvas',
+        dotsOptions: { color: fgColor || '#000000', type: 'square' },
+        cornersSquareOptions: { color: '#000000', type: 'square' },
+        cornersDotOptions: { color: '#000000' },
+        image: bmkgLogo.src,
+        imageOptions: { crossOrigin: 'anonymous', margin: 4, imageSize: logoSize / size },
+        margin: 6,
+      })
+    }
+  }, [value, size, fgColor, logoSize])
+
+  return <div className={className} ref={containerRef} />
 }
 
 const PrintCertificatePage: React.FC = () => {
@@ -118,6 +133,9 @@ const PrintCertificatePage: React.FC = () => {
   const [stations, setStations] = useState<Station[]>([])
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [personel, setPersonel] = useState<Personel[]>([])
+  const [isSigned, setIsSigned] = useState<boolean>(false)
+  const [verificationLoaded, setVerificationLoaded] = useState<boolean>(false)
+  const hasPrintedRef = useRef<boolean>(false)
 
   // Menggunakan useMemo untuk data turunan
   const station = useMemo(() => stations.find(s => s.id === (cert?.station ?? -1)) || null, [stations, cert])
@@ -153,26 +171,11 @@ const PrintCertificatePage: React.FC = () => {
     return `terdiri dari beberapa sensor yaitu:\n` + lines.join('\n')
   }, [results])
 
-  // Generate QR code data
+  // Generate QR code URL to public verification page
   const qrCodeData = useMemo(() => {
-    if (!cert) return ''
-    
-    const qrData = {
-      certificateNumber: cert.no_certificate,
-      orderNumber: cert.no_order,
-      issueDate: cert.issue_date,
-      instrumentName: instrument?.name || '',
-      manufacturer: instrument?.manufacturer || '',
-      serialNumber: instrument?.serial_number || '',
-      stationName: station?.name || '',
-      authorizedBy: authorized?.name || '',
-      verifikator1: verifikator1?.name || '',
-      verifikator2: verifikator2?.name || '',
-      version: cert.version || 1
-    }
-    
-    return JSON.stringify(qrData)
-  }, [cert, instrument, station, authorized, verifikator1, verifikator2])
+    if (!cert?.no_certificate) return ''
+    return `/verify/${encodeURIComponent(cert.no_certificate)}`
+  }, [cert?.no_certificate])
 
   // Total pages: 1 (cover) + max(1, N per sensor). No separate closing page.
   const totalPrintedPages = useMemo(() => 1 + Math.max(1, results?.length ?? 0), [results])
@@ -234,8 +237,6 @@ const PrintCertificatePage: React.FC = () => {
           }
         } catch {}
 
-        // Tunggu sebentar agar data ter-render, lalu panggil print dialog
-        setTimeout(() => window.print(), 500) // Kasih waktu 500ms
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load data')
       } finally {
@@ -244,6 +245,70 @@ const PrintCertificatePage: React.FC = () => {
     }
     load()
   }, [params.id])
+
+  // Cek status verifikasi Level 3 untuk warna QR (merah jika belum, hitam jika sudah)
+  const checkVerificationStatus = async () => {
+    try {
+      if (!cert?.id) return
+      // Use certificate ID for API call to ensure uniqueness
+      const res = await fetch(`/api/verify-certificate?id=${cert.id}`)
+      if (res.ok) {
+        const data = await res.json()
+        console.log('🔍 [Print] verify-certificate response:', data)
+        console.log('🔍 [Print] data.valid:', data?.valid)
+        console.log('🔍 [Print] data.verification:', data?.verification)
+        // QR hitam jika Level 3 approved (valid true) - tanpa pembatasan versi
+        setIsSigned(!!data?.valid)
+        console.log('🎨 [Print] QR color will be:', !!data?.valid ? 'BLACK (#000000)' : 'RED (#B91C1C)')
+      }
+    } catch (err) {
+      console.error('❌ [Print] verify-certificate error:', err)
+      // abaikan error; pada simulasi pun jangan paksa hitam agar tidak salah status
+    } finally {
+      setVerificationLoaded(true)
+    }
+  }
+  
+  useEffect(() => {
+    checkVerificationStatus()
+  }, [cert?.id])
+  
+  // Listen for storage events to refresh QR status when signing happens
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'certificate_signed' && e.newValue) {
+        const signedData = JSON.parse(e.newValue)
+        if (signedData.certificateId === cert?.id) {
+          console.log('🔔 [Print] Certificate was signed, refreshing QR status...')
+          checkVerificationStatus()
+          // Clear the flag
+          localStorage.removeItem('certificate_signed')
+        }
+      }
+    }
+    
+    window.addEventListener('storage', handleStorageChange)
+    
+    // Also check periodically (every 5 seconds) in case we miss the event
+    const interval = setInterval(checkVerificationStatus, 5000)
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      clearInterval(interval)
+    }
+  }, [cert?.id])
+
+  // Panggil print hanya setelah data dan verifikasi siap, dan hanya sekali
+  useEffect(() => {
+    if (loading) return
+    if (!cert) return
+    if (!verificationLoaded) return
+    if (hasPrintedRef.current) return
+    hasPrintedRef.current = true
+    // beri sedikit waktu untuk render QR update
+    const t = setTimeout(() => window.print(), 200)
+    return () => clearTimeout(t)
+  }, [loading, cert, verificationLoaded])
 
   if (loading) return <div className="p-8 text-gray-600 text-center text-lg">Memuat data sertifikat untuk dicetak...</div>
   if (error || !cert) return <div className="p-8 text-red-600 text-center text-lg">Gagal memuat data: {error || 'Sertifikat tidak ditemukan'}</div>
@@ -384,7 +449,7 @@ const PrintCertificatePage: React.FC = () => {
   `
 
   return (
-    <div className="print-container bg-gray-100 print:bg-white text-black">
+    <div className="print-container bg-gray-100 print:bg-white text-black" suppressHydrationWarning>
       <style>{A4Style}</style>
 
       {/* Tombol Kontrol (Hilang saat print) */}
@@ -489,7 +554,7 @@ const PrintCertificatePage: React.FC = () => {
             </div>
             
             <div className="mb-4">
-              <div className="font-semibold">Diterbitkan tanggal {new Date(cert.issue_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+              <div className="font-semibold">Diterbitkan tanggal {new Date(cert.issue_date).toISOString().slice(0, 10)}</div>
               <div className="text-[10px] italic text-gray-700">Date of issue</div>
             </div>
             
@@ -500,11 +565,13 @@ const PrintCertificatePage: React.FC = () => {
 
             
             <div className="flex justify-center mb-2">
-              <div className="w-20 h-20 border-2 border-black flex items-center justify-center bg-white qr-code-container">
+              <div className="w-40 h-40  flex items-center justify-center bg-white qr-code-container">
                 <QRCodeWithBMKGLogo
+                  key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
                   value={qrCodeData}
-                  size={64}
-                  logoSize={20}
+                  size={120}
+                  logoSize={36}
+                  fgColor={isSigned ? '#000000' : '#B91C1C'}
                 />
               </div>
             </div>
@@ -659,8 +726,8 @@ const PrintCertificatePage: React.FC = () => {
                     const manufacturer = res?.sensorDetails?.manufacturer || '-'
                     const type = res?.sensorDetails?.type || '-'
                     const serial = res?.sensorDetails?.serial_number || '-'
-                    const start = res?.startDate ? new Date(res.startDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) : '-'
-                    const end = res?.endDate ? new Date(res.endDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) : '-'
+                    const start = res?.startDate ? new Date(res.startDate).toISOString().slice(0, 10) : '-'
+                    const end = res?.endDate ? new Date(res.endDate).toISOString().slice(0, 10) : '-'
                     const place = res?.place || '-'
                     const sensorInfo: Array<{ label: string; labelEng: string; value: React.ReactNode; topGap?: boolean; bold?: boolean }> = [
                       { label: 'Nama Sensor / ', labelEng: 'Sensor Name', value: name, bold: true },

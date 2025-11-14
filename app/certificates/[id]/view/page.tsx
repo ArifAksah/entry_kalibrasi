@@ -1,10 +1,10 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import bmkgLogo from '../../../bmkg.png'
-import QRCode from 'react-qr-code'
+import QRCodeStyling from 'qr-code-styling'
 
 type Cert = {
   id: number
@@ -80,6 +80,7 @@ const ViewCertificatePage: React.FC = () => {
   const [stations, setStations] = useState<Station[]>([])
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [personel, setPersonel] = useState<Personel[]>([])
+  const [isSigned, setIsSigned] = useState<boolean>(false)
 
   const station = stations.find(s => s.id === (cert?.station ?? -1)) || null
   const resolvedStationAddress = (cert?.station_address ?? null) || (station?.address ?? null)
@@ -179,6 +180,89 @@ const ViewCertificatePage: React.FC = () => {
     load()
   }, [params.id])
 
+  // Build verify URL and check status for QR color
+  // Use certificate ID for unique verification, but show certificate number in URL for user-friendly
+  const qrUrl = cert?.no_certificate ? `/verify/${encodeURIComponent(cert.no_certificate)}` : ''
+  
+  const checkVerificationStatus = async () => {
+    try {
+      if (!cert?.id) return
+      // Use certificate ID for API call to ensure uniqueness
+      const res = await fetch(`/api/verify-certificate?id=${cert.id}`)
+      if (res.ok) {
+        const data = await res.json()
+        console.log('🔍 [View] verify-certificate response:', data)
+        console.log('🔍 [View] data.valid:', data?.valid)
+        console.log('🔍 [View] data.verification:', data?.verification)
+        // QR hitam jika Level 3 approved (valid true) - tanpa pembatasan versi
+        setIsSigned(!!data?.valid)
+        console.log('🎨 [View] QR color will be:', !!data?.valid ? 'BLACK (#000000)' : 'RED (#B91C1C)')
+      }
+    } catch (err) {
+      console.error('❌ [View] verify-certificate error:', err)
+      // no fallback to avoid turning black on 'sent'
+    }
+  }
+  
+  useEffect(() => {
+    checkVerificationStatus()
+  }, [cert?.id])
+  
+  // Listen for storage events to refresh QR status when signing happens in another tab/modal
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'certificate_signed' && e.newValue) {
+        const signedData = JSON.parse(e.newValue)
+        if (signedData.certificateId === cert?.id) {
+          console.log('🔔 [View] Certificate was signed, refreshing QR status...')
+          checkVerificationStatus()
+          // Clear the flag
+          localStorage.removeItem('certificate_signed')
+        }
+      }
+    }
+    
+    window.addEventListener('storage', handleStorageChange)
+    
+    // Also check periodically (every 5 seconds) in case we miss the event
+    const interval = setInterval(checkVerificationStatus, 5000)
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      clearInterval(interval)
+    }
+  }, [cert?.id])
+
+  // Reusable styled QR component
+  const QRCodeBox: React.FC<{ value: string; size?: number; logoSize?: number; fgColor?: string }>= ({ value, size = 120, logoSize = 36, fgColor = '#000000' }) => {
+    const ref = useRef<HTMLDivElement | null>(null)
+    const qr = useRef<QRCodeStyling | null>(null)
+    useEffect(() => {
+      if (!ref.current) return
+      const mock = (process.env.NEXT_PUBLIC_BSRE_MOCK || '').toString().toLowerCase() === 'true'
+      const config = {
+        width: size,
+        height: size,
+        type: mock ? 'canvas' : 'svg',
+        data: value || ' ',
+        backgroundOptions: { color: '#FFFFFF' },
+        dotsOptions: { color: fgColor, type: 'square' },
+        cornersSquareOptions: { color: '#000000', type: 'square' },
+        cornersDotOptions: { color: '#000000' },
+        image: bmkgLogo.src,
+        imageOptions: { crossOrigin: 'anonymous', margin: 4, imageSize: logoSize / size },
+        margin: 6,
+      } as any
+      if (!qr.current) {
+        qr.current = new QRCodeStyling(config)
+        qr.current.append(ref.current)
+      } else {
+        qr.current.update(config)
+      }
+    }, [value, size, logoSize, fgColor])
+    return <div className="w-[120px] h-[120px]" ref={ref} />
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -208,8 +292,17 @@ const ViewCertificatePage: React.FC = () => {
     )
   }
 
+  // Deterministic date formatter (avoid locale/timezone hydration mismatch)
+  const formatDateIndo = (ymd: string | null | undefined) => {
+    if (!ymd) return '-'
+    const [y, m, d] = ymd.split('-')
+    const months = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']
+    const idx = Math.max(1, Math.min(12, parseInt(m || '1', 10))) - 1
+    return `${d?.padStart(2, '0') ?? '--'} ${months[idx]} ${y ?? '----'}`
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" suppressHydrationWarning>
       {/* Header */}
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -352,7 +445,7 @@ const ViewCertificatePage: React.FC = () => {
                       <div className="text-[10px] italic text-gray-700">This certificate comprises of pages</div>
                     </div>
                     <div className="mb-4">
-                      <div className="font-semibold">Diterbitkan tanggal {cert.issue_date ? new Date(cert.issue_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) : '-'}</div>
+                      <div className="font-semibold">Diterbitkan tanggal {formatDateIndo(cert.issue_date)}</div>
                       <div className="text-[10px] italic text-gray-700">Date of issue</div>
                     </div>
                     <div className="mb-4">
@@ -360,10 +453,19 @@ const ViewCertificatePage: React.FC = () => {
                       <div className="font-semibold">Kalibrasi dan Rekayasa</div>
                     </div>
                     <div className="flex justify-start mb-2">
-                      <div className="w-20 h-20 border-2 border-black flex items-center justify-center bg-white relative">
-                        <QRCode value={JSON.stringify({ certificateNumber: cert.no_certificate, orderNumber: cert.no_order, issueDate: cert.issue_date, instrumentName: instrument?.name || '', manufacturer: instrument?.manufacturer || '', serialNumber: instrument?.serial_number || '', stationName: station?.name || '', authorizedBy: authorized?.name || '', verifikator1: verifikator1?.name || '', verifikator2: verifikator2?.name || '', version: cert.version || 1 })} size={64} style={{ height: 'auto', maxWidth: '100%', width: '100%' }} />
-                        <img src={bmkgLogo.src} alt="BMKG" className="absolute w-5 h-5 object-contain" style={{ inset: '0', margin: 'auto' }} />
+                      <div className="border-2 border-black bg-white flex items-center justify-center" style={{ width: 140, height: 140 }}>
+                        <QRCodeBox 
+                          key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
+                          value={`/verify/${cert.no_certificate}`} 
+                          size={120} 
+                          logoSize={36} 
+                          fgColor={isSigned ? '#000000' : '#B91C1C'} 
+                        />
                       </div>
+                    </div>
+                    {/* Debug info - remove in production */}
+                    <div className="text-[8px] text-gray-500 mb-1">
+                      QR Status: {isSigned ? '✅ Signed (Black)' : '⏳ Unsigned (Red)'}
                     </div>
                     <div className="font-bold underline">{authorized?.name || '-'}</div>
                     <div className="text-xs font-semibold underline mt-1">Assignor</div>

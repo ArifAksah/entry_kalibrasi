@@ -17,6 +17,7 @@
     "@types/nodemailer": "^7.0.2",
     "next": "latest",
     "nodemailer": "^7.0.9",
+    "qr-code-styling": "^1.9.2",
     "react": "latest",
     "react-dom": "latest",
     "react-qr-code": "^2.0.18",
