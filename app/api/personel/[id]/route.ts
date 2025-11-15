@@ -26,10 +26,10 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { name, nip, position, phone, email } = body
+    const { name, nip, nik, phone, email } = body
     const { data, error } = await supabase
       .from('personel')
-      .update({ name, nip, position, phone, email })
+      .update({ name, nip, nik, phone, email })
       .eq('id', id)
       .select()
       .single()

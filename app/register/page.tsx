@@ -13,7 +13,6 @@ const RegisterPage: React.FC = () => {
   const [form, setForm] = useState({
     name: '',
     nip: '',
-    position: '',
     phone: '',
     email: '',
     password: '',
@@ -83,7 +82,7 @@ const RegisterPage: React.FC = () => {
         password: form.password,
         options: {
           emailRedirectTo: redirectTo,
-          data: { name: form.name, phone: form.phone, position: form.position, nip: form.nip },
+          data: { name: form.name, phone: form.phone, nip: form.nip },
         },
       })
       if (signUpError) throw new Error(signUpError.message)
@@ -98,7 +97,6 @@ const RegisterPage: React.FC = () => {
           id: userId,
           name: form.name,
           nip: form.nip,
-          position: form.position,
           phone: form.phone,
           email: form.email,
         }),
@@ -121,7 +119,7 @@ const RegisterPage: React.FC = () => {
       }
 
       showSuccess('Registration successful. Please check your email to confirm.')
-      setForm({ name: '', nip: '', position: '', phone: '', email: '', password: '', role: '' as any, station_id: '' as any })
+      setForm({ name: '', nip: '', phone: '', email: '', password: '', role: '' as any, station_id: '' as any })
     } catch (e) {
       showError(e instanceof Error ? e.message : 'Registration failed')
     } finally {
@@ -163,10 +161,6 @@ const RegisterPage: React.FC = () => {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">NIP</label>
                       <input value={form.nip} onChange={e=>setForm({ ...form, nip: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Position</label>
-                      <input value={form.position} onChange={e=>setForm({ ...form, position: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>

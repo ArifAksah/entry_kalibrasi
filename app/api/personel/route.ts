@@ -29,7 +29,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { id, name, nip, position, phone, email } = body
+    const { id, name, nip, nik, phone, email } = body
     if (!id || !name || !email) {
       return NextResponse.json({ error: 'id, name and email are required' }, { status: 400 })
     }
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     // Use admin client to bypass RLS
     const { data, error } = await supabaseAdmin
       .from('personel')
-      .insert({ id, name, nip, position, phone, email })
+      .insert({ id, name, nip, nik, phone, email })
       .select()
       .single()
 

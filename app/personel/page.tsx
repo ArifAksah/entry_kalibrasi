@@ -6,6 +6,8 @@ import Header from '../ui/dashboard/header'
 import ProtectedRoute from '../../components/ProtectedRoute'
 import usePersonel, { Person } from '../../hooks/usePersonel'
 import { supabase } from '../../lib/supabase'
+import { useAlert } from '../../hooks/useAlert'
+import Alert from '../../components/ui/Alert'
 
 const roles: Person['role'][] = ['admin', 'calibrator', 'verifikator', 'assignor', 'user_station']
 
@@ -26,9 +28,11 @@ const PersonelPage: React.FC = () => {
     setRoleLocal,
   } = usePersonel(1, 10)
 
+  const { alert, showSuccess, showError, hideAlert } = useAlert()
+
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editing, setEditing] = useState<Person | null>(null)
-  const [form, setForm] = useState<Person>({ id: '', name: '', email: '' })
+  const [form, setForm] = useState<Person & { nik?: string }>({ id: '', name: '', email: '', phone: '', nip: '', nik: '' })
   const [savingRole, setSavingRole] = useState<string | null>(null)
 
   // Registration modal state
@@ -36,7 +40,7 @@ const PersonelPage: React.FC = () => {
   const [regForm, setRegForm] = useState({
     name: '',
     nip: '',
-    position: '',
+    nik: '',
     phone: '',
     email: '',
     password: '',
@@ -53,10 +57,10 @@ const PersonelPage: React.FC = () => {
   const openModal = (p?: Person) => {
     if (p) {
       setEditing(p)
-      setForm({ ...p, phone: p.phone || '', position: p.position || '', nip: p.nip || '' })
+      setForm({ ...p, phone: p.phone || '', nip: p.nip || '', nik: (p as any).nik || '' })
     } else {
       setEditing(null)
-      setForm({ id: '', name: '', email: '', phone: '', position: '', nip: '' })
+      setForm({ id: '', name: '', email: '', phone: '', nip: '', nik: '' })
     }
     setIsModalOpen(true)
   }
@@ -117,7 +121,7 @@ const PersonelPage: React.FC = () => {
         password: regForm.password,
         options: {
           emailRedirectTo: redirectTo,
-          data: { name: regForm.name, phone: regForm.phone, position: regForm.position, nip: regForm.nip },
+          data: { name: regForm.name, phone: regForm.phone, nip: regForm.nip, nik: regForm.nik },
         },
       })
       if (signUpError) throw new Error(signUpError.message)
@@ -131,7 +135,7 @@ const PersonelPage: React.FC = () => {
           id: userId,
           name: regForm.name,
           nip: regForm.nip,
-          position: regForm.position,
+          nik: regForm.nik,
           phone: regForm.phone,
           email: regForm.email,
         }),
@@ -153,11 +157,14 @@ const PersonelPage: React.FC = () => {
       }
 
       setRegSuccess('Registrasi berhasil. Cek email untuk konfirmasi.')
-      setRegForm({ name: '', nip: '', position: '', phone: '', email: '', password: '', role: '' as any, station_id: '' as any })
+      showSuccess('Personel berhasil didaftarkan! Cek email untuk konfirmasi.')
+      setRegForm({ name: '', nip: '', nik: '', phone: '', email: '', password: '', role: '' as any, station_id: '' as any })
       await refresh()
       setTimeout(() => setIsRegisterOpen(false), 800)
     } catch (err) {
-      setRegError(err instanceof Error ? err.message : 'Registration failed')
+      const errorMessage = err instanceof Error ? err.message : 'Registration failed'
+      setRegError(errorMessage)
+      showError(errorMessage)
     } finally {
       setRegLoading(false)
     }
@@ -179,18 +186,20 @@ const PersonelPage: React.FC = () => {
           name: form.name, 
           email: form.email, 
           phone: form.phone, 
-          position: form.position, 
-          nip: form.nip 
+          nip: form.nip,
+          nik: (form as any).nik
         }),
       })
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Failed to update personel')
       }
+      showSuccess('Data personel berhasil diperbarui!')
       closeModal()
       refresh() // Refresh data after saving
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to save')
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save'
+      showError(errorMessage)
     }
   }
 
@@ -202,9 +211,11 @@ const PersonelPage: React.FC = () => {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Failed to delete personel')
       }
+      showSuccess('Personel berhasil dihapus!')
       refresh() // Refresh data after deleting
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete')
+      const errorMessage = err instanceof Error ? err.message : 'Failed to delete'
+      showError(errorMessage)
     }
   }
 
@@ -221,8 +232,10 @@ const PersonelPage: React.FC = () => {
         throw new Error(errorData.error || 'Failed to save role')
       }
       setRoleLocal(user_id, role)
+      showSuccess(`Role berhasil diperbarui menjadi: ${role || 'Tidak ada role'}`)
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to save role')
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save role'
+      showError(errorMessage)
     } finally {
       setSavingRole(null)
     }
@@ -230,6 +243,15 @@ const PersonelPage: React.FC = () => {
 
   return (
     <ProtectedRoute>
+      {alert.show && (
+        <Alert
+          type={alert.type}
+          message={alert.message}
+          onClose={hideAlert}
+          autoHide={alert.autoHide}
+          duration={alert.duration}
+        />
+      )}
       <div className="min-h-screen grid grid-cols-[260px_1fr]">
         <SideNav />
         <div className="bg-gray-50/50">
@@ -282,12 +304,15 @@ const PersonelPage: React.FC = () => {
                             <td className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">
                               {p.name}
                               {p.nip && <div className="text-xs text-gray-500">NIP: {p.nip}</div>}
+                              {(p as any).nik && <div className="text-xs text-gray-500">NIK: {(p as any).nik}</div>}
                             </td>
                             <td className="px-6 py-4">
                               <div>{p.email}</div>
                               <div className="text-xs text-gray-500">{p.phone}</div>
                             </td>
-                            <td className="px-6 py-4">{p.position || '-'}</td>
+                            <td className="px-6 py-4">
+                              {p.role ? p.role.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') : '-'}
+                            </td>
                             <td className="px-6 py-4">
                               <select 
                                 value={p.role || ''} 
@@ -351,12 +376,12 @@ const PersonelPage: React.FC = () => {
                 <input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Position</label>
-                <input value={form.position || ''} onChange={e => setForm({ ...form, position: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
-              </div>
-              <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">NIP</label>
                 <input value={form.nip || ''} onChange={e => setForm({ ...form, nip: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">NIK</label>
+                <input value={(form as any).nik || ''} onChange={e => setForm({ ...form, nik: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="Nomor Induk Kependudukan" />
               </div>
               <div className="sm:col-span-2 flex justify-end gap-3 pt-4 mt-2 border-t">
                 <button type="button" onClick={closeModal} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors">Batal</button>
@@ -386,8 +411,8 @@ const PersonelPage: React.FC = () => {
                     <input value={regForm.nip} onChange={e=>setRegForm({ ...regForm, nip: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Position</label>
-                    <input value={regForm.position} onChange={e=>setRegForm({ ...regForm, position: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">NIK</label>
+                    <input value={regForm.nik} onChange={e=>setRegForm({ ...regForm, nik: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nomor Induk Kependudukan" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>

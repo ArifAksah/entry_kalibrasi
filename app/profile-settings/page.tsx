@@ -6,10 +6,14 @@ import { useRouter } from 'next/navigation';
 import ProtectedRoute from '../../components/ProtectedRoute';
 import SideNav from '../ui/dashboard/sidenav';
 import Header from '../ui/dashboard/header';
+import { supabase } from '../../lib/supabase';
+import { useAlert } from '../../hooks/useAlert';
+import Alert from '../../components/ui/Alert';
 
 const ProfileSettingsPage: React.FC = () => {
   const { user } = useAuth();
   const router = useRouter();
+  const { alert, showSuccess, showError, hideAlert } = useAlert();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,20 +22,71 @@ const ProfileSettingsPage: React.FC = () => {
     name: '',
     email: '',
     nip: '',
-    position: '',
+    nik: '',
     phone: ''
   });
+  const [role, setRole] = useState<string>('');
+
+  const formatRole = (role: string): string => {
+    if (!role) return 'Not assigned';
+    return role
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
 
   useEffect(() => {
+    const loadProfileData = async () => {
+      if (!user?.id) return
+      
+      try {
+        // Load from personel table to get latest data including NIK
+        const res = await fetch(`/api/personel/${user.id}`)
+        if (res.ok) {
+          const personelData = await res.json()
+          setFormData(prev => ({
+            ...prev,
+            name: personelData.name || user.user_metadata?.name || '',
+            email: personelData.email || user.email || '',
+            nip: personelData.nip || user.user_metadata?.nip || '',
+            nik: personelData.nik || user.user_metadata?.nik || '',
+            phone: personelData.phone || user.user_metadata?.phone || ''
+          }))
+        } else {
+          // Fallback to user_metadata if personel not found
+          setFormData(prev => ({
+            ...prev,
+            name: user.user_metadata?.name || '',
+            email: user.email || '',
+            nip: user.user_metadata?.nip || '',
+            nik: user.user_metadata?.nik || '',
+            phone: user.user_metadata?.phone || ''
+          }))
+        }
+
+        // Load role from user_roles table
+        const roleRes = await fetch(`/api/user-roles?user_id=${user.id}`)
+        if (roleRes.ok) {
+          const roleData = await roleRes.json()
+          if (roleData?.role) {
+            setRole(roleData.role)
+          }
+        }
+      } catch (err) {
+        // Fallback to user_metadata on error
+        setFormData(prev => ({
+          ...prev,
+          name: user.user_metadata?.name || '',
+          email: user.email || '',
+          nip: user.user_metadata?.nip || '',
+          nik: user.user_metadata?.nik || '',
+          phone: user.user_metadata?.phone || ''
+        }))
+      }
+    }
+    
     if (user) {
-      setFormData(prev => ({
-        ...prev,
-        name: user.user_metadata?.name || '',
-        email: user.email || '',
-        nip: user.user_metadata?.nip || '',
-        position: user.user_metadata?.position || '',
-        phone: user.user_metadata?.phone || ''
-      }));
+      loadProfileData()
     }
   }, [user]);
 
@@ -42,11 +97,47 @@ const ProfileSettingsPage: React.FC = () => {
     setSuccess(null);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setSuccess('Profile updated successfully!');
+      if (!user?.id) {
+        throw new Error('User not found')
+      }
+
+      // Update personel table
+      const response = await fetch(`/api/personel/${user.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          nip: formData.nip,
+          nik: formData.nik,
+          phone: formData.phone
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to update profile')
+      }
+
+      // Also update user metadata in auth
+      const { data: { user: currentUser } } = await supabase.auth.getUser()
+      if (currentUser) {
+        await supabase.auth.updateUser({
+          data: {
+            name: formData.name,
+            nip: formData.nip,
+            nik: formData.nik,
+            phone: formData.phone
+          }
+        })
+      }
+
+      setSuccess('Profile berhasil diperbarui!');
+      showSuccess('Profile berhasil diperbarui!');
     } catch (err) {
-      setError('Failed to update profile');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update profile'
+      setError(errorMessage);
+      showError(errorMessage);
     } finally {
       setSaving(false);
     }
@@ -62,6 +153,15 @@ const ProfileSettingsPage: React.FC = () => {
 
   return (
     <ProtectedRoute>
+      {alert.show && (
+        <Alert
+          type={alert.type}
+          message={alert.message}
+          onClose={hideAlert}
+          autoHide={alert.autoHide}
+          duration={alert.duration}
+        />
+      )}
       <div className="dashboard-container">
         <SideNav />
         <div className="main-content">
@@ -160,20 +260,38 @@ const ProfileSettingsPage: React.FC = () => {
                       />
                     </div>
 
-                    {/* Position */}
+                    {/* NIK */}
+                    <div>
+                      <label htmlFor="nik" className="block text-sm font-medium text-gray-700 mb-2">
+                        NIK (Nomor Induk Kependudukan)
+                      </label>
+                      <input
+                        type="text"
+                        id="nik"
+                        name="nik"
+                        value={formData.nik}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                        placeholder="Enter your NIK"
+                        maxLength={16}
+                      />
+                    </div>
+
+                    {/* Position (Role) - Read Only */}
                     <div>
                       <label htmlFor="position" className="block text-sm font-medium text-gray-700 mb-2">
-                        Position
+                        Position (Role)
                       </label>
                       <input
                         type="text"
                         id="position"
                         name="position"
-                        value={formData.position}
-                        onChange={handleChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-                        placeholder="Enter your position"
+                        value={formatRole(role)}
+                        disabled
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600 cursor-not-allowed"
+                        placeholder="Role will be assigned by administrator"
                       />
+                      <p className="mt-1 text-xs text-gray-500">Role dapat diubah oleh administrator di halaman Personel</p>
                     </div>
 
                     {/* Phone */}
