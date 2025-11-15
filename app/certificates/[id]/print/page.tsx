@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import QRCodeStyling from 'qr-code-styling'
@@ -84,42 +84,98 @@ const QRCodeWithBMKGLogo: React.FC<{
   logoSize?: number;
   className?: string;
   fgColor?: string; // warna modul (merah/hitam)
-}> = ({ value, size, logoSize = 16, className = '', fgColor = '#000000' }) => {
+  onRendered?: () => void; // Callback ketika QR code selesai di-render
+}> = ({ value, size, logoSize = 16, className = '', fgColor = '#000000', onRendered }) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const qrRef = useRef<QRCodeStyling | null>(null)
+  const renderedRef = useRef<boolean>(false)
 
   useEffect(() => {
     if (!containerRef.current) return
-    if (!qrRef.current) {
-      qrRef.current = new QRCodeStyling({
-        width: size,
-        height: size,
-        type: 'canvas',
-        data: value || ' ',
-        backgroundOptions: { color: '#FFFFFF' },
-        dotsOptions: { color: fgColor || '#000000', type: 'square' },
-        cornersSquareOptions: { color: '#000000', type: 'square' },
-        cornersDotOptions: { color: '#000000' },
-        image: bmkgLogo.src,
-        imageOptions: { crossOrigin: 'anonymous', margin: 4, imageSize: logoSize / size },
-        margin: 6,
-      })
-      qrRef.current.append(containerRef.current)
-    } else {
-      qrRef.current.update({
-        width: size,
-        height: size,
-        data: value || ' ',
-        type: 'canvas',
-        dotsOptions: { color: fgColor || '#000000', type: 'square' },
-        cornersSquareOptions: { color: '#000000', type: 'square' },
-        cornersDotOptions: { color: '#000000' },
-        image: bmkgLogo.src,
-        imageOptions: { crossOrigin: 'anonymous', margin: 4, imageSize: logoSize / size },
-        margin: 6,
-      })
+    
+    // Reset rendered flag when value or color changes
+    renderedRef.current = false
+    
+    const renderQR = () => {
+      if (!containerRef.current) return
+      
+      if (!qrRef.current) {
+        qrRef.current = new QRCodeStyling({
+          width: size,
+          height: size,
+          type: 'canvas',
+          data: value || ' ',
+          backgroundOptions: { color: '#FFFFFF' },
+          dotsOptions: { color: fgColor || '#000000', type: 'square' },
+          cornersSquareOptions: { color: '#000000', type: 'square' },
+          cornersDotOptions: { color: '#000000' },
+          image: bmkgLogo.src,
+          imageOptions: { crossOrigin: 'anonymous', margin: 4, imageSize: logoSize / size },
+          margin: 6,
+        })
+        qrRef.current.append(containerRef.current)
+      } else {
+        qrRef.current.update({
+          width: size,
+          height: size,
+          data: value || ' ',
+          type: 'canvas',
+          dotsOptions: { color: fgColor || '#000000', type: 'square' },
+          cornersSquareOptions: { color: '#000000', type: 'square' },
+          cornersDotOptions: { color: '#000000' },
+          image: bmkgLogo.src,
+          imageOptions: { crossOrigin: 'anonymous', margin: 4, imageSize: logoSize / size },
+          margin: 6,
+        })
+      }
+
+      // Wait for canvas/SVG to be rendered in DOM
+      // Use multiple strategies to ensure QR code is ready
+      let retryCount = 0
+      const maxRetries = 20 // Max 20 retries = 1000ms
+      
+      const checkRendered = () => {
+        if (!containerRef.current) {
+          if (retryCount < maxRetries) {
+            retryCount++
+            setTimeout(checkRendered, 50)
+          } else {
+            // Force callback after max retries
+            renderedRef.current = true
+            if (onRendered) onRendered()
+          }
+          return
+        }
+        
+        // Check if canvas or SVG exists in container
+        const hasCanvas = containerRef.current.querySelector('canvas')
+        const hasSvg = containerRef.current.querySelector('svg')
+        
+        if ((hasCanvas || hasSvg) && !renderedRef.current) {
+          renderedRef.current = true
+          // Give a small delay to ensure canvas is fully painted
+          setTimeout(() => {
+            if (onRendered) onRendered()
+          }, 100)
+        } else if (!hasCanvas && !hasSvg) {
+          // Retry if not yet rendered
+          if (retryCount < maxRetries) {
+            retryCount++
+            setTimeout(checkRendered, 50)
+          } else {
+            // Force callback after max retries (fallback)
+            renderedRef.current = true
+            if (onRendered) onRendered()
+          }
+        }
+      }
+
+      // Start checking after a short delay to allow append/update to complete
+      setTimeout(checkRendered, 150)
     }
-  }, [value, size, fgColor, logoSize])
+
+    renderQR()
+  }, [value, size, fgColor, logoSize, onRendered])
 
   return <div className={className} ref={containerRef} />
 }
@@ -136,6 +192,8 @@ const PrintCertificatePage: React.FC = () => {
   const [isSigned, setIsSigned] = useState<boolean>(false)
   const [verificationLoaded, setVerificationLoaded] = useState<boolean>(false)
   const hasPrintedRef = useRef<boolean>(false)
+  const qrRenderedCountRef = useRef<number>(0)
+  const expectedQRCodesRef = useRef<number>(0)
 
   // Menggunakan useMemo untuk data turunan
   const station = useMemo(() => stations.find(s => s.id === (cert?.station ?? -1)) || null, [stations, cert])
@@ -298,17 +356,55 @@ const PrintCertificatePage: React.FC = () => {
     }
   }, [cert?.id])
 
-  // Panggil print hanya setelah data dan verifikasi siap, dan hanya sekali
+  // Calculate expected QR codes: 1 for cover + 1 for each result page
+  useEffect(() => {
+    if (!cert || !results) return
+    const coverQR = qrCodeData ? 1 : 0
+    const footerQRs = results.length > 0 && qrCodeData ? results.length : 0
+    expectedQRCodesRef.current = coverQR + footerQRs
+    qrRenderedCountRef.current = 0 // Reset counter when results change
+  }, [cert, results, qrCodeData])
+
+  // Callback ketika QR code selesai di-render
+  const handleQRRendered = useCallback(() => {
+    qrRenderedCountRef.current += 1
+    console.log(`[Print] QR code rendered: ${qrRenderedCountRef.current}/${expectedQRCodesRef.current}`)
+  }, [])
+
+  // Panggil print hanya setelah data, verifikasi, dan semua QR code siap
   useEffect(() => {
     if (loading) return
     if (!cert) return
     if (!verificationLoaded) return
     if (hasPrintedRef.current) return
-    hasPrintedRef.current = true
-    // beri sedikit waktu untuk render QR update
-    const t = setTimeout(() => window.print(), 200)
+    
+    // If no QR codes expected, print immediately
+    if (expectedQRCodesRef.current === 0) {
+      hasPrintedRef.current = true
+      const t = setTimeout(() => window.print(), 200)
+      return () => clearTimeout(t)
+    }
+
+    // Wait for all QR codes to be rendered
+    const checkAllQRRendered = () => {
+      if (qrRenderedCountRef.current >= expectedQRCodesRef.current) {
+        hasPrintedRef.current = true
+        console.log('[Print] All QR codes rendered, calling window.print()')
+        // Give extra time to ensure canvas is fully painted
+        setTimeout(() => window.print(), 300)
+      } else {
+        // Retry after a short delay
+        setTimeout(checkAllQRRendered, 100)
+      }
+    }
+
+    // Start checking after initial render delay
+    const t = setTimeout(() => {
+      checkAllQRRendered()
+    }, 500)
+
     return () => clearTimeout(t)
-  }, [loading, cert, verificationLoaded])
+  }, [loading, cert, verificationLoaded, handleQRRendered])
 
   if (loading) return <div className="p-8 text-gray-600 text-center text-lg">Memuat data sertifikat untuk dicetak...</div>
   if (error || !cert) return <div className="p-8 text-red-600 text-center text-lg">Gagal memuat data: {error || 'Sertifikat tidak ditemukan'}</div>
@@ -336,11 +432,19 @@ const PrintCertificatePage: React.FC = () => {
       /* Jangan pakai min-height tetap agar tidak melebihi tinggi A4 saat ditambah padding */
       min-height: auto;
       padding: 20mm; /* Padding standar dokumen */
-      padding-bottom: 40mm; /* Ruang untuk footer static */
+      padding-bottom: 40mm; /* Ruang untuk footer static (halaman cover) */
       margin: 0 auto;
       box-sizing: border-box;
       position: relative;
       /* Jangan paksa page break di semua container; kita atur manual di elemen tertentu */
+    }
+    
+    /* Halaman hasil kalibrasi (dengan QR footer) butuh padding konsisten */
+    .page-container.results-page {
+      padding-bottom: 30mm; /* Space untuk QR code footer - KONSISTEN DI SEMUA HALAMAN */
+      min-height: 257mm; /* A4 height (297mm) - top padding (20mm) = 277mm content area, use 257mm for safety */
+      box-sizing: border-box;
+      position: relative;
     }
     
     /* Footer khusus untuk halaman 1 saja */
@@ -352,6 +456,41 @@ const PrintCertificatePage: React.FC = () => {
       z-index: 1000 !important;
     }
     
+    /* QR code kecil di footer halaman 2+ (TIDAK di halaman cover) */
+    /* Default: sembunyikan semua QR code kecil */
+    .footer-qr-small {
+      display: none !important;
+      visibility: hidden !important;
+    }
+    
+    /* Show QR code kecil HANYA di halaman hasil kalibrasi (halaman 2+) */
+    /* Gunakan absolute positioning relatif ke page-container, bukan fixed */
+    .page-container.results-page {
+      position: relative !important;
+    }
+    
+    /* Hanya tampilkan di page-container dengan class results-page */
+    .page-container.results-page .footer-qr-small.results-page-qr {
+      position: absolute !important;
+      bottom: -4mm !important;
+      left: 4mm !important;
+      width: 70px !important;
+      height: 70px !important;
+      z-index: 999 !important;
+      display: block !important;
+      visibility: visible !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    
+    /* PASTIKAN tidak muncul di halaman cover - halaman cover TIDAK punya class .results-page */
+    .page-container:not(.results-page) .footer-qr-small,
+    .page-container:first-of-type .footer-qr-small,
+    .page-container:not(.results-page) .results-page-qr {
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+    }
     
     /* Hapus aturan last-child; break diatur manual dengan kelas */
     
@@ -372,12 +511,21 @@ const PrintCertificatePage: React.FC = () => {
       .page-container {
         margin: 0;
         padding: 20mm; /* Pastikan padding sama */
-        padding-bottom: 20mm; /* Kurangi padding bawah untuk menghindari overflow yang memicu halaman kosong */
+        padding-bottom: 20mm; /* Padding bawah default untuk halaman cover */
         border: none !important;
         box-shadow: none !important;
         page-break-after: auto; /* Jangan paksa break di akhir container */
         break-after: auto;
       }
+      
+      /* Halaman hasil kalibrasi (dengan QR footer) butuh padding lebih untuk QR code */
+      .page-container.results-page {
+        padding-bottom: 30mm !important; /* Space untuk QR code footer - KONSISTEN DI SEMUA HALAMAN */
+        min-height: 257mm !important; /* A4 height consistency */
+        box-sizing: border-box !important;
+        position: relative !important;
+      }
+      
       /* Hindari page break setelah container terakhir */
       .page-container:last-of-type {
         page-break-after: avoid;
@@ -391,6 +539,42 @@ const PrintCertificatePage: React.FC = () => {
         left: 20mm !important;
         right: 20mm !important;
         z-index: 1000 !important;
+      }
+      
+      /* QR code kecil di footer halaman 2+ (TIDAK di halaman cover) */
+      /* Default: sembunyikan semua QR code kecil */
+      .footer-qr-small {
+        display: none !important;
+        visibility: hidden !important;
+      }
+      
+      /* Show QR code kecil HANYA di halaman hasil kalibrasi (halaman 2+) */
+      /* Gunakan absolute positioning relatif ke page-container, bukan fixed */
+      .page-container.results-page {
+        position: relative !important;
+      }
+      
+      /* Hanya tampilkan di page-container dengan class results-page */
+      .page-container.results-page .footer-qr-small.results-page-qr {
+        position: absolute !important;
+        bottom: -4mm !important;
+        left: 4mm !important;
+        width: 70px !important;
+        height: 70px !important;
+        z-index: 999 !important;
+        display: block !important;
+        visibility: visible !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      
+      /* PASTIKAN tidak muncul di halaman cover - halaman cover TIDAK punya class .results-page */
+      .page-container:not(.results-page) .footer-qr-small,
+      .page-container:first-of-type .footer-qr-small,
+      .page-container:not(.results-page) .results-page-qr {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
       }
       
       .no-print {
@@ -459,7 +643,7 @@ const PrintCertificatePage: React.FC = () => {
         <button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Cetak Ulang</button>
       </div>
       
-      {/* --- HALAMAN 1 --- */}
+      {/* --- HALAMAN 1 (COVER) - TIDAK ADA QR CODE KECIL --- */}
       <div className="page-container break-after-page bg-white shadow-lg my-4 print:shadow-none print:my-0 relative">
         {/* Watermark Logo BMKG */}
         <div 
@@ -549,8 +733,8 @@ const PrintCertificatePage: React.FC = () => {
         <div className="mt-8 flex justify-end">
           <div className="text-xs max-w-sm">
             <div className="mb-2">
-              <div className="font-semibold">Sertifikat ini terdiri atas 3 halaman</div>
-              <div className="text-[10px] italic text-gray-700">This certificate comprises of pages</div>
+              <div className="font-semibold">Sertifikat ini terdiri atas {totalPrintedPages} halaman</div>
+              <div className="text-[10px] italic text-gray-700">This certificate comprises of {totalPrintedPages} pages</div>
             </div>
             
             <div className="mb-4">
@@ -559,21 +743,24 @@ const PrintCertificatePage: React.FC = () => {
             </div>
             
             <div className="mb-4">
-              <div className="font-semibold">Kepala Pusat Instrumentasi,</div>
-              <div className="font-semibold">Kalibrasi dan Rekayasa</div>
+              <div className="font-semibold">Direktorat </div>
+              <div className="font-semibold">Instrumentasi dan Kalibrasi</div>
             </div>
 
             
             <div className="flex justify-center mb-2">
-              <div className="w-40 h-40  flex items-center justify-center bg-white qr-code-container">
-                <QRCodeWithBMKGLogo
-                  key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
-                  value={qrCodeData}
-                  size={120}
-                  logoSize={36}
-                  fgColor={isSigned ? '#000000' : '#B91C1C'}
-                />
-              </div>
+              {qrCodeData && (
+                <div className="w-40 h-40  flex items-center justify-center bg-white qr-code-container">
+                  <QRCodeWithBMKGLogo
+                    key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
+                    value={qrCodeData}
+                    size={120}
+                    logoSize={36}
+                    fgColor={isSigned ? '#000000' : '#B91C1C'}
+                    onRendered={handleQRRendered}
+                  />
+                </div>
+              )}
             </div>
             
             <div className="text-center font-bold underline">
@@ -664,7 +851,21 @@ const PrintCertificatePage: React.FC = () => {
         </div>
       ) : (
         results.map((res: any, idx: number) => (
-          <div key={idx} className={`page-container bg-white shadow-lg my-4 print:shadow-none print:my-0 ${idx !== results.length - 1 ? 'break-after-page' : ''}`}>
+          <div key={idx} className={`page-container results-page bg-white shadow-lg my-4 print:shadow-none print:my-0 ${idx !== results.length - 1 ? 'break-after-page' : ''}`}>
+            {/* QR Code kecil di footer untuk halaman 2+ - SELALU muncul di semua status (draft, sent, level 1, level 2, level 3) */}
+            {/* Warna: Merah (#B91C1C) jika belum approved level 3, Hitam (#000000) jika sudah approved level 3 */}
+            {qrCodeData && (
+              <div className="footer-qr-small results-page-qr">
+                <QRCodeWithBMKGLogo
+                  key={`qr-footer-${isSigned ? 'signed' : 'unsigned'}-${idx}`}
+                  value={qrCodeData}
+                  size={70}
+                  logoSize={21}
+                  fgColor={isSigned ? '#000000' : '#B91C1C'}
+                  onRendered={handleQRRendered}
+                />
+              </div>
+            )}
             <table className="repeatable-page-table">
               <thead className="print-repeat-header">
                 <tr>
@@ -945,10 +1146,13 @@ const PrintCertificatePage: React.FC = () => {
                   )
                 })()}
                 {/* End of Certificate on the last sensor page (always show on last page) */}
+                {/* Positioned absolutely to not affect QR code position */}
                 {idx === results.length - 1 && (
-                  <p className="text-center font-bold text-sm mt-8">
-                    --- Akhir dari Sertifikat / <span className="italic">End of Certificate</span> ---
-                  </p>
+                  <div className="absolute left-0 right-0" style={{ bottom: '30mm' }}>
+                    <p className="text-center font-bold text-sm m-0">
+                      --- Akhir dari Sertifikat / <span className="italic">End of Certificate</span> ---
+                    </p>
+                  </div>
                 )}
 
               </section>

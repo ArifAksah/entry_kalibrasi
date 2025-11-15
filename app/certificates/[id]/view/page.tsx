@@ -89,12 +89,22 @@ const ViewCertificatePage: React.FC = () => {
   const verifikator1 = personel.find(p => p.id === (cert?.verifikator_1 ?? '')) || null
   const verifikator2 = personel.find(p => p.id === (cert?.verifikator_2 ?? '')) || null
 
-  const totalPrintedPages = (Array.isArray(cert?.results) ? cert.results.length : 0) + 2
+  // Parse results data (handle both string and object)
+  const results = (() => {
+    const r: any = cert?.results
+    if (!r) return []
+    try {
+      return typeof r === 'string' ? JSON.parse(r) : (Array.isArray(r) ? r : [])
+    } catch {
+      return []
+    }
+  })()
+
+  const totalPrintedPages = (Array.isArray(results) ? results.length : 0) + 2
 
   const sensorsSummary = (() => {
-    const r: any[] = Array.isArray(cert?.results) ? (cert?.results as any[]) : []
-    if (!r.length) return instrument?.others || '-'
-    const lines = r.map((res: any, i: number) => {
+    if (!results || !Array.isArray(results) || results.length === 0) return instrument?.others || '-'
+    const lines = results.map((res: any, i: number) => {
       const sd = res?.sensorDetails || {}
       const nm = sd?.name || sd?.type || `Sensor ${i + 1}`
       const mf = sd?.manufacturer || '-'
@@ -453,15 +463,17 @@ const ViewCertificatePage: React.FC = () => {
                       <div className="font-semibold">Kalibrasi dan Rekayasa</div>
                     </div>
                     <div className="flex justify-start mb-2">
-                      <div className="border-2 border-black bg-white flex items-center justify-center" style={{ width: 140, height: 140 }}>
-                        <QRCodeBox 
-                          key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
-                          value={`/verify/${cert.no_certificate}`} 
-                          size={120} 
-                          logoSize={36} 
-                          fgColor={isSigned ? '#000000' : '#B91C1C'} 
-                        />
-                      </div>
+                      {cert.no_certificate && (
+                        <div className="border-2 border-black bg-white flex items-center justify-center" style={{ width: 140, height: 140 }}>
+                          <QRCodeBox 
+                            key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
+                            value={`/verify/${cert.no_certificate}`} 
+                            size={120} 
+                            logoSize={36} 
+                            fgColor={isSigned ? '#000000' : '#B91C1C'} 
+                          />
+                        </div>
+                      )}
                     </div>
                     {/* Debug info - remove in production */}
                     <div className="text-[8px] text-gray-500 mb-1">
@@ -491,18 +503,30 @@ const ViewCertificatePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Results Section (mirror print layout) */}
-        {cert.results && Array.isArray(cert.results) && cert.results.length > 0 && (
-          <div className="bg-white rounded-lg shadow-sm border p-6 mt-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
-              <svg className="w-5 h-5 mr-2 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-              Hasil Kalibrasi
-            </h3>
-            <div className="space-y-6">
-              {(cert.results as ResultItem[]).map((res: ResultItem, index: number) => (
-                <div key={index} className="border border-gray-200 rounded-lg p-5">
+        {/* Results Section (mirror print layout) - Halaman 2+ */}
+        {results && Array.isArray(results) && results.length > 0 && cert.no_certificate && (
+          <>
+            <div className="bg-white rounded-lg shadow-sm border p-6 mt-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+                <svg className="w-5 h-5 mr-2 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Hasil Kalibrasi
+              </h3>
+              <div className="space-y-6">
+                {results.map((res: ResultItem, index: number) => (
+                  <div key={index} className="border border-gray-200 rounded-lg p-5 relative">
+                    {/* QR Code kecil di setiap halaman hasil kalibrasi - SELALU muncul di semua status */}
+                    {/* Warna: Merah (#B91C1C) jika belum approved level 3, Hitam (#000000) jika sudah approved level 3 */}
+                    <div className="absolute bottom-0 left-1 z-50 bg-white border-2 border-gray-300 rounded-lg p-1 shadow-lg">
+                      <QRCodeBox 
+                        key={`qr-footer-${isSigned ? 'signed' : 'unsigned'}-${index}`}
+                        value={`/verify/${cert.no_certificate}`} 
+                        size={70} 
+                        logoSize={21} 
+                        fgColor={isSigned ? '#000000' : '#B91C1C'} 
+                      />
+                    </div>
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="text-md font-semibold text-gray-800">Hasil Kalibrasi #{index + 1}</h4>
                     <span className="text-sm text-gray-500">Item {index + 1}</span>
@@ -754,6 +778,7 @@ const ViewCertificatePage: React.FC = () => {
               ))}
             </div>
           </div>
+          </>
         )}
       </div>
     </div>

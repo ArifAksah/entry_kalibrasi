@@ -265,8 +265,16 @@ const CertificatePreview: React.FC<{
   const verifikator2 = personel.find(p => p.id === certificate.verifikator_2)
   const assignor = personel.find(p => p.id === certificate.assignor)
 
-  // Parse results data
-  const results = certificate.results ? (typeof certificate.results === 'string' ? JSON.parse(certificate.results) : certificate.results) : []
+  // Parse results data (handle both string and object)
+  const results = (() => {
+    const r: any = certificate.results
+    if (!r) return []
+    try {
+      return typeof r === 'string' ? JSON.parse(r) : (Array.isArray(r) ? r : [])
+    } catch {
+      return []
+    }
+  })()
 
   const totalPrintedPages = (Array.isArray(results) ? results.length : 0) + 2
 
@@ -511,15 +519,17 @@ const CertificatePreview: React.FC<{
                 <div className="font-semibold">Kalibrasi dan Rekayasa</div>
               </div>
               <div className="flex justify-start mb-2">
-                <div className="border-2 border-black bg-white flex items-center justify-center" style={{ width: 140, height: 140 }}>
-                  <QRCodeBox 
-                    key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
-                    value={qrUrl} 
-                    size={120} 
-                    logoSize={36} 
-                    fgColor={isSigned ? '#000000' : '#B91C1C'} 
-                  />
-                </div>
+                {qrUrl && (
+                  <div className="border-2 border-black bg-white flex items-center justify-center" style={{ width: 140, height: 140 }}>
+                    <QRCodeBox 
+                      key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
+                      value={qrUrl} 
+                      size={120} 
+                      logoSize={36} 
+                      fgColor={isSigned ? '#000000' : '#B91C1C'} 
+                    />
+                  </div>
+                )}
               </div>
               <div className="font-bold underline">{authorized?.name || '-'}</div>
               <div className="text-xs font-semibold underline mt-1">Assignor</div>
@@ -532,13 +542,25 @@ const CertificatePreview: React.FC<{
 
       {/* Station Address section removed to match print layout */}
 
-      {/* Calibration Results: per-page like print */}
-      {results && results.length > 0 && (
-        <div className="mb-8">
+      {/* Calibration Results: per-page like print - Halaman 2+ */}
+      {results && results.length > 0 && qrUrl && (
+        <>
+          <div className="mb-8">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Hasil Kalibrasi</h3>
           <div className="space-y-6">
             {results.map((res: any, index: number) => (
-              <div key={index} className="border border-gray-300 rounded-lg p-5">
+              <div key={index} className="border border-gray-300 rounded-lg p-5 relative">
+                {/* QR Code kecil di setiap halaman hasil kalibrasi - SELALU muncul di semua status */}
+                {/* Warna: Merah (#B91C1C) jika belum approved level 3, Hitam (#000000) jika sudah approved level 3 */}
+                <div className="absolute bottom-0 left-1 z-50 bg-white border-2 border-gray-300 rounded-lg p-1 shadow-lg">
+                  <QRCodeBox 
+                    key={`qr-footer-${isSigned ? 'signed' : 'unsigned'}-${index}`}
+                    value={qrUrl} 
+                    size={70} 
+                    logoSize={21} 
+                    fgColor={isSigned ? '#000000' : '#B91C1C'} 
+                  />
+                </div>
                 {/* Header per halaman sensor */}
                 <header className="flex justify-between items-start text-xs mb-4">
                   <div className="w-[80px]">
@@ -801,6 +823,7 @@ const CertificatePreview: React.FC<{
             ))}
           </div>
         </div>
+        </>
       )}
 
       {/* Verification Info */}
