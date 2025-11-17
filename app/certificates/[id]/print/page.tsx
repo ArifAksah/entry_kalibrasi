@@ -561,21 +561,24 @@ const PrintCertificatePage: React.FC = () => {
     }
     
     /* Show QR code kecil HANYA di halaman hasil kalibrasi (halaman 2+) */
-    /* Gunakan absolute positioning relatif ke page-container, bukan fixed */
+    /* Gunakan absolute positioning dengan page-container yang memiliki min-height A4 */
     .page-container.results-page {
       position: relative !important;
+      min-height: 297mm !important; /* Tinggi A4 */
     }
     
     /* Hanya tampilkan di page-container dengan class results-page */
+    /* QR code akan selalu di footer karena parent memiliki min-height penuh */
     .page-container.results-page .footer-qr-small.results-page-qr {
       position: absolute !important;
-      bottom: -4mm !important;
+      bottom: 4mm !important;
       left: 4mm !important;
       width: 70px !important;
       height: 70px !important;
       z-index: 999 !important;
       display: block !important;
       visibility: visible !important;
+      opacity: 1 !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
@@ -725,21 +728,24 @@ const PrintCertificatePage: React.FC = () => {
       }
       
       /* Show QR code kecil HANYA di halaman hasil kalibrasi (halaman 2+) */
-      /* Gunakan absolute positioning relatif ke page-container, bukan fixed */
+      /* Gunakan absolute positioning dengan page-container yang memiliki min-height A4 */
       .page-container.results-page {
         position: relative !important;
+        min-height: 297mm !important; /* Tinggi A4 */
       }
       
       /* Hanya tampilkan di page-container dengan class results-page */
+      /* QR code akan selalu di footer karena parent memiliki min-height penuh */
       .page-container.results-page .footer-qr-small.results-page-qr {
         position: absolute !important;
-        bottom: -4mm !important;
+        bottom: 4mm !important;
         left: 4mm !important;
         width: 70px !important;
         height: 70px !important;
         z-index: 999 !important;
         display: block !important;
         visibility: visible !important;
+        opacity: 1 !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
@@ -814,11 +820,11 @@ const PrintCertificatePage: React.FC = () => {
 
       {/* Tombol Kontrol (Hilang saat print dan PDF mode) */}
       {!isPdfMode && (
-        <div className="no-print p-4 bg-white shadow-lg sticky top-0 z-50 flex justify-center items-center gap-4">
-          <p className="text-gray-700">Pratinjau Cetak Disiapkan.</p>
-          <button onClick={() => router.back()} className="px-4 py-2 border rounded-lg text-sm font-medium">Kembali</button>
-          <button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Cetak Ulang</button>
-        </div>
+      <div className="no-print p-4 bg-white shadow-lg sticky top-0 z-50 flex justify-center items-center gap-4">
+        <p className="text-gray-700">Pratinjau Cetak Disiapkan.</p>
+        <button onClick={() => router.back()} className="px-4 py-2 border rounded-lg text-sm font-medium">Kembali</button>
+        <button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Cetak Ulang</button>
+      </div>
       )}
       
       {/* --- HALAMAN 1 (COVER) - TIDAK ADA QR CODE KECIL --- */}
