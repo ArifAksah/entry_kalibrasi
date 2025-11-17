@@ -326,6 +326,58 @@ const ViewCertificatePage: React.FC = () => {
             </div>
             <div className="flex items-center space-x-3">
               <button
+                onClick={async () => {
+                  try {
+                    // Download PDF directly from API
+                    const response = await fetch(`/api/certificates/${cert.id}/download-pdf`)
+                    if (!response.ok) {
+                      throw new Error('Failed to generate PDF')
+                    }
+                    
+                    // Get filename from Content-Disposition header or use default
+                    const contentDisposition = response.headers.get('Content-Disposition')
+                    let filename = `Certificate_${cert.no_certificate || cert.id}.pdf`
+                    if (contentDisposition) {
+                      // Try to extract filename from Content-Disposition header
+                      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i)
+                      if (filenameMatch && filenameMatch[1]) {
+                        filename = filenameMatch[1].replace(/['"]/g, '')
+                        // Decode URI if needed
+                        if (filename.includes('%')) {
+                          filename = decodeURIComponent(filename)
+                        }
+                      }
+                    }
+                    
+                    // Ensure filename ends with .pdf
+                    if (!filename.toLowerCase().endsWith('.pdf')) {
+                      filename = `${filename}.pdf`
+                    }
+                    
+                    // Create blob with correct MIME type and download
+                    const blob = await response.blob()
+                    const url = window.URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = filename
+                    a.type = 'application/pdf'
+                    document.body.appendChild(a)
+                    a.click()
+                    window.URL.revokeObjectURL(url)
+                    document.body.removeChild(a)
+                  } catch (err) {
+                    console.error('Error downloading PDF:', err)
+                    alert('Failed to download PDF. Please try again.')
+                  }
+                }}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Download PDF
+              </button>
+              <button
                 onClick={() => router.push(`/certificates/${cert.id}/print`)}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center"
               >

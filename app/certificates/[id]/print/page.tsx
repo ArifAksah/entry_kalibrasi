@@ -371,17 +371,33 @@ const PrintCertificatePage: React.FC = () => {
     console.log(`[Print] QR code rendered: ${qrRenderedCountRef.current}/${expectedQRCodesRef.current}`)
   }, [])
 
+  // Check if download or PDF parameter is present
+  const [isDownloadMode, setIsDownloadMode] = useState(false)
+  const [isPdfMode, setIsPdfMode] = useState(false)
+  
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    setIsDownloadMode(urlParams.get('download') === 'true')
+    setIsPdfMode(urlParams.get('pdf') === 'true')
+  }, [])
+
   // Panggil print hanya setelah data, verifikasi, dan semua QR code siap
+  // Auto-print jika ada parameter download=true
   useEffect(() => {
     if (loading) return
     if (!cert) return
     if (!verificationLoaded) return
     if (hasPrintedRef.current) return
     
+    // Only auto-print if download mode is enabled
+    if (!isDownloadMode) return
+    
     // If no QR codes expected, print immediately
     if (expectedQRCodesRef.current === 0) {
       hasPrintedRef.current = true
-      const t = setTimeout(() => window.print(), 200)
+      const t = setTimeout(() => {
+        window.print()
+      }, 500)
       return () => clearTimeout(t)
     }
 
@@ -391,7 +407,9 @@ const PrintCertificatePage: React.FC = () => {
         hasPrintedRef.current = true
         console.log('[Print] All QR codes rendered, calling window.print()')
         // Give extra time to ensure canvas is fully painted
-        setTimeout(() => window.print(), 300)
+        setTimeout(() => {
+          window.print()
+        }, 500)
       } else {
         // Retry after a short delay
         setTimeout(checkAllQRRendered, 100)
@@ -401,10 +419,10 @@ const PrintCertificatePage: React.FC = () => {
     // Start checking after initial render delay
     const t = setTimeout(() => {
       checkAllQRRendered()
-    }, 500)
+    }, 1000)
 
     return () => clearTimeout(t)
-  }, [loading, cert, verificationLoaded, handleQRRendered])
+  }, [loading, cert, verificationLoaded, handleQRRendered, isDownloadMode])
 
   if (loading) return <div className="p-8 text-gray-600 text-center text-lg">Memuat data sertifikat untuk dicetak...</div>
   if (error || !cert) return <div className="p-8 text-red-600 text-center text-lg">Gagal memuat data: {error || 'Sertifikat tidak ditemukan'}</div>
@@ -636,12 +654,14 @@ const PrintCertificatePage: React.FC = () => {
     <div className="print-container bg-gray-100 print:bg-white text-black" suppressHydrationWarning>
       <style>{A4Style}</style>
 
-      {/* Tombol Kontrol (Hilang saat print) */}
-      <div className="no-print p-4 bg-white shadow-lg sticky top-0 z-50 flex justify-center items-center gap-4">
-        <p className="text-gray-700">Pratinjau Cetak Disiapkan.</p>
-        <button onClick={() => router.back()} className="px-4 py-2 border rounded-lg text-sm font-medium">Kembali</button>
-        <button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Cetak Ulang</button>
-      </div>
+      {/* Tombol Kontrol (Hilang saat print dan PDF mode) */}
+      {!isPdfMode && (
+        <div className="no-print p-4 bg-white shadow-lg sticky top-0 z-50 flex justify-center items-center gap-4">
+          <p className="text-gray-700">Pratinjau Cetak Disiapkan.</p>
+          <button onClick={() => router.back()} className="px-4 py-2 border rounded-lg text-sm font-medium">Kembali</button>
+          <button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Cetak Ulang</button>
+        </div>
+      )}
       
       {/* --- HALAMAN 1 (COVER) - TIDAK ADA QR CODE KECIL --- */}
       <div className="page-container break-after-page bg-white shadow-lg my-4 print:shadow-none print:my-0 relative">

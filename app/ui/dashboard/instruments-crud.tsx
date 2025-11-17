@@ -129,8 +129,8 @@ const InstrumentsCRUD: React.FC = () => {
             // Ensure sensors array is not empty before setting
             if (Array.isArray(sensors) && sensors.length > 0) {
               console.log('Setting sensorForms with', sensors.length, 'sensors')
-              setSensorForms(sensors)
-            } else {
+            setSensorForms(sensors)
+          } else {
               console.log('No sensors found, setting empty array')
               setSensorForms([])
             }

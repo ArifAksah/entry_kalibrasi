@@ -917,11 +917,64 @@ const CertificatesCRUD: React.FC = () => {
                       <ViewIcon className="w-4 h-4" />
                     </a>
                     
+                    <button
+                      onClick={async () => {
+                        try {
+                          // Download PDF directly from API
+                          const response = await fetch(`/api/certificates/${item.id}/download-pdf`)
+                          if (!response.ok) {
+                            throw new Error('Failed to generate PDF')
+                          }
+                          
+                          // Get filename from Content-Disposition header or use default
+                          const contentDisposition = response.headers.get('Content-Disposition')
+                          let filename = `Certificate_${item.no_certificate || item.id}.pdf`
+                          if (contentDisposition) {
+                            // Try to extract filename from Content-Disposition header
+                            const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i)
+                            if (filenameMatch && filenameMatch[1]) {
+                              filename = filenameMatch[1].replace(/['"]/g, '')
+                              // Decode URI if needed
+                              if (filename.includes('%')) {
+                                filename = decodeURIComponent(filename)
+                              }
+                            }
+                          }
+                          
+                          // Ensure filename ends with .pdf
+                          if (!filename.toLowerCase().endsWith('.pdf')) {
+                            filename = `${filename}.pdf`
+                          }
+                          
+                          // Create blob with correct MIME type and download
+                          const blob = await response.blob()
+                          const url = window.URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          a.download = filename
+                          a.type = 'application/pdf'
+                          document.body.appendChild(a)
+                          a.click()
+                          window.URL.revokeObjectURL(url)
+                          document.body.removeChild(a)
+                        } catch (err) {
+                          console.error('Error downloading PDF:', err)
+                          alert('Failed to download PDF. Please try again.')
+                        }
+                      }}
+                      className="inline-flex items-center p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200 border border-transparent hover:border-green-200"
+                      title="Download PDF"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </button>
+                    
                     <a 
                       href={`/certificates/${item.id}/print`} 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="inline-flex items-center p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200 border border-transparent hover:border-green-200"
+                      className="inline-flex items-center p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-lg transition-all duration-200 border border-transparent hover:border-gray-200"
                       title="Print Certificate"
                     >
                       <PrinterIcon className="w-4 h-4" />

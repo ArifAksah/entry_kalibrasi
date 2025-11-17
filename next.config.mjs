@@ -9,6 +9,18 @@ const nextConfig = {
   reactStrictMode: true,
   // Explicitly set the tracing root to this app directory to avoid monorepo lockfile warnings
   outputFileTracingRoot: __dirname,
+  // Externalize puppeteer for server components and API routes
+  serverComponentsExternalPackages: ['puppeteer'],
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      // Externalize puppeteer for server-side rendering
+      config.externals = config.externals || []
+      config.externals.push({
+        puppeteer: 'commonjs puppeteer',
+      })
+    }
+    return config
+  },
   env: {
     // Expose VM-style envs to the client for browser fallback support
     SUPABASE_PUBLIC_URL: process.env.SUPABASE_PUBLIC_URL,
