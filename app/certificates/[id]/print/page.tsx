@@ -433,16 +433,41 @@ const PrintCertificatePage: React.FC = () => {
   const A4Style = `
     @import url('https://fonts.googleapis.com/css2?family=Arial:wght@400;700&display=swap');
     
+    /* Global reset for all list styles */
+    * {
+      list-style: none !important;
+      list-style-type: none !important;
+      list-style-position: outside !important;
+      list-style-image: none !important;
+    }
+    
+    *::marker {
+      display: none !important;
+      content: none !important;
+      color: transparent !important;
+      font-size: 0 !important;
+    }
+    
+    ul, ol, li {
+      list-style: none !important;
+      list-style-type: none !important;
+      padding-left: 0 !important;
+      margin-left: 0 !important;
+      text-indent: 0 !important;
+    }
+    
     body {
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
       background-color: #fff;
+      list-style: none !important;
     }
     
     .print-container {
       font-family: 'Arial', sans-serif;
       background: white;
       color: #000;
+      list-style: none !important;
     }
     
     .page-container {
@@ -472,6 +497,60 @@ const PrintCertificatePage: React.FC = () => {
       left: 20mm !important;
       right: 20mm !important;
       z-index: 1000 !important;
+      list-style-type: none !important;
+      list-style: none !important;
+      list-style-position: outside !important;
+    }
+    
+    /* Prevent any unwanted circles or bullets in footer */
+    .page-1-footer,
+    .page-1-footer * {
+      list-style-type: none !important;
+      list-style: none !important;
+      list-style-position: outside !important;
+      list-style-image: none !important;
+      background: transparent !important;
+      background-image: none !important;
+      border: none !important;
+      outline: none !important;
+      text-indent: 0 !important;
+      padding-left: 0 !important;
+      margin-left: 0 !important;
+    }
+    
+    .page-1-footer *::marker {
+      display: none !important;
+      content: none !important;
+      color: transparent !important;
+    }
+    
+    .page-1-footer *::before,
+    .page-1-footer *::after {
+      content: none !important;
+      display: none !important;
+      background: transparent !important;
+      background-image: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      visibility: hidden !important;
+    }
+    
+    /* Ensure no unwanted shapes appear */
+    .page-1-footer span,
+    .page-1-footer div {
+      position: relative !important;
+      display: inline-block !important;
+    }
+    
+    .page-1-footer span::before,
+    .page-1-footer span::after,
+    .page-1-footer div::before,
+    .page-1-footer div::after,
+    .page-1-footer span::marker,
+    .page-1-footer div::marker {
+      content: none !important;
+      display: none !important;
+      visibility: hidden !important;
     }
     
     /* QR code kecil di footer halaman 2+ (TIDAK di halaman cover) */
@@ -518,13 +597,38 @@ const PrintCertificatePage: React.FC = () => {
     }
     
     @media print {
+      /* Global reset for all list styles in print mode */
+      * {
+        list-style: none !important;
+        list-style-type: none !important;
+        list-style-position: outside !important;
+        list-style-image: none !important;
+      }
+      
+      *::marker {
+        display: none !important;
+        content: none !important;
+        color: transparent !important;
+        font-size: 0 !important;
+      }
+      
+      ul, ol, li {
+        list-style: none !important;
+        list-style-type: none !important;
+        padding-left: 0 !important;
+        margin-left: 0 !important;
+        text-indent: 0 !important;
+      }
+      
       body {
         margin: 0;
         padding: 0;
+        list-style: none !important;
       }
       .print-container {
         margin: 0;
         padding: 0;
+        list-style: none !important;
       }
       .page-container {
         margin: 0;
@@ -557,6 +661,60 @@ const PrintCertificatePage: React.FC = () => {
         left: 20mm !important;
         right: 20mm !important;
         z-index: 1000 !important;
+        list-style-type: none !important;
+        list-style: none !important;
+        list-style-position: outside !important;
+      }
+      
+      /* Prevent any unwanted circles or bullets in footer */
+      .page-1-footer,
+      .page-1-footer * {
+        list-style-type: none !important;
+        list-style: none !important;
+        list-style-position: outside !important;
+        list-style-image: none !important;
+        background: transparent !important;
+        background-image: none !important;
+        border: none !important;
+        outline: none !important;
+        text-indent: 0 !important;
+        padding-left: 0 !important;
+        margin-left: 0 !important;
+      }
+      
+      .page-1-footer *::marker {
+        display: none !important;
+        content: none !important;
+        color: transparent !important;
+      }
+      
+      .page-1-footer *::before,
+      .page-1-footer *::after {
+        content: none !important;
+        display: none !important;
+        background: transparent !important;
+        background-image: none !important;
+        width: 0 !important;
+        height: 0 !important;
+        visibility: hidden !important;
+      }
+      
+      /* Ensure no unwanted shapes appear */
+      .page-1-footer span,
+      .page-1-footer div {
+        position: relative !important;
+        display: inline-block !important;
+      }
+      
+      .page-1-footer span::before,
+      .page-1-footer span::after,
+      .page-1-footer div::before,
+      .page-1-footer div::after,
+      .page-1-footer span::marker,
+      .page-1-footer div::marker {
+        content: none !important;
+        display: none !important;
+        visibility: hidden !important;
       }
       
       /* QR code kecil di footer halaman 2+ (TIDAK di halaman cover) */
@@ -791,18 +949,18 @@ const PrintCertificatePage: React.FC = () => {
         </div>
 
         {/* Footer Halaman 1 */}
-        <footer className="page-1-footer text-xs">
-          <div className="text-center text-[10px] text-gray-700">
+        <footer className="page-1-footer text-xs" style={{ listStyle: 'none', listStyleType: 'none', listStylePosition: 'outside' }}>
+          <div className="text-center text-[10px] text-gray-700" style={{ listStyle: 'none', listStyleType: 'none' }}>
             Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
           </div>
-          <div className="flex justify-between items-end mt-2">
-            <span className="font-semibold">F/IKK 7.8.1</span>
-            <div className="text-center text-[10px] text-gray-700 leading-tight">
+          <div className="flex justify-between items-end mt-2" style={{ listStyle: 'none', listStyleType: 'none' }}>
+            <div className="font-semibold" style={{ listStyle: 'none', listStyleType: 'none', display: 'block', textAlign: 'left' }}>F/IKK 7.8.1</div>
+            <div className="text-center text-[10px] text-gray-700 leading-tight" style={{ listStyle: 'none', listStyleType: 'none' }}>
               Jl. Angkasa I No. 02 Kemayoran Jakarta Pusat
               <br />
               Tlp. 021-4246321 Ext. 5125; Fax: 021-6545626; P.O. Box 3540 Jkt; Website: http://www.bmkg.go.id
             </div>
-            <span className="font-semibold">Edisi/Revisi: 11/0</span>
+            <div className="font-semibold" style={{ listStyle: 'none', listStyleType: 'none', display: 'block', textAlign: 'right' }}>Edisi/Revisi: 11/0</div>
           </div>
         </footer>
       </div>

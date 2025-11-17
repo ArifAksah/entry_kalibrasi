@@ -1572,10 +1572,10 @@ const CertificatesCRUD: React.FC = () => {
                               setNoteDraft(r.notesForm && (r.notesForm.traceable_to_si_through || r.notesForm.reference_document || r.notesForm.calibration_methode || r.notesForm.others) 
                                 ? r.notesForm 
                                 : { 
-                                    traceable_to_si_through: '', 
-                                    reference_document: '', 
-                                    calibration_methode: '', 
-                                    others: '', 
+                                traceable_to_si_through: '', 
+                                reference_document: '', 
+                                calibration_methode: '', 
+                                others: '', 
                                     standardInstruments: r.notesForm?.standardInstruments || [] 
                                   }); 
                               setNoteEditIndex(idx) 
@@ -1758,17 +1758,17 @@ const CertificatesCRUD: React.FC = () => {
                   <div key={si} className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm relative">
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex-1 space-y-1">
-                        <label className="block text-xs font-semibold text-gray-700">Judul Bagian</label>
-                        <input 
-                          value={section.title} 
-                          onChange={e => { 
-                            const v = [...tableDraft]; 
-                            v[si] = {...v[si], title: e.target.value}; 
-                            setTableDraft(v) 
-                          }} 
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
-                          placeholder="Contoh: Hasil Pengukuran"
-                        />
+                      <label className="block text-xs font-semibold text-gray-700">Judul Bagian</label>
+                      <input 
+                        value={section.title} 
+                        onChange={e => { 
+                          const v = [...tableDraft]; 
+                          v[si] = {...v[si], title: e.target.value}; 
+                          setTableDraft(v) 
+                        }} 
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
+                        placeholder="Contoh: Hasil Pengukuran"
+                      />
                       </div>
                       <button
                         type="button"
