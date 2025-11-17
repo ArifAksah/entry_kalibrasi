@@ -8,13 +8,7 @@ import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
 import Loading from '../../../components/ui/Loading'
-
-// SVG Icons untuk tampilan yang lebih elegan
-const EditIcon = ({ className = "" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-  </svg>
-)
+import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
 
 const TrashIcon = ({ className = "" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -245,10 +239,10 @@ const SensorsCRUD: React.FC = () => {
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{(sensor as any).is_standard ? 'Yes' : 'No'}</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                 {can('sensor','update') && canEndpoint('PUT', `/api/sensors/${sensor.id}`) && (
-                  <button onClick={() => handleOpenModal(sensor)} className="text-blue-600 hover:text-blue-900">Edit</button>
+                  <EditButton onClick={() => handleOpenModal(sensor)} title="Edit Sensor" />
                 )}
                 {can('sensor','delete') && canEndpoint('DELETE', `/api/sensors/${sensor.id}`) && (
-                  <button onClick={() => handleDelete(sensor.id)} className="text-red-600 hover:text-red-900">Delete</button>
+                  <DeleteButton onClick={() => handleDelete(sensor.id)} title="Delete Sensor" />
                 )}
               </td>
             </tr>

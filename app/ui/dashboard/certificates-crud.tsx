@@ -12,14 +12,9 @@ import Alert from '../../../components/ui/Alert'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useAlert } from '../../../hooks/useAlert'
 import { useRouter } from 'next/navigation'
+import { EditIcon, DeleteIcon } from '../../../components/ui/ActionIcons'
 
-// SVG Icons untuk tampilan yang lebih elegan
-const EditIcon = ({ className = "" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-  </svg>
-)
-
+// Keep TrashIcon for backward compatibility in this file
 const TrashIcon = ({ className = "" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -152,10 +147,15 @@ const SearchableDropdown = ({
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState('')
 
-  const filteredOptions = options.filter(option =>
-    option.name.toLowerCase().includes(search.toLowerCase()) ||
-    (option.station_id && option.station_id.toLowerCase().includes(search.toLowerCase()))
-  )
+  const filteredOptions = options.filter(option => {
+    const searchLower = search.toLowerCase()
+    return (
+      option.name.toLowerCase().includes(searchLower) ||
+      (option.station_id && String(option.station_id).toLowerCase().includes(searchLower)) ||
+      (typeof option.id === 'string' && option.id.toLowerCase().includes(searchLower)) ||
+      (option.nip && String(option.nip).toLowerCase().includes(searchLower))
+    )
+  })
 
   const selectedOption = options.find(opt => opt.id === value)
 
@@ -246,7 +246,7 @@ const CertificatesCRUD: React.FC = () => {
   const [stations, setStations] = useState<Station[]>([])
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [sensors, setSensors] = useState<Array<{ id: number; name?: string | null }>>([])
-  const [personel, setPersonel] = useState<Array<{ id: string; name: string }>>([])
+  const [personel, setPersonel] = useState<Array<{ id: string; name: string; nip?: string }>>([])
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -952,7 +952,7 @@ const CertificatesCRUD: React.FC = () => {
                         {isDeleting === item.id ? (
                           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
                         ) : (
-                          <TrashIcon className="w-4 h-4" />
+                          <DeleteIcon className="w-4 h-4" />
                         )}
                       </button>
                     )}
@@ -1123,46 +1123,50 @@ const CertificatesCRUD: React.FC = () => {
                     
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Authorized By</label>
-                      <select 
-                        value={form.authorized_by ?? ''} 
-                        onChange={e => setForm({ ...form, authorized_by: e.target.value || null })} 
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] focus:border-transparent transition-all duration-200 bg-white text-sm"
-                      >
-                        <option value="">Pilih personel</option>
-                        {personel.map(p => (
-                          <option key={p.id} value={p.id}>{p.name} ({p.id.slice(0,8)})</option>
-                        ))}
-                      </select>
+                      <SearchableDropdown
+                        value={form.authorized_by}
+                        onChange={(value) => setForm({ ...form, authorized_by: value as string | null })}
+                        options={personel.map(p => ({
+                          id: p.id,
+                          name: p.nip ? `${p.name} (${p.nip})` : p.name,
+                          station_id: p.id.slice(0, 8),
+                          nip: p.nip || ''
+                        }))}
+                        placeholder="Pilih personel"
+                        searchPlaceholder="Cari personel (nama, NIP atau ID)..."
+                      />
                     </div>
 
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Verifikator 1 *</label>
-                      <select 
-                        required 
-                        value={(form as any).verifikator_1 ?? ''} 
-                        onChange={e => setForm({ ...form, verifikator_1: e.target.value || null } as any)} 
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] focus:border-transparent transition-all duration-200 bg-white text-sm"
-                      >
-                        <option value="">Pilih personel</option>
-                        {personel.map(p => (
-                          <option key={p.id} value={p.id}>{p.name} ({p.id.slice(0,8)})</option>
-                        ))}
-                      </select>
+                      <SearchableDropdown
+                        value={(form as any).verifikator_1 ?? null}
+                        onChange={(value) => setForm({ ...form, verifikator_1: value as string | null } as any)}
+                        options={personel.map(p => ({
+                          id: p.id,
+                          name: p.nip ? `${p.name} (${p.nip})` : p.name,
+                          station_id: p.id.slice(0, 8),
+                          nip: p.nip || ''
+                        }))}
+                        placeholder="Pilih personel"
+                        searchPlaceholder="Cari personel (nama, NIP atau ID)..."
+                      />
                     </div>
 
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Verifikator 2 *</label>
-                      <select 
-                        required 
-                        value={(form as any).verifikator_2 ?? ''} 
-                        onChange={e => setForm({ ...form, verifikator_2: e.target.value || null } as any)} 
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] focus:border-transparent transition-all duration-200 bg-white text-sm"
-                      >
-                        <option value="">Pilih personel</option>
-                        {personel.map(p => (
-                          <option key={p.id} value={p.id}>{p.name} ({p.id.slice(0,8)})</option>
-                        ))}
-                      </select>
+                      <SearchableDropdown
+                        value={(form as any).verifikator_2 ?? null}
+                        onChange={(value) => setForm({ ...form, verifikator_2: value as string | null } as any)}
+                        options={personel.map(p => ({
+                          id: p.id,
+                          name: p.nip ? `${p.name} (${p.nip})` : p.name,
+                          station_id: p.id.slice(0, 8),
+                          nip: p.nip || ''
+                        }))}
+                        placeholder="Pilih personel"
+                        searchPlaceholder="Cari personel (nama, NIP atau ID)..."
+                      />
                     </div>
                   </div>
                 </div>
@@ -1497,15 +1501,8 @@ const CertificatesCRUD: React.FC = () => {
                         <div className="flex flex-wrap gap-1">
                           {[
                             { label: 'Kondisi Lingkungan', onClick: () => { 
-                              // Auto-suggest environment conditions based on sensor type
-                              const suggestedEnv = r.sensorDetails ? [
-                                { key: 'Suhu', value: '20 ± 2°C' },
-                                { key: 'Kelembaban', value: '45-75% RH' },
-                                { key: 'Tekanan', value: '1013.25 ± 10 hPa' },
-                                { key: 'Sensor Type', value: r.sensorDetails.type || '' },
-                                { key: 'Range', value: `${r.sensorDetails.range_capacity || ''} ${r.sensorDetails.range_capacity_unit || ''}` }
-                              ] : [{ key: '', value: '' }];
-                              setEnvDraft(r.environment.length ? r.environment : suggestedEnv); 
+                              // Only use existing data, don't auto-fill
+                              setEnvDraft(r.environment.length ? r.environment : []); 
                               setEnvEditIndex(idx) 
                             } },
                             { label: 'Tabel Hasil', onClick: () => { 
@@ -1513,46 +1510,21 @@ const CertificatesCRUD: React.FC = () => {
                                 showWarning('Pilih stasiun terlebih dahulu'); 
                                 return; 
                               }
-                              // Auto-suggest table structure based on sensor type
-                              const suggestedTable = r.sensorDetails ? [
-                                {
-                                  title: 'Hasil Pengukuran',
-                                  rows: [
-                                    { key: 'Range Pengukuran', unit: r.sensorDetails.range_capacity_unit || '', value: r.sensorDetails.range_capacity || '' },
-                                    { key: 'Resolusi', unit: r.sensorDetails.graduating_unit || '', value: r.sensorDetails.graduating || '' },
-                                    { key: 'Akurasi', unit: '%', value: '± 0.5' },
-                                    { key: 'Repeatability', unit: '%', value: '± 0.2' },
-                                    { key: 'Hysteresis', unit: '%', value: '± 0.3' }
-                                  ]
-                                },
-                                {
-                                  title: 'Kondisi Kalibrasi',
-                                  rows: [
-                                    { key: 'Suhu', unit: '°C', value: '20 ± 2' },
-                                    { key: 'Kelembaban', unit: '% RH', value: '45-75' },
-                                    { key: 'Tekanan', unit: 'hPa', value: '1013.25 ± 10' }
-                                  ]
-                                }
-                              ] : [{ title: '', rows: [{ key: '', unit: '', value: '' }] }];
-                              setTableDraft(r.table.length ? r.table : suggestedTable); 
+                              // Only use existing data, don't auto-fill
+                              setTableDraft(r.table.length ? r.table : []); 
                               setTableEditIndex(idx) 
                             } },
                             { label: 'Catatan', onClick: () => { 
-                              // Auto-suggest notes based on sensor data
-                              const suggestedNotes = r.sensorDetails ? {
-                                traceable_to_si_through: 'NIST Traceable Standards',
-                                reference_document: 'ISO/IEC 17025:2017',
-                                calibration_methode: `Kalibrasi ${r.sensorDetails.type || 'Sensor'} menggunakan metode komparasi langsung`,
-                                others: `Sensor ${r.sensorDetails.name || r.sensorDetails.type || ''} dengan serial number ${r.sensorDetails.serial_number || ''} dari pabrikan ${r.sensorDetails.manufacturer || ''}`,
-                                standardInstruments: r.notesForm.standardInstruments || []
-                              } : { 
-                                traceable_to_si_through: '', 
-                                reference_document: '', 
-                                calibration_methode: '', 
-                                others: '', 
-                                standardInstruments: r.notesForm.standardInstruments || [] 
-                              };
-                              setNoteDraft(suggestedNotes); 
+                              // Only use existing data, don't auto-fill
+                              setNoteDraft(r.notesForm && (r.notesForm.traceable_to_si_through || r.notesForm.reference_document || r.notesForm.calibration_methode || r.notesForm.others) 
+                                ? r.notesForm 
+                                : { 
+                                    traceable_to_si_through: '', 
+                                    reference_document: '', 
+                                    calibration_methode: '', 
+                                    others: '', 
+                                    standardInstruments: r.notesForm?.standardInstruments || [] 
+                                  }); 
                               setNoteEditIndex(idx) 
                             } },
                           ].map((button, btnIdx) => (
@@ -1730,24 +1702,38 @@ const CertificatesCRUD: React.FC = () => {
             <div className="max-h-[60vh] overflow-y-auto p-4 bg-gradient-to-br from-white to-gray-50/30">
               <div className="space-y-4">
                 {tableDraft.map((section, si) => (
-                  <div key={si} className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
-                    <div className="space-y-1 mb-3">
-                      <label className="block text-xs font-semibold text-gray-700">Judul Bagian</label>
-                      <input 
-                        value={section.title} 
-                        onChange={e => { 
-                          const v = [...tableDraft]; 
-                          v[si] = {...v[si], title: e.target.value}; 
-                          setTableDraft(v) 
-                        }} 
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
-                        placeholder="Contoh: Hasil Pengukuran"
-                      />
+                  <div key={si} className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm relative">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex-1 space-y-1">
+                        <label className="block text-xs font-semibold text-gray-700">Judul Bagian</label>
+                        <input 
+                          value={section.title} 
+                          onChange={e => { 
+                            const v = [...tableDraft]; 
+                            v[si] = {...v[si], title: e.target.value}; 
+                            setTableDraft(v) 
+                          }} 
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
+                          placeholder="Contoh: Hasil Pengukuran"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const v = [...tableDraft];
+                          v.splice(si, 1);
+                          setTableDraft(v.length > 0 ? v : [{ title: '', rows: [{ key: '', unit: '', value: '' }] }]);
+                        }}
+                        className="ml-3 inline-flex items-center p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200 border border-transparent hover:border-red-200"
+                        title="Hapus Bagian Tabel"
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                      </button>
                     </div>
                     
                     <div className="space-y-2">
                       {section.rows.map((row, ri) => (
-                        <div key={ri} className="grid grid-cols-1 md:grid-cols-3 gap-2 p-2 border border-gray-100 rounded bg-gray-50">
+                        <div key={ri} className="grid grid-cols-1 md:grid-cols-4 gap-2 p-2 border border-gray-100 rounded bg-gray-50 relative">
                           <div className="space-y-1">
                             <label className="block text-xs font-medium text-gray-600">Parameter</label>
                             <input 
@@ -1786,6 +1772,22 @@ const CertificatesCRUD: React.FC = () => {
                               }} 
                               className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
                             />
+                          </div>
+                          <div className="flex items-end">
+                            {section.rows.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const v = [...tableDraft];
+                                  v[si].rows = v[si].rows.filter((_, index) => index !== ri);
+                                  setTableDraft(v);
+                                }}
+                                className="w-full inline-flex items-center justify-center p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-all duration-200 border border-transparent hover:border-red-200"
+                                title="Hapus Baris"
+                              >
+                                <TrashIcon className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       ))}

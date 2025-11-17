@@ -54,6 +54,12 @@ const Icon = {
       <path d="M3.75 7.5l8.25 6 8.25-6M4.5 6h15a1.5 1.5 0 011.5 1.5v9A1.5 1.5 0 0119.5 18h-15A1.5 1.5 0 013 16.5v-9A1.5 1.5 0 014.5 6z"/>
     </svg>
   ),
+  clock: (
+    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M12 6v6l4 2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  ),
 };
 
 // Sections configuration
@@ -80,6 +86,7 @@ const sections: NavSection[] = [
     title: 'Documents',
     items: [
       { name: 'Certificates', href: '/certificates', icon: Icon.doc },
+      { name: 'Certificate Logs', href: '/certificate-logs', icon: Icon.clock },
       { name: 'Letters', href: '/letters', icon: Icon.mail },
     ],
   },
@@ -126,6 +133,10 @@ const SideNav: React.FC = () => {
           if (item.name === 'Letters') {
             // Only admin and assignor can see letters
             return role === 'admin' || role === 'assignor';
+          }
+          if (item.name === 'Certificate Logs') {
+            // Certificate Logs visible to admin, assignor, calibrator, and verifikator
+            return role === 'admin' || role === 'assignor' || role === 'calibrator' || role === 'verifikator';
           }
           return true; // Certificates stays; Draft View already removed above
         });

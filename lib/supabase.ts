@@ -156,6 +156,26 @@ export interface Certificate {
 export type CertificateInsert = Omit<Certificate, 'id' | 'created_at' | 'version'>
 export type CertificateUpdate = Partial<CertificateInsert>
 
+// Certificate Logs
+export interface CertificateLog {
+  id: number
+  certificate_id: number
+  action: 'created' | 'sent' | 'approved_v1' | 'approved_v2' | 'approved_assignor' | 'rejected_v1' | 'rejected_v2' | 'rejected_assignor' | 'updated' | 'deleted'
+  performed_by: string
+  performed_by_name?: string | null
+  notes?: string | null
+  rejection_reason?: string | null
+  approval_notes?: string | null
+  verification_level?: number | null // 1 = verifikator_1, 2 = verifikator_2, 3 = assignor/authorized_by
+  previous_status?: string | null
+  new_status?: string | null
+  metadata?: Record<string, any> | null
+  created_at: string
+}
+
+export type CertificateLogInsert = Omit<CertificateLog, 'id' | 'created_at'>
+export type CertificateLogUpdate = Partial<CertificateLogInsert>
+
 // Inspection person
 export interface InspectionPerson {
   id: number

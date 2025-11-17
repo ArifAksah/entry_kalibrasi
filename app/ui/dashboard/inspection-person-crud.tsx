@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { useInspectionPerson } from '../../../hooks/useInspectionPerson'
 import { InspectionPerson, InspectionPersonInsert } from '../../../lib/supabase'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
+import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
 
 const InspectionPersonCRUD: React.FC = () => {
   const { items, loading, error, addItem, updateItem, deleteItem } = useInspectionPerson()
@@ -100,8 +101,8 @@ const InspectionPersonCRUD: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.result ?? '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.inspection_by ?? '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                    <button onClick={() => openModal(item)} className="text-blue-600 hover:text-blue-900">Edit</button>
-                    <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">Delete</button>
+                    <EditButton onClick={() => openModal(item)} title="Edit Inspection Person" />
+                    <DeleteButton onClick={() => handleDelete(item.id)} title="Delete Inspection Person" />
                   </td>
                 </tr>
               ))}

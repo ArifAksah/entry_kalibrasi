@@ -16,6 +16,7 @@ import { useAlert } from '../../../hooks/useAlert'
 import { useCertificateRejection } from '../../../hooks/useCertificateRejection'
 import RejectionModal from './rejection-modal'
 import { Certificate, CertificateInsert, Station, Instrument, Sensor } from '../../../lib/supabase'
+import { EditIcon, DeleteIcon, ViewIcon, CloseIcon, CheckIcon, XIcon, EditButton, ViewButton, VerifyButton, RejectButton } from '../../../components/ui/ActionIcons'
 
 const CertificateVerificationCRUD: React.FC = () => {
   const { pendingCertificates, loading, error, createVerification, updateVerification } = useCertificateVerification()
@@ -438,17 +439,19 @@ const CertificateVerificationCRUD: React.FC = () => {
                   <a 
                     href={`/certificates/${cert.id}/print`} 
                     target="_blank" 
-                    className="text-green-600 hover:text-green-800"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200 border border-transparent hover:border-green-200"
                   >
-                    View
+                    <ViewIcon className="w-4 h-4" />
+                    <span>View</span>
                   </a>
                   {cert.verification_status.user_verification_status === 'pending' && (
                     <a
                       href={`/certificates?edit=${cert.id}&from=verification`}
-                      className="text-purple-600 hover:text-purple-800"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-all duration-200 border border-transparent hover:border-purple-200"
                       title="Edit Certificate"
                     >
-                      Edit
+                      <EditIcon className="w-4 h-4" />
+                      <span>Edit</span>
                     </a>
                   )}
                   {cert.verification_status.user_can_act ? (
@@ -457,28 +460,32 @@ const CertificateVerificationCRUD: React.FC = () => {
                         onClick={() => {
                           openModal(cert)
                         }} 
-                        className="text-blue-600 hover:text-blue-900"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all duration-200 border border-transparent hover:border-blue-200"
+                        title={cert.verification_status.user_verification_id ? 'Update Verification' : 'Verify Certificate'}
                       >
-                        {cert.verification_status.user_verification_id ? 'Update' : 'Verify'}
+                        <CheckIcon className="w-4 h-4" />
+                        <span>{cert.verification_status.user_verification_id ? 'Update' : 'Verify'}</span>
                       </button>
                       <button 
                         onClick={() => {
                           openRejectionModal(cert)
                         }} 
-                        className="text-red-600 hover:text-red-900"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200 border border-transparent hover:border-red-200"
                         title="Tolak Sertifikat"
                       >
-                        Reject
+                        <XIcon className="w-4 h-4" />
+                        <span>Reject</span>
                       </button>
                       <button 
                         onClick={() => {
                           console.log('Edit button clicked for cert:', cert.id, 'status:', cert.verification_status.user_verification_status)
                           openEditModal(cert)
                         }}
-                        className="text-orange-600 hover:text-orange-800"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-orange-600 hover:text-orange-800 hover:bg-orange-50 rounded-lg transition-all duration-200 border border-transparent hover:border-orange-200"
                         title="Edit verification"
                       >
-                        Edit
+                        <EditIcon className="w-4 h-4" />
+                        <span>Edit</span>
                       </button>
                     </>
                   ) : (
@@ -512,11 +519,9 @@ const CertificateVerificationCRUD: React.FC = () => {
               </h3>
               <button
                 onClick={closeModal}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 transition-colors"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <CloseIcon className="w-6 h-6" />
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-6">
@@ -680,11 +685,9 @@ const CertificateVerificationCRUD: React.FC = () => {
               </h3>
               <button
                 onClick={closeEditModal}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 transition-colors"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <CloseIcon className="w-6 h-6" />
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-6">

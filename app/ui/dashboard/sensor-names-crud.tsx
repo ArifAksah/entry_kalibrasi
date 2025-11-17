@@ -7,6 +7,7 @@ import { Sensor, SensorInsert } from '../../../lib/supabase'
 import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
+import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
 
 const SensorsCRUD: React.FC = () => {
   const { sensors, loading, error, addSensor, updateSensor, deleteSensor } = useSensors()
@@ -205,20 +206,10 @@ const SensorsCRUD: React.FC = () => {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                   {can('sensor','update') && canEndpoint('PUT', `/api/sensors/${sensor.id}`) && (
-                    <button 
-                      onClick={() => handleOpenModal(sensor)} 
-                      className="text-blue-600 hover:text-blue-900 font-medium transition-colors duration-150"
-                    >
-                      Edit
-                    </button>
+                    <EditButton onClick={() => handleOpenModal(sensor)} title="Edit Sensor" />
                   )}
                   {can('sensor','delete') && canEndpoint('DELETE', `/api/sensors/${sensor.id}`) && (
-                    <button 
-                      onClick={() => handleDelete(sensor.id)} 
-                      className="text-red-600 hover:text-red-900 font-medium transition-colors duration-150"
-                    >
-                      Delete
-                    </button>
+                    <DeleteButton onClick={() => handleDelete(sensor.id)} title="Delete Sensor" />
                   )}
                 </td>
               </tr>

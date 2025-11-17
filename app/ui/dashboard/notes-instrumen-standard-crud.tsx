@@ -6,6 +6,7 @@ import { NotesInstrumenStandard, NotesInstrumenStandardInsert, Sensor, Note } fr
 import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
+import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
 
 const NotesInstrumenStandardCRUD: React.FC = () => {
   const { items, loading, error, addItem, updateItem, deleteItem } = useNotesInstrumenStandard()
@@ -90,8 +91,8 @@ const NotesInstrumenStandardCRUD: React.FC = () => {
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.notes ?? '-'}</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.instrumen_standard ?? '-'}</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                <button onClick={() => openModal(item)} className="text-blue-600 hover:text-blue-900">Edit</button>
-                <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">Delete</button>
+                <EditButton onClick={() => openModal(item)} title="Edit Notes Instrumen Standard" />
+                <DeleteButton onClick={() => handleDelete(item.id)} title="Delete Notes Instrumen Standard" />
               </td>
             </tr>
           ))}

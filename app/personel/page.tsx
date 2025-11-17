@@ -8,6 +8,7 @@ import usePersonel, { Person } from '../../hooks/usePersonel'
 import { supabase } from '../../lib/supabase'
 import { useAlert } from '../../hooks/useAlert'
 import Alert from '../../components/ui/Alert'
+import { EditButton, DeleteButton } from '../../components/ui/ActionIcons'
 
 const roles: Person['role'][] = ['admin', 'calibrator', 'verifikator', 'assignor', 'user_station']
 
@@ -326,8 +327,8 @@ const PersonelPage: React.FC = () => {
                               {savingRole === p.id && <span className="ml-2 text-xs text-gray-500">Menyimpan...</span>}
                             </td>
                             <td className="px-6 py-4 text-center space-x-2">
-                              <button onClick={() => openModal(p)} className="font-medium text-blue-600 hover:underline">Edit</button>
-                              <button onClick={() => removePerson(p.id)} className="font-medium text-red-600 hover:underline">Hapus</button>
+                              <EditButton onClick={() => openModal(p)} title="Edit Personel" />
+                              <DeleteButton onClick={() => removePerson(p.id)} title="Hapus Personel" />
                             </td>
                           </tr>
                         ))

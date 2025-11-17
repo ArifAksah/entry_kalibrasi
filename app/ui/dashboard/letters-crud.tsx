@@ -6,6 +6,7 @@ import { Letter, LetterInsert, LetterUpdate } from '../../../lib/supabase'
 import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
+import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
 
 const LettersCRUD: React.FC = () => {
   const { items, loading, error, addItem, updateItem, deleteItem } = useLetters()
@@ -180,8 +181,8 @@ const LettersCRUD: React.FC = () => {
                 >
                   Print
                 </a>
-                <button onClick={() => openModal(item)} className="text-blue-600 hover:text-blue-900">Edit</button>
-                <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">Delete</button>
+                <EditButton onClick={() => openModal(item)} title="Edit Letter" />
+                <DeleteButton onClick={() => handleDelete(item.id)} title="Delete Letter" />
               </td>
             </tr>
           ))}

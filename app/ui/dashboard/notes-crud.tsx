@@ -6,6 +6,7 @@ import { Note, NoteInsert } from '../../../lib/supabase'
 import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
+import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
 
 const NotesCRUD: React.FC = () => {
   const { notes, loading, error, addNote, updateNote, deleteNote } = useNotes()
@@ -114,8 +115,8 @@ const NotesCRUD: React.FC = () => {
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 max-w-xs truncate">{note.others || 'N/A'}</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(note.created_at).toLocaleDateString()}</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                <button onClick={() => handleOpenModal(note)} className="text-blue-600 hover:text-blue-900">Edit</button>
-                <button onClick={() => handleDelete(note.id)} className="text-red-600 hover:text-red-900">Delete</button>
+                <EditButton onClick={() => handleOpenModal(note)} title="Edit Note" />
+                <DeleteButton onClick={() => handleDelete(note.id)} title="Delete Note" />
               </td>
             </tr>
           ))}

@@ -9,6 +9,7 @@ import Alert from '../../../components/ui/Alert'
 import { useAlert } from '../../../hooks/useAlert'
 import Loading from '../../../components/ui/Loading'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
+import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
 
 const InstrumentsCRUD: React.FC = () => {
   const { instruments, loading, error, addInstrument, updateInstrument, deleteInstrument, fetchInstruments } = useInstruments()
@@ -53,6 +54,7 @@ const InstrumentsCRUD: React.FC = () => {
     funnel_area_unit: string;
     is_standard: boolean;
   }>>([])
+  const [isLoadingSensors, setIsLoadingSensors] = useState(false)
   
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300)
@@ -75,13 +77,13 @@ const InstrumentsCRUD: React.FC = () => {
     }
   }, [editing, stations]);
 
-  // Reset sensor forms when memiliki_lebih_satu is unchecked
+  // Reset sensor forms when memiliki_lebih_satu is unchecked (but not when editing and loading sensors)
   useEffect(() => {
-    if (!form.memiliki_lebih_satu) {
+    if (!form.memiliki_lebih_satu && !editing && !isLoadingSensors) {
       console.log('Resetting sensor forms because memiliki_lebih_satu is false')
       setSensorForms([]);
     }
-  }, [form.memiliki_lebih_satu]);
+  }, [form.memiliki_lebih_satu, editing, isLoadingSensors]);
 
   // Debug sensorForms changes
   useEffect(() => {
@@ -103,17 +105,20 @@ const InstrumentsCRUD: React.FC = () => {
   const openModal = async (item?: Instrument) => {
     if (item) {
       setEditing(item)
-      setForm({
+      const formData = {
         manufacturer: item.manufacturer,
         type: item.type,
         serial_number: item.serial_number,
         name: item.name,
         station_id: item.station_id,
         memiliki_lebih_satu: item.memiliki_lebih_satu || false,
-      })
+      }
+      setForm(formData)
       
       // Load existing sensors if instrument has multi sensor
+      // Do this AFTER setting the form to avoid race conditions
       if (item.memiliki_lebih_satu) {
+        setIsLoadingSensors(true)
         try {
           console.log('Loading sensors for instrument:', item.id)
           const res = await fetch(`/api/instruments/${item.id}/sensors`)
@@ -121,17 +126,28 @@ const InstrumentsCRUD: React.FC = () => {
           if (res.ok) {
             const sensors = await res.json()
             console.log('Loaded sensors:', sensors)
-            setSensorForms(sensors)
+            // Ensure sensors array is not empty before setting
+            if (Array.isArray(sensors) && sensors.length > 0) {
+              console.log('Setting sensorForms with', sensors.length, 'sensors')
+              setSensorForms(sensors)
+            } else {
+              console.log('No sensors found, setting empty array')
+              setSensorForms([])
+            }
           } else {
-            console.error('Failed to load sensors:', res.status, res.statusText)
+            const errorText = await res.text()
+            console.error('Failed to load sensors:', res.status, res.statusText, errorText)
             setSensorForms([])
           }
         } catch (error) {
           console.error('Error loading sensors:', error)
           setSensorForms([])
+        } finally {
+          setIsLoadingSensors(false)
         }
       } else {
         setSensorForms([])
+        setIsLoadingSensors(false)
       }
     } else {
       setEditing(null)
@@ -153,6 +169,7 @@ const InstrumentsCRUD: React.FC = () => {
     setEditing(null)
     // Reset sensor forms
     setSensorForms([])
+    setIsLoadingSensors(false)
   }
 
   // Fungsi untuk menambah sensor baru
@@ -380,20 +397,10 @@ const InstrumentsCRUD: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                     {can('instrument','update') && canEndpoint('PUT', `/api/instruments/${item.id}`) && (
-                      <button
-                        onClick={() => openModal(item)}
-                        className="text-blue-600 hover:text-blue-900 transition-colors duration-200 font-medium"
-                      >
-                        Edit
-                      </button>
+                      <EditButton onClick={() => openModal(item)} title="Edit Instrument" />
                     )}
                     {can('instrument','delete') && canEndpoint('DELETE', `/api/instruments/${item.id}`) && (
-                      <button
-                        onClick={() => handleDelete(item.id)}
-                        className="text-red-600 hover:text-red-900 transition-colors duration-200 font-medium"
-                      >
-                        Delete
-                      </button>
+                      <DeleteButton onClick={() => handleDelete(item.id)} title="Delete Instrument" />
                     )}
                   </td>
                 </tr>

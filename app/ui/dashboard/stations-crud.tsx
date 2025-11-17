@@ -8,6 +8,7 @@ import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
 import Loading from '../../../components/ui/Loading'
+import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
 import { usePermissions } from '../../../hooks/usePermissions'
 
 // SVG Icons untuk tampilan yang lebih elegan
@@ -433,10 +434,10 @@ const StationsCRUD: React.FC = () => {
               <td className="px-6 py-4 text-sm text-gray-900 truncate">{item.province}</td>
               <td className="px-6 py-4 text-sm font-medium space-x-2">
         {can('station','update') && canEndpoint('PUT', `/api/stations/${item.id}`) && (
-                  <button onClick={() => openModal(item)} className="text-blue-600 hover:text-blue-900">Edit</button>
+                  <EditButton onClick={() => openModal(item)} title="Edit Station" />
                 )}
         {can('station','delete') && canEndpoint('DELETE', `/api/stations/${item.id}`) && (
-                  <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">Delete</button>
+                  <DeleteButton onClick={() => handleDelete(item.id)} title="Delete Station" />
                 )}
               </td>
             </tr>
