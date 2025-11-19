@@ -225,6 +225,20 @@ const LoginPage: React.FC = () => {
               </div>
             </form>
 
+            {/* BSrE Logo Section - Below Access System Button */}
+            <div className="mt-12 flex flex-col items-center justify-center">
+              <div className="mb-2">
+                <Image 
+                  src="/bsre-logo.png" 
+                  alt="Balai Besar Sertifikasi Elektronik" 
+                  width={150} 
+                  height={45}
+                  className="opacity-90 hover:opacity-100 transition-opacity duration-300"
+                  priority
+                />
+              </div>
+            </div>
+
             {/* Links */}
             <div className="mt-6 flex items-center justify-between">
               <a href="/forgot-password" className="text-sm text-blue-300 hover:text-white">Lupa password?</a>

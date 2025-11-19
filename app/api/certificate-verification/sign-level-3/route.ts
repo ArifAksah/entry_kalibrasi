@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
 
     // Create certificate log entry for signing
     try {
-      const { createCertificateLog } = await import('../../../../../lib/certificate-log-helper')
+      const { createCertificateLog } = await import('../../../../lib/certificate-log-helper')
       const { data: currentCert } = await supabaseAdmin
         .from('certificate')
         .select('status')
@@ -195,6 +195,31 @@ export async function POST(request: NextRequest) {
     } catch (logError) {
       console.error('Failed to create certificate log:', logError)
       // Don't fail the request if logging fails
+    }
+
+    // Generate and save PDF automatically when level 3 is approved
+    // This runs asynchronously so it doesn't block the response
+    try {
+      const { generateAndSaveCertificatePDF } = await import('../../../../lib/certificate-pdf-helper')
+      console.log(`[sign-level-3] Starting PDF generation for certificate ${cert.id}...`)
+      
+      // Run PDF generation in background (don't await to avoid blocking response)
+      generateAndSaveCertificatePDF(cert.id)
+        .then(result => {
+          if (result.success) {
+            console.log(`[sign-level-3] ✅ PDF generated successfully for certificate ${cert.id}: ${result.pdfPath}`)
+          } else {
+            console.error(`[sign-level-3] ❌ Failed to generate PDF for certificate ${cert.id}:`, result.error)
+          }
+        })
+        .catch(error => {
+          console.error(`[sign-level-3] ❌ Error generating PDF for certificate ${cert.id}:`, error)
+          console.error(`[sign-level-3] Error stack:`, error.stack)
+        })
+    } catch (pdfError: any) {
+      console.error('[sign-level-3] ❌ Failed to import or call PDF helper:', pdfError)
+      console.error('[sign-level-3] Error details:', pdfError.message, pdfError.stack)
+      // Don't fail the request if PDF generation fails
     }
 
     await logAction(request, user.id, 'bsre_sign', 'success', { documentId, certificateId: cert.id })

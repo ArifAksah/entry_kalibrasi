@@ -151,6 +151,9 @@ export interface Certificate {
   sent_to_verifiers_at?: string
   sent_by?: string
   assignor?: string
+  // PDF storage fields (generated when level 3 is approved)
+  pdf_path?: string | null
+  pdf_generated_at?: string | null
 }
 
 export type CertificateInsert = Omit<Certificate, 'id' | 'created_at' | 'version'>
