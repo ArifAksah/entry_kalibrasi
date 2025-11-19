@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../../../contexts/AuthContext'
 import { useCertificateVerification, PendingCertificate } from '../../../hooks/useCertificateVerification'
 import { useCertificates } from '../../../hooks/useCertificates'
@@ -46,6 +46,11 @@ const CertificateVerificationCRUD: React.FC = () => {
   const [passphrase, setPassphrase] = useState('')
   const [isSigning, setIsSigning] = useState(false)
   const [passphraseError, setPassphraseError] = useState<string | null>(null)
+  
+  // Live search and pagination states
+  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const certificatesPerPage = 10
 
   useEffect(() => {
     console.log('CertificateVerificationCRUD mounted, pendingCertificates:', pendingCertificates)
@@ -54,6 +59,68 @@ const CertificateVerificationCRUD: React.FC = () => {
       console.log('User verification status:', pendingCertificates[0].verification_status.user_verification_status)
     }
   }, [pendingCertificates])
+
+  // Helper function to get verification level
+  const getVerificationLevel = (cert: PendingCertificate) => {
+    if (cert.verifikator_1 === user?.id) return 'Verifikator 1'
+    if (cert.verifikator_2 === user?.id) return 'Verifikator 2'
+    if (cert.authorized_by === user?.id) return 'Penandatangan'
+    return 'Unknown'
+  }
+
+  // Filter certificates based on search query
+  const filteredCertificates = useMemo(() => {
+    if (!pendingCertificates) return []
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return pendingCertificates
+
+    return pendingCertificates.filter((cert) => {
+      const searchText = [
+        cert.no_certificate || '',
+        cert.no_order || '',
+        cert.no_identification || '',
+        cert.station?.name || '',
+        cert.instrument?.name || '',
+        getVerificationLevel(cert),
+        cert.verification_status.user_verification_status || 'pending',
+        cert.verification_status.verifikator_1 || '',
+        cert.verification_status.verifikator_2 || '',
+        cert.verification_status.authorized_by || '',
+        new Date(cert.issue_date).toLocaleDateString()
+      ].join(' ').toLowerCase()
+
+      return searchText.includes(query)
+    })
+  }, [pendingCertificates, searchQuery, user])
+
+  // Reset to first page when search changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery])
+
+  // Calculate pagination
+  const totalPages = useMemo(() => {
+    return Math.ceil(filteredCertificates.length / certificatesPerPage)
+  }, [filteredCertificates.length])
+
+  // Ensure current page is valid when data changes
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(1)
+    }
+  }, [totalPages])
+
+  // Get current page certificates
+  const indexOfLastCertificate = currentPage * certificatesPerPage
+  const indexOfFirstCertificate = indexOfLastCertificate - certificatesPerPage
+  const currentCertificates = useMemo(() => {
+    return filteredCertificates.slice(indexOfFirstCertificate, indexOfLastCertificate)
+  }, [filteredCertificates, indexOfFirstCertificate, indexOfLastCertificate])
+
+  // Change page
+  const paginate = (pageNumber: number) => {
+    setCurrentPage(Math.max(1, Math.min(pageNumber, totalPages)))
+  }
 
   // Fetch personel data
   useEffect(() => {
@@ -299,13 +366,6 @@ const CertificateVerificationCRUD: React.FC = () => {
     }
   }
 
-  const getVerificationLevel = (cert: PendingCertificate) => {
-    if (cert.verifikator_1 === user?.id) return 'Verifikator 1'
-    if (cert.verifikator_2 === user?.id) return 'Verifikator 2'
-    if (cert.authorized_by === user?.id) return 'Penandatangan'
-    return 'Unknown'
-  }
-
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -343,7 +403,7 @@ const CertificateVerificationCRUD: React.FC = () => {
           <p className="text-sm text-gray-600 mb-3">
             You are assigned as a verifikator for the following certificates. Click "Verify" to review and approve/reject.
           </p>
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
             <h4 className="text-sm font-semibold text-blue-900 mb-2">📋 Verification Instructions:</h4>
             <ul className="text-xs text-blue-800 space-y-1">
               <li>• <span className="font-medium">Review:</span> Periksa semua data certificate dengan teliti</li>
@@ -351,6 +411,44 @@ const CertificateVerificationCRUD: React.FC = () => {
               <li>• <span className="font-medium">Reject:</span> Jika ada kesalahan yang perlu diperbaiki</li>
               <li>• <span className="font-medium">Notes:</span> Berikan catatan untuk setiap keputusan</li>
             </ul>
+          </div>
+
+          {/* Search Input */}
+          <div className="mb-4">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search by certificate number, order, station, instrument, status..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value)
+                  setCurrentPage(1) // Reset to first page when searching
+                }}
+                className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => {
+                    setSearchQuery('')
+                    setCurrentPage(1)
+                  }}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  title="Clear search"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            {searchQuery && (
+              <div className="mt-2 text-sm text-gray-600">
+                Found <span className="font-medium">{filteredCertificates.length}</span> certificate{filteredCertificates.length !== 1 ? 's' : ''} matching "{searchQuery}"
+                {filteredCertificates.length === 0 && (
+                  <span className="text-red-500 ml-2">- No certificates found</span>
+                )}
+              </div>
+            )}
           </div>
         </div>
         
@@ -362,7 +460,14 @@ const CertificateVerificationCRUD: React.FC = () => {
           'Overall Status',
           'Actions'
         ]}>
-          {pendingCertificates.map((cert) => (
+          {currentCertificates.length === 0 ? (
+            <tr>
+              <td colSpan={6} className="px-6 py-4 text-center text-sm text-gray-500">
+                {searchQuery ? 'No certificates found matching your search' : 'No certificates assigned to you'}
+              </td>
+            </tr>
+          ) : (
+            currentCertificates.map((cert) => (
             <tr key={cert.id} className="hover:bg-gray-50">
               <td className="px-6 py-4 whitespace-nowrap">
                 <div className="flex flex-col">
@@ -506,8 +611,217 @@ const CertificateVerificationCRUD: React.FC = () => {
                 </div>
               </td>
             </tr>
-          ))}
+            ))
+          )}
         </Table>
+
+        {/* Pagination */}
+        {filteredCertificates.length > 0 && (
+          <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50 px-4 py-3 sm:px-6">
+            {/* Mobile Pagination */}
+            <div className="flex flex-1 justify-between sm:hidden">
+              <button
+                onClick={() => paginate(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className={`relative inline-flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  currentPage === 1
+                    ? 'text-gray-400 cursor-not-allowed'
+                    : 'text-gray-700 hover:bg-white hover:text-gray-900'
+                }`}
+              >
+                <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Previous
+              </button>
+              
+              <div className="flex items-center space-x-1">
+                <span className="text-sm text-gray-500">
+                  Page {currentPage} of {totalPages}
+                </span>
+              </div>
+              
+              <button
+                onClick={() => paginate(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className={`relative inline-flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  currentPage === totalPages
+                    ? 'text-gray-400 cursor-not-allowed'
+                    : 'text-gray-700 hover:bg-white hover:text-gray-900'
+                }`}
+              >
+                Next
+                <svg className="h-4 w-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+            <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm text-gray-700">
+                  Showing <span className="font-medium">{indexOfFirstCertificate + 1}</span> to{' '}
+                  <span className="font-medium">
+                    {Math.min(indexOfLastCertificate, filteredCertificates.length)}
+                  </span>{' '}
+                  of <span className="font-medium">{filteredCertificates.length}</span> results
+                </p>
+              </div>
+              <div>
+                <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                  <button
+                    onClick={() => paginate(1)}
+                    disabled={currentPage === 1}
+                    className={`relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 transition-colors ${
+                      currentPage === 1
+                        ? 'cursor-not-allowed'
+                        : 'hover:bg-white hover:text-gray-600'
+                    }`}
+                    title="First page"
+                  >
+                    <span className="sr-only">First</span>
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => paginate(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                    className={`relative inline-flex items-center px-2 py-2 text-gray-400 transition-colors ${
+                      currentPage === 1
+                        ? 'cursor-not-allowed'
+                        : 'hover:bg-white hover:text-gray-600'
+                    }`}
+                  >
+                    <span className="sr-only">Previous</span>
+                    <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                  
+                  {/* Smart page numbers with ellipsis */}
+                  {(() => {
+                    const pages = []
+                    const maxVisiblePages = 5
+                    
+                    if (totalPages <= maxVisiblePages) {
+                      // Show all pages if total is small
+                      for (let i = 1; i <= totalPages; i++) {
+                        pages.push(
+                          <button
+                            key={i}
+                            onClick={() => paginate(i)}
+                            className={`relative inline-flex items-center px-3 py-2 text-sm font-semibold ${
+                              currentPage === i
+                                ? 'z-10 bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
+                                : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-white focus:outline-offset-0'
+                            }`}
+                          >
+                            {i}
+                          </button>
+                        )
+                      }
+                    } else {
+                      // Show smart pagination with ellipsis
+                      const startPage = Math.max(1, currentPage - 2)
+                      const endPage = Math.min(totalPages, currentPage + 2)
+                      
+                      // Always show first page
+                      if (startPage > 1) {
+                        pages.push(
+                          <button
+                            key={1}
+                            onClick={() => paginate(1)}
+                            className="relative inline-flex items-center px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-white focus:outline-offset-0"
+                          >
+                            1
+                          </button>
+                        )
+                        
+                        if (startPage > 2) {
+                          pages.push(
+                            <span key="ellipsis1" className="relative inline-flex items-center px-3 py-2 text-sm font-semibold text-gray-700">
+                              ...
+                            </span>
+                          )
+                        }
+                      }
+                      
+                      // Show pages around current page
+                      for (let i = startPage; i <= endPage; i++) {
+                        pages.push(
+                          <button
+                            key={i}
+                            onClick={() => paginate(i)}
+                            className={`relative inline-flex items-center px-3 py-2 text-sm font-semibold ${
+                              currentPage === i
+                                ? 'z-10 bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
+                                : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-white focus:outline-offset-0'
+                            }`}
+                          >
+                            {i}
+                          </button>
+                        )
+                      }
+                      
+                      // Always show last page
+                      if (endPage < totalPages) {
+                        if (endPage < totalPages - 1) {
+                          pages.push(
+                            <span key="ellipsis2" className="relative inline-flex items-center px-3 py-2 text-sm font-semibold text-gray-700">
+                              ...
+                            </span>
+                          )
+                        }
+                        
+                        pages.push(
+                          <button
+                            key={totalPages}
+                            onClick={() => paginate(totalPages)}
+                            className="relative inline-flex items-center px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-white focus:outline-offset-0"
+                          >
+                            {totalPages}
+                          </button>
+                        )
+                      }
+                    }
+                    
+                    return pages
+                  })()}
+                  
+                  <button
+                    onClick={() => paginate(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage === totalPages}
+                    className={`relative inline-flex items-center px-2 py-2 text-gray-400 transition-colors ${
+                      currentPage === totalPages
+                        ? 'cursor-not-allowed'
+                        : 'hover:bg-white hover:text-gray-600'
+                    }`}
+                  >
+                    <span className="sr-only">Next</span>
+                    <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => paginate(totalPages)}
+                    disabled={currentPage === totalPages}
+                    className={`relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 transition-colors ${
+                      currentPage === totalPages
+                        ? 'cursor-not-allowed'
+                        : 'hover:bg-white hover:text-gray-600'
+                    }`}
+                    title="Last page"
+                  >
+                    <span className="sr-only">Last</span>
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </nav>
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
 
       {isModalOpen && selectedCertificate && (
