@@ -201,6 +201,25 @@ export async function POST(request: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+    // Create log entry for certificate creation
+    try {
+      const { createCertificateLog } = await import('../../../lib/certificate-log-helper')
+      await createCertificateLog({
+        certificate_id: data.id,
+        action: 'created',
+        performed_by: user.id,
+        previous_status: null,
+        new_status: 'draft',
+        metadata: {
+          no_certificate: no_certificate,
+          no_order: no_order
+        }
+      })
+    } catch (logError) {
+      console.error('Failed to create certificate log:', logError)
+      // Don't fail the request if logging fails
+    }
+
     // Kirim notifikasi email
     const sendNotification = async (userId: string, role: string, certificateNumber: string, certificateId: number) => {
       const { data: personelData, error: personelError } = await supabaseAdmin

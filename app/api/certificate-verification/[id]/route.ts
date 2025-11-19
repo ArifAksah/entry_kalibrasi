@@ -314,6 +314,39 @@ export async function PUT(
       // swallow
     }
 
+    // Create log entry for verification action (approval/rejection)
+    try {
+      const { createCertificateLog } = await import('../../../../lib/certificate-log-helper')
+      const verificationLevel = currentVerification.verification_level
+      const actionMap: Record<string, string> = {
+        'approved': verificationLevel === 1 ? 'approved_v1' : verificationLevel === 2 ? 'approved_v2' : 'approved_assignor',
+        'rejected': verificationLevel === 1 ? 'rejected_v1' : verificationLevel === 2 ? 'rejected_v2' : 'rejected_assignor'
+      }
+      const logAction = actionMap[status] || 'updated'
+      
+      // Get current certificate status
+      const { data: currentCert } = await supabaseAdmin
+        .from('certificate')
+        .select('status')
+        .eq('id', currentVerification.certificate_id)
+        .single()
+      
+      await createCertificateLog({
+        certificate_id: currentVerification.certificate_id,
+        action: logAction as any,
+        performed_by: user.id,
+        notes: notes || null,
+        rejection_reason: rejection_reason || null,
+        approval_notes: approval_notes || null,
+        verification_level: verificationLevel,
+        previous_status: currentCert?.status || null,
+        new_status: status === 'approved' ? (verificationLevel === 3 ? 'approved' : 'sent') : 'rejected'
+      })
+    } catch (logError) {
+      console.error('Failed to create certificate log:', logError)
+      // Don't fail the request if logging fails
+    }
+
     return NextResponse.json(data)
   } catch (e) {
     console.error('Error updating verification:', e)

@@ -203,10 +203,10 @@ export async function POST(
       rejected_by: user.id
     }
 
-    // Get current rejection history
+    // Get current rejection history and status
     const { data: currentCert, error: currentError } = await supabaseAdmin
       .from('certificate')
-      .select('rejection_history, rejection_count')
+      .select('rejection_history, rejection_count, status')
       .eq('id', certificateId)
       .single()
 
@@ -253,6 +253,33 @@ export async function POST(
       return NextResponse.json({ 
         error: 'Failed to update certificate status' 
       }, { status: 500 })
+    }
+
+    // Create log entry for rejection
+    try {
+      const { createCertificateLog } = await import('../../../../../lib/certificate-log-helper')
+      const actionMap: Record<number, string> = {
+        1: 'rejected_v1',
+        2: 'rejected_v2',
+        3: 'rejected_assignor'
+      }
+      const logAction = actionMap[verification_level] || 'rejected_v1'
+      
+      await createCertificateLog({
+        certificate_id: certificateId,
+        action: logAction as any,
+        performed_by: user.id,
+        rejection_reason: rejection_reason,
+        verification_level: verification_level,
+        previous_status: currentCert.status || null,
+        new_status: newStatus,
+        metadata: {
+          rejection_destination: actualDestination
+        }
+      })
+    } catch (logError) {
+      console.error('Failed to create certificate log:', logError)
+      // Don't fail the request if logging fails
     }
 
     // If going back to verifikator 1, reset their verification status

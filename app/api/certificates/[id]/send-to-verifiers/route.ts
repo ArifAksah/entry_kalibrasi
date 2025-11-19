@@ -196,6 +196,22 @@ export async function POST(
     
     console.log('New verification records created successfully')
 
+    // Create log entry for sending certificate
+    try {
+      const { createCertificateLog } = await import('../../../../../lib/certificate-log-helper')
+      await createCertificateLog({
+        certificate_id: certificateId,
+        action: 'sent',
+        performed_by: sent_by,
+        previous_status: 'draft',
+        new_status: 'sent',
+        notes: 'Certificate sent to verifiers for verification'
+      })
+    } catch (logError) {
+      console.error('Failed to create certificate log:', logError)
+      // Don't fail the request if logging fails
+    }
+
     // TODO: Send notifications to verifikator 1, verifikator 2, and assignor
     // This could be implemented with email notifications or in-app notifications
 

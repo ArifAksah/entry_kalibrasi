@@ -215,6 +215,38 @@ export async function POST(request: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     
+    // Create log entry for verification action
+    try {
+      const { createCertificateLog } = await import('../../../lib/certificate-log-helper')
+      const actionMap: Record<string, string> = {
+        'approved': verification_level === 1 ? 'approved_v1' : verification_level === 2 ? 'approved_v2' : 'approved_assignor',
+        'rejected': verification_level === 1 ? 'rejected_v1' : verification_level === 2 ? 'rejected_v2' : 'rejected_assignor'
+      }
+      const logAction = actionMap[status] || 'updated'
+      
+      // Get current certificate status
+      const { data: currentCert } = await supabaseAdmin
+        .from('certificate')
+        .select('status')
+        .eq('id', certificate_id)
+        .single()
+      
+      await createCertificateLog({
+        certificate_id: certificate_id,
+        action: logAction as any,
+        performed_by: actualVerifiedBy,
+        notes: notes || null,
+        rejection_reason: rejection_reason || null,
+        approval_notes: approval_notes || null,
+        verification_level: verification_level,
+        previous_status: currentCert?.status || null,
+        new_status: status === 'approved' ? (verification_level === 3 ? 'approved' : 'sent') : 'rejected'
+      })
+    } catch (logError) {
+      console.error('Failed to create certificate log:', logError)
+      // Don't fail the request if logging fails
+    }
+    
     // Create notifications based on status
     const link = `/certificates/${certificate_id}/view`;
     if (status === 'approved') {

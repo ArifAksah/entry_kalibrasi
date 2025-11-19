@@ -267,6 +267,40 @@ export async function PUT(
         }
     }
 
+    // Create log entry for certificate update
+    try {
+      const { createCertificateLog } = await import('../../../../../lib/certificate-log-helper')
+      const { data: currentCert } = await supabaseAdmin
+        .from('certificate')
+        .select('status')
+        .eq('id', id)
+        .single()
+      
+      await createCertificateLog({
+        certificate_id: parseInt(id),
+        action: 'updated',
+        performed_by: user.id,
+        previous_status: currentCert?.status || null,
+        new_status: currentCert?.status || null,
+        metadata: {
+          updated_fields: {
+            no_certificate: no_certificate !== currentCertificate.no_certificate,
+            no_order: no_order !== currentCertificate.no_order,
+            no_identification: no_identification !== currentCertificate.no_identification,
+            issue_date: issue_date !== currentCertificate.issue_date,
+            station: station !== currentCertificate.station,
+            instrument: instrument !== currentCertificate.instrument,
+            authorized_by: authorizedPersonId !== currentCertificate.authorized_by,
+            verifikator_1: v1 !== currentCertificate.verifikator_1,
+            verifikator_2: v2 !== currentCertificate.verifikator_2
+          }
+        }
+      })
+    } catch (logError) {
+      console.error('Failed to create certificate log:', logError)
+      // Don't fail the request if logging fails
+    }
+
     return NextResponse.json(data)
   } catch (e) {
     return NextResponse.json({ error: 'Failed to update certificate' }, { status: 500 })
@@ -279,12 +313,50 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
+    
+    // Get certificate data before deleting for log
+    const { data: certData } = await supabaseAdmin
+      .from('certificate')
+      .select('status, no_certificate')
+      .eq('id', id)
+      .single()
+    
+    // Get user for log
+    const authHeader = request.headers.get('authorization')
+    let userId: string | null = null
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '')
+      const { data: { user } } = await supabaseAdmin.auth.getUser(token)
+      userId = user?.id || null
+    }
+    
     const { error } = await supabaseAdmin
       .from('certificate')
       .delete()
       .eq('id', id)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    
+    // Create log entry for certificate deletion
+    if (userId) {
+      try {
+        const { createCertificateLog } = await import('../../../../../lib/certificate-log-helper')
+        await createCertificateLog({
+          certificate_id: parseInt(id),
+          action: 'deleted',
+          performed_by: userId,
+          previous_status: certData?.status || null,
+          new_status: null,
+          metadata: {
+            no_certificate: certData?.no_certificate || null
+          }
+        })
+      } catch (logError) {
+        console.error('Failed to create certificate log:', logError)
+        // Don't fail the request if logging fails
+      }
+    }
+    
     return NextResponse.json({ message: 'Certificate deleted successfully' })
   } catch (e) {
     return NextResponse.json({ error: 'Failed to delete certificate' }, { status: 500 })

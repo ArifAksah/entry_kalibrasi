@@ -171,6 +171,32 @@ export async function POST(request: NextRequest) {
       if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })
     }
 
+    // Create certificate log entry for signing
+    try {
+      const { createCertificateLog } = await import('../../../../../lib/certificate-log-helper')
+      const { data: currentCert } = await supabaseAdmin
+        .from('certificate')
+        .select('status')
+        .eq('id', cert.id)
+        .single()
+      
+      await createCertificateLog({
+        certificate_id: cert.id,
+        action: 'approved_assignor',
+        performed_by: user.id,
+        approval_notes: 'Signed via BSRE',
+        verification_level: 3,
+        previous_status: currentCert?.status || null,
+        new_status: 'approved',
+        metadata: {
+          signature_data: bsreData
+        }
+      })
+    } catch (logError) {
+      console.error('Failed to create certificate log:', logError)
+      // Don't fail the request if logging fails
+    }
+
     await logAction(request, user.id, 'bsre_sign', 'success', { documentId, certificateId: cert.id })
     return NextResponse.json({ message: 'TTE Berhasil' }, { status: 200 })
   } catch (e) {
