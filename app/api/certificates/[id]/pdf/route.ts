@@ -44,22 +44,28 @@ export async function GET(
       }, { status: 404 })
     }
 
-    // Build local file path
+    // Build local file path from e-certificate-signed folder
     const fileName = path.basename(cert.pdf_path)
     const filePath = path.join(process.cwd(), 'e-certificate-signed', fileName)
 
-    // Check if file exists
+    console.log(`[PDF Download] Certificate ID: ${certificateId}`)
+    console.log(`[PDF Download] PDF path from DB: ${cert.pdf_path}`)
+    console.log(`[PDF Download] Full file path: ${filePath}`)
+    console.log(`[PDF Download] File exists: ${fs.existsSync(filePath)}`)
+
+    // Check if file exists in e-certificate-signed folder
     if (!fs.existsSync(filePath)) {
-      console.error('[PDF View] File not found:', filePath)
+      console.error('[PDF Download] File not found in e-certificate-signed folder:', filePath)
       return NextResponse.json({ 
-        error: 'PDF file not found in local storage',
+        error: 'PDF yang ditandatangani tidak ditemukan. Pastikan approval Level 3 sudah selesai dan PDF sudah ditandatangani.',
         pdf_path: cert.pdf_path,
         file_path: filePath
       }, { status: 404 })
     }
 
-    // Read PDF file from local filesystem
+    // Read PDF file from e-certificate-signed folder
     const buffer = fs.readFileSync(filePath)
+    console.log(`[PDF Download] File read successfully - Size: ${buffer.length} bytes`)
 
     // Get filename from certificate number
     const certificateNumber = cert.no_certificate || String(certificateId)
@@ -67,10 +73,14 @@ export async function GET(
     const filename = `Certificate_${safeFileName}.pdf`
 
     // Return PDF with appropriate headers
+    // Check if request wants to download (has ?download=true query param) or view inline
+    const searchParams = request.nextUrl.searchParams
+    const isDownload = searchParams.get('download') === 'true'
+    
     return new NextResponse(buffer, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+        'Content-Disposition': `${isDownload ? 'attachment' : 'inline'}; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
         'Content-Length': buffer.length.toString(),
         'Cache-Control': 'public, max-age=3600' // Cache for 1 hour
       }

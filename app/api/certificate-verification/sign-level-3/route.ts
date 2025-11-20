@@ -199,17 +199,27 @@ export async function POST(request: NextRequest) {
 
     // Generate and save PDF automatically when level 3 is approved
     // This runs asynchronously so it doesn't block the response
+    // Note: Passphrase validation is already done above (line 118-120)
+    // If passphrase is wrong, the request would have failed before reaching here
     try {
       const { generateAndSaveCertificatePDF } = await import('../../../../lib/certificate-pdf-helper')
       console.log(`[sign-level-3] Starting PDF generation for certificate ${cert.id}...`)
       
       // Run PDF generation in background (don't await to avoid blocking response)
-      generateAndSaveCertificatePDF(cert.id)
+      // Pass user.id (authorized_by) to get NIK from personel table, and userPassphrase for BSrE signing
+      // Note: PDF will only be saved if signing is successful
+      generateAndSaveCertificatePDF(cert.id, user.id, userPassphrase)
         .then(result => {
           if (result.success) {
-            console.log(`[sign-level-3] ✅ PDF generated successfully for certificate ${cert.id}: ${result.pdfPath}`)
+            console.log(`[sign-level-3] ✅ PDF generated and signed successfully for certificate ${cert.id}: ${result.pdfPath}`)
           } else {
-            console.error(`[sign-level-3] ❌ Failed to generate PDF for certificate ${cert.id}:`, result.error)
+            console.error(`[sign-level-3] ❌ Failed to generate/sign PDF for certificate ${cert.id}:`, result.error)
+            // If passphrase error occurs during PDF signing, log it
+            // This should not happen as passphrase was validated during metadata signing above
+            if (result.error?.includes('Passphrase')) {
+              console.error(`[sign-level-3] ⚠️ Passphrase error during PDF signing: ${result.error}`)
+              console.error(`[sign-level-3] ⚠️ This may indicate passphrase validation issue - user should retry with correct passphrase`)
+            }
           }
         })
         .catch(error => {

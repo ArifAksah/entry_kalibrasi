@@ -549,6 +549,46 @@ const CertificateVerificationCRUD: React.FC = () => {
                     <ViewIcon className="w-4 h-4" />
                     <span>View</span>
                   </a>
+                  {/* Download PDF button - only show if Level 3 approved and PDF already signed (exists in e-certificate-signed) */}
+                  {cert.verification_status.authorized_by === 'approved' && (cert as any).pdf_path && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          // Download PDF from e-certificate-signed folder
+                          const response = await fetch(`/api/certificates/${cert.id}/pdf?download=true`)
+                          if (!response.ok) {
+                            const errorData = await response.json().catch(() => ({ error: 'Failed to download PDF' }))
+                            showError(errorData.error || 'Gagal mengunduh PDF. Pastikan PDF sudah ditandatangani.')
+                            return
+                          }
+                          
+                          // Get PDF blob from response
+                          const blob = await response.blob()
+                          const url = window.URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          const certificateNumber = cert.no_certificate || String(cert.id)
+                          const safeFileName = certificateNumber.replace(/[^a-zA-Z0-9]/g, '_')
+                          a.download = `Certificate_${safeFileName}_Signed.pdf`
+                          document.body.appendChild(a)
+                          a.click()
+                          window.URL.revokeObjectURL(url)
+                          document.body.removeChild(a)
+                          showSuccess('PDF yang ditandatangani berhasil diunduh')
+                        } catch (err) {
+                          console.error('Error downloading signed PDF:', err)
+                          showError('Gagal mengunduh PDF. Silakan coba lagi.')
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-all duration-200 border border-transparent hover:border-indigo-200"
+                      title="Download PDF yang sudah ditandatangani dari e-certificate-signed"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span>Download PDF Signed</span>
+                    </button>
+                  )}
                   {cert.verification_status.user_verification_status === 'pending' && (
                     <a
                       href={`/certificates?edit=${cert.id}&from=verification`}
