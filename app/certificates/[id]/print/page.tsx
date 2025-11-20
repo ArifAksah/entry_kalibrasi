@@ -44,6 +44,7 @@ type Cert = {
   station_address?: string | null
   results?: ResultItem[] // Menambahkan results di sini
   version?: number
+  public_id?: string // Added for public verification
 }
 
 type Station = {
@@ -231,9 +232,22 @@ const PrintCertificatePage: React.FC = () => {
 
   // Generate QR code URL to public verification page
   const qrCodeData = useMemo(() => {
-    if (!cert?.no_certificate) return ''
-    return `/verify/${encodeURIComponent(cert.no_certificate)}`
-  }, [cert?.no_certificate])
+    if (!cert) return ''
+
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+
+    // Use public_id if available for secure verification
+    if (cert.public_id) {
+      return `${baseUrl}/verify/${cert.public_id}`
+    }
+
+    // Fallback to certificate number if public_id is missing (legacy)
+    if (cert.no_certificate) {
+      return `${baseUrl}/verify/${encodeURIComponent(cert.no_certificate)}`
+    }
+
+    return ''
+  }, [cert])
 
   // Total pages: 1 (cover) + max(1, N per sensor). No separate closing page.
   const totalPrintedPages = useMemo(() => 1 + Math.max(1, results?.length ?? 0), [results])

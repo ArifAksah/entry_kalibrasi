@@ -47,6 +47,36 @@ const CertificateVerificationCRUD: React.FC = () => {
   const [isSigning, setIsSigning] = useState(false)
   const [passphraseError, setPassphraseError] = useState<string | null>(null)
 
+  // BSrE Verification State
+  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false)
+  const [verificationResult, setVerificationResult] = useState<any>(null)
+  const [isVerifying, setIsVerifying] = useState(false)
+
+  const handleVerifyBSrE = async (cert: PendingCertificate) => {
+    setIsVerifying(true)
+    setVerificationResult(null)
+    setIsVerifyModalOpen(true)
+
+    try {
+      const response = await fetch(`/api/certificates/${cert.id}/verify-bsre`, {
+        method: 'POST'
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Verification failed')
+      }
+
+      setVerificationResult(result)
+    } catch (error: any) {
+      console.error('BSrE Verification Error:', error)
+      setVerificationResult({ error: error.message || 'Failed to verify with BSrE' })
+    } finally {
+      setIsVerifying(false)
+    }
+  }
+
   // Live search and pagination states
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -551,43 +581,56 @@ const CertificateVerificationCRUD: React.FC = () => {
                     </a>
                     {/* Download PDF button - only show if Level 3 approved and PDF already signed (exists in e-certificate-signed) */}
                     {cert.verification_status.authorized_by === 'approved' && (cert as any).pdf_path && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            // Download PDF from e-certificate-signed folder
-                            const response = await fetch(`/api/certificates/${cert.id}/pdf?download=true`)
-                            if (!response.ok) {
-                              const errorData = await response.json().catch(() => ({ error: 'Failed to download PDF' }))
-                              showError(errorData.error || 'Gagal mengunduh PDF. Pastikan PDF sudah ditandatangani.')
-                              return
-                            }
+                      <>
+                        <button
+                          onClick={async () => {
+                            try {
+                              // Download PDF from e-certificate-signed folder
+                              const response = await fetch(`/api/certificates/${cert.id}/pdf?download=true`)
+                              if (!response.ok) {
+                                const errorData = await response.json().catch(() => ({ error: 'Failed to download PDF' }))
+                                showError(errorData.error || 'Gagal mengunduh PDF. Pastikan PDF sudah ditandatangani.')
+                                return
+                              }
 
-                            // Get PDF blob from response
-                            const blob = await response.blob()
-                            const url = window.URL.createObjectURL(blob)
-                            const a = document.createElement('a')
-                            a.href = url
-                            const certificateNumber = cert.no_certificate || String(cert.id)
-                            const safeFileName = certificateNumber.replace(/[^a-zA-Z0-9]/g, '_')
-                            a.download = `Certificate_${safeFileName}_Signed.pdf`
-                            document.body.appendChild(a)
-                            a.click()
-                            window.URL.revokeObjectURL(url)
-                            document.body.removeChild(a)
-                            showSuccess('PDF yang ditandatangani berhasil diunduh')
-                          } catch (err) {
-                            console.error('Error downloading signed PDF:', err)
-                            showError('Gagal mengunduh PDF. Silakan coba lagi.')
-                          }
-                        }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-all duration-200 border border-transparent hover:border-indigo-200"
-                        title="Download PDF yang sudah ditandatangani dari e-certificate-signed"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        <span>Download PDF Signed</span>
-                      </button>
+                              // Get PDF blob from response
+                              const blob = await response.blob()
+                              const url = window.URL.createObjectURL(blob)
+                              const a = document.createElement('a')
+                              a.href = url
+                              const certificateNumber = cert.no_certificate || String(cert.id)
+                              const safeFileName = certificateNumber.replace(/[^a-zA-Z0-9]/g, '_')
+                              a.download = `Certificate_${safeFileName}_Signed.pdf`
+                              document.body.appendChild(a)
+                              a.click()
+                              window.URL.revokeObjectURL(url)
+                              document.body.removeChild(a)
+                              showSuccess('PDF yang ditandatangani berhasil diunduh')
+                            } catch (err) {
+                              console.error('Error downloading signed PDF:', err)
+                              showError('Gagal mengunduh PDF. Silakan coba lagi.')
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-all duration-200 border border-transparent hover:border-indigo-200"
+                          title="Download PDF yang sudah ditandatangani dari e-certificate-signed"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span>Download PDF Signed</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleVerifyBSrE(cert)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-teal-600 hover:text-teal-800 hover:bg-teal-50 rounded-lg transition-all duration-200 border border-transparent hover:border-teal-200"
+                          title="Verifikasi Keaslian Dokumen via BSrE"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span>Verify BSrE</span>
+                        </button>
+                      </>
                     )}
                     {cert.verification_status.user_verification_status === 'pending' && (
                       <a
@@ -1347,6 +1390,111 @@ const CertificateVerificationCRUD: React.FC = () => {
               >
                 {isSigning ? 'Memproses...' : 'Setuju dan Tanda Tangan'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* BSrE Verification Modal */}
+      {isVerifyModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+          <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onClick={() => setIsVerifyModalOpen(false)}></div>
+            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="sm:flex sm:items-start">
+                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-teal-100 sm:mx-0 sm:h-10 sm:w-10">
+                    <svg className="h-6 w-6 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900" id="modal-title">
+                      Verifikasi BSrE
+                    </h3>
+                    <div className="mt-2">
+                      {isVerifying ? (
+                        <div className="flex flex-col items-center justify-center py-4">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600 mb-2"></div>
+                          <p className="text-sm text-gray-500">Menghubungi server BSrE...</p>
+                        </div>
+                      ) : verificationResult ? (
+                        <div className="text-sm text-gray-500 space-y-3">
+                          {verificationResult.error ? (
+                            <div className="bg-red-50 p-3 rounded-md text-red-700 border border-red-200">
+                              <p className="font-bold">Verifikasi Gagal</p>
+                              <p>{verificationResult.error}</p>
+                              {verificationResult.details && <p className="text-xs mt-1">{typeof verificationResult.details === 'string' ? verificationResult.details : JSON.stringify(verificationResult.details)}</p>}
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              {/* Determine validity based on BSrE response structure */}
+                              {(() => {
+                                const isValid = verificationResult.notes?.toLowerCase().includes('dokumen valid') ||
+                                  verificationResult.summary === 'VALID' ||
+                                  verificationResult.summary === 'WARNING'; // Warning usually means valid signature but untrusted root (dev env)
+
+                                const signerInfo = verificationResult.details?.[0]?.info_signer || {};
+                                const tsaInfo = verificationResult.details?.[0]?.info_tsa || {};
+
+                                return (
+                                  <>
+                                    <div className={`p-3 rounded-md border ${isValid ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                                      <p className="font-bold text-lg">{isValid ? 'Dokumen Valid' : 'Dokumen Tidak Valid'}</p>
+                                      <p className="text-xs mt-1 font-semibold">{verificationResult.notes || verificationResult.summary || '-'}</p>
+                                      {verificationResult.summary === 'WARNING' && (
+                                        <p className="text-[10px] mt-1 italic">Note: Status WARNING biasanya muncul di environment development karena Root CA tidak dikenal browser/sistem, namun tanda tangan matematis valid.</p>
+                                      )}
+                                    </div>
+
+                                    <div className="bg-gray-50 p-3 rounded-md border border-gray-200 text-left">
+                                      <p className="font-semibold text-gray-700 mb-1">Detail Penandatangan:</p>
+                                      <ul className="space-y-1 text-xs">
+                                        <li><span className="font-medium">Nama:</span> {signerInfo.nama_signer || signerInfo.signer_name || '-'}</li>
+                                        <li><span className="font-medium">DN:</span> <span className="break-all">{signerInfo.issuer_dn || signerInfo.signer_dn || '-'}</span></li>
+                                        <li><span className="font-medium">Waktu Tanda Tangan:</span> {tsaInfo.waktu_tsa || tsaInfo.timestamp || '-'}</li>
+                                        <li><span className="font-medium">Nama Dokumen:</span> {verificationResult.nama_dokumen || '-'}</li>
+                                      </ul>
+                                    </div>
+
+                                    <div className="mt-2">
+                                      <button
+                                        onClick={() => {
+                                          const detailsElement = document.getElementById('raw-details');
+                                          if (detailsElement) {
+                                            detailsElement.style.display = detailsElement.style.display === 'none' ? 'block' : 'none';
+                                          }
+                                        }}
+                                        className="text-xs text-blue-600 hover:text-blue-800 underline mb-1"
+                                      >
+                                        Lihat Raw Response
+                                      </button>
+                                      <div id="raw-details" style={{ display: 'none' }} className="bg-gray-100 p-2 rounded text-[10px] overflow-auto max-h-32 font-mono">
+                                        {JSON.stringify(verificationResult, null, 2)}
+                                      </div>
+                                    </div>
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500">Siap melakukan verifikasi dokumen.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button
+                  type="button"
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                  onClick={() => setIsVerifyModalOpen(false)}
+                >
+                  Tutup
+                </button>
+              </div>
             </div>
           </div>
         </div>
