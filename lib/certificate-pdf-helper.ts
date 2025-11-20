@@ -300,30 +300,25 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
             // Add passphrase field
             addTextField('passphrase', passphrase)
             
-            // Add tampilan field
-            addTextField('tampilan', 'visible')
+            // Add tampilan field - invisible mode karena QR code sudah ada di dokumen yang di-generate sistem
+            // Signature digital tetap tertanam, tapi QR code tidak ditambahkan karena sudah ada di dokumen
+            addTextField('tampilan', 'invisible')
             
-            // Add page field
+            // Add page field - halaman untuk penempatan signature (page 1)
             addTextField('page', '1')
             
-            // Add image field
+            // Add image field - false karena tidak perlu menambahkan image/QR code (sudah ada di dokumen)
             addTextField('image', 'false')
             
-            // Add linkQR field (can be customized via env or use default)
-            const linkQR = process.env.BSRE_QR_LINK || 'https://google.com'
+            // Parameter QR code berikut tidak diperlukan karena QR code sudah ada di dokumen
+            // Tetap dikirim dengan nilai default untuk kompatibilitas dengan BSrE API
+            // linkQR, xAxis, yAxis, width, height hanya digunakan jika tampilan='visible' dan image='true'
+            const linkQR = process.env.BSRE_QR_LINK || ''
             addTextField('linkQR', linkQR)
-            
-            // Add xAxis field
             addTextField('xAxis', '0')
-            
-            // Add yAxis field
             addTextField('yAxis', '0')
-            
-            // Add width field
-            addTextField('width', '200')
-            
-            // Add height field
-            addTextField('height', '100')
+            addTextField('width', '0')
+            addTextField('height', '0')
             
             // Close boundary (must end with --)
             formDataParts.push(Buffer.from(`--${boundary}--${CRLF}`))
@@ -331,7 +326,8 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
             const formDataBody = Buffer.concat(formDataParts)
             console.log(`[PDF Helper] FormData body size: ${formDataBody.length} bytes`)
             console.log(`[PDF Helper] Boundary: ${boundary}`)
-            console.log(`[PDF Helper] Sending with parameters: nik=${nik}, passphrase=***, tampilan=visible, page=1, image=false, linkQR=${linkQR}, xAxis=0, yAxis=0, width=200, height=100`)
+            console.log(`[PDF Helper] Sending with parameters: nik=${nik}, passphrase=***, tampilan=invisible, page=1, image=false, linkQR=${linkQR || '(empty - QR already in document)'}, xAxis=0, yAxis=0, width=0, height=0`)
+            console.log(`[PDF Helper] Note: QR code already exists in document, using invisible mode to avoid duplicate QR code`)
 
             const signResponse = await fetch(signEndpoint, {
               method: 'POST',
