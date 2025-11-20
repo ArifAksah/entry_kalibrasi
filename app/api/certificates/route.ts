@@ -34,7 +34,7 @@ export async function GET() {
           verifications = v
         }
         // If the table doesn't exist yet or any error occurs, fall back to empty verifications
-      } catch {}
+      } catch { }
     }
 
     // Combine certificates with verification status
@@ -67,13 +67,26 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
     if (authError || !user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
 
+    // Enforce Role Check: Only 'calibrator' or 'admin' can create certificates
+    const { data: userRole, error: roleError } = await supabaseAdmin
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .single()
+
+    if (roleError || !userRole || !['calibrator', 'admin'].includes(userRole.role)) {
+      return NextResponse.json({
+        error: 'Unauthorized: Only Calibrators can create certificates'
+      }, { status: 403 })
+    }
+
     const body = await request.json()
-    const { 
-      no_certificate, 
-      no_order, 
-      no_identification, 
-      issue_date, 
-      station, 
+    const {
+      no_certificate,
+      no_order,
+      no_identification,
+      issue_date,
+      station,
       instrument,
       authorized_by,
       verifikator_1,
@@ -178,16 +191,16 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabaseAdmin
       .from('certificate')
-      .insert({ 
-        no_certificate, 
-        no_order, 
-        no_identification, 
-        authorized_by: authorizedPersonId, 
-        verifikator_1: v1, 
-        verifikator_2: v2, 
+      .insert({
+        no_certificate,
+        no_order,
+        no_identification,
+        authorized_by: authorizedPersonId,
+        verifikator_1: v1,
+        verifikator_2: v2,
         assignor: authorizedPersonId, // Set assignor same as authorized_by
-        issue_date, 
-        station: station ? parseInt(station) : null, 
+        issue_date,
+        station: station ? parseInt(station) : null,
         instrument: instrument ? parseInt(instrument) : null,
         station_address: (resolvedStationAddress ?? station_address) ?? null,
         results: results ?? null,
@@ -242,7 +255,7 @@ export async function POST(request: NextRequest) {
     if (verifikator_2) {
       await sendNotification(verifikator_2, 'Verifikator 2', no_certificate, data.id);
     }
-    
+
     return NextResponse.json(data, { status: 201 })
   } catch (e) {
     return NextResponse.json({ error: 'Failed to create certificate' }, { status: 500 })

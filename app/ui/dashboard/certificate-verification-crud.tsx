@@ -664,8 +664,8 @@ const CertificateVerificationCRUD: React.FC = () => {
                 onClick={() => paginate(Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
                 className={`relative inline-flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${currentPage === 1
-                    ? 'text-gray-400 cursor-not-allowed'
-                    : 'text-gray-700 hover:bg-white hover:text-gray-900'
+                  ? 'text-gray-400 cursor-not-allowed'
+                  : 'text-gray-700 hover:bg-white hover:text-gray-900'
                   }`}
               >
                 <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -684,8 +684,8 @@ const CertificateVerificationCRUD: React.FC = () => {
                 onClick={() => paginate(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}
                 className={`relative inline-flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${currentPage === totalPages
-                    ? 'text-gray-400 cursor-not-allowed'
-                    : 'text-gray-700 hover:bg-white hover:text-gray-900'
+                  ? 'text-gray-400 cursor-not-allowed'
+                  : 'text-gray-700 hover:bg-white hover:text-gray-900'
                   }`}
               >
                 Next
@@ -710,8 +710,8 @@ const CertificateVerificationCRUD: React.FC = () => {
                     onClick={() => paginate(1)}
                     disabled={currentPage === 1}
                     className={`relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 transition-colors ${currentPage === 1
-                        ? 'cursor-not-allowed'
-                        : 'hover:bg-white hover:text-gray-600'
+                      ? 'cursor-not-allowed'
+                      : 'hover:bg-white hover:text-gray-600'
                       }`}
                     title="First page"
                   >
@@ -724,8 +724,8 @@ const CertificateVerificationCRUD: React.FC = () => {
                     onClick={() => paginate(Math.max(1, currentPage - 1))}
                     disabled={currentPage === 1}
                     className={`relative inline-flex items-center px-2 py-2 text-gray-400 transition-colors ${currentPage === 1
-                        ? 'cursor-not-allowed'
-                        : 'hover:bg-white hover:text-gray-600'
+                      ? 'cursor-not-allowed'
+                      : 'hover:bg-white hover:text-gray-600'
                       }`}
                   >
                     <span className="sr-only">Previous</span>
@@ -747,8 +747,8 @@ const CertificateVerificationCRUD: React.FC = () => {
                             key={i}
                             onClick={() => paginate(i)}
                             className={`relative inline-flex items-center px-3 py-2 text-sm font-semibold ${currentPage === i
-                                ? 'z-10 bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
-                                : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-white focus:outline-offset-0'
+                              ? 'z-10 bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
+                              : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-white focus:outline-offset-0'
                               }`}
                           >
                             {i}
@@ -788,8 +788,8 @@ const CertificateVerificationCRUD: React.FC = () => {
                             key={i}
                             onClick={() => paginate(i)}
                             className={`relative inline-flex items-center px-3 py-2 text-sm font-semibold ${currentPage === i
-                                ? 'z-10 bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
-                                : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-white focus:outline-offset-0'
+                              ? 'z-10 bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
+                              : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-white focus:outline-offset-0'
                               }`}
                           >
                             {i}
@@ -826,8 +826,8 @@ const CertificateVerificationCRUD: React.FC = () => {
                     onClick={() => paginate(Math.min(totalPages, currentPage + 1))}
                     disabled={currentPage === totalPages}
                     className={`relative inline-flex items-center px-2 py-2 text-gray-400 transition-colors ${currentPage === totalPages
-                        ? 'cursor-not-allowed'
-                        : 'hover:bg-white hover:text-gray-600'
+                      ? 'cursor-not-allowed'
+                      : 'hover:bg-white hover:text-gray-600'
                       }`}
                   >
                     <span className="sr-only">Next</span>
@@ -839,8 +839,8 @@ const CertificateVerificationCRUD: React.FC = () => {
                     onClick={() => paginate(totalPages)}
                     disabled={currentPage === totalPages}
                     className={`relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 transition-colors ${currentPage === totalPages
-                        ? 'cursor-not-allowed'
-                        : 'hover:bg-white hover:text-gray-600'
+                      ? 'cursor-not-allowed'
+                      : 'hover:bg-white hover:text-gray-600'
                       }`}
                     title="Last page"
                   >
@@ -1009,8 +1009,8 @@ const CertificateVerificationCRUD: React.FC = () => {
                 form="verification-form"
                 disabled={isSubmitting}
                 className={`px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed ${verificationForm.status === 'approved'
-                    ? 'bg-green-600 hover:bg-green-700'
-                    : 'bg-red-600 hover:bg-red-700'
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-red-600 hover:bg-red-700'
                   }`}
               >
                 {isSubmitting ? 'Mengirim...' : `${verificationForm.status === 'approved' ? 'Setujui' : 'Tolak'} Sertifikat`}
@@ -1166,8 +1166,8 @@ const CertificateVerificationCRUD: React.FC = () => {
                 form="edit-verification-form"
                 disabled={isSubmitting}
                 className={`px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed ${verificationForm.status === 'approved'
-                    ? 'bg-green-600 hover:bg-green-700'
-                    : 'bg-red-600 hover:bg-red-700'
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-red-600 hover:bg-red-700'
                   }`}
               >
                 {isSubmitting ? 'Mengirim...' : `Update ${verificationForm.status === 'approved' ? 'Approval' : 'Rejection'}`}
@@ -1210,6 +1210,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">Passphrase</label>
                 <input
                   type="password"
+                  autoComplete="new-password"
                   value={passphrase}
                   onChange={(e) => {
                     setPassphrase(e.target.value)

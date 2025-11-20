@@ -20,15 +20,15 @@ export const usePermissions = () => {
       try {
         setLoading(true)
         console.log('🔍 Loading permissions...')
-        
+
         const { data: { user } } = await supabase.auth.getUser()
         console.log('👤 User:', user?.id)
-        
-        if (!user) { 
+
+        if (!user) {
           console.log('❌ No user found')
-          setRole(null); 
-          setRows([]); 
-          return 
+          setRole(null);
+          setRows([]);
+          return
         }
 
         const rRole = await fetch(`/api/user-roles?user_id=${user.id}`)
@@ -37,9 +37,9 @@ export const usePermissions = () => {
         console.log('🎭 User role:', theRole)
         setRole(theRole)
 
-        // Untuk testing, skip permission check dan return true untuk semua
-        console.log('⏩ Skipping permission checks for debugging')
-        
+        // Permission checks enabled
+        // console.log('⏩ Skipping permission checks for debugging')
+
         setRows([])
         setEndpointCatalog([])
         setEndpointPerms([])
@@ -55,23 +55,90 @@ export const usePermissions = () => {
     load()
   }, [])
 
-  // Untuk debugging, return true untuk semua permission
+  // Permission logic implementation
   const can = useCallback((resource: Resource, action: Action): boolean => {
-    console.log(`🔐 Permission check: ${action} on ${resource} -> ALLOWED (debug mode)`)
-    return true
-  }, [])
+    if (!role) return false
+
+    // Admin has full access to manage system, but typically doesn't create operational data (certificates)
+    // unless necessary. Based on "admin bagian manajemen sistem", let's allow most things but maybe warn on creation?
+    // For now, giving Admin full power for management.
+    if (role === 'admin') return true
+
+    // Calibrator: The one who makes certificates.
+    if (role === 'calibrator') {
+      if (resource === 'certificate') {
+        return ['create', 'read', 'update', 'delete'].includes(action)
+      }
+      if (resource === 'instrument' || resource === 'sensor') {
+        return ['create', 'read', 'update'].includes(action)
+      }
+      return action === 'read'
+    }
+
+    // Verifikator: The checker.
+    if (role === 'verifikator') {
+      if (resource === 'certificate') {
+        // Can read and "update" (which covers verification actions in some contexts, 
+        // but strictly they shouldn't edit the certificate data itself).
+        // For UI buttons like "Edit", we might want to return false if it means "Edit Content".
+        // However, the verification flow might check 'update' permission.
+        // Let's be strict: Verifikator cannot CREATE or DELETE certificates.
+        return action === 'read' || action === 'update' // Update needed for verification status?
+      }
+      return action === 'read'
+    }
+
+    // Assignor: The signer.
+    if (role === 'assignor') {
+      if (resource === 'certificate') {
+        // Can read and sign (update status). Cannot create.
+        return action === 'read' || action === 'update'
+      }
+      return action === 'read'
+    }
+
+    // User Station: Read only (or manage own station settings?)
+    if (role === 'user_station') {
+      return action === 'read'
+    }
+
+    return false
+  }, [role])
 
   const canEndpoint = useCallback((method: string, path: string): boolean => {
-    console.log(`🔐 Endpoint permission: ${method} ${path} -> ALLOWED (debug mode)`)
-    return true
-  }, [])
+    if (!role) return false
+    if (role === 'admin') return true
 
-  return { 
-    role, 
-    loading, 
-    can, 
-    canEndpoint, 
-    rows, 
-    endpointCatalog 
+    const m = method.toUpperCase()
+
+    // Calibrator can POST/PUT to certificates
+    if (role === 'calibrator') {
+      if (path.startsWith('/api/certificates') || path.startsWith('/api/instruments') || path.startsWith('/api/sensors')) {
+        return ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(m)
+      }
+    }
+
+    // Verifikator/Assignor can only update specific endpoints (verification/signing)
+    // But for general resources, they are mostly read-only
+    if (role === 'verifikator' || role === 'assignor') {
+      if (m === 'GET') return true
+      // Allow specific verification endpoints if needed (usually handled by specific route checks)
+      if (path.includes('/verify') || path.includes('/sign')) return true
+    }
+
+    if (role === 'user_station') {
+      return m === 'GET'
+    }
+
+    return m === 'GET' // Default to allow read for authenticated users? Or strict false?
+  }, [role])
+
+  return {
+    role,
+    loading,
+    can,
+    canEndpoint,
+    rows,
+    endpointCatalog
   }
 }
