@@ -108,3 +108,4 @@ ALTER COLUMN memiliki_lebih_satu SET NOT NULL;
 
 
 
+
