@@ -16,7 +16,7 @@ const supabaseAdmin = createClient(
  * @param userId - The user ID (authorized_by) to get NIK from personel table
  * @param passphrase - The passphrase for BSrE signing (from user input)
  */
-export async function generateAndSaveCertificatePDF(certificateId: number, userId?: string, passphrase?: string): Promise<{ success: boolean; pdfPath?: string; error?: string; signed?: boolean }> {
+export async function generateAndSaveCertificatePDF(certificateId: number, userId?: string, passphrase?: string, simulateSigned: boolean = false): Promise<{ success: boolean; pdfPath?: string; error?: string; signed?: boolean }> {
   try {
     // Get certificate info and authorized_by if userId not provided
     const { data: existingCert } = await supabaseAdmin
@@ -57,8 +57,11 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
         baseUrl = 'http://localhost:3000'
       }
     }
-    
-    const printUrl = `${baseUrl}/certificates/${certificateId}/print?pdf=true`
+
+    let printUrl = `${baseUrl}/certificates/${certificateId}/print?pdf=true`
+    if (simulateSigned) {
+      printUrl += '&signed=true'
+    }
 
     // Launch browser with Playwright
     const browser = await playwright.chromium.launch({
@@ -93,18 +96,18 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
       // Wait for loading to complete
       const loadingSelector = 'text=Memuat data sertifikat untuk dicetak...'
       const loadingExists = await page.locator(loadingSelector).count() > 0
-      
+
       if (loadingExists) {
-        await page.waitForSelector(loadingSelector, { 
-          state: 'hidden', 
-          timeout: 30000 
+        await page.waitForSelector(loadingSelector, {
+          state: 'hidden',
+          timeout: 30000
         }).catch(() => {
           console.log('[PDF Helper] Loading message still visible, but continuing...')
         })
       }
 
       // Wait for main content
-      await page.waitForSelector('.page-container', { 
+      await page.waitForSelector('.page-container', {
         timeout: 30000,
         state: 'visible'
       }).catch(() => {
@@ -112,7 +115,7 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
       })
 
       // Wait for footer
-      await page.waitForSelector('.page-1-footer', { 
+      await page.waitForSelector('.page-1-footer', {
         timeout: 30000,
         state: 'visible'
       }).catch(() => {
@@ -121,17 +124,17 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
 
       // Wait for React to finish rendering
       await page.waitForFunction(() => {
-        const loadingText = Array.from(document.querySelectorAll('*')).find(el => 
+        const loadingText = Array.from(document.querySelectorAll('*')).find(el =>
           el.textContent?.includes('Memuat data sertifikat untuk dicetak...')
         )
         if (loadingText) return false
-        
+
         const pageContainer = document.querySelector('.page-container')
         if (!pageContainer) return false
-        
+
         const footer = document.querySelector('.page-1-footer')
         if (!footer) return false
-        
+
         return true
       }, { timeout: 30000 }).catch(() => {
         console.log('[PDF Helper] Wait function timeout, but continuing...')
@@ -183,10 +186,10 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
       // Use absolute path to ensure it works in all environments
       const projectRoot = process.cwd()
       const storageDir = path.join(projectRoot, 'e-certificate-signed')
-      
+
       console.log(`[PDF Helper] Project root: ${projectRoot}`)
       console.log(`[PDF Helper] Storage directory: ${storageDir}`)
-      
+
       // Ensure directory exists
       try {
         if (!fs.existsSync(storageDir)) {
@@ -208,7 +211,7 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
       // Only save PDF if signing is successful
       console.log(`[PDF Helper] Sending PDF to BSrE for signing...`)
       let signedPdf: Buffer | null = null
-      
+
       // Save PDF to temporary location for signing
       const tempFilePath = filePath.replace('.pdf', '_temp.pdf')
       try {
@@ -218,7 +221,7 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
         console.error(`[PDF Helper] Error writing temporary file:`, writeError)
         return { success: false, error: `Failed to write temporary file: ${writeError.message}` }
       }
-      
+
       try {
         const bsreBaseURL = process.env.BSRE_BASE_URL || 'http://172.19.2.171'
         const bsreUsername = process.env.BSRE_USERNAME
@@ -252,7 +255,7 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
 
           if (!nik) {
             console.error('[PDF Helper] NIK not available, cannot sign PDF')
-            return { success: false, error: 'NIK tidak tersedia untuk penandatanganan PDF' }
+            return { success: false, error: 'NIK_NOT_FOUND_IN_DB' }
           } else if (!passphrase) {
             console.error('[PDF Helper] Passphrase not provided, cannot sign PDF')
             return { success: false, error: 'Passphrase tidak tersedia untuk penandatanganan PDF' }
@@ -264,7 +267,7 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
             // Read PDF file
             const pdfFile = fs.readFileSync(tempFilePath)
             console.log(`[PDF Helper] PDF file size: ${pdfFile.length} bytes`)
-            
+
             // Create multipart/form-data manually for Node.js
             const signEndpoint = `${bsreBaseURL}/api/sign/pdf`
             console.log(`[PDF Helper] Calling BSrE sign endpoint: ${signEndpoint}`)
@@ -274,11 +277,11 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
 
             // Generate boundary (must not contain spaces or special chars)
             const boundary = `----WebKitFormBoundary${Date.now()}${Math.random().toString(36).substring(2, 15)}`
-            
+
             // Build multipart/form-data body with all required parameters
             const formDataParts: Buffer[] = []
             const CRLF = '\r\n'
-            
+
             // Helper function to add text field
             const addTextField = (name: string, value: string) => {
               formDataParts.push(Buffer.from(`--${boundary}${CRLF}`))
@@ -286,30 +289,30 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
               formDataParts.push(Buffer.from(value))
               formDataParts.push(Buffer.from(CRLF))
             }
-            
+
             // Add file field (must be first or in correct order)
             formDataParts.push(Buffer.from(`--${boundary}${CRLF}`))
             formDataParts.push(Buffer.from(`Content-Disposition: form-data; name="file"; filename="${fileName}"${CRLF}`))
             formDataParts.push(Buffer.from(`Content-Type: application/pdf${CRLF}${CRLF}`))
             formDataParts.push(pdfFile)
             formDataParts.push(Buffer.from(CRLF))
-            
+
             // Add NIK field
             addTextField('nik', nik)
-            
+
             // Add passphrase field
             addTextField('passphrase', passphrase)
-            
+
             // Add tampilan field - invisible mode karena QR code sudah ada di dokumen yang di-generate sistem
             // Signature digital tetap tertanam, tapi QR code tidak ditambahkan karena sudah ada di dokumen
             addTextField('tampilan', 'invisible')
-            
+
             // Add page field - halaman untuk penempatan signature (page 1)
             addTextField('page', '1')
-            
+
             // Add image field - false karena tidak perlu menambahkan image/QR code (sudah ada di dokumen)
             addTextField('image', 'false')
-            
+
             // Parameter QR code berikut tidak diperlukan karena QR code sudah ada di dokumen
             // Tetap dikirim dengan nilai default untuk kompatibilitas dengan BSrE API
             // linkQR, xAxis, yAxis, width, height hanya digunakan jika tampilan='visible' dan image='true'
@@ -319,10 +322,10 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
             addTextField('yAxis', '0')
             addTextField('width', '0')
             addTextField('height', '0')
-            
+
             // Close boundary (must end with --)
             formDataParts.push(Buffer.from(`--${boundary}--${CRLF}`))
-            
+
             const formDataBody = Buffer.concat(formDataParts)
             console.log(`[PDF Helper] FormData body size: ${formDataBody.length} bytes`)
             console.log(`[PDF Helper] Boundary: ${boundary}`)
@@ -349,7 +352,7 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
             if (!signResponse.ok) {
               const errorText = await signResponse.text().catch(() => '')
               console.error(`[PDF Helper] BSrE sign failed: ${signResponse.status} - ${errorText}`)
-              
+
               // If passphrase is wrong (401), fail the PDF generation
               if (signResponse.status === 401) {
                 console.error(`[PDF Helper] Passphrase salah, PDF signing gagal`)
@@ -357,12 +360,12 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
                 if (fs.existsSync(tempFilePath)) {
                   fs.unlinkSync(tempFilePath)
                 }
-                return { 
-                  success: false, 
-                  error: 'Passphrase TTE salah. Silakan masukkan passphrase yang benar dan coba lagi.' 
+                return {
+                  success: false,
+                  error: 'Passphrase TTE salah. Silakan masukkan passphrase yang benar dan coba lagi.'
                 }
               }
-              
+
               // For 500 errors, log more details for debugging
               if (signResponse.status === 500) {
                 console.error(`[PDF Helper] BSrE server error (500). Error details:`, errorText)
@@ -378,30 +381,30 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
                 if (fs.existsSync(tempFilePath)) {
                   fs.unlinkSync(tempFilePath)
                 }
-                return { 
-                  success: false, 
-                  error: 'Gagal menandatangani PDF. Server BSrE mengalami error. Silakan coba lagi nanti.' 
+                return {
+                  success: false,
+                  error: 'Gagal menandatangani PDF. Server BSrE mengalami error. Silakan coba lagi nanti.'
                 }
               }
-              
+
               // For other errors, fail PDF generation (don't save unsigned PDF)
               console.error(`[PDF Helper] BSrE sign failed with status ${signResponse.status}, PDF generation cancelled`)
               // Clean up temporary file
               if (fs.existsSync(tempFilePath)) {
                 fs.unlinkSync(tempFilePath)
               }
-              return { 
-                success: false, 
-                error: `Gagal menandatangani PDF. Error: ${errorText || `HTTP ${signResponse.status}`}` 
+              return {
+                success: false,
+                error: `Gagal menandatangani PDF. Error: ${errorText || `HTTP ${signResponse.status}`}`
               }
             } else {
               // Check content type to determine if response is PDF or JSON
               const contentType = signResponse.headers.get('content-type') || ''
               console.log(`[PDF Helper] BSrE response content-type: ${contentType}`)
-              
+
               // Read response body only ONCE as ArrayBuffer
               const responseArrayBuffer = await signResponse.arrayBuffer()
-              
+
               if (contentType.includes('application/pdf')) {
                 // Response is PDF, use directly
                 signedPdf = Buffer.from(responseArrayBuffer)
@@ -412,19 +415,19 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
                   const responseText = Buffer.from(responseArrayBuffer).toString('utf-8')
                   const responseData = JSON.parse(responseText)
                   console.log(`[PDF Helper] BSrE sign response:`, responseData)
-                  
+
                   // Check if response contains id_dokumen (for download endpoint)
                   if (responseData.id_dokumen || responseData.id || responseData.document_id) {
                     const documentId = responseData.id_dokumen || responseData.id || responseData.document_id
                     console.log(`[PDF Helper] Document ID received: ${documentId}, downloading signed PDF...`)
-                    
+
                     // Download signed PDF from BSrE download endpoint
                     const downloadEndpoint = `${bsreBaseURL}/api/sign/download/${documentId}`
                     console.log(`[PDF Helper] Downloading from: ${downloadEndpoint}`)
-                    
+
                     const downloadController = new AbortController()
                     const downloadTimeoutId = setTimeout(() => downloadController.abort(), 120000)
-                    
+
                     const downloadResponse = await fetch(downloadEndpoint, {
                       method: 'GET',
                       headers: {
@@ -433,9 +436,9 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
                       },
                       signal: downloadController.signal
                     })
-                    
+
                     clearTimeout(downloadTimeoutId)
-                    
+
                     if (!downloadResponse.ok) {
                       const errorText = await downloadResponse.text().catch(() => '')
                       console.error(`[PDF Helper] Failed to download signed PDF: ${downloadResponse.status} - ${errorText}`)
@@ -475,9 +478,9 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
         if (fs.existsSync(tempFilePath)) {
           fs.unlinkSync(tempFilePath)
         }
-        return { 
-          success: false, 
-          error: `Gagal menandatangani PDF: ${signError.message || 'Unknown error'}` 
+        return {
+          success: false,
+          error: `Gagal menandatangani PDF: ${signError.message || 'Unknown error'}`
         }
       }
 
@@ -488,9 +491,9 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
         if (fs.existsSync(tempFilePath)) {
           fs.unlinkSync(tempFilePath)
         }
-        return { 
-          success: false, 
-          error: 'Gagal mendapatkan PDF yang ditandatangani dari BSrE. Silakan coba lagi.' 
+        return {
+          success: false,
+          error: 'Gagal mendapatkan PDF yang ditandatangani dari BSrE. Silakan coba lagi.'
         }
       }
 
@@ -498,12 +501,12 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
       try {
         fs.writeFileSync(filePath, signedPdf)
         console.log(`[PDF Helper] Signed PDF saved successfully to: ${filePath}`)
-        
+
         // Remove temporary file
         if (fs.existsSync(tempFilePath)) {
           fs.unlinkSync(tempFilePath)
         }
-        
+
         // Verify file was saved
         if (fs.existsSync(filePath)) {
           const stats = fs.statSync(filePath)

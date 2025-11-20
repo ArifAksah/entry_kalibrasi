@@ -46,7 +46,7 @@ const CertificateVerificationCRUD: React.FC = () => {
   const [passphrase, setPassphrase] = useState('')
   const [isSigning, setIsSigning] = useState(false)
   const [passphraseError, setPassphraseError] = useState<string | null>(null)
-  
+
   // Live search and pagination states
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -187,13 +187,13 @@ const CertificateVerificationCRUD: React.FC = () => {
 
     try {
       setIsSubmitting(true)
-      
+
       const result = await rejectCertificate(selectedCertificate.id, rejectionData)
-      
+
       if (result.success) {
         closeRejectionModal()
         showSuccess('Sertifikat berhasil ditolak')
-        
+
         // Refresh the data
         window.location.reload()
       } else {
@@ -211,7 +211,7 @@ const CertificateVerificationCRUD: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedCertificate) return
-    
+
     setIsSubmitting(true)
     try {
       const verificationLevel = selectedCertificate.verification_status.user_verification_level
@@ -247,7 +247,7 @@ const CertificateVerificationCRUD: React.FC = () => {
 
       const existingId = selectedCertificate.verification_status.user_verification_id
       let result
-      
+
       if (existingId) {
         result = await updateVerification(existingId, verificationForm)
       } else {
@@ -260,17 +260,17 @@ const CertificateVerificationCRUD: React.FC = () => {
           approval_notes: verificationForm.status === 'approved' ? verificationForm.approval_notes : undefined
         })
       }
-      
+
       if (result.success) {
         closeModal()
-        
+
         // Show success message
         if (verificationForm.status === 'approved') {
           showSuccess('Sertifikat berhasil disetujui!')
         } else {
           showWarning('Sertifikat telah ditolak. Sertifikat dapat diperbaiki dan dikirim ulang.')
         }
-        
+
         // Refresh data (soft): refetch pending list
         // As a simple approach, reload the page to ensure all views reflect changes
         setTimeout(() => {
@@ -279,7 +279,7 @@ const CertificateVerificationCRUD: React.FC = () => {
       } else {
         // Handle error from result
         const errorMessage = result.error || 'Terjadi kesalahan'
-        
+
         // Show user-friendly error message
         if (errorMessage.includes('rejected')) {
           showError('Sertifikat telah ditolak. Silakan perbaiki sertifikat dan kirim ulang untuk verifikasi.')
@@ -301,7 +301,7 @@ const CertificateVerificationCRUD: React.FC = () => {
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedCertificate) return
-    
+
     setIsSubmitting(true)
     try {
       const verificationLevel = selectedCertificate.verification_status.user_verification_level
@@ -323,17 +323,17 @@ const CertificateVerificationCRUD: React.FC = () => {
       }
 
       const result = await updateVerification(existingId, verificationForm)
-      
+
       if (result.success) {
         closeEditModal()
-        
+
         // Show success message
         if (verificationForm.status === 'approved') {
           showSuccess('Verifikasi berhasil diperbarui!')
         } else {
           showWarning('Verifikasi telah diperbarui.')
         }
-        
+
         // Refresh data
         setTimeout(() => {
           window.location.reload()
@@ -451,10 +451,10 @@ const CertificateVerificationCRUD: React.FC = () => {
             )}
           </div>
         </div>
-        
+
         <Table headers={[
-          'Certificate No', 
-          'Station', 
+          'Certificate No',
+          'Station',
           'Your Role',
           'Your Status',
           'Overall Status',
@@ -468,189 +468,189 @@ const CertificateVerificationCRUD: React.FC = () => {
             </tr>
           ) : (
             currentCertificates.map((cert) => (
-            <tr key={cert.id} className="hover:bg-gray-50">
-              <td className="px-6 py-4 whitespace-nowrap">
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium text-gray-900">
-                    {cert.no_certificate}
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    {cert.no_order} • {cert.no_identification}
-                  </span>
-                  <span className="text-xs text-gray-400">
-                    {new Date(cert.issue_date).toLocaleDateString()}
-                  </span>
-                </div>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap">
-                <div className="flex flex-col">
-                  <span className="text-sm text-gray-900">
-                    {cert.station?.name || '-'}
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    {cert.instrument?.name || '-'}
-                  </span>
-                </div>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                {getVerificationLevel(cert)}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm">
-                <div className="flex flex-col">
-                  <span className={getStatusBadge(cert.verification_status.user_verification_status || 'pending')}>
-                    {cert.verification_status.user_verification_status || 'pending'}
-                  </span>
-                  {cert.verification_status.user_verification_status === 'rejected' && (
-                    <span className="text-xs text-red-500 mt-1">
-                      Sertifikat ditolak
+              <tr key={cert.id} className="hover:bg-gray-50">
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-gray-900">
+                      {cert.no_certificate}
                     </span>
-                  )}
-                  {cert.verification_status.user_verification_status === 'pending' && (
-                    <span className="text-xs text-yellow-600 mt-1">
-                      Menunggu verifikasi
+                    <span className="text-xs text-gray-500">
+                      {cert.no_order} • {cert.no_identification}
                     </span>
-                  )}
-                  {cert.verification_status.user_verification_status === 'approved' && (
-                    <span className="text-xs text-green-600 mt-1">
-                      Sertifikat disetujui - edit tidak tersedia
-                    </span>
-                  )}
-                </div>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm">
-                <div className="flex flex-col space-y-1">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs text-gray-500">Verifikator 1:</span>
-                    <span className={getStatusBadge(cert.verification_status.verifikator_1)}>
-                      {cert.verification_status.verifikator_1}
+                    <span className="text-xs text-gray-400">
+                      {new Date(cert.issue_date).toLocaleDateString()}
                     </span>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs text-gray-500">Verifikator 2:</span>
-                    <span className={getStatusBadge(cert.verification_status.verifikator_2)}>
-                      {cert.verification_status.verifikator_2}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex flex-col">
+                    <span className="text-sm text-gray-900">
+                      {cert.station?.name || '-'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {cert.instrument?.name || '-'}
                     </span>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs text-gray-500">Penandatangan:</span>
-                    <span className={getStatusBadge(cert.verification_status.authorized_by)}>
-                      {cert.verification_status.authorized_by}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {getVerificationLevel(cert)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <div className="flex flex-col">
+                    <span className={getStatusBadge(cert.verification_status.user_verification_status || 'pending')}>
+                      {cert.verification_status.user_verification_status || 'pending'}
                     </span>
+                    {cert.verification_status.user_verification_status === 'rejected' && (
+                      <span className="text-xs text-red-500 mt-1">
+                        Sertifikat ditolak
+                      </span>
+                    )}
+                    {cert.verification_status.user_verification_status === 'pending' && (
+                      <span className="text-xs text-yellow-600 mt-1">
+                        Menunggu verifikasi
+                      </span>
+                    )}
+                    {cert.verification_status.user_verification_status === 'approved' && (
+                      <span className="text-xs text-green-600 mt-1">
+                        Sertifikat disetujui - edit tidak tersedia
+                      </span>
+                    )}
                   </div>
-                </div>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                <div className="flex space-x-2">
-                  <a 
-                    href={`/certificates/${cert.id}/print`} 
-                    target="_blank" 
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200 border border-transparent hover:border-green-200"
-                  >
-                    <ViewIcon className="w-4 h-4" />
-                    <span>View</span>
-                  </a>
-                  {/* Download PDF button - only show if Level 3 approved and PDF already signed (exists in e-certificate-signed) */}
-                  {cert.verification_status.authorized_by === 'approved' && (cert as any).pdf_path && (
-                    <button
-                      onClick={async () => {
-                        try {
-                          // Download PDF from e-certificate-signed folder
-                          const response = await fetch(`/api/certificates/${cert.id}/pdf?download=true`)
-                          if (!response.ok) {
-                            const errorData = await response.json().catch(() => ({ error: 'Failed to download PDF' }))
-                            showError(errorData.error || 'Gagal mengunduh PDF. Pastikan PDF sudah ditandatangani.')
-                            return
-                          }
-                          
-                          // Get PDF blob from response
-                          const blob = await response.blob()
-                          const url = window.URL.createObjectURL(blob)
-                          const a = document.createElement('a')
-                          a.href = url
-                          const certificateNumber = cert.no_certificate || String(cert.id)
-                          const safeFileName = certificateNumber.replace(/[^a-zA-Z0-9]/g, '_')
-                          a.download = `Certificate_${safeFileName}_Signed.pdf`
-                          document.body.appendChild(a)
-                          a.click()
-                          window.URL.revokeObjectURL(url)
-                          document.body.removeChild(a)
-                          showSuccess('PDF yang ditandatangani berhasil diunduh')
-                        } catch (err) {
-                          console.error('Error downloading signed PDF:', err)
-                          showError('Gagal mengunduh PDF. Silakan coba lagi.')
-                        }
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-all duration-200 border border-transparent hover:border-indigo-200"
-                      title="Download PDF yang sudah ditandatangani dari e-certificate-signed"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <span>Download PDF Signed</span>
-                    </button>
-                  )}
-                  {cert.verification_status.user_verification_status === 'pending' && (
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <div className="flex flex-col space-y-1">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-gray-500">Verifikator 1:</span>
+                      <span className={getStatusBadge(cert.verification_status.verifikator_1)}>
+                        {cert.verification_status.verifikator_1}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-gray-500">Verifikator 2:</span>
+                      <span className={getStatusBadge(cert.verification_status.verifikator_2)}>
+                        {cert.verification_status.verifikator_2}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-gray-500">Penandatangan:</span>
+                      <span className={getStatusBadge(cert.verification_status.authorized_by)}>
+                        {cert.verification_status.authorized_by}
+                      </span>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <div className="flex space-x-2">
                     <a
-                      href={`/certificates?edit=${cert.id}&from=verification`}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-all duration-200 border border-transparent hover:border-purple-200"
-                      title="Edit Certificate"
+                      href={`/certificates/${cert.id}/print`}
+                      target="_blank"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200 border border-transparent hover:border-green-200"
                     >
-                      <EditIcon className="w-4 h-4" />
-                      <span>Edit</span>
+                      <ViewIcon className="w-4 h-4" />
+                      <span>View</span>
                     </a>
-                  )}
-                  {cert.verification_status.user_can_act ? (
-                    <>
-                      <button 
-                        onClick={() => {
-                          openModal(cert)
-                        }} 
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all duration-200 border border-transparent hover:border-blue-200"
-                        title={cert.verification_status.user_verification_id ? 'Update Verification' : 'Verify Certificate'}
-                      >
-                        <CheckIcon className="w-4 h-4" />
-                        <span>{cert.verification_status.user_verification_id ? 'Update' : 'Verify'}</span>
-                      </button>
-                      <button 
-                        onClick={() => {
-                          openRejectionModal(cert)
-                        }} 
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200 border border-transparent hover:border-red-200"
-                        title="Tolak Sertifikat"
-                      >
-                        <XIcon className="w-4 h-4" />
-                        <span>Reject</span>
-                      </button>
-                      <button 
-                        onClick={() => {
-                          console.log('Edit button clicked for cert:', cert.id, 'status:', cert.verification_status.user_verification_status)
-                          openEditModal(cert)
+                    {/* Download PDF button - only show if Level 3 approved and PDF already signed (exists in e-certificate-signed) */}
+                    {cert.verification_status.authorized_by === 'approved' && (cert as any).pdf_path && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            // Download PDF from e-certificate-signed folder
+                            const response = await fetch(`/api/certificates/${cert.id}/pdf?download=true`)
+                            if (!response.ok) {
+                              const errorData = await response.json().catch(() => ({ error: 'Failed to download PDF' }))
+                              showError(errorData.error || 'Gagal mengunduh PDF. Pastikan PDF sudah ditandatangani.')
+                              return
+                            }
+
+                            // Get PDF blob from response
+                            const blob = await response.blob()
+                            const url = window.URL.createObjectURL(blob)
+                            const a = document.createElement('a')
+                            a.href = url
+                            const certificateNumber = cert.no_certificate || String(cert.id)
+                            const safeFileName = certificateNumber.replace(/[^a-zA-Z0-9]/g, '_')
+                            a.download = `Certificate_${safeFileName}_Signed.pdf`
+                            document.body.appendChild(a)
+                            a.click()
+                            window.URL.revokeObjectURL(url)
+                            document.body.removeChild(a)
+                            showSuccess('PDF yang ditandatangani berhasil diunduh')
+                          } catch (err) {
+                            console.error('Error downloading signed PDF:', err)
+                            showError('Gagal mengunduh PDF. Silakan coba lagi.')
+                          }
                         }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-orange-600 hover:text-orange-800 hover:bg-orange-50 rounded-lg transition-all duration-200 border border-transparent hover:border-orange-200"
-                        title="Edit verification"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-all duration-200 border border-transparent hover:border-indigo-200"
+                        title="Download PDF yang sudah ditandatangani dari e-certificate-signed"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span>Download PDF Signed</span>
+                      </button>
+                    )}
+                    {cert.verification_status.user_verification_status === 'pending' && (
+                      <a
+                        href={`/certificates?edit=${cert.id}&from=verification`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-all duration-200 border border-transparent hover:border-purple-200"
+                        title="Edit Certificate"
                       >
                         <EditIcon className="w-4 h-4" />
                         <span>Edit</span>
-                      </button>
-                    </>
-                  ) : (
-                    <div className="flex flex-col space-y-1">
-                      <span className="text-xs text-gray-400">Waiting previous step</span>
-                      {cert.verification_status.user_verification_status !== 'approved' && (
-                        <span className="text-xs text-purple-600">
-                          Edit data available after your turn
-                        </span>
-                      )}
-                      {cert.verification_status.user_verification_status === 'approved' && (
-                        <span className="text-xs text-green-600">
-                          Approved - edit locked
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </td>
-            </tr>
+                      </a>
+                    )}
+                    {cert.verification_status.user_can_act ? (
+                      <>
+                        <button
+                          onClick={() => {
+                            openModal(cert)
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all duration-200 border border-transparent hover:border-blue-200"
+                          title={cert.verification_status.user_verification_id ? 'Update Verification' : 'Verify Certificate'}
+                        >
+                          <CheckIcon className="w-4 h-4" />
+                          <span>{cert.verification_status.user_verification_id ? 'Update' : 'Verify'}</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            openRejectionModal(cert)
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200 border border-transparent hover:border-red-200"
+                          title="Tolak Sertifikat"
+                        >
+                          <XIcon className="w-4 h-4" />
+                          <span>Reject</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            console.log('Edit button clicked for cert:', cert.id, 'status:', cert.verification_status.user_verification_status)
+                            openEditModal(cert)
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-orange-600 hover:text-orange-800 hover:bg-orange-50 rounded-lg transition-all duration-200 border border-transparent hover:border-orange-200"
+                          title="Edit verification"
+                        >
+                          <EditIcon className="w-4 h-4" />
+                          <span>Edit</span>
+                        </button>
+                      </>
+                    ) : (
+                      <div className="flex flex-col space-y-1">
+                        <span className="text-xs text-gray-400">Waiting previous step</span>
+                        {cert.verification_status.user_verification_status !== 'approved' && (
+                          <span className="text-xs text-purple-600">
+                            Edit data available after your turn
+                          </span>
+                        )}
+                        {cert.verification_status.user_verification_status === 'approved' && (
+                          <span className="text-xs text-green-600">
+                            Approved - edit locked
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </td>
+              </tr>
             ))
           )}
         </Table>
@@ -663,32 +663,30 @@ const CertificateVerificationCRUD: React.FC = () => {
               <button
                 onClick={() => paginate(Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
-                className={`relative inline-flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                  currentPage === 1
+                className={`relative inline-flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${currentPage === 1
                     ? 'text-gray-400 cursor-not-allowed'
                     : 'text-gray-700 hover:bg-white hover:text-gray-900'
-                }`}
+                  }`}
               >
                 <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
                 Previous
               </button>
-              
+
               <div className="flex items-center space-x-1">
                 <span className="text-sm text-gray-500">
                   Page {currentPage} of {totalPages}
                 </span>
               </div>
-              
+
               <button
                 onClick={() => paginate(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}
-                className={`relative inline-flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                  currentPage === totalPages
+                className={`relative inline-flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${currentPage === totalPages
                     ? 'text-gray-400 cursor-not-allowed'
                     : 'text-gray-700 hover:bg-white hover:text-gray-900'
-                }`}
+                  }`}
               >
                 Next
                 <svg className="h-4 w-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -711,11 +709,10 @@ const CertificateVerificationCRUD: React.FC = () => {
                   <button
                     onClick={() => paginate(1)}
                     disabled={currentPage === 1}
-                    className={`relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 transition-colors ${
-                      currentPage === 1
+                    className={`relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 transition-colors ${currentPage === 1
                         ? 'cursor-not-allowed'
                         : 'hover:bg-white hover:text-gray-600'
-                    }`}
+                      }`}
                     title="First page"
                   >
                     <span className="sr-only">First</span>
@@ -726,23 +723,22 @@ const CertificateVerificationCRUD: React.FC = () => {
                   <button
                     onClick={() => paginate(Math.max(1, currentPage - 1))}
                     disabled={currentPage === 1}
-                    className={`relative inline-flex items-center px-2 py-2 text-gray-400 transition-colors ${
-                      currentPage === 1
+                    className={`relative inline-flex items-center px-2 py-2 text-gray-400 transition-colors ${currentPage === 1
                         ? 'cursor-not-allowed'
                         : 'hover:bg-white hover:text-gray-600'
-                    }`}
+                      }`}
                   >
                     <span className="sr-only">Previous</span>
                     <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                       <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
                     </svg>
                   </button>
-                  
+
                   {/* Smart page numbers with ellipsis */}
                   {(() => {
                     const pages = []
                     const maxVisiblePages = 5
-                    
+
                     if (totalPages <= maxVisiblePages) {
                       // Show all pages if total is small
                       for (let i = 1; i <= totalPages; i++) {
@@ -750,11 +746,10 @@ const CertificateVerificationCRUD: React.FC = () => {
                           <button
                             key={i}
                             onClick={() => paginate(i)}
-                            className={`relative inline-flex items-center px-3 py-2 text-sm font-semibold ${
-                              currentPage === i
+                            className={`relative inline-flex items-center px-3 py-2 text-sm font-semibold ${currentPage === i
                                 ? 'z-10 bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
                                 : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-white focus:outline-offset-0'
-                            }`}
+                              }`}
                           >
                             {i}
                           </button>
@@ -764,7 +759,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                       // Show smart pagination with ellipsis
                       const startPage = Math.max(1, currentPage - 2)
                       const endPage = Math.min(totalPages, currentPage + 2)
-                      
+
                       // Always show first page
                       if (startPage > 1) {
                         pages.push(
@@ -776,7 +771,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                             1
                           </button>
                         )
-                        
+
                         if (startPage > 2) {
                           pages.push(
                             <span key="ellipsis1" className="relative inline-flex items-center px-3 py-2 text-sm font-semibold text-gray-700">
@@ -785,24 +780,23 @@ const CertificateVerificationCRUD: React.FC = () => {
                           )
                         }
                       }
-                      
+
                       // Show pages around current page
                       for (let i = startPage; i <= endPage; i++) {
                         pages.push(
                           <button
                             key={i}
                             onClick={() => paginate(i)}
-                            className={`relative inline-flex items-center px-3 py-2 text-sm font-semibold ${
-                              currentPage === i
+                            className={`relative inline-flex items-center px-3 py-2 text-sm font-semibold ${currentPage === i
                                 ? 'z-10 bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
                                 : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-white focus:outline-offset-0'
-                            }`}
+                              }`}
                           >
                             {i}
                           </button>
                         )
                       }
-                      
+
                       // Always show last page
                       if (endPage < totalPages) {
                         if (endPage < totalPages - 1) {
@@ -812,7 +806,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                             </span>
                           )
                         }
-                        
+
                         pages.push(
                           <button
                             key={totalPages}
@@ -824,18 +818,17 @@ const CertificateVerificationCRUD: React.FC = () => {
                         )
                       }
                     }
-                    
+
                     return pages
                   })()}
-                  
+
                   <button
                     onClick={() => paginate(Math.min(totalPages, currentPage + 1))}
                     disabled={currentPage === totalPages}
-                    className={`relative inline-flex items-center px-2 py-2 text-gray-400 transition-colors ${
-                      currentPage === totalPages
+                    className={`relative inline-flex items-center px-2 py-2 text-gray-400 transition-colors ${currentPage === totalPages
                         ? 'cursor-not-allowed'
                         : 'hover:bg-white hover:text-gray-600'
-                    }`}
+                      }`}
                   >
                     <span className="sr-only">Next</span>
                     <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -845,11 +838,10 @@ const CertificateVerificationCRUD: React.FC = () => {
                   <button
                     onClick={() => paginate(totalPages)}
                     disabled={currentPage === totalPages}
-                    className={`relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 transition-colors ${
-                      currentPage === totalPages
+                    className={`relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 transition-colors ${currentPage === totalPages
                         ? 'cursor-not-allowed'
                         : 'hover:bg-white hover:text-gray-600'
-                    }`}
+                      }`}
                     title="Last page"
                   >
                     <span className="sr-only">Last</span>
@@ -1016,11 +1008,10 @@ const CertificateVerificationCRUD: React.FC = () => {
                 type="submit"
                 form="verification-form"
                 disabled={isSubmitting}
-                className={`px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed ${
-                  verificationForm.status === 'approved' 
-                    ? 'bg-green-600 hover:bg-green-700' 
+                className={`px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed ${verificationForm.status === 'approved'
+                    ? 'bg-green-600 hover:bg-green-700'
                     : 'bg-red-600 hover:bg-red-700'
-                }`}
+                  }`}
               >
                 {isSubmitting ? 'Mengirim...' : `${verificationForm.status === 'approved' ? 'Setujui' : 'Tolak'} Sertifikat`}
               </button>
@@ -1174,11 +1165,10 @@ const CertificateVerificationCRUD: React.FC = () => {
                 type="submit"
                 form="edit-verification-form"
                 disabled={isSubmitting}
-                className={`px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed ${
-                  verificationForm.status === 'approved' 
-                    ? 'bg-green-600 hover:bg-green-700' 
+                className={`px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed ${verificationForm.status === 'approved'
+                    ? 'bg-green-600 hover:bg-green-700'
                     : 'bg-red-600 hover:bg-red-700'
-                }`}
+                  }`}
               >
                 {isSubmitting ? 'Mengirim...' : `Update ${verificationForm.status === 'approved' ? 'Approval' : 'Rejection'}`}
               </button>
@@ -1229,11 +1219,29 @@ const CertificateVerificationCRUD: React.FC = () => {
                   placeholder="Masukkan passphrase TTE Anda"
                 />
                 {passphraseError && (
-                  <p className="text-sm text-red-600 mt-2">{passphraseError}</p>
+                  <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-700 font-medium flex items-center gap-2">
+                      <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                      {passphraseError}
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
             <div className="flex justify-end space-x-3 p-6 border-t border-gray-200 bg-gray-50">
+              {passphraseError && passphraseError.includes('profil') && (
+                <a
+                  href="/profile-settings"
+                  className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 rounded-lg border border-blue-200 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  Atur NIK di Profil
+                </a>
+              )}
               <button
                 type="button"
                 onClick={() => setIsPassphraseModalOpen(false)}
@@ -1270,15 +1278,50 @@ const CertificateVerificationCRUD: React.FC = () => {
                         userPassphrase: passphrase
                       })
                     })
-                    if (res.status === 401) {
-                      setPassphraseError('Passphrase salah. Coba lagi.')
-                      setIsSigning(false)
-                      return
-                    }
-                    const data = await res.json()
+
+                    // Parse response body first
+                    const data = await res.json().catch(() => ({ error: 'Gagal memproses response' }))
+
+                    // Handle errors according to BSrE JUKNIS format:
+                    // HTTP 400: {"error": "Passphrase yang dimasukkan salah"} atau {"error": "NIK peserta tidak terdaftar"}
+                    // HTTP 401: {"error": "Sertifikat belum diterbitkan"}
                     if (!res.ok) {
-                      const msg = data?.error || 'Gagal menandatangani dokumen'
-                      showError(msg)
+                      const errorMsg = data?.error || 'Gagal menandatangani dokumen'
+                      const errorCode = data?.code
+
+                      // Handle specific NIK missing error
+                      if (errorCode === 'NIK_MISSING' || errorMsg.includes('NIK belum diatur')) {
+                        setPassphraseError('NIK belum diatur di profil Anda. Silakan lengkapi data profil terlebih dahulu.')
+                        setIsSigning(false)
+                        return
+                      }
+
+                      // Check if passphrase is wrong (HTTP 400)
+                      if (res.status === 400 && (
+                        errorMsg.includes('Passphrase') ||
+                        errorMsg.includes('passphrase') ||
+                        errorMsg.includes('salah')
+                      )) {
+                        setPassphraseError('Passphrase yang dimasukkan salah. Silakan masukkan passphrase yang benar.')
+                        setIsSigning(false)
+                        return
+                      }
+
+                      // Check if NIK is not registered (HTTP 400)
+                      if (res.status === 400 && (
+                        errorMsg.includes('NIK') ||
+                        errorMsg.includes('nik') ||
+                        errorMsg.includes('tidak terdaftar') ||
+                        errorMsg.includes('tidak ditemukan')
+                      )) {
+                        setPassphraseError('NIK peserta tidak terdaftar. Pastikan NIK sudah terdaftar di sistem BSrE.')
+                        setIsSigning(false)
+                        return
+                      }
+
+                      // For other errors, show error message in modal and alert
+                      setPassphraseError(errorMsg)
+                      showError(errorMsg)
                       setIsSigning(false)
                       return
                     }

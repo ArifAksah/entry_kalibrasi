@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
       try {
         bsreRes = await fetch(bsreUrl, {
           method: 'POST',
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
             'X-API-Key': process.env.BSRE_API_KEY || '',
             'Authorization': `Bearer ${process.env.BSRE_API_KEY || ''}`
@@ -130,17 +130,111 @@ export async function POST(request: NextRequest) {
       bsreData = await bsreRes.json().catch(() => null)
     }
 
-    // Upsert level-3 verification as approved
-    const { data: existingL3 } = await supabaseAdmin
+    // IMPORTANT: DO NOT update status approval yet!
+    // Status approval must wait for PDF signing to succeed (which validates passphrase)
+    // PDF signing will validate passphrase - if wrong, status should NOT be approved
+
+    // Generate and save PDF BEFORE updating status to approved
+    // CRITICAL: Status approval must wait for PDF signing to succeed
+    // If PDF signing fails (e.g., passphrase salah), status should NOT be approved
+    console.log(`[sign-level-3] Starting PDF generation and signing for certificate ${cert.id}...`)
+    console.log(`[sign-level-3] Passphrase validation will be done during PDF signing...`)
+
+    try {
+      const { generateAndSaveCertificatePDF } = await import('../../../../lib/certificate-pdf-helper')
+
+      // AWAIT PDF generation and signing - do not proceed if it fails
+      // Passphrase validation happens here during PDF signing to BSrE
+      const pdfResult = await generateAndSaveCertificatePDF(cert.id, user.id, userPassphrase, true)
+
+      if (!pdfResult.success) {
+        console.error(`[sign-level-3] ❌ PDF signing failed for certificate ${cert.id}:`, pdfResult.error)
+
+        // Check if error is due to passphrase
+        if (pdfResult.error?.includes('Passphrase') || pdfResult.error?.includes('passphrase') ||
+          pdfResult.error?.includes('salah')) {
+          await logAction(request, user.id, 'bsre_sign', 'error', {
+            documentId,
+            reason: 'invalid_passphrase_pdf_signing',
+            error: pdfResult.error
+          })
+          return NextResponse.json({
+            error: 'Passphrase yang dimasukkan salah. Silakan masukkan passphrase yang benar.'
+          }, { status: 400 })
+        }
+        // Check if error is due to NIK not registered or missing
+        else if (pdfResult.error === 'NIK_NOT_FOUND_IN_DB') {
+          await logAction(request, user.id, 'bsre_sign', 'error', {
+            documentId,
+            reason: 'nik_missing_in_db',
+            error: pdfResult.error
+          })
+          return NextResponse.json({
+            error: 'NIK belum diatur di profil pengguna. Silakan lengkapi data profil Anda.',
+            code: 'NIK_MISSING'
+          }, { status: 400 })
+        }
+        else if (pdfResult.error?.includes('NIK') || pdfResult.error?.includes('nik') ||
+          pdfResult.error?.includes('tidak terdaftar') || pdfResult.error?.includes('tidak ditemukan')) {
+          await logAction(request, user.id, 'bsre_sign', 'error', {
+            documentId,
+            reason: 'nik_not_registered',
+            error: pdfResult.error
+          })
+          return NextResponse.json({
+            error: 'NIK peserta tidak terdaftar di BSrE. Pastikan NIK Anda sudah terdaftar.',
+            code: 'NIK_INVALID'
+          }, { status: 400 })
+        }
+
+        // For other PDF signing errors, fail the approval
+        await logAction(request, user.id, 'bsre_sign', 'error', {
+          documentId,
+          reason: 'pdf_signing_failed',
+          error: pdfResult.error
+        })
+        return NextResponse.json({
+          error: pdfResult.error || 'Gagal menandatangani PDF. Status approval dibatalkan.'
+        }, { status: 500 })
+      }
+
+      console.log(`[sign-level-3] ✅ PDF generated and signed successfully for certificate ${cert.id}: ${pdfResult.pdfPath}`)
+
+    } catch (pdfError: any) {
+      console.error('[sign-level-3] ❌ Error during PDF generation/signing:', pdfError)
+      console.error('[sign-level-3] Error details:', pdfError.message, pdfError.stack)
+
+      await logAction(request, user.id, 'bsre_sign', 'error', {
+        documentId,
+        reason: 'pdf_generation_exception',
+        error: pdfError.message
+      })
+
+      return NextResponse.json({
+        error: `Gagal menandatangani PDF: ${pdfError.message || 'Unknown error'}. Status approval dibatalkan.`
+      }, { status: 500 })
+    }
+
+    // ONLY update status to approved AFTER PDF signing is successful
+    // Now update the status because PDF signing passed, meaning passphrase was correct
+    console.log(`[sign-level-3] Updating status to approved for certificate ${cert.id}, version ${effectiveVersion}...`)
+
+    const { data: existingL3, error: checkErr } = await supabaseAdmin
       .from('certificate_verification')
-      .select('id')
+      .select('id, status')
       .eq('certificate_id', cert.id)
       .eq('verification_level', 3)
       .eq('certificate_version', effectiveVersion)
       .maybeSingle()
 
+    if (checkErr) {
+      console.error('[sign-level-3] Error checking existing verification:', checkErr)
+    }
+
+    console.log(`[sign-level-3] Existing L3 verification:`, existingL3 ? `ID=${existingL3.id}, status=${existingL3.status}` : 'Not found')
+
     if (existingL3) {
-      const { error: updErr } = await supabaseAdmin
+      const { data: updatedData, error: updErr } = await supabaseAdmin
         .from('certificate_verification')
         .update({
           status: 'approved',
@@ -152,9 +246,29 @@ export async function POST(request: NextRequest) {
           updated_at: new Date().toISOString()
         })
         .eq('id', existingL3.id)
-      if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+        .select()
+        .single()
+
+      if (updErr) {
+        console.error('[sign-level-3] Failed to update status:', updErr)
+        return NextResponse.json({ error: updErr.message }, { status: 500 })
+      }
+      console.log(`[sign-level-3] ✅ Status updated successfully:`, updatedData)
+
+      // Verify the update was successful by querying it back
+      const { data: verifyUpdate, error: verifyErr } = await supabaseAdmin
+        .from('certificate_verification')
+        .select('id, status, certificate_id, verification_level, certificate_version')
+        .eq('id', existingL3.id)
+        .single()
+
+      if (verifyErr) {
+        console.error('[sign-level-3] ⚠️ Warning: Could not verify updated status:', verifyErr)
+      } else {
+        console.log(`[sign-level-3] ✅ Verified updated status in database:`, verifyUpdate)
+      }
     } else {
-      const { error: insErr } = await supabaseAdmin
+      const { data: insertedData, error: insErr } = await supabaseAdmin
         .from('certificate_verification')
         .insert({
           certificate_id: cert.id,
@@ -168,10 +282,55 @@ export async function POST(request: NextRequest) {
           signed_at: new Date().toISOString(),
           certificate_version: effectiveVersion
         })
-      if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })
+        .select()
+        .single()
+
+      if (insErr) {
+        console.error('[sign-level-3] Failed to insert status:', insErr)
+        return NextResponse.json({ error: insErr.message }, { status: 500 })
+      }
+      console.log(`[sign-level-3] ✅ Status inserted successfully:`, insertedData)
+
+      // Verify the insert was successful by querying it back
+      // Use certificate_id and verification_level to ensure we can find it from verify-certificate endpoint
+      const { data: verifyInsert, error: verifyErr } = await supabaseAdmin
+        .from('certificate_verification')
+        .select('id, status, certificate_id, verification_level, certificate_version')
+        .eq('certificate_id', cert.id)
+        .eq('verification_level', 3)
+        .eq('status', 'approved')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (verifyErr) {
+        console.error('[sign-level-3] ⚠️ Warning: Could not verify inserted status:', verifyErr)
+      } else if (verifyInsert) {
+        console.log(`[sign-level-3] ✅ Verified inserted status in database:`, verifyInsert)
+        console.log(`[sign-level-3] ✅ Record is queryable with certificate_id=${cert.id}, verification_level=3, status=approved`)
+      } else {
+        console.error('[sign-level-3] ⚠️ Warning: Inserted status not found when querying back - possible replication lag')
+        // Wait a bit and try again
+        await new Promise(resolve => setTimeout(resolve, 500))
+        const { data: retryVerify, error: retryErr } = await supabaseAdmin
+          .from('certificate_verification')
+          .select('id, status, certificate_id, verification_level, certificate_version')
+          .eq('certificate_id', cert.id)
+          .eq('verification_level', 3)
+          .eq('status', 'approved')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (retryVerify) {
+          console.log(`[sign-level-3] ✅ Found record after retry:`, retryVerify)
+        } else {
+          console.error('[sign-level-3] ❌ Still not found after retry:', retryErr)
+        }
+      }
     }
 
-    // Create certificate log entry for signing
+    // Create certificate log entry for signing (after status update)
     try {
       const { createCertificateLog } = await import('../../../../lib/certificate-log-helper')
       const { data: currentCert } = await supabaseAdmin
@@ -179,7 +338,7 @@ export async function POST(request: NextRequest) {
         .select('status')
         .eq('id', cert.id)
         .single()
-      
+
       await createCertificateLog({
         certificate_id: cert.id,
         action: 'approved_assignor',
@@ -197,41 +356,6 @@ export async function POST(request: NextRequest) {
       // Don't fail the request if logging fails
     }
 
-    // Generate and save PDF automatically when level 3 is approved
-    // This runs asynchronously so it doesn't block the response
-    // Note: Passphrase validation is already done above (line 118-120)
-    // If passphrase is wrong, the request would have failed before reaching here
-    try {
-      const { generateAndSaveCertificatePDF } = await import('../../../../lib/certificate-pdf-helper')
-      console.log(`[sign-level-3] Starting PDF generation for certificate ${cert.id}...`)
-      
-      // Run PDF generation in background (don't await to avoid blocking response)
-      // Pass user.id (authorized_by) to get NIK from personel table, and userPassphrase for BSrE signing
-      // Note: PDF will only be saved if signing is successful
-      generateAndSaveCertificatePDF(cert.id, user.id, userPassphrase)
-        .then(result => {
-          if (result.success) {
-            console.log(`[sign-level-3] ✅ PDF generated and signed successfully for certificate ${cert.id}: ${result.pdfPath}`)
-          } else {
-            console.error(`[sign-level-3] ❌ Failed to generate/sign PDF for certificate ${cert.id}:`, result.error)
-            // If passphrase error occurs during PDF signing, log it
-            // This should not happen as passphrase was validated during metadata signing above
-            if (result.error?.includes('Passphrase')) {
-              console.error(`[sign-level-3] ⚠️ Passphrase error during PDF signing: ${result.error}`)
-              console.error(`[sign-level-3] ⚠️ This may indicate passphrase validation issue - user should retry with correct passphrase`)
-            }
-          }
-        })
-        .catch(error => {
-          console.error(`[sign-level-3] ❌ Error generating PDF for certificate ${cert.id}:`, error)
-          console.error(`[sign-level-3] Error stack:`, error.stack)
-        })
-    } catch (pdfError: any) {
-      console.error('[sign-level-3] ❌ Failed to import or call PDF helper:', pdfError)
-      console.error('[sign-level-3] Error details:', pdfError.message, pdfError.stack)
-      // Don't fail the request if PDF generation fails
-    }
-
     await logAction(request, user.id, 'bsre_sign', 'success', { documentId, certificateId: cert.id })
     return NextResponse.json({ message: 'TTE Berhasil' }, { status: 200 })
   } catch (e) {
@@ -239,7 +363,7 @@ export async function POST(request: NextRequest) {
     try {
       // best effort user id extraction for logging
       // no-op if cannot parse
-    } catch {}
+    } catch { }
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 }
