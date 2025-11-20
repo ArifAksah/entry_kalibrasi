@@ -10,7 +10,7 @@ const nextConfig = {
   // Explicitly set the tracing root to this app directory to avoid monorepo lockfile warnings
   outputFileTracingRoot: __dirname,
   // Externalize playwright for server components and API routes
-  serverComponentsExternalPackages: ['playwright'],
+  serverExternalPackages: ['playwright'],
   webpack: (config, { isServer }) => {
     if (isServer) {
       // Externalize playwright for server-side rendering
