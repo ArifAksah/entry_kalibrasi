@@ -23,8 +23,8 @@ type Cert = {
 }
 
 type KV = { key: string; value: string }
-type TableRow = { key: string; unit: string; value: string }
-type TableSection = { title: string; rows: TableRow[] }
+type TableRow = { key: string; unit: string; value: string; extraValues?: string[] }
+type TableSection = { title: string; headers?: string[]; rows: TableRow[] }
 type ResultItem = {
   sensorId: number | null
   startDate: string
@@ -708,26 +708,53 @@ const ViewCertificatePage: React.FC = () => {
                                     })}
                                   </tbody>
                                 </table>
-                              ) : isParamHeaderStyle ? (
+                              ) : (
                                 <table className="w-full text-xs border-[2px] border-black border-collapse text-center">
                                   <thead>
                                     <tr className="font-bold">
-                                      {rows.map((r: any, i: number) => {
-                                        const unit = r?.unit ?? r?.satuan
-                                        const label = `${r?.key || '-'}` + (unit ? ` ${unit}` : '')
-                                        return <td key={i} className="p-1 border border-black">{label}</td>
-                                      })}
+                                      {/* Use explicit headers if available, otherwise fallback to Key/Unit/Value logic */}
+                                      {sec.headers ? (
+                                        sec.headers.map((h: string, i: number) => (
+                                          <td key={i} className="p-1 border border-black">{h}</td>
+                                        ))
+                                      ) : (
+                                        // Fallback for old data without headers
+                                        rows.length > 0 && (
+                                          <>
+                                            <td className="p-1 border border-black">Parameter</td>
+                                            <td className="p-1 border border-black">Unit</td>
+                                            <td className="p-1 border border-black">Nilai</td>
+                                          </>
+                                        )
+                                      )}
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    <tr>
-                                      {rows.map((r: any, i: number) => (
-                                        <td key={i} className="p-1 border border-black text-left">{r?.value ?? '-'}</td>
-                                      ))}
-                                    </tr>
+                                    {rows.map((r: any, i: number) => (
+                                      <tr key={i}>
+                                        {/* If headers exist, map based on standard + extra values */}
+                                        {sec.headers ? (
+                                          <>
+                                            <td className="p-1 border border-black text-left">{r.key || '-'}</td>
+                                            <td className="p-1 border border-black text-left">{r.unit || '-'}</td>
+                                            <td className="p-1 border border-black text-left">{r.value || '-'}</td>
+                                            {Array.isArray(r.extraValues) && r.extraValues.map((v: string, vi: number) => (
+                                              <td key={`extra-${vi}`} className="p-1 border border-black text-left">{v || '-'}</td>
+                                            ))}
+                                          </>
+                                        ) : (
+                                          // Fallback
+                                          <>
+                                            <td className="p-1 border border-black text-left">{r.key || '-'}</td>
+                                            <td className="p-1 border border-black text-left">{r.unit || '-'}</td>
+                                            <td className="p-1 border border-black text-left">{r.value || '-'}</td>
+                                          </>
+                                        )}
+                                      </tr>
+                                    ))}
                                   </tbody>
                                 </table>
-                              ) : null}
+                              )}
                             </div>
                           )
                         })}

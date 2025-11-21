@@ -13,6 +13,7 @@ import { usePermissions } from '../../../hooks/usePermissions'
 import { useAlert } from '../../../hooks/useAlert'
 import { useRouter } from 'next/navigation'
 import { EditIcon, DeleteIcon } from '../../../components/ui/ActionIcons'
+import { read, utils } from 'xlsx'
 
 // Keep TrashIcon for backward compatibility in this file
 const TrashIcon = ({ className = "" }) => (
@@ -118,7 +119,7 @@ const BatikBackground = () => (
 // Komponen Batik Background khusus untuk Modal Header dengan gambar
 const ModalBatikHeader = () => (
   <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-90">
-    <div 
+    <div
       className="absolute top-0 left-0 w-full h-full bg-repeat-x"
       style={{
         backgroundImage: 'url("/batik_header.png")',
@@ -129,17 +130,17 @@ const ModalBatikHeader = () => (
 )
 
 // Searchable Dropdown Component
-const SearchableDropdown = ({ 
-  value, 
-  onChange, 
-  options, 
+const SearchableDropdown = ({
+  value,
+  onChange,
+  options,
   placeholder = "Pilih...",
   searchPlaceholder = "Cari...",
   className = ""
 }: {
   value: string | number | null
   onChange: (value: string | number | null) => void
-  options: Array<{ id: string | number; name: string; [key: string]: any }>
+  options: Array<{ id: string | number; name: string;[key: string]: any }>
   placeholder?: string
   searchPlaceholder?: string
   className?: string
@@ -247,7 +248,7 @@ const CertificatesCRUD: React.FC = () => {
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [sensors, setSensors] = useState<Array<{ id: number; name?: string | null }>>([])
   const [personel, setPersonel] = useState<Array<{ id: string; name: string; nip?: string }>>([])
-  
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage] = useState(10)
@@ -270,8 +271,8 @@ const CertificatesCRUD: React.FC = () => {
 
   // Local UI state for calibration results blocks
   type KV = { key: string; value: string }
-  type TableRow = { key: string; unit: string; value: string }
-  type TableSection = { title: string; rows: TableRow[] }
+  type TableRow = { key: string; unit: string; value: string; extraValues?: string[] }
+  type TableSection = { title: string; headers?: string[]; rows: TableRow[] }
   type ResultItem = {
     sensorId: number | null
     startDate: string
@@ -280,88 +281,88 @@ const CertificatesCRUD: React.FC = () => {
     environment: KV[]
     table: TableSection[]
     images: Array<{ url: string; caption: string }>
-    notesForm: { 
-      traceable_to_si_through: string; 
-      reference_document: string; 
-      calibration_methode: string; 
+    notesForm: {
+      traceable_to_si_through: string;
+      reference_document: string;
+      calibration_methode: string;
       others: string;
       standardInstruments: number[]
     }
     sensorDetails?: Partial<Sensor>
   }
-  
+
   const [results, setResults] = useState<ResultItem[]>([
-    { 
-      sensorId: null, 
-      startDate: '', 
-      endDate: '', 
-      place: '', 
-      environment: [], 
-      table: [], 
+    {
+      sensorId: null,
+      startDate: '',
+      endDate: '',
+      place: '',
+      environment: [],
+      table: [],
       images: [],
-      notesForm: { 
-        traceable_to_si_through: '', 
-        reference_document: '', 
-        calibration_methode: '', 
-        others: '', 
-        standardInstruments: [] 
-      } 
+      notesForm: {
+        traceable_to_si_through: '',
+        reference_document: '',
+        calibration_methode: '',
+        others: '',
+        standardInstruments: []
+      }
     },
   ])
-  
-  const addResult = () => setResults(prev => [...prev, { 
-    sensorId: null, 
-    startDate: '', 
-    endDate: '', 
-    place: '', 
-    environment: [], 
-    table: [], 
+
+  const addResult = () => setResults(prev => [...prev, {
+    sensorId: null,
+    startDate: '',
+    endDate: '',
+    place: '',
+    environment: [],
+    table: [],
     images: [],
-    notesForm: { 
-      traceable_to_si_through: '', 
-      reference_document: '', 
-      calibration_methode: '', 
-      others: '', 
-      standardInstruments: [] 
-    } 
+    notesForm: {
+      traceable_to_si_through: '',
+      reference_document: '',
+      calibration_methode: '',
+      others: '',
+      standardInstruments: []
+    }
   }])
-  
+
   const removeResult = (idx: number) => {
     if (results.length > 1) {
       setResults(prev => prev.filter((_, i) => i !== idx))
     }
   }
-  
+
   const addImage = (resultIdx: number) => {
-    setResults(prev => prev.map((r, i) => 
-      i === resultIdx 
+    setResults(prev => prev.map((r, i) =>
+      i === resultIdx
         ? { ...r, images: [...(r.images || []), { url: '', caption: '' }] }
         : r
     ))
   }
-  
+
   const removeImage = (resultIdx: number, imageIdx: number) => {
-    setResults(prev => prev.map((r, i) => 
-      i === resultIdx 
+    setResults(prev => prev.map((r, i) =>
+      i === resultIdx
         ? { ...r, images: (r.images || []).filter((_, idx) => idx !== imageIdx) }
         : r
     ))
   }
-  
+
   const updateImage = (resultIdx: number, imageIdx: number, field: 'url' | 'caption', value: string) => {
-    setResults(prev => prev.map((r, i) => 
-      i === resultIdx 
-        ? { 
-            ...r, 
-            images: (r.images || []).map((img, idx) => 
-              idx === imageIdx ? { ...img, [field]: value } : img
-            )
-          }
+    setResults(prev => prev.map((r, i) =>
+      i === resultIdx
+        ? {
+          ...r,
+          images: (r.images || []).map((img, idx) =>
+            idx === imageIdx ? { ...img, [field]: value } : img
+          )
+        }
         : r
     ))
   }
-  
-  const updateResult = (idx: number, patch: Partial<ResultItem>) => 
+
+  const updateResult = (idx: number, patch: Partial<ResultItem>) =>
     setResults(prev => prev.map((r, i) => i === idx ? { ...r, ...patch } : r))
 
   // Helper function to get selected station type (normalized)
@@ -403,12 +404,12 @@ const CertificatesCRUD: React.FC = () => {
   const [pickerIndex, setPickerIndex] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [noteEditIndex, setNoteEditIndex] = useState<number | null>(null)
-  const [noteDraft, setNoteDraft] = useState<{ traceable_to_si_through: string; reference_document: string; calibration_methode: string; others: string; standardInstruments: number[] }>({ 
-    traceable_to_si_through: '', 
-    reference_document: '', 
-    calibration_methode: '', 
-    others: '', 
-    standardInstruments: [] 
+  const [noteDraft, setNoteDraft] = useState<{ traceable_to_si_through: string; reference_document: string; calibration_methode: string; others: string; standardInstruments: number[] }>({
+    traceable_to_si_through: '',
+    reference_document: '',
+    calibration_methode: '',
+    others: '',
+    standardInstruments: []
   })
   const [standardPickerIndex, setStandardPickerIndex] = useState<number | null>(null)
   const [standardSearch, setStandardSearch] = useState('')
@@ -416,6 +417,120 @@ const CertificatesCRUD: React.FC = () => {
   const [envDraft, setEnvDraft] = useState<KV[]>([])
   const [tableEditIndex, setTableEditIndex] = useState<number | null>(null)
   const [tableDraft, setTableDraft] = useState<TableSection[]>([])
+
+  // Excel Import Handler
+  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>, sectionIndex: number) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      const data = await file.arrayBuffer()
+      const workbook = read(data)
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+      const jsonData = utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
+
+      // Remove header if it exists (simple heuristic: check if first row has "Parameter" or "Key")
+      let rowsToProcess = jsonData
+      let detectedHeaders: string[] | undefined = undefined
+
+      if (rowsToProcess.length > 0) {
+        const firstRow = rowsToProcess[0].map(cell => String(cell))
+        const firstRowLower = firstRow.map(c => c.toLowerCase())
+
+        // Check if first row looks like a header
+        if (firstRowLower.some(cell => cell.includes('parameter') || cell.includes('key') || cell.includes('unit') || cell.includes('nilai') || cell.includes('value') || cell.includes('koreksi') || cell.includes('standar'))) {
+          detectedHeaders = firstRow
+          rowsToProcess = rowsToProcess.slice(1)
+
+          // SMART UNIT DETECTION: Check if the NEXT row (now rowsToProcess[0]) looks like a Unit row
+          // Heuristic: 
+          // 1. Row exists
+          // 2. Contains typical unit characters like '(', ')', '°', '%', '/' OR is empty/short string
+          // 3. Does NOT look like data (e.g. not just numbers)
+          if (rowsToProcess.length > 0) {
+            const potentialUnitRow = rowsToProcess[0].map(cell => String(cell || ''))
+            const isUnitRow = potentialUnitRow.some(cell =>
+              cell.includes('(') || cell.includes(')') || cell.includes('°') || cell.includes('%') || cell.toLowerCase().includes('derajat')
+            )
+
+            // Also check if it's NOT purely numeric (which would be data)
+            const isNumericData = potentialUnitRow.every(cell => !isNaN(parseFloat(cell.replace(',', '.'))) && cell.trim() !== '')
+
+            if (isUnitRow && !isNumericData) {
+              // Merge headers: "Header" + " " + "Unit"
+              detectedHeaders = detectedHeaders.map((h, i) => {
+                const unit = potentialUnitRow[i]
+                return unit ? `${h} ${unit}` : h
+              })
+              // Skip this row as it is now part of the header
+              rowsToProcess = rowsToProcess.slice(1)
+            }
+          }
+        }
+      }
+
+      const newRows: TableRow[] = rowsToProcess
+        .filter(row => row.length >= 1) // At least 1 column
+        .map(row => {
+          // Map standard 3 columns
+          const key = row[0] ? String(row[0]) : ''
+          const unit = row[1] ? String(row[1]) : ''
+          const value = row[2] ? String(row[2]) : ''
+
+          // Map extra columns (starting from index 3)
+          const extraValues = row.slice(3).map(cell => cell ? String(cell) : '')
+
+          return { key, unit, value, extraValues }
+        })
+        .filter(r => r.key || r.value || (r.extraValues && r.extraValues.some(v => v)))
+
+      if (newRows.length === 0) {
+        showWarning('Tidak ada data yang dapat dibaca dari file Excel')
+        return
+      }
+
+      setTableDraft(prev => {
+        const newDraft = [...prev]
+
+        // If headers were detected, update the section headers
+        let newHeaders = newDraft[sectionIndex].headers
+        if (detectedHeaders) {
+          // Map Excel headers to our structure: 
+          // Col 0 -> Parameter (Header 0)
+          // Col 1 -> Unit (Header 1)
+          // Col 2 -> Value (Header 2)
+          // Col 3+ -> Extra Headers
+
+          // We only update headers if we have enough columns
+          if (detectedHeaders.length >= 3) {
+            const standardHeaders = detectedHeaders.slice(0, 3)
+            const extraHeaders = detectedHeaders.slice(3)
+            newHeaders = [...standardHeaders, ...extraHeaders]
+          } else {
+            // If less than 3, just use what we have
+            newHeaders = detectedHeaders
+          }
+        }
+
+        // Append new rows to existing rows
+        newDraft[sectionIndex] = {
+          ...newDraft[sectionIndex],
+          headers: newHeaders,
+          rows: [...newDraft[sectionIndex].rows.filter(r => r.key || r.unit || r.value || (r.extraValues && r.extraValues.some(v => v))), ...newRows]
+        }
+        return newDraft
+      })
+
+      showSuccess(`Berhasil mengimport ${newRows.length} baris data`)
+
+      // Reset input
+      e.target.value = ''
+    } catch (error) {
+      console.error('Error parsing Excel:', error)
+      showError('Gagal membaca file Excel')
+    }
+  }
+
 
   // Fetch data
 
@@ -434,7 +549,7 @@ const CertificatesCRUD: React.FC = () => {
           }
         }
       }
-    } catch {}
+    } catch { }
   }, [certificates])
 
   // Check if edit came from certificate verification page
@@ -470,9 +585,9 @@ const CertificatesCRUD: React.FC = () => {
           fetch('/api/sensors'),
           fetch('/api/personel'),
         ])
-        
+
         setStations(Array.isArray(stationsAll) ? stationsAll : (stationsAll as any)?.data ?? [])
-        
+
         if (instrumentsRes.ok) {
           const instrumentsData = await instrumentsRes.json()
           setInstruments(Array.isArray(instrumentsData) ? instrumentsData : (instrumentsData?.data ?? []))
@@ -486,7 +601,7 @@ const CertificatesCRUD: React.FC = () => {
           const p = await personelRes.json()
           setPersonel(Array.isArray(p) ? p : [])
         }
-        
+
       } catch (e) {
         console.error('Failed to fetch data:', e)
       }
@@ -496,17 +611,17 @@ const CertificatesCRUD: React.FC = () => {
 
   // When instrument changes, update preview fields
   useEffect(() => {
-    if (!form.instrument) { 
-      setInstrumentPreview({}); 
+    if (!form.instrument) {
+      setInstrumentPreview({});
       return;
     }
-    
+
     const inst = instruments.find(i => i.id === form.instrument);
-    if (!inst) { 
-      setInstrumentPreview({}); 
+    if (!inst) {
+      setInstrumentPreview({});
       return;
     }
-    
+
     setInstrumentPreview({
       manufacturer: (inst as any).manufacturer || '',
       type: (inst as any).type || '',
@@ -556,23 +671,23 @@ const CertificatesCRUD: React.FC = () => {
         issue_date: item.issue_date,
         station: item.station,
         instrument: item.instrument,
-        station_address: (item as any).station_address ?? (item.station ? stations.find(s=>s.id===item.station)?.address ?? null : null),
+        station_address: (item as any).station_address ?? (item.station ? stations.find(s => s.id === item.station)?.address ?? null : null),
       })
       const savedResults = (item as any).results || []
       setResults(savedResults.length > 0 ? savedResults : [{
-        sensorId: null, 
-        startDate: '', 
-        endDate: '', 
-        place: '', 
-        environment: [], 
-        table: [], 
+        sensorId: null,
+        startDate: '',
+        endDate: '',
+        place: '',
+        environment: [],
+        table: [],
         images: [],
-        notesForm: { 
-          traceable_to_si_through: '', 
-          reference_document: '', 
-          calibration_methode: '', 
-          others: '', 
-          standardInstruments: [] 
+        notesForm: {
+          traceable_to_si_through: '',
+          reference_document: '',
+          calibration_methode: '',
+          others: '',
+          standardInstruments: []
         }
       }])
     } else {
@@ -590,19 +705,19 @@ const CertificatesCRUD: React.FC = () => {
         station_address: null as any,
       })
       setResults([{
-        sensorId: null, 
-        startDate: '', 
-        endDate: '', 
-        place: '', 
-        environment: [], 
-        table: [], 
+        sensorId: null,
+        startDate: '',
+        endDate: '',
+        place: '',
+        environment: [],
+        table: [{ title: '', rows: [{ key: '', unit: '', value: '', extraValues: [] }] }], // Initialize with extraValues
         images: [],
-        notesForm: { 
-          traceable_to_si_through: '', 
-          reference_document: '', 
-          calibration_methode: '', 
-          others: '', 
-          standardInstruments: [] 
+        notesForm: {
+          traceable_to_si_through: '',
+          reference_document: '',
+          calibration_methode: '',
+          others: '',
+          standardInstruments: []
         }
       }])
     }
@@ -616,43 +731,43 @@ const CertificatesCRUD: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     // Prevent multiple submissions
     if (submitDisabled || isSubmitting) return
-    
+
     if (!form.no_certificate || !form.no_order || !form.no_identification || !form.issue_date) {
       showError('Semua field yang wajib diisi harus diisi')
       return
     }
-    
+
     if (!(form as any).verifikator_1 || !(form as any).verifikator_2) {
       showError('Verifikator 1 dan Verifikator 2 harus dipilih')
       return
     }
-    
+
     // Validasi: assignor, verifikator 1, dan verifikator 2 tidak boleh sama
     const assignor = form.authorized_by
     const verifikator1 = (form as any).verifikator_1
     const verifikator2 = (form as any).verifikator_2
-    
+
     if (assignor && verifikator1 && assignor === verifikator1) {
       showError('Assignor tidak boleh sama dengan Verifikator 1')
       return
     }
-    
+
     if (assignor && verifikator2 && assignor === verifikator2) {
       showError('Assignor tidak boleh sama dengan Verifikator 2')
       return
     }
-    
+
     if (verifikator1 && verifikator2 && verifikator1 === verifikator2) {
       showError('Verifikator 1 tidak boleh sama dengan Verifikator 2')
       return
     }
-    
+
     setIsSubmitting(true)
     setSubmitDisabled(true)
-    
+
     try {
       const payload: any = { ...form, results }
       // Ensure creator is tracked so the creator can see their own certificates
@@ -660,21 +775,21 @@ const CertificatesCRUD: React.FC = () => {
         if (payload.sent_by == null) payload.sent_by = String(user.id)
         if (payload.created_by == null) payload.created_by = String(user.id)
       }
-      
+
       // Update instrument name if instrument is selected
       if (form.instrument) {
         const selectedInstrument = instruments.find(i => i.id === form.instrument)
         if (selectedInstrument && (!selectedInstrument.name || selectedInstrument.name === 'Instrument')) {
           // Generate name from manufacturer + type + serial
           const generatedName = `${selectedInstrument.manufacturer || 'Unknown'} ${selectedInstrument.type || 'Instrument'} ${selectedInstrument.serial_number || ''}`.trim()
-          
+
           try {
             await fetch(`/api/instruments/${form.instrument}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                ...selectedInstrument, 
-                name: generatedName 
+              body: JSON.stringify({
+                ...selectedInstrument,
+                name: generatedName
               })
             })
             console.log('Updated instrument name:', generatedName)
@@ -683,11 +798,11 @@ const CertificatesCRUD: React.FC = () => {
           }
         }
       }
-      
+
       if (editing) {
         await updateCertificate(editing.id, payload as any)
         showSuccess('Certificate berhasil diperbarui!')
-        
+
         // If edit came from certificate verification, redirect back there
         if (isEditFromVerification()) {
           closeModal()
@@ -712,9 +827,9 @@ const CertificatesCRUD: React.FC = () => {
 
   const handleDelete = async (id: number) => {
     if (!confirm('Apakah Anda yakin ingin menghapus certificate ini?')) return
-    
+
     setIsDeleting(id)
-    try { 
+    try {
       await deleteCertificate(id)
       showSuccess('Certificate berhasil dihapus!')
     } catch (e) {
@@ -728,9 +843,9 @@ const CertificatesCRUD: React.FC = () => {
 
   const handleCompleteRepair = async (certificate: Certificate) => {
     if (!confirm('Tandai perbaikan sertifikat ini sebagai selesai?')) return
-    
+
     const result = await completeRepair(certificate.id, 'Repair completed')
-    
+
     if (result.success) {
       showSuccess('Perbaikan berhasil diselesaikan!')
       setTimeout(() => {
@@ -743,9 +858,9 @@ const CertificatesCRUD: React.FC = () => {
 
   const handleResetVerification = async (certificate: Certificate) => {
     if (!confirm('Reset verifikasi untuk sertifikat ini? Ini akan menghapus semua verifikasi yang ada.')) return
-    
+
     const result = await resetVerification(certificate.id)
-    
+
     if (result.success) {
       showSuccess('Verifikasi berhasil direset!')
       setTimeout(() => {
@@ -784,15 +899,14 @@ const CertificatesCRUD: React.FC = () => {
           <div>
             <Breadcrumb items={[{ label: 'Documents', href: '#' }, { label: 'Certificates' }]} />
           </div>
-          {can('certificate','create') && (
-            <button 
-              onClick={() => openModal()} 
+          {can('certificate', 'create') && (
+            <button
+              onClick={() => openModal()}
               disabled={isSubmitting}
-              className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 text-sm ${
-                isSubmitting 
-                  ? 'bg-gray-400 cursor-not-allowed' 
-                  : 'bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c]'
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 text-sm ${isSubmitting
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c]'
+                }`}
             >
               {isSubmitting ? (
                 <>
@@ -859,44 +973,41 @@ const CertificatesCRUD: React.FC = () => {
                     <div className="flex flex-col space-y-1">
                       <div className="flex items-center space-x-1">
                         <span className="text-xs font-medium text-gray-500">Verifikator 1:</span>
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${
-                          (item as any).verifikator_1_status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' :
+                        <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${(item as any).verifikator_1_status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' :
                           (item as any).verifikator_1_status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
-                          'bg-yellow-50 text-yellow-700 border-yellow-200'
-                        }`}>
+                            'bg-yellow-50 text-yellow-700 border-yellow-200'
+                          }`}>
                           {(item as any).verifikator_1_status || 'pending'}
                         </span>
                       </div>
                       <div className="flex items-center space-x-1">
                         <span className="text-xs font-medium text-gray-500">Verifikator 2:</span>
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${
-                          (item as any).verifikator_2_status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' :
+                        <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${(item as any).verifikator_2_status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' :
                           (item as any).verifikator_2_status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
-                          'bg-yellow-50 text-yellow-700 border-yellow-200'
-                        }`}>
+                            'bg-yellow-50 text-yellow-700 border-yellow-200'
+                          }`}>
                           {(item as any).verifikator_2_status || 'pending'}
                         </span>
                       </div>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${
-                      item.status === 'draft' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                    <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${item.status === 'draft' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
                       item.status === 'sent' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                      item.status === 'verified' ? 'bg-green-50 text-green-700 border-green-200' :
-                      item.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
-                      item.status === 'completed' ? 'bg-purple-50 text-purple-700 border-purple-200' :
-                      'bg-gray-50 text-gray-700 border-gray-200'
-                    }`}>
+                        item.status === 'verified' ? 'bg-green-50 text-green-700 border-green-200' :
+                          item.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
+                            item.status === 'completed' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                              'bg-gray-50 text-gray-700 border-gray-200'
+                      }`}>
                       {item.status || 'draft'}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm font-medium space-x-1">
                     {/* Draft View Button - only show for draft status */}
                     {item.status === 'draft' && (
-                      <a 
-                        href={`/draft-view?certificate=${item.id}`} 
-                        target="_blank" 
+                      <a
+                        href={`/draft-view?certificate=${item.id}`}
+                        target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center p-1.5 text-yellow-600 hover:text-yellow-800 hover:bg-yellow-50 rounded-lg transition-all duration-200 border border-transparent hover:border-yellow-200"
                         title="View Draft"
@@ -906,17 +1017,17 @@ const CertificatesCRUD: React.FC = () => {
                         </svg>
                       </a>
                     )}
-                    
-                    <a 
-                      href={`/certificates/${item.id}/view`} 
-                      target="_blank" 
+
+                    <a
+                      href={`/certificates/${item.id}/view`}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all duration-200 border border-transparent hover:border-blue-200"
                       title="View Certificate"
                     >
                       <ViewIcon className="w-4 h-4" />
                     </a>
-                    
+
                     {/* View PDF Button - show if PDF is already generated (level 3 approved) */}
                     {item.pdf_path && (
                       <a
@@ -931,21 +1042,21 @@ const CertificatesCRUD: React.FC = () => {
                         </svg>
                       </a>
                     )}
-                    
+
                     {/* Download PDF Button - generate on-demand or download saved PDF */}
                     <button
                       onClick={async () => {
                         try {
                           // Use saved PDF endpoint if available, otherwise generate on-demand
-                          const pdfEndpoint = item.pdf_path 
+                          const pdfEndpoint = item.pdf_path
                             ? `/api/certificates/${item.id}/pdf`
                             : `/api/certificates/${item.id}/download-pdf`
-                          
+
                           const response = await fetch(pdfEndpoint)
                           if (!response.ok) {
                             throw new Error('Failed to get PDF')
                           }
-                          
+
                           // Get filename from Content-Disposition header or use default
                           const contentDisposition = response.headers.get('Content-Disposition')
                           let filename = `Certificate_${item.no_certificate || item.id}.pdf`
@@ -960,12 +1071,12 @@ const CertificatesCRUD: React.FC = () => {
                               }
                             }
                           }
-                          
+
                           // Ensure filename ends with .pdf
                           if (!filename.toLowerCase().endsWith('.pdf')) {
                             filename = `${filename}.pdf`
                           }
-                          
+
                           // Create blob with correct MIME type and download
                           const blob = await response.blob()
                           const url = window.URL.createObjectURL(blob)
@@ -989,37 +1100,36 @@ const CertificatesCRUD: React.FC = () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                     </button>
-                    
-                    <a 
-                      href={`/certificates/${item.id}/print`} 
-                      target="_blank" 
+
+                    <a
+                      href={`/certificates/${item.id}/print`}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-lg transition-all duration-200 border border-transparent hover:border-gray-200"
                       title="Print Certificate"
                     >
                       <PrinterIcon className="w-4 h-4" />
                     </a>
-                    
+
                     {/* Edit Button - only show for draft status */}
-                    {item.status === 'draft' && can('certificate','update') && (
-                      <button 
-                        onClick={() => openModal(item)} 
+                    {item.status === 'draft' && can('certificate', 'update') && (
+                      <button
+                        onClick={() => openModal(item)}
                         className="inline-flex items-center p-1.5 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-all duration-200 border border-transparent hover:border-purple-200"
                         title="Edit Certificate"
                       >
                         <EditIcon className="w-4 h-4" />
                       </button>
                     )}
-                    
-                    {can('certificate','delete') && canEndpoint('DELETE', `/api/certificates/${item.id}`) && (
-                      <button 
-                        onClick={() => handleDelete(item.id)} 
+
+                    {can('certificate', 'delete') && canEndpoint('DELETE', `/api/certificates/${item.id}`) && (
+                      <button
+                        onClick={() => handleDelete(item.id)}
                         disabled={isDeleting === item.id}
-                        className={`inline-flex items-center p-1.5 rounded-lg transition-all duration-200 border border-transparent ${
-                          isDeleting === item.id
-                            ? 'text-gray-400 cursor-not-allowed bg-gray-50'
-                            : 'text-red-600 hover:text-red-800 hover:bg-red-50 hover:border-red-200'
-                        }`}
+                        className={`inline-flex items-center p-1.5 rounded-lg transition-all duration-200 border border-transparent ${isDeleting === item.id
+                          ? 'text-gray-400 cursor-not-allowed bg-gray-50'
+                          : 'text-red-600 hover:text-red-800 hover:bg-red-50 hover:border-red-200'
+                          }`}
                         title={isDeleting === item.id ? "Deleting..." : "Delete Certificate"}
                       >
                         {isDeleting === item.id ? (
@@ -1029,10 +1139,10 @@ const CertificatesCRUD: React.FC = () => {
                         )}
                       </button>
                     )}
-                    
+
                     {(item as any).repair_status === 'none' && ((item as any).verifikator_1_status === 'rejected' || (item as any).verifikator_2_status === 'rejected') && (
-                      <button 
-                        onClick={() => openModal(item)} 
+                      <button
+                        onClick={() => openModal(item)}
                         className="inline-flex items-center p-1.5 text-orange-600 hover:text-orange-800 hover:bg-orange-50 rounded-lg transition-all duration-200 border border-transparent hover:border-orange-200"
                         title="Request Repair"
                       >
@@ -1040,8 +1150,8 @@ const CertificatesCRUD: React.FC = () => {
                       </button>
                     )}
                     {(item as any).repair_status === 'pending' && (
-                      <button 
-                        onClick={() => handleCompleteRepair(item)} 
+                      <button
+                        onClick={() => handleCompleteRepair(item)}
                         className="inline-flex items-center p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200 border border-transparent hover:border-green-200"
                         title="Complete Repair"
                       >
@@ -1049,8 +1159,8 @@ const CertificatesCRUD: React.FC = () => {
                       </button>
                     )}
                     {(item as any).repair_status === 'completed' && (
-                      <button 
-                        onClick={() => handleResetVerification(item)} 
+                      <button
+                        onClick={() => handleResetVerification(item)}
                         className="inline-flex items-center p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all duration-200 border border-transparent hover:border-blue-200"
                         title="Reset Verification"
                       >
@@ -1082,11 +1192,10 @@ const CertificatesCRUD: React.FC = () => {
                 <button
                   key={page}
                   onClick={() => setCurrentPage(page)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
-                    currentPage === page
-                      ? 'bg-[#1e377c] text-white shadow-md'
-                      : 'border border-gray-300 text-gray-700 hover:bg-white hover:border-gray-400'
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${currentPage === page
+                    ? 'bg-[#1e377c] text-white shadow-md'
+                    : 'border border-gray-300 text-gray-700 hover:bg-white hover:border-gray-400'
+                    }`}
                 >
                   {page}
                 </button>
@@ -1154,10 +1263,10 @@ const CertificatesCRUD: React.FC = () => {
                         onChange={(value) => {
                           const selectedId = (value as number | null)
                           const st = stations.find(s => s.id === selectedId)
-                          setForm({ 
-                            ...form, 
-                            station: selectedId, 
-                            station_address: st ? (st as any).address ?? null : null 
+                          setForm({
+                            ...form,
+                            station: selectedId,
+                            station_address: st ? (st as any).address ?? null : null
                           })
                         }}
                         options={stations.map(s => ({ id: s.id, name: s.name, station_id: s.station_id }))}
@@ -1169,7 +1278,7 @@ const CertificatesCRUD: React.FC = () => {
                     <div className="space-y-1 md:col-span-2">
                       <label className="block text-xs font-semibold text-gray-700">Alamat Stasiun</label>
                       <textarea
-                        value={(form as any).station_address || (form.station ? (stations.find(s=>s.id===form.station)?.address ?? '') : '')}
+                        value={(form as any).station_address || (form.station ? (stations.find(s => s.id === form.station)?.address ?? '') : '')}
                         readOnly
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700 text-sm"
                         rows={2}
@@ -1193,7 +1302,7 @@ const CertificatesCRUD: React.FC = () => {
                         />
                       </div>
                     ))}
-                    
+
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Authorized By</label>
                       <SearchableDropdown
@@ -1261,8 +1370,8 @@ const CertificatesCRUD: React.FC = () => {
                         onChange={(value) => setForm({ ...form, instrument: value as number | null })}
                         options={instruments.map(i => ({
                           id: i.id,
-                          name: ((i as any).name && (i as any).name !== 'Instrument') 
-                            ? (i as any).name 
+                          name: ((i as any).name && (i as any).name !== 'Instrument')
+                            ? (i as any).name
                             : `${(i as any).manufacturer || ''} ${(i as any).type || ''} ${(i as any).serial_number || ''}`.trim() || 'Instrument',
                           // Reuse station_id slot for secondary info in dropdown/search
                           station_id: `${(i as any).type || ''} ${(i as any).serial_number || ''} ${(i as any).manufacturer || ''}`.trim()
@@ -1299,16 +1408,16 @@ const CertificatesCRUD: React.FC = () => {
                       </div>
                       <h3 className="text-base font-bold text-gray-900">Sensor Calibration Results</h3>
                     </div>
-                    <button 
-                      type="button" 
-                      onClick={addResult} 
+                    <button
+                      type="button"
+                      onClick={addResult}
                       className="flex items-center gap-1 px-2 py-1.5 bg-[#1e377c] text-white rounded-lg hover:bg-[#2a4a9d] transition-all duration-200 shadow text-xs font-semibold"
                     >
                       <PlusIcon className="w-3 h-3" />
                       <span>Add Result</span>
                     </button>
                   </div>
-                  
+
                   <div className="space-y-3">
                     {results.map((r, idx) => (
                       <div key={idx} className="border border-gray-200 bg-gray-50/50 rounded-lg p-3 hover:bg-white transition-all duration-200">
@@ -1380,7 +1489,7 @@ const CertificatesCRUD: React.FC = () => {
                               >
                                 Reset ke Default
                               </button>
-                        </div>
+                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               <div className="space-y-2">
                                 <div className="space-y-1">
@@ -1388,7 +1497,7 @@ const CertificatesCRUD: React.FC = () => {
                                   <input
                                     type="text"
                                     value={r.sensorDetails.name || ''}
-                                    onChange={(e) => updateResult(idx, { 
+                                    onChange={(e) => updateResult(idx, {
                                       sensorDetails: { ...r.sensorDetails!, name: e.target.value }
                                     })}
                                     className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
@@ -1400,7 +1509,7 @@ const CertificatesCRUD: React.FC = () => {
                                   <input
                                     type="text"
                                     value={r.sensorDetails.manufacturer || ''}
-                                    onChange={(e) => updateResult(idx, { 
+                                    onChange={(e) => updateResult(idx, {
                                       sensorDetails: { ...r.sensorDetails!, manufacturer: e.target.value }
                                     })}
                                     className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
@@ -1412,7 +1521,7 @@ const CertificatesCRUD: React.FC = () => {
                                   <input
                                     type="text"
                                     value={r.sensorDetails.type || ''}
-                                    onChange={(e) => updateResult(idx, { 
+                                    onChange={(e) => updateResult(idx, {
                                       sensorDetails: { ...r.sensorDetails!, type: e.target.value }
                                     })}
                                     className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
@@ -1424,7 +1533,7 @@ const CertificatesCRUD: React.FC = () => {
                                   <input
                                     type="text"
                                     value={r.sensorDetails.serial_number || ''}
-                                    onChange={(e) => updateResult(idx, { 
+                                    onChange={(e) => updateResult(idx, {
                                       sensorDetails: { ...r.sensorDetails!, serial_number: e.target.value }
                                     })}
                                     className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
@@ -1439,7 +1548,7 @@ const CertificatesCRUD: React.FC = () => {
                                     <input
                                       type="text"
                                       value={r.sensorDetails.range_capacity || ''}
-                                      onChange={(e) => updateResult(idx, { 
+                                      onChange={(e) => updateResult(idx, {
                                         sensorDetails: { ...r.sensorDetails!, range_capacity: e.target.value }
                                       })}
                                       className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
@@ -1448,7 +1557,7 @@ const CertificatesCRUD: React.FC = () => {
                                     <input
                                       type="text"
                                       value={r.sensorDetails.range_capacity_unit || ''}
-                                      onChange={(e) => updateResult(idx, { 
+                                      onChange={(e) => updateResult(idx, {
                                         sensorDetails: { ...r.sensorDetails!, range_capacity_unit: e.target.value }
                                       })}
                                       className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
@@ -1462,7 +1571,7 @@ const CertificatesCRUD: React.FC = () => {
                                     <input
                                       type="text"
                                       value={r.sensorDetails.graduating || ''}
-                                      onChange={(e) => updateResult(idx, { 
+                                      onChange={(e) => updateResult(idx, {
                                         sensorDetails: { ...r.sensorDetails!, graduating: e.target.value }
                                       })}
                                       className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
@@ -1471,7 +1580,7 @@ const CertificatesCRUD: React.FC = () => {
                                     <input
                                       type="text"
                                       value={r.sensorDetails.graduating_unit || ''}
-                                      onChange={(e) => updateResult(idx, { 
+                                      onChange={(e) => updateResult(idx, {
                                         sensorDetails: { ...r.sensorDetails!, graduating_unit: e.target.value }
                                       })}
                                       className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
@@ -1485,7 +1594,7 @@ const CertificatesCRUD: React.FC = () => {
                                     <input
                                       type="number"
                                       value={r.sensorDetails.funnel_diameter || ''}
-                                      onChange={(e) => updateResult(idx, { 
+                                      onChange={(e) => updateResult(idx, {
                                         sensorDetails: { ...r.sensorDetails!, funnel_diameter: parseFloat(e.target.value) || 0 }
                                       })}
                                       className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
@@ -1494,7 +1603,7 @@ const CertificatesCRUD: React.FC = () => {
                                     <input
                                       type="text"
                                       value={r.sensorDetails.funnel_diameter_unit || ''}
-                                      onChange={(e) => updateResult(idx, { 
+                                      onChange={(e) => updateResult(idx, {
                                         sensorDetails: { ...r.sensorDetails!, funnel_diameter_unit: e.target.value }
                                       })}
                                       className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
@@ -1508,7 +1617,7 @@ const CertificatesCRUD: React.FC = () => {
                                     <input
                                       type="text"
                                       value={r.sensorDetails.volume_per_tip || ''}
-                                      onChange={(e) => updateResult(idx, { 
+                                      onChange={(e) => updateResult(idx, {
                                         sensorDetails: { ...r.sensorDetails!, volume_per_tip: e.target.value }
                                       })}
                                       className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
@@ -1517,7 +1626,7 @@ const CertificatesCRUD: React.FC = () => {
                                     <input
                                       type="text"
                                       value={r.sensorDetails.volume_per_tip_unit || ''}
-                                      onChange={(e) => updateResult(idx, { 
+                                      onChange={(e) => updateResult(idx, {
                                         sensorDetails: { ...r.sensorDetails!, volume_per_tip_unit: e.target.value }
                                       })}
                                       className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
@@ -1531,7 +1640,7 @@ const CertificatesCRUD: React.FC = () => {
                                     <input
                                       type="number"
                                       value={r.sensorDetails.funnel_area || ''}
-                                      onChange={(e) => updateResult(idx, { 
+                                      onChange={(e) => updateResult(idx, {
                                         sensorDetails: { ...r.sensorDetails!, funnel_area: parseFloat(e.target.value) || 0 }
                                       })}
                                       className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
@@ -1540,7 +1649,7 @@ const CertificatesCRUD: React.FC = () => {
                                     <input
                                       type="text"
                                       value={r.sensorDetails.funnel_area_unit || ''}
-                                      onChange={(e) => updateResult(idx, { 
+                                      onChange={(e) => updateResult(idx, {
                                         sensorDetails: { ...r.sensorDetails!, funnel_area_unit: e.target.value }
                                       })}
                                       className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
@@ -1561,11 +1670,11 @@ const CertificatesCRUD: React.FC = () => {
                           ].map((field, fieldIdx) => (
                             <div key={fieldIdx} className="space-y-1">
                               <label className="block text-xs font-medium text-gray-600">{field.label}</label>
-                              <input 
+                              <input
                                 type={field.type}
-                                value={field.value} 
-                                onChange={field.onChange} 
-                                className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white" 
+                                value={field.value}
+                                onChange={field.onChange}
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
                               />
                             </div>
                           ))}
@@ -1573,37 +1682,43 @@ const CertificatesCRUD: React.FC = () => {
 
                         <div className="flex flex-wrap gap-1">
                           {[
-                            { label: 'Kondisi Lingkungan', onClick: () => { 
-                              // Only use existing data, don't auto-fill
-                              setEnvDraft(r.environment.length ? r.environment : []); 
-                              setEnvEditIndex(idx) 
-                            } },
-                            { label: 'Tabel Hasil', onClick: () => { 
-                              if (!form.station) { 
-                                showWarning('Pilih stasiun terlebih dahulu'); 
-                                return; 
+                            {
+                              label: 'Kondisi Lingkungan', onClick: () => {
+                                // Only use existing data, don't auto-fill
+                                setEnvDraft(r.environment.length ? r.environment : []);
+                                setEnvEditIndex(idx)
                               }
-                              // Only use existing data, don't auto-fill
-                              setTableDraft(r.table.length ? r.table : []); 
-                              setTableEditIndex(idx) 
-                            } },
-                            { label: 'Catatan', onClick: () => { 
-                              // Only use existing data, don't auto-fill
-                              setNoteDraft(r.notesForm && (r.notesForm.traceable_to_si_through || r.notesForm.reference_document || r.notesForm.calibration_methode || r.notesForm.others) 
-                                ? r.notesForm 
-                                : { 
-                                traceable_to_si_through: '', 
-                                reference_document: '', 
-                                calibration_methode: '', 
-                                others: '', 
-                                    standardInstruments: r.notesForm?.standardInstruments || [] 
-                                  }); 
-                              setNoteEditIndex(idx) 
-                            } },
+                            },
+                            {
+                              label: 'Tabel Hasil', onClick: () => {
+                                if (!form.station) {
+                                  showWarning('Pilih stasiun terlebih dahulu');
+                                  return;
+                                }
+                                // Only use existing data, don't auto-fill
+                                setTableDraft(r.table.length ? r.table : [{ title: '', rows: [{ key: '', unit: '', value: '', extraValues: [] }] }]);
+                                setTableEditIndex(idx)
+                              }
+                            },
+                            {
+                              label: 'Catatan', onClick: () => {
+                                // Only use existing data, don't auto-fill
+                                setNoteDraft(r.notesForm && (r.notesForm.traceable_to_si_through || r.notesForm.reference_document || r.notesForm.calibration_methode || r.notesForm.others)
+                                  ? r.notesForm
+                                  : {
+                                    traceable_to_si_through: '',
+                                    reference_document: '',
+                                    calibration_methode: '',
+                                    others: '',
+                                    standardInstruments: r.notesForm?.standardInstruments || []
+                                  });
+                                setNoteEditIndex(idx)
+                              }
+                            },
                           ].map((button, btnIdx) => (
-                            <button 
+                            <button
                               key={btnIdx}
-                              type="button" 
+                              type="button"
                               onClick={button.onClick}
                               className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-medium"
                             >
@@ -1618,21 +1733,20 @@ const CertificatesCRUD: React.FC = () => {
 
                 {/* Action Buttons */}
                 <div className="flex justify-end space-x-2 pt-4 border-t border-gray-200">
-                  <button 
-                    type="button" 
-                    onClick={closeModal} 
+                  <button
+                    type="button"
+                    onClick={closeModal}
                     className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all duration-200 border border-gray-300"
                   >
                     Cancel
                   </button>
-                  <button 
-                    type="submit" 
-                    disabled={isSubmitting || submitDisabled} 
-                    className={`flex items-center gap-1 px-4 py-2 text-xs font-semibold text-white rounded-lg transition-all duration-200 shadow hover:shadow-lg ${
-                      isSubmitting || submitDisabled
-                        ? 'bg-gray-400 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c]'
-                    }`}
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || submitDisabled}
+                    className={`flex items-center gap-1 px-4 py-2 text-xs font-semibold text-white rounded-lg transition-all duration-200 shadow hover:shadow-lg ${isSubmitting || submitDisabled
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c]'
+                      }`}
                   >
                     {isSubmitting ? (
                       <>
@@ -1683,34 +1797,34 @@ const CertificatesCRUD: React.FC = () => {
                   <div key={i} className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 border border-gray-200 rounded-lg bg-white">
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Key</label>
-                      <input 
-                        value={row.key} 
+                      <input
+                        value={row.key}
                         onChange={e => {
-                          const v = [...envDraft]; 
-                          v[i] = {...v[i], key: e.target.value}; 
+                          const v = [...envDraft];
+                          v[i] = { ...v[i], key: e.target.value };
                           setEnvDraft(v)
-                        }} 
+                        }}
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
                         placeholder="Contoh: Suhu"
                       />
                     </div>
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Value</label>
-                      <input 
-                        value={row.value} 
+                      <input
+                        value={row.value}
                         onChange={e => {
-                          const v = [...envDraft]; 
-                          v[i] = {...v[i], value: e.target.value}; 
+                          const v = [...envDraft];
+                          v[i] = { ...v[i], value: e.target.value };
                           setEnvDraft(v)
-                        }} 
+                        }}
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
                         placeholder="Contoh: 25°C"
                       />
                     </div>
                   </div>
                 ))}
-                
-                <button 
+
+                <button
                   onClick={() => setEnvDraft(prev => [...prev, { key: '', value: '' }])}
                   className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg hover:border-[#1e377c] hover:bg-blue-50 transition-all duration-200 text-sm text-gray-600 hover:text-[#1e377c]"
                 >
@@ -1722,18 +1836,18 @@ const CertificatesCRUD: React.FC = () => {
 
             {/* Footer */}
             <div className="flex justify-end space-x-2 p-4 border-t border-gray-200 bg-gray-50/50">
-              <button 
-                onClick={() => setEnvEditIndex(null)} 
+              <button
+                onClick={() => setEnvEditIndex(null)}
                 className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all duration-200 border border-gray-300"
               >
                 Batal
               </button>
-              <button 
-                onClick={() => { 
-                  if (envEditIndex === null) return; 
-                  updateResult(envEditIndex, { environment: envDraft.filter(r => r.key || r.value) }); 
-                  setEnvEditIndex(null) 
-                }} 
+              <button
+                onClick={() => {
+                  if (envEditIndex === null) return;
+                  updateResult(envEditIndex, { environment: envDraft.filter(r => r.key || r.value) });
+                  setEnvEditIndex(null)
+                }}
                 className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c] rounded-lg transition-all duration-200 shadow hover:shadow-lg"
               >
                 Simpan Kondisi Lingkungan
@@ -1778,75 +1892,176 @@ const CertificatesCRUD: React.FC = () => {
                   <div key={si} className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm relative">
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex-1 space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Judul Bagian</label>
-                      <input 
-                        value={section.title} 
-                        onChange={e => { 
-                          const v = [...tableDraft]; 
-                          v[si] = {...v[si], title: e.target.value}; 
-                          setTableDraft(v) 
-                        }} 
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
-                        placeholder="Contoh: Hasil Pengukuran"
-                      />
+                        <label className="block text-xs font-semibold text-gray-700">Judul Bagian</label>
+                        <input
+                          value={section.title}
+                          onChange={e => {
+                            const v = [...tableDraft];
+                            v[si] = { ...v[si], title: e.target.value };
+                            setTableDraft(v)
+                          }}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
+                          placeholder="Contoh: Hasil Pengukuran"
+                        />
                       </div>
                       <button
                         type="button"
                         onClick={() => {
                           const v = [...tableDraft];
                           v.splice(si, 1);
-                          setTableDraft(v.length > 0 ? v : [{ title: '', rows: [{ key: '', unit: '', value: '' }] }]);
+                          setTableDraft(v.length > 0 ? v : [{ title: '', rows: [{ key: '', unit: '', value: '', extraValues: [] }] }]);
                         }}
                         className="ml-3 inline-flex items-center p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200 border border-transparent hover:border-red-200"
                         title="Hapus Bagian Tabel"
                       >
                         <TrashIcon className="w-4 h-4" />
                       </button>
+
+                      {/* Import Excel Button */}
+                      <div className="ml-2 relative">
+                        <input
+                          type="file"
+                          accept=".xlsx, .xls"
+                          onChange={(e) => handleExcelUpload(e, si)}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          title="Import dari Excel"
+                        />
+                        <button
+                          type="button"
+                          className="inline-flex items-center p-2 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200 border border-transparent hover:border-green-200"
+                          title="Import dari Excel"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
-                    
+
                     <div className="space-y-2">
+                      {/* Headers Editor */}
+                      <div className={`grid grid-cols-1 md:grid-cols-${(section.headers || ['Parameter', 'Unit', 'Nilai']).length + 1} gap-2 p-2 border-b border-gray-100 bg-gray-100/50 rounded-t-lg`}>
+                        {(section.headers || ['Parameter', 'Unit', 'Nilai']).map((header, hi) => (
+                          <div key={hi} className="relative group">
+                            <input
+                              value={header}
+                              onChange={e => {
+                                const v = [...tableDraft];
+                                const currentHeaders = v[si].headers || ['Parameter', 'Unit', 'Nilai'];
+                                // Ensure we have enough headers in the array
+                                while (currentHeaders.length <= hi) currentHeaders.push(`Col ${currentHeaders.length + 1}`);
+                                currentHeaders[hi] = e.target.value;
+                                v[si].headers = currentHeaders;
+                                setTableDraft(v);
+                              }}
+                              className="w-full px-2 py-1 text-xs font-bold text-gray-700 bg-transparent border border-transparent hover:border-gray-300 focus:border-[#1e377c] rounded focus:outline-none"
+                              placeholder={`Header ${hi + 1}`}
+                            />
+                            {/* Allow removing extra columns (index > 2) */}
+                            {hi > 2 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const v = [...tableDraft];
+                                  const currentHeaders = v[si].headers || ['Parameter', 'Unit', 'Nilai'];
+                                  // Remove header
+                                  currentHeaders.splice(hi, 1);
+                                  v[si].headers = currentHeaders;
+
+                                  // Remove corresponding values from all rows
+                                  v[si].rows = v[si].rows.map(row => {
+                                    const extra = [...(row.extraValues || [])];
+                                    // The extraValues index is hi - 3
+                                    extra.splice(hi - 3, 1);
+                                    return { ...row, extraValues: extra };
+                                  });
+
+                                  setTableDraft(v);
+                                }}
+                                className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Hapus Kolom"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const v = [...tableDraft];
+                            const currentHeaders = v[si].headers || ['Parameter', 'Unit', 'Nilai'];
+                            v[si].headers = [...currentHeaders, 'New Column'];
+                            setTableDraft(v);
+                          }}
+                          className="flex items-center justify-center p-1 text-blue-600 hover:bg-blue-50 rounded"
+                          title="Tambah Kolom"
+                        >
+                          <PlusIcon className="w-4 h-4" />
+                        </button>
+                      </div>
+
                       {section.rows.map((row, ri) => (
-                        <div key={ri} className="grid grid-cols-1 md:grid-cols-4 gap-2 p-2 border border-gray-100 rounded bg-gray-50 relative">
+                        <div key={ri} className={`grid grid-cols-1 md:grid-cols-${(section.headers || ['Parameter', 'Unit', 'Nilai']).length + 1} gap-2 p-2 border border-gray-100 rounded bg-gray-50 relative`}>
+
+
+                          {/* Standard Columns */}
                           <div className="space-y-1">
-                            <label className="block text-xs font-medium text-gray-600">Parameter</label>
-                            <input 
-                              placeholder="Key" 
-                              value={row.key} 
-                              onChange={e => { 
-                                const v = [...tableDraft]; 
-                                v[si].rows[ri] = {...row, key: e.target.value}; 
-                                setTableDraft(v) 
-                              }} 
+                            <input
+                              placeholder={(section.headers?.[0] || "Parameter")}
+                              value={row.key}
+                              onChange={e => {
+                                const v = [...tableDraft];
+                                v[si].rows[ri] = { ...row, key: e.target.value };
+                                setTableDraft(v)
+                              }}
                               className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="block text-xs font-medium text-gray-600">Unit</label>
-                            <input 
-                              placeholder="Unit" 
-                              value={row.unit} 
-                              onChange={e => { 
-                                const v = [...tableDraft]; 
-                                v[si].rows[ri] = {...row, unit: e.target.value}; 
-                                setTableDraft(v) 
-                              }} 
+                            <input
+                              placeholder={(section.headers?.[1] || "Unit")}
+                              value={row.unit}
+                              onChange={e => {
+                                const v = [...tableDraft];
+                                v[si].rows[ri] = { ...row, unit: e.target.value };
+                                setTableDraft(v)
+                              }}
                               className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="block text-xs font-medium text-gray-600">Nilai</label>
-                            <input 
-                              placeholder="Value" 
-                              value={row.value} 
-                              onChange={e => { 
-                                const v = [...tableDraft]; 
-                                v[si].rows[ri] = {...row, value: e.target.value}; 
-                                setTableDraft(v) 
-                              }} 
+                            <input
+                              placeholder={(section.headers?.[2] || "Nilai")}
+                              value={row.value}
+                              onChange={e => {
+                                const v = [...tableDraft];
+                                v[si].rows[ri] = { ...row, value: e.target.value };
+                                setTableDraft(v)
+                              }}
                               className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
                             />
                           </div>
-                          <div className="flex items-end">
+
+                          {/* Extra Columns */}
+                          {((section.headers || ['Parameter', 'Unit', 'Nilai']).slice(3)).map((header, extraIdx) => (
+                            <div key={extraIdx} className="space-y-1">
+                              <input
+                                placeholder={header}
+                                value={row.extraValues?.[extraIdx] || ''}
+                                onChange={e => {
+                                  const v = [...tableDraft];
+                                  const newExtra = [...(row.extraValues || [])];
+                                  newExtra[extraIdx] = e.target.value;
+                                  v[si].rows[ri] = { ...row, extraValues: newExtra };
+                                  setTableDraft(v)
+                                }}
+                                className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                              />
+                            </div>
+                          ))}
+
+                          <div className="flex items-center justify-end w-8">
                             {section.rows.length > 1 && (
                               <button
                                 type="button"
@@ -1855,7 +2070,7 @@ const CertificatesCRUD: React.FC = () => {
                                   v[si].rows = v[si].rows.filter((_, index) => index !== ri);
                                   setTableDraft(v);
                                 }}
-                                className="w-full inline-flex items-center justify-center p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-all duration-200 border border-transparent hover:border-red-200"
+                                className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-all duration-200"
                                 title="Hapus Baris"
                               >
                                 <TrashIcon className="w-4 h-4" />
@@ -1864,13 +2079,13 @@ const CertificatesCRUD: React.FC = () => {
                           </div>
                         </div>
                       ))}
-                      
-                      <button 
-                        onClick={() => { 
-                          const v = [...tableDraft]; 
-                          v[si].rows = [...v[si].rows, { key: '', unit: '', value: '' }]; 
-                          setTableDraft(v) 
-                        }} 
+
+                      <button
+                        onClick={() => {
+                          const v = [...tableDraft];
+                          v[si].rows = [...v[si].rows, { key: '', unit: '', value: '', extraValues: [] }];
+                          setTableDraft(v)
+                        }}
                         className="flex items-center gap-1 px-2 py-1 text-xs border border-dashed border-gray-300 rounded hover:border-[#1e377c] hover:bg-blue-50 text-gray-600 hover:text-[#1e377c] transition-all duration-200"
                       >
                         <PlusIcon className="w-3 h-3" />
@@ -1879,7 +2094,7 @@ const CertificatesCRUD: React.FC = () => {
                     </div>
                   </div>
                 ))}
-                
+
                 {/* Conditional content based on station type */}
                 {/* Show Images only for geofisika. If type selected and not geofisika, show add table button. If no station selected, show nothing. */}
                 {getSelectedStationType() === 'geofisika' ? (
@@ -1896,7 +2111,7 @@ const CertificatesCRUD: React.FC = () => {
                           <span>Tambah Gambar</span>
                         </button>
                       </div>
-                      
+
                       <div className="space-y-3">
                         {(results[tableEditIndex]?.images || []).map((image, imgIdx) => (
                           <div key={imgIdx} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
@@ -1911,7 +2126,7 @@ const CertificatesCRUD: React.FC = () => {
                                 <TrashIcon className="w-3 h-3" />
                               </button>
                             </div>
-                            
+
                             <div className="space-y-2">
                               <div className="space-y-1">
                                 <label className="block text-xs font-medium text-gray-600">Upload Gambar</label>
@@ -1954,7 +2169,7 @@ const CertificatesCRUD: React.FC = () => {
                                   </div>
                                 )}
                               </div>
-                              
+
                               <div className="space-y-1">
                                 <label className="block text-xs font-medium text-gray-600">Caption</label>
                                 <textarea
@@ -1968,7 +2183,7 @@ const CertificatesCRUD: React.FC = () => {
                             </div>
                           </div>
                         ))}
-                        
+
                         {(!results[tableEditIndex]?.images || (results[tableEditIndex]?.images || []).length === 0) && (
                           <div className="text-center py-4 text-gray-500 text-sm">
                             Belum ada gambar yang ditambahkan
@@ -1978,8 +2193,8 @@ const CertificatesCRUD: React.FC = () => {
                     </div>
                   </div>
                 ) : getSelectedStationType() ? (
-                  <button 
-                    onClick={() => setTableDraft(prev => [...prev, { title: '', rows: [{ key: '', unit: '', value: '' }] }])}
+                  <button
+                    onClick={() => setTableDraft(prev => [...prev, { title: '', rows: [{ key: '', unit: '', value: '', extraValues: [] }] }])}
                     className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg hover:border-[#1e377c] hover:bg-blue-50 transition-all duration-200 text-sm text-gray-600 hover:text-[#1e377c] w-full justify-center"
                   >
                     <PlusIcon className="w-4 h-4" />
@@ -1991,22 +2206,23 @@ const CertificatesCRUD: React.FC = () => {
 
             {/* Footer */}
             <div className="flex justify-end space-x-2 p-4 border-t border-gray-200 bg-gray-50/50">
-              <button 
-                onClick={() => setTableEditIndex(null)} 
+              <button
+                onClick={() => setTableEditIndex(null)}
                 className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all duration-200 border border-gray-300"
               >
                 Batal
               </button>
-              <button 
-                onClick={() => { 
-                  if (tableEditIndex === null) return; 
+              <button
+                onClick={() => {
+                  if (tableEditIndex === null) return;
                   const cleaned = tableDraft.map(sec => ({
-                    ...sec, 
-                    rows: sec.rows.filter(r => r.key || r.unit || r.value)
-                  })).filter(sec => sec.title || sec.rows.length); 
-                  updateResult(tableEditIndex, { table: cleaned }); 
-                  setTableEditIndex(null) 
-                }} 
+                    ...sec,
+                    ...sec,
+                    rows: sec.rows.filter(r => r.key || r.unit || r.value || (r.extraValues && r.extraValues.some(v => v)))
+                  })).filter(sec => sec.title || sec.rows.length);
+                  updateResult(tableEditIndex, { table: cleaned });
+                  setTableEditIndex(null)
+                }}
                 className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c] rounded-lg transition-all duration-200 shadow hover:shadow-lg"
               >
                 Simpan Tabel Hasil
@@ -2049,51 +2265,51 @@ const CertificatesCRUD: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="block text-xs font-semibold text-gray-700">Traceable to SI Through</label>
-                  <input 
-                    value={noteDraft.traceable_to_si_through} 
-                    onChange={e => setNoteDraft(prev => ({ ...prev, traceable_to_si_through: e.target.value }))} 
+                  <input
+                    value={noteDraft.traceable_to_si_through}
+                    onChange={e => setNoteDraft(prev => ({ ...prev, traceable_to_si_through: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
                     placeholder="Traceable to SI through..."
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="block text-xs font-semibold text-gray-700">Reference Document</label>
-                  <input 
-                    value={noteDraft.reference_document} 
-                    onChange={e => setNoteDraft(prev => ({ ...prev, reference_document: e.target.value }))} 
+                  <input
+                    value={noteDraft.reference_document}
+                    onChange={e => setNoteDraft(prev => ({ ...prev, reference_document: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
                     placeholder="Reference document..."
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="block text-xs font-semibold text-gray-700">Calibration Method</label>
-                  <input 
-                    value={noteDraft.calibration_methode} 
-                    onChange={e => setNoteDraft(prev => ({ ...prev, calibration_methode: e.target.value }))} 
+                  <input
+                    value={noteDraft.calibration_methode}
+                    onChange={e => setNoteDraft(prev => ({ ...prev, calibration_methode: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
                     placeholder="Calibration method..."
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="block text-xs font-semibold text-gray-700">Others</label>
-                  <textarea 
+                  <textarea
                     rows={2}
-                    value={noteDraft.others} 
-                    onChange={e => setNoteDraft(prev => ({ ...prev, others: e.target.value }))} 
+                    value={noteDraft.others}
+                    onChange={e => setNoteDraft(prev => ({ ...prev, others: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
                     placeholder="Other notes..."
                   />
                 </div>
-                
+
                 <div className="md:col-span-2 border-t border-gray-200 pt-4">
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-sm font-semibold text-gray-900">Instrumen Standar</h4>
-                    <button 
-                      type="button" 
-                      onClick={() => setNoteDraft(prev => ({ 
-                        ...prev, 
-                        standardInstruments: [...(prev.standardInstruments || []), 0] 
-                      }))} 
+                    <button
+                      type="button"
+                      onClick={() => setNoteDraft(prev => ({
+                        ...prev,
+                        standardInstruments: [...(prev.standardInstruments || []), 0]
+                      }))}
                       className="flex items-center gap-1 px-2 py-1 text-xs border border-[#1e377c] text-[#1e377c] rounded hover:bg-[#1e377c] hover:text-white transition-all duration-200"
                     >
                       <PlusIcon className="w-3 h-3" />
@@ -2116,19 +2332,19 @@ const CertificatesCRUD: React.FC = () => {
                             </div>
                           </div>
                           <div className="flex items-center gap-1">
-                            <button 
-                              type="button" 
-                              onClick={() => setStandardPickerIndex(i)} 
+                            <button
+                              type="button"
+                              onClick={() => setStandardPickerIndex(i)}
                               className="px-2 py-1 text-xs border border-[#1e377c] text-[#1e377c] rounded hover:bg-[#1e377c] hover:text-white transition-all duration-200"
                             >
                               Pilih Sensor
                             </button>
-                            <button 
-                              type="button" 
-                              onClick={() => setNoteDraft(prev => ({ 
-                                ...prev, 
-                                standardInstruments: prev.standardInstruments.filter((_, idx) => idx !== i) 
-                              }))} 
+                            <button
+                              type="button"
+                              onClick={() => setNoteDraft(prev => ({
+                                ...prev,
+                                standardInstruments: prev.standardInstruments.filter((_, idx) => idx !== i)
+                              }))}
                               className="px-2 py-1 text-xs border border-red-300 text-red-600 rounded hover:bg-red-600 hover:text-white transition-all duration-200"
                             >
                               Hapus
@@ -2144,18 +2360,18 @@ const CertificatesCRUD: React.FC = () => {
 
             {/* Footer */}
             <div className="flex justify-end space-x-2 p-4 border-t border-gray-200 bg-gray-50/50">
-              <button 
-                onClick={() => setNoteEditIndex(null)} 
+              <button
+                onClick={() => setNoteEditIndex(null)}
                 className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all duration-200 border border-gray-300"
               >
                 Batal
               </button>
-              <button 
-                onClick={() => { 
-                  if (noteEditIndex === null) return; 
-                  updateResult(noteEditIndex, { notesForm: { ...noteDraft } }); 
-                  setNoteEditIndex(null) 
-                }} 
+              <button
+                onClick={() => {
+                  if (noteEditIndex === null) return;
+                  updateResult(noteEditIndex, { notesForm: { ...noteDraft } });
+                  setNoteEditIndex(null)
+                }}
                 className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c] rounded-lg transition-all duration-200 shadow hover:shadow-lg"
               >
                 Simpan Catatan
@@ -2198,33 +2414,33 @@ const CertificatesCRUD: React.FC = () => {
               <div className="space-y-3">
                 <div className="relative">
                   <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input 
-                    value={standardSearch} 
-                    onChange={e => setStandardSearch(e.target.value)} 
-                    placeholder="Cari standar (nama / pabrikan / tipe / serial)" 
+                  <input
+                    value={standardSearch}
+                    onChange={e => setStandardSearch(e.target.value)}
+                    placeholder="Cari standar (nama / pabrikan / tipe / serial)"
                     className="w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
                   />
                 </div>
-                
+
                 <div className="h-64 overflow-y-auto border border-gray-200 rounded-lg">
                   {sensors
                     .filter(s => (s as any).is_standard)
                     .filter(s => {
                       const q = standardSearch.toLowerCase()
-                      return !q || `${(s as any).name||''} ${(s as any).manufacturer||''} ${(s as any).type||''} ${(s as any).serial_number||''}`.toLowerCase().includes(q)
+                      return !q || `${(s as any).name || ''} ${(s as any).manufacturer || ''} ${(s as any).type || ''} ${(s as any).serial_number || ''}`.toLowerCase().includes(q)
                     })
                     .map(s => (
-                      <button 
-                        key={s.id} 
-                        onClick={() => { 
+                      <button
+                        key={s.id}
+                        onClick={() => {
                           if (standardPickerIndex === null) return;
                           setNoteDraft(prev => {
-                            const arr = [...(prev.standardInstruments||[])]
+                            const arr = [...(prev.standardInstruments || [])]
                             arr[standardPickerIndex] = s.id as any
                             return { ...prev, standardInstruments: arr }
                           })
                           setStandardPickerIndex(null)
-                        }} 
+                        }}
                         className="w-full text-left px-3 py-3 hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors duration-200"
                       >
                         <div className="font-medium text-gray-900 text-sm">
@@ -2241,8 +2457,8 @@ const CertificatesCRUD: React.FC = () => {
 
             {/* Footer */}
             <div className="flex justify-end space-x-2 p-4 border-t border-gray-200 bg-gray-50/50">
-              <button 
-                onClick={() => setStandardPickerIndex(null)} 
+              <button
+                onClick={() => setStandardPickerIndex(null)}
                 className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all duration-200 border border-gray-300"
               >
                 Tutup

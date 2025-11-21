@@ -663,51 +663,54 @@ const CertificatePreview: React.FC<{
                         <h5 className="text-sm font-bold text-center">HASIL KALIBRASI / <span className="italic">CALIBRATION RESULT</span></h5>
                         {res.table.map((sec: any, sIdx: number) => {
                           const rows = Array.isArray(sec?.rows) ? sec.rows : []
-                          const useFourCol = rows.length >= 4 && rows.slice(0, 4).every((r: any) => r && 'key' in r && 'unit' in r && 'value' in r)
                           return (
                             <div key={sIdx} className="mt-2">
                               <div className="text-xs font-bold mb-1">{sec?.title || `Tabel ${sIdx + 1}`}</div>
-                              {useFourCol ? (
-                                <table className="w-full text-xs border-[2px] border-black border-collapse text-center">
-                                  <thead>
-                                    <tr className="font-bold">
-                                      {rows.slice(0, 4).map((r: any, i: number) => {
-                                        const label = `${r?.key || '-'}` + (r?.unit ? ` ${r.unit}` : '')
-                                        return (
-                                          <td key={i} className="p-1 border border-black">{label}</td>
-                                        )
-                                      })}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    <tr>
-                                      {rows.slice(0, 4).map((r: any, i: number) => (
-                                        <td key={i} className="p-1 border border-black text-left">{r?.value || '-'}</td>
-                                      ))}
-                                    </tr>
-                                  </tbody>
-                                </table>
-                              ) : (
-                                <table className="w-full text-xs border-[2px] border-black text-center border-collapse">
-                                  <thead>
-                                    <tr className="font-bold">
-                                      <td className="p-1 border border-black">Parameter</td>
-                                      <td className="p-1 border border-black">Nilai</td>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {rows.map((row: any, rIdx: number) => {
-                                      const label = `${row?.key || '-'}` + (row?.unit ? ` ${row.unit}` : '')
-                                      return (
-                                        <tr key={rIdx}>
-                                          <td className="p-1 border border-black text-left">{label}</td>
-                                          <td className="p-1 border border-black text-left">{row?.value || '-'}</td>
-                                        </tr>
+                              <table className="w-full text-xs border-[2px] border-black text-center border-collapse">
+                                <thead>
+                                  <tr className="font-bold">
+                                    {/* Use explicit headers if available, otherwise fallback to Key/Unit/Value logic */}
+                                    {sec.headers ? (
+                                      sec.headers.map((h: string, i: number) => (
+                                        <td key={i} className="p-1 border border-black">{h}</td>
+                                      ))
+                                    ) : (
+                                      // Fallback for old data without headers
+                                      rows.length > 0 && (
+                                        <>
+                                          <td className="p-1 border border-black">Parameter</td>
+                                          <td className="p-1 border border-black">Unit</td>
+                                          <td className="p-1 border border-black">Nilai</td>
+                                        </>
                                       )
-                                    })}
-                                  </tbody>
-                                </table>
-                              )}
+                                    )}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {rows.map((row: any, rIdx: number) => (
+                                    <tr key={rIdx}>
+                                      {/* If headers exist, map based on standard + extra values */}
+                                      {sec.headers ? (
+                                        <>
+                                          <td className="p-1 border border-black text-left">{row.key || '-'}</td>
+                                          <td className="p-1 border border-black text-left">{row.unit || '-'}</td>
+                                          <td className="p-1 border border-black text-left">{row.value || '-'}</td>
+                                          {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
+                                            <td key={`extra-${vi}`} className="p-1 border border-black text-left">{v || '-'}</td>
+                                          ))}
+                                        </>
+                                      ) : (
+                                        // Fallback
+                                        <>
+                                          <td className="p-1 border border-black text-left">{row.key || '-'}</td>
+                                          <td className="p-1 border border-black text-left">{row.unit || '-'}</td>
+                                          <td className="p-1 border border-black text-left">{row.value || '-'}</td>
+                                        </>
+                                      )}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
                             </div>
                           )
                         })}
@@ -981,8 +984,8 @@ const DraftView: React.FC<{
             onClick={() => { if (!(isSending || hasSent)) setShowModal(true) }}
             disabled={isSending || hasSent || !isReadyToSend}
             className={`flex items-center px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 ${isReadyToSend && !(isSending || hasSent)
-                ? 'bg-green-600 hover:bg-green-700'
-                : 'bg-gray-400 cursor-not-allowed'
+              ? 'bg-green-600 hover:bg-green-700'
+              : 'bg-gray-400 cursor-not-allowed'
               }`}
           >
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">

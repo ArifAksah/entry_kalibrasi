@@ -22,7 +22,8 @@
     "react": "latest",
     "react-dom": "latest",
     "react-qr-code": "^2.0.18",
-    "styled-components": "^6.1.19"
+    "styled-components": "^6.1.19",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.13",

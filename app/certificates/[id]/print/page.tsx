@@ -11,8 +11,8 @@ import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
 // agar kita memiliki akses ke cert.results, verifikator, dll.
 
 type KV = { key: string; value: string }
-type TableRow = { key: string; unit: string; value: string }
-type TableSection = { title: string; rows: TableRow[] }
+type TableRow = { key: string; unit: string; value: string; extraValues?: string[] }
+type TableSection = { title: string; headers?: string[]; rows: TableRow[] }
 type ResultItem = {
   sensorId: number | null
   startDate: string
@@ -1213,33 +1213,54 @@ const PrintCertificatePage: React.FC = () => {
                             <h3 className="text-sm font-bold text-center">HASIL KALIBRASI / <span className="italic">CALIBRATION RESULT</span></h3>
                             {res.table.map((sec: any, sIdx: number) => {
                               const rows = Array.isArray(sec?.rows) ? sec.rows : []
-                              // Parameter-as-header mode: setiap key jadi header kolom, baris berikutnya adalah value
-                              const paramHeaderMode = rows.length > 0 && rows.every((r: any) => r && ('key' in r) && ('value' in r))
                               return (
                                 <div key={sIdx} className="mt-3 avoid-break">
                                   <div className="text-xs font-bold mb-1">{sec?.title || `Tabel ${sIdx + 1}`}</div>
-                                  {paramHeaderMode ? (
-                                    <table className="w-full text-[10px] border-[2px] border-black border-collapse text-center">
-                                      <thead>
-                                        <tr className="font-bold">
-                                          {rows.map((r: any, i: number) => {
-                                            const unit = r?.unit ?? r?.satuan
-                                            const label = `${r?.key || '-'}` + (unit ? ` ${unit}` : '')
-                                            return (
-                                              <td key={i} className="p-1 border border-black">{label}</td>
-                                            )
-                                          })}
+                                  <table className="w-full text-xs border-[2px] border-black text-center border-collapse">
+                                    <thead>
+                                      <tr className="font-bold">
+                                        {/* Use explicit headers if available, otherwise fallback to Key/Unit/Value logic */}
+                                        {sec.headers ? (
+                                          sec.headers.map((h: string, i: number) => (
+                                            <td key={i} className="p-1 border border-black">{h}</td>
+                                          ))
+                                        ) : (
+                                          // Fallback for old data without headers
+                                          rows.length > 0 && (
+                                            <>
+                                              <td className="p-1 border border-black">Parameter</td>
+                                              <td className="p-1 border border-black">Unit</td>
+                                              <td className="p-1 border border-black">Nilai</td>
+                                            </>
+                                          )
+                                        )}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {rows.map((row: any, rIdx: number) => (
+                                        <tr key={rIdx}>
+                                          {/* If headers exist, map based on standard + extra values */}
+                                          {sec.headers ? (
+                                            <>
+                                              <td className="p-1 border border-black text-left">{row.key || '-'}</td>
+                                              <td className="p-1 border border-black text-left">{row.unit || '-'}</td>
+                                              <td className="p-1 border border-black text-left">{row.value || '-'}</td>
+                                              {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
+                                                <td key={`extra-${vi}`} className="p-1 border border-black text-left">{v || '-'}</td>
+                                              ))}
+                                            </>
+                                          ) : (
+                                            // Fallback
+                                            <>
+                                              <td className="p-1 border border-black text-left">{row.key || '-'}</td>
+                                              <td className="p-1 border border-black text-left">{row.unit || '-'}</td>
+                                              <td className="p-1 border border-black text-left">{row.value || '-'}</td>
+                                            </>
+                                          )}
                                         </tr>
-                                      </thead>
-                                      <tbody>
-                                        <tr>
-                                          {rows.map((r: any, i: number) => (
-                                            <td key={i} className="p-1 border border-black">{r?.value ?? '-'}</td>
-                                          ))}
-                                        </tr>
-                                      </tbody>
-                                    </table>
-                                  ) : null}
+                                      ))}
+                                    </tbody>
+                                  </table>
                                 </div>
                               )
                             })}
