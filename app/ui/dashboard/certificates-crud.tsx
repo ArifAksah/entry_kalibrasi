@@ -1090,7 +1090,7 @@ const CertificatesCRUD: React.FC = () => {
                           document.body.removeChild(a)
                         } catch (err) {
                           console.error('Error downloading PDF:', err)
-                          alert('Failed to download PDF. Please try again.')
+                          showError('Failed to download PDF. Please try again.')
                         }
                       }}
                       className="inline-flex items-center p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200 border border-transparent hover:border-green-200"

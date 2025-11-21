@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization');
     if (!authHeader) return NextResponse.json({ error: 'Authorization header required' }, { status: 401 });
-    
+
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
     if (authError || !user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
@@ -42,16 +42,16 @@ export async function GET(request: NextRequest) {
       // Get verification status for these certificates
       const certificateIds = certificates?.map(c => c.id) || [];
       let verifications: Array<{ certificate_id: number; verification_level: number; status: string; certificate_version?: number }> = [];
-      
+
       if (certificateIds.length) {
         try {
           const { data: v, error: verifError } = await supabaseAdmin
             .from('certificate_verification')
             .select('certificate_id, verification_level, status, certificate_version')
             .in('certificate_id', certificateIds);
-          
+
           if (!verifError && v) verifications = v;
-        } catch {}
+        } catch { }
       }
 
       // Calculate stats for verifikator
@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
             { id: 2, no_certificate: 'CERT-002', no_order: 'ORD-002', created_at: new Date().toISOString() }
           ]
         };
-        
+
         console.log('Verifikator API response (sample data):', sampleData);
         return NextResponse.json(sampleData);
       }
@@ -160,7 +160,7 @@ export async function GET(request: NextRequest) {
         verificationStats,
         recentCertificates: certificates?.slice(0, 5) || []
       };
-      
+
       console.log('Verifikator API response:', responseData);
       return NextResponse.json(responseData);
 
@@ -187,7 +187,7 @@ export async function GET(request: NextRequest) {
           if (!verifError && v) {
             verifications = v;
           }
-        } catch {}
+        } catch { }
       }
 
       // Calculate overall certificate stats
@@ -235,7 +235,7 @@ export async function GET(request: NextRequest) {
           ],
           adminLimited: true
         };
-        
+
         console.log('Admin API response (sample data):', sampleData);
         return NextResponse.json(sampleData);
       }
@@ -247,7 +247,7 @@ export async function GET(request: NextRequest) {
         recentCertificates: certificates?.slice(0, 5) || [],
         adminLimited: true
       };
-      
+
       console.log('Admin API response:', responseData);
       return NextResponse.json(responseData);
 
@@ -255,33 +255,70 @@ export async function GET(request: NextRequest) {
       // Assignor role - limited to assignment functions
       const { data: certificates, error: certError } = await supabaseAdmin
         .from('certificate')
-        .select('id, created_at, no_certificate, no_order, instrument')
+        .select('id, created_at, no_certificate, no_order, instrument, verifikator_1, verifikator_2, authorized_by, status')
+        .eq('authorized_by', user.id)
         .order('created_at', { ascending: false });
 
       if (certError) return NextResponse.json({ error: certError.message }, { status: 500 });
 
+      // Get verification status for all certificates to determine "Ready for Signature"
+      const certificateIds = certificates?.map(c => c.id) || [];
+      let verifications: Array<{ certificate_id: number; verification_level: number; status: string; certificate_version?: number }> = [];
+
+      if (certificateIds.length) {
+        try {
+          const { data: v, error: verifError } = await supabaseAdmin
+            .from('certificate_verification')
+            .select('certificate_id, verification_level, status, certificate_version')
+            .in('certificate_id', certificateIds);
+
+          if (!verifError && v) {
+            verifications = v;
+          }
+        } catch { }
+      }
+
+      let pendingAssignmentCount = 0;
+      let readyForSignatureCount = 0;
+      let signedCount = 0;
+
+      certificates?.forEach(cert => {
+        // Check pending assignment
+        if (!cert.verifikator_1 || !cert.verifikator_2) {
+          pendingAssignmentCount++;
+        }
+
+        // Check ready for signature (Level 1 & 2 Approved, Level 3 Pending)
+        // We assume version 1 for simplicity in dashboard overview, or take the latest if available
+        const certVersion = (cert as any).version ?? 1;
+        const verif1 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 1 && (v.certificate_version ?? 1) === certVersion);
+        const verif2 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 2 && (v.certificate_version ?? 1) === certVersion);
+        const verif3 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 3 && (v.certificate_version ?? 1) === certVersion);
+
+        if (verif1?.status === 'approved' && verif2?.status === 'approved' && (!verif3 || verif3.status === 'pending')) {
+          readyForSignatureCount++;
+        }
+
+        if (verif3?.status === 'approved') {
+          signedCount++;
+        }
+      });
+
       const totalCertificates = certificates?.length || 0;
       const certificateStats = {
         total: totalCertificates,
-        pending: totalCertificates,
-        approved: 0,
-        rejected: 0
+        pending: pendingAssignmentCount, // Reusing pending for "Pending Assignment"
+        approved: signedCount,
+        rejected: 0 // Not primarily tracked for assignor overview
       };
-
-      // Provide sample data if no certificates found
-      if (totalCertificates === 0) {
-        certificateStats.total = 2;
-        certificateStats.pending = 2;
-      }
 
       const responseData = {
         role: userRole,
-        totalCertificates: certificateStats.total,
+        totalCertificates: totalCertificates,
         certificateStats,
-        recentCertificates: certificates?.slice(0, 5) || [
-          { id: 1, no_certificate: 'CERT-001', no_order: 'ORD-001', created_at: new Date().toISOString() },
-          { id: 2, no_certificate: 'CERT-002', no_order: 'ORD-002', created_at: new Date().toISOString() }
-        ],
+        pendingAssignment: pendingAssignmentCount,
+        readyForSignature: readyForSignatureCount,
+        recentCertificates: certificates?.slice(0, 5) || [],
         assignorLimited: true
       };
 
@@ -292,33 +329,43 @@ export async function GET(request: NextRequest) {
       // User station and calibrator roles - access to certificates, instruments, sensors
       const { data: certificates, error: certError } = await supabaseAdmin
         .from('certificate')
-        .select('id, created_at, no_certificate, no_order, instrument')
+        .select('id, created_at, no_certificate, no_order, instrument, status')
         .order('created_at', { ascending: false });
 
       if (certError) return NextResponse.json({ error: certError.message }, { status: 500 });
 
+      // Get instruments count
+      const { count: instrumentCount, error: instrError } = await supabaseAdmin
+        .from('instrument')
+        .select('*', { count: 'exact', head: true });
+
       const totalCertificates = certificates?.length || 0;
+
+      let draftsCount = 0;
+      let returnedCount = 0;
+      let completedCount = 0;
+
+      certificates?.forEach(cert => {
+        if (cert.status === 'draft') draftsCount++;
+        else if (cert.status === 'rejected') returnedCount++;
+        else if (cert.status === 'completed' || cert.status === 'verified') completedCount++;
+      });
+
       const certificateStats = {
         total: totalCertificates,
-        pending: totalCertificates,
-        approved: 0,
-        rejected: 0
+        pending: draftsCount, // Using pending for Drafts
+        approved: completedCount,
+        rejected: returnedCount
       };
-
-      // Provide sample data if no certificates found
-      if (totalCertificates === 0) {
-        certificateStats.total = 2;
-        certificateStats.pending = 2;
-      }
 
       const responseData = {
         role: userRole,
-        totalCertificates: certificateStats.total,
+        totalCertificates: totalCertificates,
+        activeInstruments: instrumentCount || 0,
         certificateStats,
-        recentCertificates: certificates?.slice(0, 5) || [
-          { id: 1, no_certificate: 'CERT-001', no_order: 'ORD-001', created_at: new Date().toISOString() },
-          { id: 2, no_certificate: 'CERT-002', no_order: 'ORD-002', created_at: new Date().toISOString() }
-        ],
+        drafts: draftsCount,
+        returned: returnedCount,
+        recentCertificates: certificates?.slice(0, 5) || [],
         stationAccess: true
       };
 
@@ -348,7 +395,7 @@ export async function GET(request: NextRequest) {
           if (!verifError && v) {
             verifications = v;
           }
-        } catch {}
+        } catch { }
       }
 
       // Calculate overall certificate stats
@@ -395,7 +442,7 @@ export async function GET(request: NextRequest) {
             { id: 2, no_certificate: 'CERT-002', no_order: 'ORD-002', created_at: new Date().toISOString() }
           ]
         };
-        
+
         console.log('Default role API response (sample data):', sampleData);
         return NextResponse.json(sampleData);
       }
@@ -406,7 +453,7 @@ export async function GET(request: NextRequest) {
         certificateStats,
         recentCertificates: certificates?.slice(0, 5) || []
       };
-      
+
       console.log('Default role API response:', responseData);
       return NextResponse.json(responseData);
     }

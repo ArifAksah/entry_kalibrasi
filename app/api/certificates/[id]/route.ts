@@ -41,12 +41,12 @@ export async function PUT(
     if (authError || !user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
 
     const body = await request.json()
-    const { 
-      no_certificate, 
-      no_order, 
-      no_identification, 
-      issue_date, 
-      station, 
+    const {
+      no_certificate,
+      no_order,
+      no_identification,
+      issue_date,
+      station,
       instrument,
       authorized_by,
       verifikator_1,
@@ -63,13 +63,13 @@ export async function PUT(
 
     // Get current certificate data before updating
     const { data: currentCertificate, error: currentError } = await supabaseAdmin
-        .from('certificate')
-        .select('authorized_by, verifikator_1, verifikator_2, version, no_certificate, no_order, no_identification, issue_date, station, instrument, station_address, results')
-        .eq('id', id)
-        .single();
+      .from('certificate')
+      .select('authorized_by, verifikator_1, verifikator_2, version, no_certificate, no_order, no_identification, issue_date, station, instrument, station_address, results')
+      .eq('id', id)
+      .single();
 
     if (currentError) {
-        return NextResponse.json({ error: 'Certificate not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Certificate not found' }, { status: 404 });
     }
 
     // Validate station foreign key if provided and fetch address
@@ -163,16 +163,16 @@ export async function PUT(
 
     const { data, error } = await supabaseAdmin
       .from('certificate')
-      .update({ 
-        no_certificate, 
-        no_order, 
-        no_identification, 
-        authorized_by: authorizedPersonId, 
-        verifikator_1: v1, 
-        verifikator_2: v2, 
+      .update({
+        no_certificate,
+        no_order,
+        no_identification,
+        authorized_by: authorizedPersonId,
+        verifikator_1: v1,
+        verifikator_2: v2,
         assignor: authorizedPersonId, // Set assignor same as authorized_by
-        issue_date, 
-        station: station ? parseInt(station) : null, 
+        issue_date,
+        station: station ? parseInt(station) : null,
         instrument: instrument ? parseInt(instrument) : null,
         station_address: (resolvedStationAddress ?? station_address) ?? null,
         results: results ?? null,
@@ -183,7 +183,7 @@ export async function PUT(
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    
+
     // If certificate was revised (version increased), reset verification status
     if (nextVersion > (currentCertificate?.version ?? 1)) {
       try {
@@ -192,12 +192,12 @@ export async function PUT(
           .from('certificate_verification')
           .delete()
           .eq('certificate_id', parseInt(id))
-        
+
         if (deleteError) {
           console.error('Error deleting old verification records:', deleteError)
         } else {
           console.log('Old verification records deleted for certificate:', id)
-          
+
           // Create new verification records with updated version
           if (currentCertificate?.verifikator_1 && currentCertificate?.verifikator_2) {
             const newVerificationRecords = [
@@ -220,11 +220,11 @@ export async function PUT(
                 updated_at: new Date().toISOString()
               }
             ]
-            
+
             const { error: insertError } = await supabaseAdmin
               .from('certificate_verification')
               .insert(newVerificationRecords)
-            
+
             if (insertError) {
               console.error('Error creating new verification records:', insertError)
             } else {
@@ -237,45 +237,45 @@ export async function PUT(
         // Don't fail the request, just log the error
       }
     }
-    
+
     // Kirim notifikasi email jika ada perubahan
     const sendNotification = async (userId: string, role: string, certificateNumber: string, certificateId: number) => {
-        const { data: personelData, error: personelError } = await supabaseAdmin
-          .from('personel')
-          .select('email')
-          .eq('id', userId)
-          .single();
-  
-        if (!personelError && personelData && personelData.email) {
-            try {
-                await sendAssignmentNotificationEmail(personelData.email, role, certificateNumber, certificateId);
-            } catch (emailError) {
-                console.error(`Failed to send notification to ${role} (${personelData.email}):`, emailError);
-            }
+      const { data: personelData, error: personelError } = await supabaseAdmin
+        .from('personel')
+        .select('email')
+        .eq('id', userId)
+        .single();
+
+      if (!personelError && personelData && personelData.email) {
+        try {
+          await sendAssignmentNotificationEmail(personelData.email, role, certificateNumber, certificateId);
+        } catch (emailError) {
+          console.error(`Failed to send notification to ${role} (${personelData.email}):`, emailError);
         }
+      }
     };
 
     if (currentCertificate) {
-        if (authorized_by && authorized_by !== currentCertificate.authorized_by) {
-            await sendNotification(authorized_by, 'Authorized By', no_certificate, data.id);
-        }
-        if (v1 && v1 !== currentCertificate.verifikator_1) {
-            await sendNotification(v1, 'Verifikator 1', no_certificate, data.id);
-        }
-        if (v2 && v2 !== currentCertificate.verifikator_2) {
-            await sendNotification(v2, 'Verifikator 2', no_certificate, data.id);
-        }
+      if (authorized_by && authorized_by !== currentCertificate.authorized_by) {
+        await sendNotification(authorized_by, 'Authorized By', no_certificate, data.id);
+      }
+      if (v1 && v1 !== currentCertificate.verifikator_1) {
+        await sendNotification(v1, 'Verifikator 1', no_certificate, data.id);
+      }
+      if (v2 && v2 !== currentCertificate.verifikator_2) {
+        await sendNotification(v2, 'Verifikator 2', no_certificate, data.id);
+      }
     }
 
     // Create log entry for certificate update
     try {
-      const { createCertificateLog } = await import('../../../../../lib/certificate-log-helper')
+      const { createCertificateLog } = await import('../../../../lib/certificate-log-helper')
       const { data: currentCert } = await supabaseAdmin
         .from('certificate')
         .select('status')
         .eq('id', id)
         .single()
-      
+
       await createCertificateLog({
         certificate_id: parseInt(id),
         action: 'updated',
@@ -313,14 +313,14 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    
+
     // Get certificate data before deleting for log
     const { data: certData } = await supabaseAdmin
       .from('certificate')
       .select('status, no_certificate')
       .eq('id', id)
       .single()
-    
+
     // Get user for log
     const authHeader = request.headers.get('authorization')
     let userId: string | null = null
@@ -329,18 +329,18 @@ export async function DELETE(
       const { data: { user } } = await supabaseAdmin.auth.getUser(token)
       userId = user?.id || null
     }
-    
+
     const { error } = await supabaseAdmin
       .from('certificate')
       .delete()
       .eq('id', id)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    
+
     // Create log entry for certificate deletion
     if (userId) {
       try {
-        const { createCertificateLog } = await import('../../../../../lib/certificate-log-helper')
+        const { createCertificateLog } = await import('../../../../lib/certificate-log-helper')
         await createCertificateLog({
           certificate_id: parseInt(id),
           action: 'deleted',
@@ -356,7 +356,7 @@ export async function DELETE(
         // Don't fail the request if logging fails
       }
     }
-    
+
     return NextResponse.json({ message: 'Certificate deleted successfully' })
   } catch (e) {
     return NextResponse.json({ error: 'Failed to delete certificate' }, { status: 500 })

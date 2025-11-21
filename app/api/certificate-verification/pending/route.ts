@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     // Get certificates where user is assigned as verifikator_1, verifikator_2, or authorized_by
     const { data: certificates, error: certError } = await supabaseAdmin
       .from("certificate")
-      .select("*")
+      .select("*, station:station(*), instrument:instrument(*)")
       .or(
         `verifikator_1.eq.${user.id},verifikator_2.eq.${user.id},authorized_by.eq.${user.id}`,
       )
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
           )
           .in("certificate_id", certificateIds);
         if (!verifError && v) verifications = v;
-      } catch {}
+      } catch { }
     }
 
     // Combine certificates with verification status
@@ -110,8 +110,7 @@ export async function GET(request: NextRequest) {
 
         return {
           ...cert,
-          station: null,
-          instrument: null,
+          // Station and Instrument are now fetched via select
           verification_status: {
             verifikator_1: verif1?.status || "pending",
             verifikator_2: verif2?.status || "pending",

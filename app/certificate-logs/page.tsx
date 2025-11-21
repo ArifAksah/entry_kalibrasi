@@ -6,6 +6,8 @@ import Header from '../ui/dashboard/header'
 import ProtectedRoute from '../../components/ProtectedRoute'
 import { CertificateLog } from '../../lib/supabase'
 import { useAlert } from '../../hooks/useAlert'
+import { usePermissions } from '../../hooks/usePermissions'
+import { useRouter } from 'next/navigation'
 import Alert from '../../components/ui/Alert'
 
 const CertificateLogsPage: React.FC = () => {
@@ -49,9 +51,20 @@ const CertificateLogsPage: React.FC = () => {
     }
   }
 
+  const { role, loading: roleLoading } = usePermissions()
+  const router = useRouter()
+
   useEffect(() => {
-    fetchLogs()
-  }, [currentPage, searchTerm, filterAction, filterCertificateId])
+    if (!roleLoading && role !== 'admin' && role !== 'assignor') {
+      router.push('/')
+    }
+  }, [role, roleLoading, router])
+
+  useEffect(() => {
+    if (role === 'admin' || role === 'assignor') {
+      fetchLogs()
+    }
+  }, [currentPage, searchTerm, filterAction, filterCertificateId, role])
 
   const getActionBadgeColor = (action: string) => {
     if (action.includes('approved')) return 'bg-green-100 text-green-800 border-green-200'
@@ -79,7 +92,7 @@ const CertificateLogsPage: React.FC = () => {
     return labels[action] || action
   }
 
-  const getVerificationLevelLabel = (level: number | null) => {
+  const getVerificationLevelLabel = (level: number | null | undefined) => {
     if (!level) return '-'
     const labels: Record<number, string> = {
       1: 'Verifikator 1',

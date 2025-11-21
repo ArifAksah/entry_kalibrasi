@@ -70,7 +70,7 @@ export const usePermissions = () => {
         return ['create', 'read', 'update', 'delete'].includes(action)
       }
       if (resource === 'instrument' || resource === 'sensor') {
-        return ['create', 'read', 'update'].includes(action)
+        return ['create', 'read', 'update', 'delete'].includes(action)
       }
       return action === 'read'
     }
@@ -84,6 +84,9 @@ export const usePermissions = () => {
         // However, the verification flow might check 'update' permission.
         // Let's be strict: Verifikator cannot CREATE or DELETE certificates.
         return action === 'read' || action === 'update' // Update needed for verification status?
+      }
+      if (resource === 'instrument' || resource === 'sensor') {
+        return ['read', 'update'].includes(action)
       }
       return action === 'read'
     }
@@ -99,6 +102,9 @@ export const usePermissions = () => {
 
     // User Station: Read only (or manage own station settings?)
     if (role === 'user_station') {
+      if (resource === 'instrument' || resource === 'sensor') {
+        return ['create', 'read', 'update'].includes(action)
+      }
       return action === 'read'
     }
 
