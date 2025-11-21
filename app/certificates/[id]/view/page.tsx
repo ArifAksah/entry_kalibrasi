@@ -32,10 +32,10 @@ type ResultItem = {
   place: string
   environment: KV[]
   table: TableSection[]
-  notesForm: { 
-    traceable_to_si_through: string; 
-    reference_document: string; 
-    calibration_methode: string; 
+  notesForm: {
+    traceable_to_si_through: string;
+    reference_document: string;
+    calibration_methode: string;
     others: string;
     standardInstruments: number[]
   }
@@ -66,9 +66,9 @@ type Instrument = {
   others?: string | null
 }
 
-type Personel = { 
+type Personel = {
   id: string
-  name: string | null 
+  name: string | null
 }
 
 const ViewCertificatePage: React.FC = () => {
@@ -126,23 +126,23 @@ const ViewCertificatePage: React.FC = () => {
     const load = async () => {
       try {
         console.log('Loading certificate data for ID:', id)
-        
+
         const [cRes, iRes, pRes] = await Promise.all([
           fetch(`/api/certificates/${id}`),
           fetch('/api/instruments?page=1&pageSize=100'),
           fetch('/api/personel'),
         ])
-        
+
         const c = await cRes.json()
         const i = await iRes.json()
         const p = await pRes.json()
-        
+
         console.log('Certificate data:', c)
         console.log('Instruments data:', i)
         console.log('Personel data:', p)
-        
+
         if (!cRes.ok) throw new Error(c?.error || 'Failed to load certificate')
-        
+
         // Ensure certificate data is properly set
         if (c && typeof c === 'object') {
           setCert(c)
@@ -150,17 +150,17 @@ const ViewCertificatePage: React.FC = () => {
         } else {
           throw new Error('Invalid certificate data received')
         }
-        
+
         // Handle instruments data properly
         const instrumentsData = Array.isArray(i) ? i : (i?.data ?? [])
         console.log('Processed instruments:', instrumentsData)
         setInstruments(instrumentsData)
-        
+
         // Handle personel data properly
         const personelData = Array.isArray(p) ? p : []
         console.log('Processed personel:', personelData)
         setPersonel(personelData)
-        
+
         // Fetch all stations across pages to ensure mapping available
         try {
           const first = await fetch('/api/stations?page=1&pageSize=100')
@@ -179,7 +179,7 @@ const ViewCertificatePage: React.FC = () => {
         } catch (e) {
           console.error('Error loading stations:', e)
         }
-        
+
       } catch (e) {
         console.error('Error loading data:', e)
         setError(e instanceof Error ? e.message : 'Failed to load data')
@@ -193,7 +193,7 @@ const ViewCertificatePage: React.FC = () => {
   // Build verify URL and check status for QR color
   // Use certificate ID for unique verification, but show certificate number in URL for user-friendly
   const qrUrl = cert?.no_certificate ? `/verify/${encodeURIComponent(cert.no_certificate)}` : ''
-  
+
   const checkVerificationStatus = async () => {
     try {
       if (!cert?.id) return
@@ -213,11 +213,11 @@ const ViewCertificatePage: React.FC = () => {
       // no fallback to avoid turning black on 'sent'
     }
   }
-  
+
   useEffect(() => {
     checkVerificationStatus()
   }, [cert?.id])
-  
+
   // Listen for storage events to refresh QR status when signing happens in another tab/modal
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
@@ -231,12 +231,12 @@ const ViewCertificatePage: React.FC = () => {
         }
       }
     }
-    
+
     window.addEventListener('storage', handleStorageChange)
-    
+
     // Also check periodically (every 5 seconds) in case we miss the event
     const interval = setInterval(checkVerificationStatus, 5000)
-    
+
     return () => {
       window.removeEventListener('storage', handleStorageChange)
       clearInterval(interval)
@@ -244,7 +244,7 @@ const ViewCertificatePage: React.FC = () => {
   }, [cert?.id])
 
   // Reusable styled QR component
-  const QRCodeBox: React.FC<{ value: string; size?: number; logoSize?: number; fgColor?: string }>= ({ value, size = 120, logoSize = 36, fgColor = '#000000' }) => {
+  const QRCodeBox: React.FC<{ value: string; size?: number; logoSize?: number; fgColor?: string }> = ({ value, size = 120, logoSize = 36, fgColor = '#000000' }) => {
     const ref = useRef<HTMLDivElement | null>(null)
     const qr = useRef<QRCodeStyling | null>(null)
     useEffect(() => {
@@ -306,7 +306,7 @@ const ViewCertificatePage: React.FC = () => {
   const formatDateIndo = (ymd: string | null | undefined) => {
     if (!ymd) return '-'
     const [y, m, d] = ymd.split('-')
-    const months = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']
+    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
     const idx = Math.max(1, Math.min(12, parseInt(m || '1', 10))) - 1
     return `${d?.padStart(2, '0') ?? '--'} ${months[idx]} ${y ?? '----'}`
   }
@@ -333,7 +333,7 @@ const ViewCertificatePage: React.FC = () => {
                     if (!response.ok) {
                       throw new Error('Failed to generate PDF')
                     }
-                    
+
                     // Get filename from Content-Disposition header or use default
                     const contentDisposition = response.headers.get('Content-Disposition')
                     let filename = `Certificate_${cert.no_certificate || cert.id}.pdf`
@@ -348,12 +348,12 @@ const ViewCertificatePage: React.FC = () => {
                         }
                       }
                     }
-                    
+
                     // Ensure filename ends with .pdf
                     if (!filename.toLowerCase().endsWith('.pdf')) {
                       filename = `${filename}.pdf`
                     }
-                    
+
                     // Create blob with correct MIME type and download
                     const blob = await response.blob()
                     const url = window.URL.createObjectURL(blob)
@@ -401,7 +401,7 @@ const ViewCertificatePage: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Certificate first page mirror of draft preview */}
         <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm relative">
-          <div 
+          <div
             className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-30"
             style={{
               backgroundImage: `url(${bmkgLogo.src})`,
@@ -517,12 +517,12 @@ const ViewCertificatePage: React.FC = () => {
                     <div className="flex justify-start mb-2">
                       {cert.no_certificate && (
                         <div className="border-2 border-black bg-white flex items-center justify-center" style={{ width: 140, height: 140 }}>
-                          <QRCodeBox 
+                          <QRCodeBox
                             key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
-                            value={`/verify/${cert.no_certificate}`} 
-                            size={120} 
-                            logoSize={36} 
-                            fgColor={isSigned ? '#000000' : '#B91C1C'} 
+                            value={`/verify/${cert.no_certificate}`}
+                            size={120}
+                            logoSize={36}
+                            fgColor={isSigned ? '#000000' : '#B91C1C'}
                           />
                         </div>
                       )}
@@ -540,7 +540,7 @@ const ViewCertificatePage: React.FC = () => {
             {/* Footer like print */}
             <footer className="mt-6 text-xs">
               <div className="text-center text-[10px] text-gray-700">
-                Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
+                Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
               </div>
               <div className="flex justify-between items-end mt-2">
                 <span className="font-semibold">F/IKK 7.8.1</span>
@@ -571,265 +571,265 @@ const ViewCertificatePage: React.FC = () => {
                     {/* QR Code kecil di setiap halaman hasil kalibrasi - SELALU muncul di semua status */}
                     {/* Warna: Merah (#B91C1C) jika belum approved level 3, Hitam (#000000) jika sudah approved level 3 */}
                     <div className="absolute bottom-0 left-1 z-50 bg-white border-2 border-gray-300 rounded-lg p-1 shadow-lg">
-                      <QRCodeBox 
+                      <QRCodeBox
                         key={`qr-footer-${isSigned ? 'signed' : 'unsigned'}-${index}`}
-                        value={`/verify/${cert.no_certificate}`} 
-                        size={70} 
-                        logoSize={21} 
-                        fgColor={isSigned ? '#000000' : '#B91C1C'} 
+                        value={`/verify/${cert.no_certificate}`}
+                        size={70}
+                        logoSize={21}
+                        fgColor={isSigned ? '#000000' : '#B91C1C'}
                       />
                     </div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-md font-semibold text-gray-800">Hasil Kalibrasi #{index + 1}</h4>
-                    <span className="text-sm text-gray-500">Item {index + 1}</span>
-                  </div>
-
-                  {/* Sensor Details + Environment (unified 4-col) */}
-                  {(() => {
-                    const sd: any = res?.sensorDetails || {}
-                    const name = sd?.name || sd?.type || '-'
-                    const manufacturer = sd?.manufacturer || '-'
-                    const type = sd?.type || '-'
-                    const serial = sd?.serial_number || '-'
-                    const start = res?.startDate ? new Date(res.startDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) : '-'
-                    const end = res?.endDate ? new Date(res.endDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) : '-'
-                    const place = res?.place || '-'
-                    const sensorInfo: Array<{ label: string; labelEng: string; value: React.ReactNode; topGap?: boolean; bold?: boolean }> = [
-                      { label: 'Nama Sensor / ', labelEng: 'Sensor Name', value: name, bold: true },
-                      { label: 'Merek Sensor / ', labelEng: 'Manufacturer', value: manufacturer, bold: true },
-                      { label: 'Tipe & No. Seri / ', labelEng: 'Type & Serial Number', value: `${type} / ${serial}`, bold: true },
-                      { label: 'Tanggal Masuk / ', labelEng: 'Date of Entry', value: start, topGap: true },
-                      { label: 'Tanggal Kalibrasi / ', labelEng: 'Calibration Date', value: end },
-                      { label: 'Tempat Kalibrasi / ', labelEng: 'Calibration Place', value: place },
-                    ]
-                    const envRows: Array<{ label: string; labelEng: string; value: React.ReactNode }> = (res?.environment || []).map((env: any) => {
-                      const key = String(env?.key || '')
-                      const lower = key.toLowerCase()
-                      const label = lower.includes('suhu') ? 'Suhu / ' : lower.includes('kelembaban') ? 'Kelembaban / ' : `${key} `
-                      const eng = lower.includes('suhu') ? 'Temperature' : lower.includes('kelembaban') ? 'Relative Humidity' : ''
-                      return { label, labelEng: eng, value: env?.value || '-' }
-                    })
-                    return (
-                      <table className="w-full text-sm">
-                        <tbody>
-                          {sensorInfo.map((row, i) => (
-                            <tr key={`sinfo-${i}`}>
-                              <td className={`w-[45%] align-top font-semibold ${row.topGap ? 'pt-2' : ''}`}>
-                                {row.label}<span className="italic">{row.labelEng}</span>
-                              </td>
-                              <td className={`w-[5%] align-top ${row.topGap ? 'pt-2' : ''}`}>:</td>
-                              <td className={`${row.topGap ? 'pt-2' : ''}`} colSpan={2}>
-                                <span className={row.bold ? 'font-semibold' : undefined}>{row.value}</span>
-                              </td>
-                            </tr>
-                          ))}
-                          {envRows.length > 0 && (
-                            <tr>
-                              <td />
-                              <td />
-                              <td className="align-top" colSpan={2}>
-                                <div className="text-sm font-bold mb-1">Kondisi Kalibrasi / <span className="italic">Calibration Conditions</span></div>
-                                <table className="w-full text-xs border-[2px] border-black border-collapse text-center">
-                                  <thead>
-                                    <tr className="font-bold">
-                                      {envRows.map((er, idx) => (
-                                        <td key={idx} className="p-1 border border-black text-left">
-                                          {er.label}<span className="italic">{er.labelEng}</span>
-                                        </td>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    <tr>
-                                      {envRows.map((er, idx) => (
-                                        <td key={idx} className="p-1 border border-black text-left">{er.value}</td>
-                                      ))}
-                                    </tr>
-                                  </tbody>
-                                </table>
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    )
-                  })()}
-
-                  {/* Calibration Result Tables - render as Measurement Table when possible */}
-                  {Array.isArray(res?.table) && res.table.length > 0 && (
-                    <div className="mt-6 space-y-3">
-                      <h5 className="text-sm font-bold text-center">HASIL KALIBRASI / <span className="italic">CALIBRATION RESULT</span></h5>
-                      {res.table.map((sec: any, sIdx: number) => {
-                        const rows = Array.isArray(sec?.rows) ? sec.rows : []
-                        // Detect measurement-style rows (support either camelCase or snake_case keys)
-                        const isMeasurement = rows.length > 0 && rows.every((r: any) => (
-                          r && (
-                            ('reading' in r || 'penunjukan' in r) &&
-                            ('standard' in r || 'standar' in r) &&
-                            ('correction' in r || 'koreksi' in r) &&
-                            ('corrected' in r || 'terkoreksi' in r || 'corrected_value' in r)
-                          )
-                        ))
-                        // Generic key/value rows: render each parameter as a column header
-                        const isParamHeaderStyle = !isMeasurement && rows.length > 0 && rows.every((r: any) => r && ('key' in r) && ('value' in r))
-                        return (
-                          <div key={sIdx} className="mt-2">
-                            <div className="text-xs font-bold mb-1">{sec?.title || `Tabel ${sIdx + 1}`}</div>
-                            {isMeasurement ? (
-                              <table className="w-full text-xs border-[2px] border-black border-collapse text-center">
-                                <thead>
-                                  <tr className="font-bold">
-                                    <td className="p-1 border border-black">No</td>
-                                    <td className="p-1 border border-black">Penunjukan Alat</td>
-                                    <td className="p-1 border border-black">Nilai Standar</td>
-                                    <td className="p-1 border border-black">Koreksi</td>
-                                    <td className="p-1 border border-black">Nilai Terkoreksi</td>
-                                    <td className="p-1 border border-black">Satuan</td>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {rows.map((r: any, i: number) => {
-                                    const no = r.no ?? (i + 1)
-                                    const reading = r.reading ?? r.penunjukan ?? '-'
-                                    const standard = r.standard ?? r.standar ?? '-'
-                                    const correction = r.correction ?? r.koreksi ?? '-'
-                                    const corrected = r.corrected ?? r.terkoreksi ?? r.corrected_value ?? '-'
-                                    const unit = r.unit ?? r.satuan ?? ''
-                                    return (
-                                      <tr key={i}>
-                                        <td className="p-1 border border-black">{no}</td>
-                                        <td className="p-1 border border-black text-left">{reading}</td>
-                                        <td className="p-1 border border-black text-left">{standard}</td>
-                                        <td className="p-1 border border-black text-left">{correction}</td>
-                                        <td className="p-1 border border-black text-left">{corrected}</td>
-                                        <td className="p-1 border border-black text-left">{unit}</td>
-                                      </tr>
-                                    )
-                                  })}
-                                </tbody>
-                              </table>
-                            ) : isParamHeaderStyle ? (
-                              <table className="w-full text-xs border-[2px] border-black border-collapse text-center">
-                                <thead>
-                                  <tr className="font-bold">
-                                    {rows.map((r: any, i: number) => {
-                                      const unit = r?.unit ?? r?.satuan
-                                      const label = `${r?.key || '-'}` + (unit ? ` ${unit}` : '')
-                                      return <td key={i} className="p-1 border border-black">{label}</td>
-                                    })}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  <tr>
-                                    {rows.map((r: any, i: number) => (
-                                      <td key={i} className="p-1 border border-black text-left">{r?.value ?? '-'}</td>
-                                    ))}
-                                  </tr>
-                                </tbody>
-                              </table>
-                            ) : null}
-                          </div>
-                        )
-                      })}
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-md font-semibold text-gray-800">Hasil Kalibrasi #{index + 1}</h4>
+                      <span className="text-sm text-gray-500">Item {index + 1}</span>
                     </div>
-                  )}
 
-                  {/* Images per sensor only for Geofisika */}
-                  {station?.type?.toString().trim().toLowerCase() === 'geofisika' && Array.isArray((res as any).images) && (res as any).images.length > 0 && (
-                    <div className="mt-4">
-                      <h5 className="text-sm font-semibold mb-2 text-center">Gambar</h5>
-                      <div className="flex flex-wrap gap-3 justify-center">
-                        {(res as any).images.map((img: any, i: number) => {
-                          const src = typeof img === 'string' ? img : (img?.url || '')
-                          if (!src) return null
-                          return (
-                            <figure key={i} className="m-0 text-center">
-                              <img src={src} alt={`Gambar Sensor ${i + 1}`} className="block w-[240px] h-[160px] object-contain bg-white" />
-                              {img?.caption ? (
-                                <figcaption className="text-[11px] text-gray-600 mt-1 leading-tight">{img.caption}</figcaption>
-                              ) : null}
-                            </figure>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Notes per sensor */}
-                  {(() => {
-                    const nf: any = res?.notesForm || null
-                    if (!nf) return null
-                    const hasAny = nf.traceable_to_si_through || nf.reference_document || nf.calibration_methode || nf.others || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)
-                    if (!hasAny) return null
-                    return (
-                      <div className="mt-6">
-                        <h5 className="text-sm font-bold">Catatan / <span className="italic">Notes</span> :</h5>
-                        <table className="w-full text-xs mt-2">
+                    {/* Sensor Details + Environment (unified 4-col) */}
+                    {(() => {
+                      const sd: any = res?.sensorDetails || {}
+                      const name = sd?.name || sd?.type || '-'
+                      const manufacturer = sd?.manufacturer || '-'
+                      const type = sd?.type || '-'
+                      const serial = sd?.serial_number || '-'
+                      const start = res?.startDate ? new Date(res.startDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) : '-'
+                      const end = res?.endDate ? new Date(res.endDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) : '-'
+                      const place = res?.place || '-'
+                      const sensorInfo: Array<{ label: string; labelEng: string; value: React.ReactNode; topGap?: boolean; bold?: boolean }> = [
+                        { label: 'Nama Sensor / ', labelEng: 'Sensor Name', value: name, bold: true },
+                        { label: 'Merek Sensor / ', labelEng: 'Manufacturer', value: manufacturer, bold: true },
+                        { label: 'Tipe & No. Seri / ', labelEng: 'Type & Serial Number', value: `${type} / ${serial}`, bold: true },
+                        { label: 'Tanggal Masuk / ', labelEng: 'Date of Entry', value: start, topGap: true },
+                        { label: 'Tanggal Kalibrasi / ', labelEng: 'Calibration Date', value: end },
+                        { label: 'Tempat Kalibrasi / ', labelEng: 'Calibration Place', value: place },
+                      ]
+                      const envRows: Array<{ label: string; labelEng: string; value: React.ReactNode }> = (res?.environment || []).map((env: any) => {
+                        const key = String(env?.key || '')
+                        const lower = key.toLowerCase()
+                        const label = lower.includes('suhu') ? 'Suhu / ' : lower.includes('kelembaban') ? 'Kelembaban / ' : `${key} `
+                        const eng = lower.includes('suhu') ? 'Temperature' : lower.includes('kelembaban') ? 'Relative Humidity' : ''
+                        return { label, labelEng: eng, value: env?.value || '-' }
+                      })
+                      return (
+                        <table className="w-full text-sm">
                           <tbody>
-                            {(nf.others || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)) && (
-                              <tr>
-                                <td className="w-[35%] align-top text-left pr-2">
-                                  <div className="font-bold leading-tight">Standar Kalibrasi</div>
-                                  <div className="italic text-[10px] text-gray-700 leading-tight">Calibration Standard</div>
+                            {sensorInfo.map((row, i) => (
+                              <tr key={`sinfo-${i}`}>
+                                <td className={`w-[45%] align-top font-semibold ${row.topGap ? 'pt-2' : ''}`}>
+                                  {row.label}<span className="italic">{row.labelEng}</span>
                                 </td>
-                                <td className="w-[5%] align-top">:</td>
-                                <td className="w-[60%] align-top whitespace-pre-line">{nf.others || '-'}</td>
+                                <td className={`w-[5%] align-top ${row.topGap ? 'pt-2' : ''}`}>:</td>
+                                <td className={`${row.topGap ? 'pt-2' : ''}`} colSpan={2}>
+                                  <span className={row.bold ? 'font-semibold' : undefined}>{row.value}</span>
+                                </td>
                               </tr>
-                            )}
-                            {nf.traceable_to_si_through && (
+                            ))}
+                            {envRows.length > 0 && (
                               <tr>
-                                <td className="align-top text-left pr-2">
-                                  <div className="font-bold leading-tight">Tertelusur ke SI melalui</div>
-                                  <div className="italic text-[10px] text-gray-700 leading-tight">Traceable to SI through</div>
+                                <td />
+                                <td />
+                                <td className="align-top" colSpan={2}>
+                                  <div className="text-sm font-bold mb-1">Kondisi Kalibrasi / <span className="italic">Calibration Conditions</span></div>
+                                  <table className="w-full text-xs border-[2px] border-black border-collapse text-center">
+                                    <thead>
+                                      <tr className="font-bold">
+                                        {envRows.map((er, idx) => (
+                                          <td key={idx} className="p-1 border border-black text-left">
+                                            {er.label}<span className="italic">{er.labelEng}</span>
+                                          </td>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      <tr>
+                                        {envRows.map((er, idx) => (
+                                          <td key={idx} className="p-1 border border-black text-left">{er.value}</td>
+                                        ))}
+                                      </tr>
+                                    </tbody>
+                                  </table>
                                 </td>
-                                <td className="align-top">:</td>
-                                <td className="align-top whitespace-pre-line">{nf.traceable_to_si_through}</td>
-                              </tr>
-                            )}
-                            {nf.calibration_methode && (
-                              <tr>
-                                <td className="align-top text-left pr-2">
-                                  <div className="font-bold leading-tight">Metode Kalibrasi</div>
-                                  <div className="italic text-[10px] text-gray-700 leading-tight">Calibration Methode</div>
-                                </td>
-                                <td className="align-top">:</td>
-                                <td className="align-top whitespace-pre-line">{nf.calibration_methode}</td>
-                              </tr>
-                            )}
-                            {nf.reference_document && (
-                              <tr>
-                                <td className="align-top text-left pr-2">
-                                  <div className="font-bold leading-tight">Dokumen Acuan</div>
-                                  <div className="italic text-[10px] text-gray-700 leading-tight">Reference Document</div>
-                                </td>
-                                <td className="align-top">:</td>
-                                <td className="align-top whitespace-pre-line">{nf.reference_document}</td>
                               </tr>
                             )}
                           </tbody>
                         </table>
-                        <div className="mt-2 space-y-1 text-xs">
-                          <div>
-                            <div className="font-bold">Penunjukan nilai sebenarnya didapat dari penunjukan alat ditambah koreksi.</div>
-                            <div className="text-[10px] italic text-gray-700">The true value is determined from the instrument reading added by its correction.</div>
-                          </div>
-                          <div>
-                            <div className="font-bold">Sertifikat ini hanya berlaku untuk peralatan dengan identitas yang dinyatakan di atas.</div>
-                            <div className="text-[10px] italic text-gray-700">This certificate only applies to equipment with the identity stated above.</div>
-                          </div>
-                          <div>
-                            <div className="font-bold">Ketidakpastian pengukuran dinyatakan pada tingkat kepercayaan tidak kurang dari 95 % dengan faktor cakupan k = 2,01</div>
-                            <div className="text-[10px] italic text-gray-700">Uncertainty of measurement is expressed at a confidence level of no less than 95 % with coverage factor k = 2.01</div>
-                          </div>
+                      )
+                    })()}
+
+                    {/* Calibration Result Tables - render as Measurement Table when possible */}
+                    {Array.isArray(res?.table) && res.table.length > 0 && (
+                      <div className="mt-6 space-y-3">
+                        <h5 className="text-sm font-bold text-center">HASIL KALIBRASI / <span className="italic">CALIBRATION RESULT</span></h5>
+                        {res.table.map((sec: any, sIdx: number) => {
+                          const rows = Array.isArray(sec?.rows) ? sec.rows : []
+                          // Detect measurement-style rows (support either camelCase or snake_case keys)
+                          const isMeasurement = rows.length > 0 && rows.every((r: any) => (
+                            r && (
+                              ('reading' in r || 'penunjukan' in r) &&
+                              ('standard' in r || 'standar' in r) &&
+                              ('correction' in r || 'koreksi' in r) &&
+                              ('corrected' in r || 'terkoreksi' in r || 'corrected_value' in r)
+                            )
+                          ))
+                          // Generic key/value rows: render each parameter as a column header
+                          const isParamHeaderStyle = !isMeasurement && rows.length > 0 && rows.every((r: any) => r && ('key' in r) && ('value' in r))
+                          return (
+                            <div key={sIdx} className="mt-2">
+                              <div className="text-xs font-bold mb-1">{sec?.title || `Tabel ${sIdx + 1}`}</div>
+                              {isMeasurement ? (
+                                <table className="w-full text-xs border-[2px] border-black border-collapse text-center">
+                                  <thead>
+                                    <tr className="font-bold">
+                                      <td className="p-1 border border-black">No</td>
+                                      <td className="p-1 border border-black">Penunjukan Alat</td>
+                                      <td className="p-1 border border-black">Nilai Standar</td>
+                                      <td className="p-1 border border-black">Koreksi</td>
+                                      <td className="p-1 border border-black">Nilai Terkoreksi</td>
+                                      <td className="p-1 border border-black">Satuan</td>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {rows.map((r: any, i: number) => {
+                                      const no = r.no ?? (i + 1)
+                                      const reading = r.reading ?? r.penunjukan ?? '-'
+                                      const standard = r.standard ?? r.standar ?? '-'
+                                      const correction = r.correction ?? r.koreksi ?? '-'
+                                      const corrected = r.corrected ?? r.terkoreksi ?? r.corrected_value ?? '-'
+                                      const unit = r.unit ?? r.satuan ?? ''
+                                      return (
+                                        <tr key={i}>
+                                          <td className="p-1 border border-black">{no}</td>
+                                          <td className="p-1 border border-black text-left">{reading}</td>
+                                          <td className="p-1 border border-black text-left">{standard}</td>
+                                          <td className="p-1 border border-black text-left">{correction}</td>
+                                          <td className="p-1 border border-black text-left">{corrected}</td>
+                                          <td className="p-1 border border-black text-left">{unit}</td>
+                                        </tr>
+                                      )
+                                    })}
+                                  </tbody>
+                                </table>
+                              ) : isParamHeaderStyle ? (
+                                <table className="w-full text-xs border-[2px] border-black border-collapse text-center">
+                                  <thead>
+                                    <tr className="font-bold">
+                                      {rows.map((r: any, i: number) => {
+                                        const unit = r?.unit ?? r?.satuan
+                                        const label = `${r?.key || '-'}` + (unit ? ` ${unit}` : '')
+                                        return <td key={i} className="p-1 border border-black">{label}</td>
+                                      })}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    <tr>
+                                      {rows.map((r: any, i: number) => (
+                                        <td key={i} className="p-1 border border-black text-left">{r?.value ?? '-'}</td>
+                                      ))}
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* Images per sensor only for Geofisika */}
+                    {station?.type?.toString().trim().toLowerCase() === 'geofisika' && Array.isArray((res as any).images) && (res as any).images.length > 0 && (
+                      <div className="mt-4">
+                        <h5 className="text-sm font-semibold mb-2 text-center">Gambar</h5>
+                        <div className="flex flex-wrap gap-3 justify-center">
+                          {(res as any).images.map((img: any, i: number) => {
+                            const src = typeof img === 'string' ? img : (img?.url || '')
+                            if (!src) return null
+                            return (
+                              <figure key={i} className="m-0 text-center">
+                                <img src={src} alt={`Gambar Sensor ${i + 1}`} className="block w-[240px] h-[160px] object-contain bg-white" />
+                                {img?.caption ? (
+                                  <figcaption className="text-[11px] text-gray-600 mt-1 leading-tight">{img.caption}</figcaption>
+                                ) : null}
+                              </figure>
+                            )
+                          })}
                         </div>
                       </div>
-                    )
-                  })()}
+                    )}
 
-                </div>
-              ))}
+                    {/* Notes per sensor */}
+                    {(() => {
+                      const nf: any = res?.notesForm || null
+                      if (!nf) return null
+                      const hasAny = nf.traceable_to_si_through || nf.reference_document || nf.calibration_methode || nf.others || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)
+                      if (!hasAny) return null
+                      return (
+                        <div className="mt-6">
+                          <h5 className="text-sm font-bold">Catatan / <span className="italic">Notes</span> :</h5>
+                          <table className="w-full text-xs mt-2">
+                            <tbody>
+                              {(nf.others || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)) && (
+                                <tr>
+                                  <td className="w-[35%] align-top text-left pr-2">
+                                    <div className="font-bold leading-tight">Standar Kalibrasi</div>
+                                    <div className="italic text-[10px] text-gray-700 leading-tight">Calibration Standard</div>
+                                  </td>
+                                  <td className="w-[5%] align-top">:</td>
+                                  <td className="w-[60%] align-top whitespace-pre-line">{nf.others || '-'}</td>
+                                </tr>
+                              )}
+                              {nf.traceable_to_si_through && (
+                                <tr>
+                                  <td className="align-top text-left pr-2">
+                                    <div className="font-bold leading-tight">Tertelusur ke SI melalui</div>
+                                    <div className="italic text-[10px] text-gray-700 leading-tight">Traceable to SI through</div>
+                                  </td>
+                                  <td className="align-top">:</td>
+                                  <td className="align-top whitespace-pre-line">{nf.traceable_to_si_through}</td>
+                                </tr>
+                              )}
+                              {nf.calibration_methode && (
+                                <tr>
+                                  <td className="align-top text-left pr-2">
+                                    <div className="font-bold leading-tight">Metode Kalibrasi</div>
+                                    <div className="italic text-[10px] text-gray-700 leading-tight">Calibration Methode</div>
+                                  </td>
+                                  <td className="align-top">:</td>
+                                  <td className="align-top whitespace-pre-line">{nf.calibration_methode}</td>
+                                </tr>
+                              )}
+                              {nf.reference_document && (
+                                <tr>
+                                  <td className="align-top text-left pr-2">
+                                    <div className="font-bold leading-tight">Dokumen Acuan</div>
+                                    <div className="italic text-[10px] text-gray-700 leading-tight">Reference Document</div>
+                                  </td>
+                                  <td className="align-top">:</td>
+                                  <td className="align-top whitespace-pre-line">{nf.reference_document}</td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                          <div className="mt-2 space-y-1 text-xs">
+                            <div>
+                              <div className="font-bold">Penunjukan nilai sebenarnya didapat dari penunjukan alat ditambah koreksi.</div>
+                              <div className="text-[10px] italic text-gray-700">The true value is determined from the instrument reading added by its correction.</div>
+                            </div>
+                            <div>
+                              <div className="font-bold">Sertifikat ini hanya berlaku untuk peralatan dengan identitas yang dinyatakan di atas.</div>
+                              <div className="text-[10px] italic text-gray-700">This certificate only applies to equipment with the identity stated above.</div>
+                            </div>
+                            <div>
+                              <div className="font-bold">Ketidakpastian pengukuran dinyatakan pada tingkat kepercayaan tidak kurang dari 95 % dengan faktor cakupan k = 2,01</div>
+                              <div className="text-[10px] italic text-gray-700">Uncertainty of measurement is expressed at a confidence level of no less than 95 % with coverage factor k = 2.01</div>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
           </>
         )}
       </div>

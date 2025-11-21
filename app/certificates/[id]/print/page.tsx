@@ -989,7 +989,7 @@ const PrintCertificatePage: React.FC = () => {
         {/* Footer Halaman 1 */}
         <footer className="page-1-footer text-xs" style={{ listStyle: 'none', listStyleType: 'none', listStylePosition: 'outside' }}>
           <div className="text-center text-[10px] text-gray-700" style={{ listStyle: 'none', listStyleType: 'none' }}>
-            Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
+            Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
           </div>
           <div className="flex justify-between items-end mt-2" style={{ listStyle: 'none', listStyleType: 'none' }}>
             <div className="font-semibold" style={{ listStyle: 'none', listStyleType: 'none', display: 'block', textAlign: 'left' }}>F/IKK 7.8.1</div>

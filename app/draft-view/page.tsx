@@ -132,7 +132,7 @@ const TableRenderer: React.FC<{ data: any; title?: string }> = ({ data, title })
   if (data.rows && Array.isArray(data.rows)) {
     tableData = data.rows
     tableTitle = data.title || title || ''
-  } 
+  }
   // Check if data is direct array (old format)
   else if (Array.isArray(data)) {
     tableData = data
@@ -254,7 +254,7 @@ const CertificatePreview: React.FC<{
   const formatDateIndo = (ymd: string | null | undefined) => {
     if (!ymd) return '-'
     const [y, m, d] = ymd.split('-')
-    const months = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']
+    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
     const idx = Math.max(1, Math.min(12, parseInt(m || '1', 10))) - 1
     return `${d?.padStart(2, '0') ?? '--'} ${months[idx]} ${y ?? '----'}`
   }
@@ -281,7 +281,7 @@ const CertificatePreview: React.FC<{
   // QR verification URL and signing status
   const qrUrl = certificate.no_certificate ? `/verify/${encodeURIComponent(certificate.no_certificate)}` : ''
   const [isSigned, setIsSigned] = useState<boolean>(false)
-  
+
   const checkVerificationStatus = async () => {
     try {
       if (!certificate.id) return
@@ -301,11 +301,11 @@ const CertificatePreview: React.FC<{
       // no fallback to avoid turning black on 'sent'
     }
   }
-  
+
   useEffect(() => {
     checkVerificationStatus()
   }, [certificate.id])
-  
+
   // Listen for storage events to refresh QR status when signing happens
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
@@ -319,12 +319,12 @@ const CertificatePreview: React.FC<{
         }
       }
     }
-    
+
     window.addEventListener('storage', handleStorageChange)
-    
+
     // Also check periodically (every 5 seconds) in case we miss the event
     const interval = setInterval(checkVerificationStatus, 5000)
-    
+
     return () => {
       window.removeEventListener('storage', handleStorageChange)
       clearInterval(interval)
@@ -332,7 +332,7 @@ const CertificatePreview: React.FC<{
   }, [certificate.id])
 
   // Styled QR component
-  const QRCodeBox: React.FC<{ value: string; size?: number; logoSize?: number; fgColor?: string }>= ({ value, size = 120, logoSize = 36, fgColor = '#000000' }) => {
+  const QRCodeBox: React.FC<{ value: string; size?: number; logoSize?: number; fgColor?: string }> = ({ value, size = 120, logoSize = 36, fgColor = '#000000' }) => {
     const ref = useRef<HTMLDivElement | null>(null)
     const qr = useRef<QRCodeStyling | null>(null)
     useEffect(() => {
@@ -377,7 +377,7 @@ const CertificatePreview: React.FC<{
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm relative" suppressHydrationWarning>
-      <div 
+      <div
         className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-30"
         style={{
           backgroundImage: `url(${bmkgLogo.src})`,
@@ -388,477 +388,477 @@ const CertificatePreview: React.FC<{
       />
       {/* Removed large BMKG text watermark overlay */}
       <div className="relative z-10">
-      {/* Certificate Header (mirror print) */}
-      <div className="mb-8">
-        <header className="flex flex-row items-center justify-between border-b-4 border-black pb-2">
-          <div className="w-[80px] flex items-center justify-center">
-            <img src={bmkgLogo.src} alt="BMKG" className="h-20 w-20 object-contain" />
-          </div>
-          <div className="text-center leading-tight">
-            <h1 className="text-base font-bold text-gray-900">BADAN METEOROLOGI KLIMATOLOGI DAN GEOFISIKA</h1>
-            <h2 className="text-base font-bold text-gray-900">LABORATORIUM KALIBRASI BMKG</h2>
-          </div>
-          <div className="w-[80px]" />
-        </header>
-
-        {/* Certificate Title */}
-        <div className="text-center my-6">
-          <h1 className="text-xl font-bold tracking-wide text-gray-900">SERTIFIKAT KALIBRASI</h1>
-          <h2 className="text-base italic text-gray-700">CALIBRATION CERTIFICATE</h2>
-          <div className="text-sm font-semibold mt-2 text-gray-900">{certificate.no_certificate || '-'}</div>
-        </div>
-        <div className="mt-6">
-          {/* Left column: Identitas Alat & Pemilik */}
-          <div>
-            {/* Identitas Alat */}
-            <div className="mb-6">
-              <h3 className="text-sm font-bold text-gray-900">IDENTITAS ALAT</h3>
-              <h4 className="text-xs italic text-gray-600 mb-2">Instrument Details</h4>
-              <table className="w-full text-xs">
-                <tbody>
-                  <tr>
-                    <td className="w-[32%] align-top pr-2">
-                      <div className="font-semibold">Nama Alat</div>
-                      <div className="text-[10px] italic text-gray-600">Instrument Name</div>
-                    </td>
-                    <td className="w-[3%] align-top">:</td>
-                    <td className="align-top">
-                      <div className="inline-flex items-start w-full">
-                        <div className="flex-1 font-semibold">{instrument?.name || '-'}</div>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="align-top pr-2">
-                      <div className="font-semibold">Merek Pabrik</div>
-                      <div className="text-[10px] italic text-gray-600">Manufacturer</div>
-                    </td>
-                    <td className="align-top">:</td>
-                    <td className="align-top">
-                      <div className="inline-flex items-start w-full">
-                        <div className="flex-1 font-semibold">{instrument?.manufacturer || '-'}</div>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="align-top pr-2">
-                      <div className="font-semibold">Tipe / Nomor Seri</div>
-                      <div className="text-[10px] italic text-gray-600">Type / Serial Number</div>
-                    </td>
-                    <td className="align-top">:</td>
-                    <td className="align-top">
-                      <div className="inline-flex items-start w-full">
-                        <div className="flex-1 font-semibold">{(instrument?.type || '-') + ' / ' + (instrument?.serial_number || '-')}</div>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="align-top pr-2">
-                      <div className="font-semibold">Lain-lain</div>
-                      <div className="text-[10px] italic text-gray-600">Others</div>
-                    </td>
-                    <td className="align-top">:</td>
-                    <td className="align-top">
-                      <div className="inline-flex items-start w-full">
-                        <div className="flex-1 font-semibold whitespace-pre-line">{sensorsSummary}</div>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+        {/* Certificate Header (mirror print) */}
+        <div className="mb-8">
+          <header className="flex flex-row items-center justify-between border-b-4 border-black pb-2">
+            <div className="w-[80px] flex items-center justify-center">
+              <img src={bmkgLogo.src} alt="BMKG" className="h-20 w-20 object-contain" />
             </div>
+            <div className="text-center leading-tight">
+              <h1 className="text-base font-bold text-gray-900">BADAN METEOROLOGI KLIMATOLOGI DAN GEOFISIKA</h1>
+              <h2 className="text-base font-bold text-gray-900">LABORATORIUM KALIBRASI BMKG</h2>
+            </div>
+            <div className="w-[80px]" />
+          </header>
 
-            {/* Identitas Pemilik */}
+          {/* Certificate Title */}
+          <div className="text-center my-6">
+            <h1 className="text-xl font-bold tracking-wide text-gray-900">SERTIFIKAT KALIBRASI</h1>
+            <h2 className="text-base italic text-gray-700">CALIBRATION CERTIFICATE</h2>
+            <div className="text-sm font-semibold mt-2 text-gray-900">{certificate.no_certificate || '-'}</div>
+          </div>
+          <div className="mt-6">
+            {/* Left column: Identitas Alat & Pemilik */}
             <div>
-              <h3 className="text-sm font-bold text-gray-900">IDENTITAS PEMILIK</h3>
-              <h4 className="text-xs italic text-gray-600 mb-2">Owner Identification</h4>
-              <table className="w-full text-xs">
-                <tbody>
-                  <tr>
-                    <td className="w-[32%] align-top pr-2">
-                      <div className="font-semibold">Nama</div>
-                      <div className="text-[10px] italic text-gray-600">Designation</div>
-                    </td>
-                    <td className="w-[3%] align-top">:</td>
-                    <td className="align-top">
-                      <div className="inline-flex items-start w-full">
-                        <div className="flex-1 font-semibold">{station?.name || '-'}</div>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="align-top pr-2">
-                      <div className="font-semibold">Alamat</div>
-                      <div className="text-[10px] italic text-gray-600">Address</div>
-                    </td>
-                    <td className="align-top">:</td>
-                    <td className="align-top">
-                      <div className="inline-flex items-start w-full">
-                        <div className="flex-1 font-semibold">{certificate.station_address || '-'}</div>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
+              {/* Identitas Alat */}
+              <div className="mb-6">
+                <h3 className="text-sm font-bold text-gray-900">IDENTITAS ALAT</h3>
+                <h4 className="text-xs italic text-gray-600 mb-2">Instrument Details</h4>
+                <table className="w-full text-xs">
+                  <tbody>
+                    <tr>
+                      <td className="w-[32%] align-top pr-2">
+                        <div className="font-semibold">Nama Alat</div>
+                        <div className="text-[10px] italic text-gray-600">Instrument Name</div>
+                      </td>
+                      <td className="w-[3%] align-top">:</td>
+                      <td className="align-top">
+                        <div className="inline-flex items-start w-full">
+                          <div className="flex-1 font-semibold">{instrument?.name || '-'}</div>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="align-top pr-2">
+                        <div className="font-semibold">Merek Pabrik</div>
+                        <div className="text-[10px] italic text-gray-600">Manufacturer</div>
+                      </td>
+                      <td className="align-top">:</td>
+                      <td className="align-top">
+                        <div className="inline-flex items-start w-full">
+                          <div className="flex-1 font-semibold">{instrument?.manufacturer || '-'}</div>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="align-top pr-2">
+                        <div className="font-semibold">Tipe / Nomor Seri</div>
+                        <div className="text-[10px] italic text-gray-600">Type / Serial Number</div>
+                      </td>
+                      <td className="align-top">:</td>
+                      <td className="align-top">
+                        <div className="inline-flex items-start w-full">
+                          <div className="flex-1 font-semibold">{(instrument?.type || '-') + ' / ' + (instrument?.serial_number || '-')}</div>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="align-top pr-2">
+                        <div className="font-semibold">Lain-lain</div>
+                        <div className="text-[10px] italic text-gray-600">Others</div>
+                      </td>
+                      <td className="align-top">:</td>
+                      <td className="align-top">
+                        <div className="inline-flex items-start w-full">
+                          <div className="flex-1 font-semibold whitespace-pre-line">{sensorsSummary}</div>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
-          {/* Authorization block with QR below (placed under Owner Identification, right aligned) */}
-          <div className="mt-6 flex justify-end">
-            <div className="text-xs w-[300px]">
-              <div className="mb-2">
-                <div className="font-semibold">Sertifikat ini terdiri atas {totalPrintedPages} halaman</div>
-                <div className="text-[10px] italic text-gray-700">This certificate comprises of pages</div>
+              {/* Identitas Pemilik */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">IDENTITAS PEMILIK</h3>
+                <h4 className="text-xs italic text-gray-600 mb-2">Owner Identification</h4>
+                <table className="w-full text-xs">
+                  <tbody>
+                    <tr>
+                      <td className="w-[32%] align-top pr-2">
+                        <div className="font-semibold">Nama</div>
+                        <div className="text-[10px] italic text-gray-600">Designation</div>
+                      </td>
+                      <td className="w-[3%] align-top">:</td>
+                      <td className="align-top">
+                        <div className="inline-flex items-start w-full">
+                          <div className="flex-1 font-semibold">{station?.name || '-'}</div>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="align-top pr-2">
+                        <div className="font-semibold">Alamat</div>
+                        <div className="text-[10px] italic text-gray-600">Address</div>
+                      </td>
+                      <td className="align-top">:</td>
+                      <td className="align-top">
+                        <div className="inline-flex items-start w-full">
+                          <div className="flex-1 font-semibold">{certificate.station_address || '-'}</div>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-              <div className="mb-4">
-                <div className="font-semibold">Diterbitkan tanggal {formatDateIndo(certificate.issue_date)}</div>
-                <div className="text-[10px] italic text-gray-700">Date of issue</div>
+            </div>
+
+            {/* Authorization block with QR below (placed under Owner Identification, right aligned) */}
+            <div className="mt-6 flex justify-end">
+              <div className="text-xs w-[300px]">
+                <div className="mb-2">
+                  <div className="font-semibold">Sertifikat ini terdiri atas {totalPrintedPages} halaman</div>
+                  <div className="text-[10px] italic text-gray-700">This certificate comprises of pages</div>
+                </div>
+                <div className="mb-4">
+                  <div className="font-semibold">Diterbitkan tanggal {formatDateIndo(certificate.issue_date)}</div>
+                  <div className="text-[10px] italic text-gray-700">Date of issue</div>
+                </div>
+                <div className="mb-4">
+                  <div className="font-semibold">Kepala Pusat Instrumentasi,</div>
+                  <div className="font-semibold">Kalibrasi dan Rekayasa</div>
+                </div>
+                <div className="flex justify-start mb-2">
+                  {qrUrl && (
+                    <div className="border-2 border-black bg-white flex items-center justify-center" style={{ width: 140, height: 140 }}>
+                      <QRCodeBox
+                        key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
+                        value={qrUrl}
+                        size={120}
+                        logoSize={36}
+                        fgColor={isSigned ? '#000000' : '#B91C1C'}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="font-bold underline">{authorized?.name || '-'}</div>
+                <div className="text-xs font-semibold underline mt-1">Assignor</div>
               </div>
-              <div className="mb-4">
-                <div className="font-semibold">Kepala Pusat Instrumentasi,</div>
-                <div className="font-semibold">Kalibrasi dan Rekayasa</div>
-              </div>
-              <div className="flex justify-start mb-2">
-                {qrUrl && (
-                  <div className="border-2 border-black bg-white flex items-center justify-center" style={{ width: 140, height: 140 }}>
-                    <QRCodeBox 
-                      key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
-                      value={qrUrl} 
-                      size={120} 
-                      logoSize={36} 
-                      fgColor={isSigned ? '#000000' : '#B91C1C'} 
-                    />
-                  </div>
-                )}
-              </div>
-              <div className="font-bold underline">{authorized?.name || '-'}</div>
-              <div className="text-xs font-semibold underline mt-1">Assignor</div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Certificate Details removed in favor of left/right sections matching mockup */}
+        {/* Certificate Details removed in favor of left/right sections matching mockup */}
 
-      {/* Station Address section removed to match print layout */}
+        {/* Station Address section removed to match print layout */}
 
-      {/* Calibration Results: per-page like print - Halaman 2+ */}
-      {results && results.length > 0 && qrUrl && (
-        <>
-          <div className="mb-8">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Hasil Kalibrasi</h3>
-          <div className="space-y-6">
-            {results.map((res: any, index: number) => (
-              <div key={index} className="border border-gray-300 rounded-lg p-5 relative">
-                {/* QR Code kecil di setiap halaman hasil kalibrasi - SELALU muncul di semua status */}
-                {/* Warna: Merah (#B91C1C) jika belum approved level 3, Hitam (#000000) jika sudah approved level 3 */}
-                <div className="absolute bottom-0 left-1 z-50 bg-white border-2 border-gray-300 rounded-lg p-1 shadow-lg">
-                  <QRCodeBox 
-                    key={`qr-footer-${isSigned ? 'signed' : 'unsigned'}-${index}`}
-                    value={qrUrl} 
-                    size={70} 
-                    logoSize={21} 
-                    fgColor={isSigned ? '#000000' : '#B91C1C'} 
-                  />
-                </div>
-                {/* Header per halaman sensor */}
-                <header className="flex justify-between items-start text-xs mb-4">
-                  <div className="w-[80px]">
-                    <img src={bmkgLogo.src} alt="BMKG" className="h-20 w-20 object-contain" />
-                  </div>
-                  <div className="flex-1 flex justify-end items-start">
-                    <table className="text-xs table-fixed ml-auto mr-0">
-                      <tbody>
-                        <tr>
-                          <td className="w-[55%] text-right font-bold leading-tight">
-                            <div>No. Sertifikat</div>
-                            <div className="italic font-normal">Certificate Number</div>
-                          </td>
-                          <td className="w-[5%] px-1">:</td>
-                          <td className="w-[40%]">{certificate.no_certificate || '-'}</td>
-                        </tr>
-                        <tr>
-                          <td className="text-right font-bold leading-tight">
-                            <div>No. Order</div>
-                            <div className="italic font-normal">Order Number</div>
-                          </td>
-                          <td className="px-1">:</td>
-                          <td>{certificate.no_order || '-'}</td>
-                        </tr>
-                        <tr>
-                          <td className="text-right font-bold leading-tight">
-                            <div>Halaman</div>
-                            <div className="italic font-normal">Page</div>
-                          </td>
-                          <td className="px-1">:</td>
-                          <td>{index + 2} dari {totalPrintedPages}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </header>
+        {/* Calibration Results: per-page like print - Halaman 2+ */}
+        {results && results.length > 0 && qrUrl && (
+          <>
+            <div className="mb-8">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Hasil Kalibrasi</h3>
+              <div className="space-y-6">
+                {results.map((res: any, index: number) => (
+                  <div key={index} className="border border-gray-300 rounded-lg p-5 relative">
+                    {/* QR Code kecil di setiap halaman hasil kalibrasi - SELALU muncul di semua status */}
+                    {/* Warna: Merah (#B91C1C) jika belum approved level 3, Hitam (#000000) jika sudah approved level 3 */}
+                    <div className="absolute bottom-0 left-1 z-50 bg-white border-2 border-gray-300 rounded-lg p-1 shadow-lg">
+                      <QRCodeBox
+                        key={`qr-footer-${isSigned ? 'signed' : 'unsigned'}-${index}`}
+                        value={qrUrl}
+                        size={70}
+                        logoSize={21}
+                        fgColor={isSigned ? '#000000' : '#B91C1C'}
+                      />
+                    </div>
+                    {/* Header per halaman sensor */}
+                    <header className="flex justify-between items-start text-xs mb-4">
+                      <div className="w-[80px]">
+                        <img src={bmkgLogo.src} alt="BMKG" className="h-20 w-20 object-contain" />
+                      </div>
+                      <div className="flex-1 flex justify-end items-start">
+                        <table className="text-xs table-fixed ml-auto mr-0">
+                          <tbody>
+                            <tr>
+                              <td className="w-[55%] text-right font-bold leading-tight">
+                                <div>No. Sertifikat</div>
+                                <div className="italic font-normal">Certificate Number</div>
+                              </td>
+                              <td className="w-[5%] px-1">:</td>
+                              <td className="w-[40%]">{certificate.no_certificate || '-'}</td>
+                            </tr>
+                            <tr>
+                              <td className="text-right font-bold leading-tight">
+                                <div>No. Order</div>
+                                <div className="italic font-normal">Order Number</div>
+                              </td>
+                              <td className="px-1">:</td>
+                              <td>{certificate.no_order || '-'}</td>
+                            </tr>
+                            <tr>
+                              <td className="text-right font-bold leading-tight">
+                                <div>Halaman</div>
+                                <div className="italic font-normal">Page</div>
+                              </td>
+                              <td className="px-1">:</td>
+                              <td>{index + 2} dari {totalPrintedPages}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </header>
 
-                {/* Sensor Details + Environment (mirror print) */}
-                {(() => {
-                  const sd = res?.sensorDetails || {}
-                  const name = sd?.name || sd?.type || '-'
-                  const manufacturer = sd?.manufacturer || '-'
-                  const type = sd?.type || '-'
-                  const serial = sd?.serial_number || '-'
-                  const start = res?.startDate ? new Date(res.startDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) : '-'
-                  const end = res?.endDate ? new Date(res.endDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) : '-'
-                  const place = res?.place || '-'
-                  const sensorInfo: Array<{ label: string; labelEng: string; value: React.ReactNode; topGap?: boolean; bold?: boolean }> = [
-                    { label: 'Nama Sensor / ', labelEng: 'Sensor Name', value: name, bold: true },
-                    { label: 'Merek Sensor / ', labelEng: 'Manufacturer', value: manufacturer, bold: true },
-                    { label: 'Tipe & No. Seri / ', labelEng: 'Type & Serial Number', value: `${type} / ${serial}`, bold: true },
-                    { label: 'Tanggal Masuk / ', labelEng: 'Date of Entry', value: start, topGap: true },
-                    { label: 'Tanggal Kalibrasi / ', labelEng: 'Calibration Date', value: end },
-                    { label: 'Tempat Kalibrasi / ', labelEng: 'Calibration Place', value: place },
-                  ]
-                  const envRows: Array<{ label: string; labelEng: string; value: React.ReactNode }> = (res?.environment || []).map((env: any) => {
-                    const key = String(env?.key || '')
-                    const lower = key.toLowerCase()
-                    const label = lower.includes('suhu') ? 'Suhu / ' : lower.includes('kelembaban') ? 'Kelembaban / ' : `${key} `
-                    const eng = lower.includes('suhu') ? 'Temperature' : lower.includes('kelembaban') ? 'Relative Humidity' : ''
-                    return { label, labelEng: eng, value: env?.value || '-' }
-                  })
-                  return (
-                    <table className="w-full text-sm">
-                      <tbody>
-                        {sensorInfo.map((row, i) => (
-                          <tr key={`sinfo-${i}`}>
-                            <td className={`w-[45%] align-top font-semibold ${row.topGap ? 'pt-2' : ''}`}>
-                              {row.label}<span className="italic">{row.labelEng}</span>
-                            </td>
-                            <td className={`w-[5%] align-top ${row.topGap ? 'pt-2' : ''}`}>:</td>
-                            <td className={`${row.topGap ? 'pt-2' : ''}`} colSpan={2}>
-                              <span className={row.bold ? 'font-semibold' : undefined}>{row.value}</span>
-                            </td>
-                          </tr>
-                        ))}
-                        {envRows.length > 0 && (
-                          <tr>
-                            <td />
-                            <td />
-                            <td className="text-sm font-bold" colSpan={2}>Kondisi Lingkungan / <span className="italic">Environment</span></td>
-                          </tr>
-                        )}
-                        {envRows.map((row, i) => (
-                          <tr key={`env-${i}`}>
-                            <td />
-                            <td />
-                            <td className="align-top font-semibold">{row.label}<span className="italic">{row.labelEng}</span></td>
-                            <td className="align-top">: {row.value}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )
-                })()}
-
-                {/* Calibration Result Tables (mirror print) */}
-                {Array.isArray(res?.table) && res.table.length > 0 && (
-                  <div className="mt-6 space-y-3">
-                    <h5 className="text-sm font-bold text-center">HASIL KALIBRASI / <span className="italic">CALIBRATION RESULT</span></h5>
-                    {res.table.map((sec: any, sIdx: number) => {
-                      const rows = Array.isArray(sec?.rows) ? sec.rows : []
-                      const useFourCol = rows.length >= 4 && rows.slice(0,4).every((r: any) => r && 'key' in r && 'unit' in r && 'value' in r)
+                    {/* Sensor Details + Environment (mirror print) */}
+                    {(() => {
+                      const sd = res?.sensorDetails || {}
+                      const name = sd?.name || sd?.type || '-'
+                      const manufacturer = sd?.manufacturer || '-'
+                      const type = sd?.type || '-'
+                      const serial = sd?.serial_number || '-'
+                      const start = res?.startDate ? new Date(res.startDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) : '-'
+                      const end = res?.endDate ? new Date(res.endDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) : '-'
+                      const place = res?.place || '-'
+                      const sensorInfo: Array<{ label: string; labelEng: string; value: React.ReactNode; topGap?: boolean; bold?: boolean }> = [
+                        { label: 'Nama Sensor / ', labelEng: 'Sensor Name', value: name, bold: true },
+                        { label: 'Merek Sensor / ', labelEng: 'Manufacturer', value: manufacturer, bold: true },
+                        { label: 'Tipe & No. Seri / ', labelEng: 'Type & Serial Number', value: `${type} / ${serial}`, bold: true },
+                        { label: 'Tanggal Masuk / ', labelEng: 'Date of Entry', value: start, topGap: true },
+                        { label: 'Tanggal Kalibrasi / ', labelEng: 'Calibration Date', value: end },
+                        { label: 'Tempat Kalibrasi / ', labelEng: 'Calibration Place', value: place },
+                      ]
+                      const envRows: Array<{ label: string; labelEng: string; value: React.ReactNode }> = (res?.environment || []).map((env: any) => {
+                        const key = String(env?.key || '')
+                        const lower = key.toLowerCase()
+                        const label = lower.includes('suhu') ? 'Suhu / ' : lower.includes('kelembaban') ? 'Kelembaban / ' : `${key} `
+                        const eng = lower.includes('suhu') ? 'Temperature' : lower.includes('kelembaban') ? 'Relative Humidity' : ''
+                        return { label, labelEng: eng, value: env?.value || '-' }
+                      })
                       return (
-                        <div key={sIdx} className="mt-2">
-                          <div className="text-xs font-bold mb-1">{sec?.title || `Tabel ${sIdx + 1}`}</div>
-                          {useFourCol ? (
-                            <table className="w-full text-xs border-[2px] border-black border-collapse text-center">
-                              <thead>
-                                <tr className="font-bold">
-                                  {rows.slice(0,4).map((r: any, i: number) => {
-                                    const label = `${r?.key || '-'}` + (r?.unit ? ` ${r.unit}` : '')
-                                    return (
-                                      <td key={i} className="p-1 border border-black">{label}</td>
-                                    )
-                                  })}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                <tr>
-                                  {rows.slice(0,4).map((r: any, i: number) => (
-                                    <td key={i} className="p-1 border border-black text-left">{r?.value || '-'}</td>
-                                  ))}
-                                </tr>
-                              </tbody>
-                            </table>
-                          ) : (
-                            <table className="w-full text-xs border-[2px] border-black text-center border-collapse">
-                              <thead>
-                                <tr className="font-bold">
-                                  <td className="p-1 border border-black">Parameter</td>
-                                  <td className="p-1 border border-black">Nilai</td>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {rows.map((row: any, rIdx: number) => {
-                                  const label = `${row?.key || '-'}` + (row?.unit ? ` ${row.unit}` : '')
-                                  return (
-                                    <tr key={rIdx}>
-                                      <td className="p-1 border border-black text-left">{label}</td>
-                                      <td className="p-1 border border-black text-left">{row?.value || '-'}</td>
+                        <table className="w-full text-sm">
+                          <tbody>
+                            {sensorInfo.map((row, i) => (
+                              <tr key={`sinfo-${i}`}>
+                                <td className={`w-[45%] align-top font-semibold ${row.topGap ? 'pt-2' : ''}`}>
+                                  {row.label}<span className="italic">{row.labelEng}</span>
+                                </td>
+                                <td className={`w-[5%] align-top ${row.topGap ? 'pt-2' : ''}`}>:</td>
+                                <td className={`${row.topGap ? 'pt-2' : ''}`} colSpan={2}>
+                                  <span className={row.bold ? 'font-semibold' : undefined}>{row.value}</span>
+                                </td>
+                              </tr>
+                            ))}
+                            {envRows.length > 0 && (
+                              <tr>
+                                <td />
+                                <td />
+                                <td className="text-sm font-bold" colSpan={2}>Kondisi Lingkungan / <span className="italic">Environment</span></td>
+                              </tr>
+                            )}
+                            {envRows.map((row, i) => (
+                              <tr key={`env-${i}`}>
+                                <td />
+                                <td />
+                                <td className="align-top font-semibold">{row.label}<span className="italic">{row.labelEng}</span></td>
+                                <td className="align-top">: {row.value}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )
+                    })()}
+
+                    {/* Calibration Result Tables (mirror print) */}
+                    {Array.isArray(res?.table) && res.table.length > 0 && (
+                      <div className="mt-6 space-y-3">
+                        <h5 className="text-sm font-bold text-center">HASIL KALIBRASI / <span className="italic">CALIBRATION RESULT</span></h5>
+                        {res.table.map((sec: any, sIdx: number) => {
+                          const rows = Array.isArray(sec?.rows) ? sec.rows : []
+                          const useFourCol = rows.length >= 4 && rows.slice(0, 4).every((r: any) => r && 'key' in r && 'unit' in r && 'value' in r)
+                          return (
+                            <div key={sIdx} className="mt-2">
+                              <div className="text-xs font-bold mb-1">{sec?.title || `Tabel ${sIdx + 1}`}</div>
+                              {useFourCol ? (
+                                <table className="w-full text-xs border-[2px] border-black border-collapse text-center">
+                                  <thead>
+                                    <tr className="font-bold">
+                                      {rows.slice(0, 4).map((r: any, i: number) => {
+                                        const label = `${r?.key || '-'}` + (r?.unit ? ` ${r.unit}` : '')
+                                        return (
+                                          <td key={i} className="p-1 border border-black">{label}</td>
+                                        )
+                                      })}
                                     </tr>
-                                  )
-                                })}
-                              </tbody>
-                            </table>
-                          )}
+                                  </thead>
+                                  <tbody>
+                                    <tr>
+                                      {rows.slice(0, 4).map((r: any, i: number) => (
+                                        <td key={i} className="p-1 border border-black text-left">{r?.value || '-'}</td>
+                                      ))}
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              ) : (
+                                <table className="w-full text-xs border-[2px] border-black text-center border-collapse">
+                                  <thead>
+                                    <tr className="font-bold">
+                                      <td className="p-1 border border-black">Parameter</td>
+                                      <td className="p-1 border border-black">Nilai</td>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {rows.map((row: any, rIdx: number) => {
+                                      const label = `${row?.key || '-'}` + (row?.unit ? ` ${row.unit}` : '')
+                                      return (
+                                        <tr key={rIdx}>
+                                          <td className="p-1 border border-black text-left">{label}</td>
+                                          <td className="p-1 border border-black text-left">{row?.value || '-'}</td>
+                                        </tr>
+                                      )
+                                    })}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* Images per sensor only for Geofisika (duplicated style from View page) */}
+                    {Array.isArray((res as any).images) && (res as any).images.length > 0 && (
+                      <div className="mt-4">
+                        <h5 className="text-sm font-semibold mb-2 text-center">Gambar</h5>
+                        <div className="flex flex-wrap gap-3 justify-center">
+                          {(res as any).images.map((img: any, i: number) => {
+                            const src = typeof img === 'string' ? img : (img?.url || '')
+                            if (!src) return null
+                            return (
+                              <figure key={i} className="m-0 text-center">
+                                <img src={src} alt={`Gambar Sensor ${i + 1}`} className="block w-[240px] h-[160px] object-contain bg-white" />
+                                {img?.caption ? (
+                                  <figcaption className="text-[11px] text-gray-600 mt-1 leading-tight">{img.caption}</figcaption>
+                                ) : null}
+                              </figure>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Notes per sensor (mirror print) */}
+                    {(() => {
+                      const nf = res?.notesForm || null
+                      if (!nf) return null
+                      const hasAny = nf.traceable_to_si_through || nf.reference_document || nf.calibration_methode || nf.others || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)
+                      if (!hasAny) return null
+                      return (
+                        <div className="mt-6">
+                          <h5 className="text-sm font-bold">Catatan / <span className="italic">Notes</span> :</h5>
+                          <table className="w-full text-xs mt-2">
+                            <tbody>
+                              {(nf.others || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)) && (
+                                <tr>
+                                  <td className="w-[35%] align-top text-left pr-2">
+                                    <div className="font-bold leading-tight">Standar Kalibrasi</div>
+                                    <div className="italic text-[10px] text-gray-700 leading-tight">Calibration Standard</div>
+                                  </td>
+                                  <td className="w-[5%] align-top">:</td>
+                                  <td className="w-[60%] align-top whitespace-pre-line">{nf.others || '-'}</td>
+                                </tr>
+                              )}
+                              {nf.traceable_to_si_through && (
+                                <tr>
+                                  <td className="align-top text-left pr-2">
+                                    <div className="font-bold leading-tight">Tertelusur ke SI melalui</div>
+                                    <div className="italic text-[10px] text-gray-700 leading-tight">Traceable to SI through</div>
+                                  </td>
+                                  <td className="align-top">:</td>
+                                  <td className="align-top whitespace-pre-line">{nf.traceable_to_si_through}</td>
+                                </tr>
+                              )}
+                              {nf.calibration_methode && (
+                                <tr>
+                                  <td className="align-top text-left pr-2">
+                                    <div className="font-bold leading-tight">Metode Kalibrasi</div>
+                                    <div className="italic text-[10px] text-gray-700 leading-tight">Calibration Methode</div>
+                                  </td>
+                                  <td className="align-top">:</td>
+                                  <td className="align-top whitespace-pre-line">{nf.calibration_methode}</td>
+                                </tr>
+                              )}
+                              {nf.reference_document && (
+                                <tr>
+                                  <td className="align-top text-left pr-2">
+                                    <div className="font-bold leading-tight">Dokumen Acuan</div>
+                                    <div className="italic text-[10px] text-gray-700 leading-tight">Reference Document</div>
+                                  </td>
+                                  <td className="align-top">:</td>
+                                  <td className="align-top whitespace-pre-line">{nf.reference_document}</td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                          <div className="mt-2 space-y-1 text-xs">
+                            <div>
+                              <div className="font-bold">Penunjukan nilai sebenarnya didapat dari penunjukan alat ditambah koreksi.</div>
+                              <div className="text-[10px] italic text-gray-700">The true value is determined from the instrument reading added by its correction.</div>
+                            </div>
+                            <div>
+                              <div className="font-bold">Sertifikat ini hanya berlaku untuk peralatan dengan identitas yang dinyatakan di atas.</div>
+                              <div className="text-[10px] italic text-gray-700">This certificate only applies to equipment with the identity stated above.</div>
+                            </div>
+                            <div>
+                              <div className="font-bold">Ketidakpastian pengukuran dinyatakan pada tingkat kepercayaan tidak kurang dari 95 % dengan faktor cakupan k = 2,01</div>
+                              <div className="text-[10px] italic text-gray-700">Uncertainty of measurement is expressed at a confidence level of no less than 95 % with coverage factor k = 2.01</div>
+                            </div>
+                          </div>
                         </div>
                       )
-                    })}
-                  </div>
-                )}
+                    })()}
 
-                {/* Images per sensor only for Geofisika (duplicated style from View page) */}
-                {Array.isArray((res as any).images) && (res as any).images.length > 0 && (
-                  <div className="mt-4">
-                    <h5 className="text-sm font-semibold mb-2 text-center">Gambar</h5>
-                    <div className="flex flex-wrap gap-3 justify-center">
-                      {(res as any).images.map((img: any, i: number) => {
-                        const src = typeof img === 'string' ? img : (img?.url || '')
-                        if (!src) return null
-                        return (
-                          <figure key={i} className="m-0 text-center">
-                            <img src={src} alt={`Gambar Sensor ${i + 1}`} className="block w-[240px] h-[160px] object-contain bg-white" />
-                            {img?.caption ? (
-                              <figcaption className="text-[11px] text-gray-600 mt-1 leading-tight">{img.caption}</figcaption>
-                            ) : null}
-                          </figure>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Notes per sensor (mirror print) */}
-                {(() => {
-                  const nf = res?.notesForm || null
-                  if (!nf) return null
-                  const hasAny = nf.traceable_to_si_through || nf.reference_document || nf.calibration_methode || nf.others || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)
-                  if (!hasAny) return null
-                  return (
-                    <div className="mt-6">
-                      <h5 className="text-sm font-bold">Catatan / <span className="italic">Notes</span> :</h5>
-                      <table className="w-full text-xs mt-2">
-                        <tbody>
-                          {(nf.others || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)) && (
-                            <tr>
-                              <td className="w-[35%] align-top text-left pr-2">
-                                <div className="font-bold leading-tight">Standar Kalibrasi</div>
-                                <div className="italic text-[10px] text-gray-700 leading-tight">Calibration Standard</div>
-                              </td>
-                              <td className="w-[5%] align-top">:</td>
-                              <td className="w-[60%] align-top whitespace-pre-line">{nf.others || '-'}</td>
-                            </tr>
-                          )}
-                          {nf.traceable_to_si_through && (
-                            <tr>
-                              <td className="align-top text-left pr-2">
-                                <div className="font-bold leading-tight">Tertelusur ke SI melalui</div>
-                                <div className="italic text-[10px] text-gray-700 leading-tight">Traceable to SI through</div>
-                              </td>
-                              <td className="align-top">:</td>
-                              <td className="align-top whitespace-pre-line">{nf.traceable_to_si_through}</td>
-                            </tr>
-                          )}
-                          {nf.calibration_methode && (
-                            <tr>
-                              <td className="align-top text-left pr-2">
-                                <div className="font-bold leading-tight">Metode Kalibrasi</div>
-                                <div className="italic text-[10px] text-gray-700 leading-tight">Calibration Methode</div>
-                              </td>
-                              <td className="align-top">:</td>
-                              <td className="align-top whitespace-pre-line">{nf.calibration_methode}</td>
-                            </tr>
-                          )}
-                          {nf.reference_document && (
-                            <tr>
-                              <td className="align-top text-left pr-2">
-                                <div className="font-bold leading-tight">Dokumen Acuan</div>
-                                <div className="italic text-[10px] text-gray-700 leading-tight">Reference Document</div>
-                              </td>
-                              <td className="align-top">:</td>
-                              <td className="align-top whitespace-pre-line">{nf.reference_document}</td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                      <div className="mt-2 space-y-1 text-xs">
-                        <div>
-                          <div className="font-bold">Penunjukan nilai sebenarnya didapat dari penunjukan alat ditambah koreksi.</div>
-                          <div className="text-[10px] italic text-gray-700">The true value is determined from the instrument reading added by its correction.</div>
-                        </div>
-                        <div>
-                          <div className="font-bold">Sertifikat ini hanya berlaku untuk peralatan dengan identitas yang dinyatakan di atas.</div>
-                          <div className="text-[10px] italic text-gray-700">This certificate only applies to equipment with the identity stated above.</div>
-                        </div>
-                        <div>
-                          <div className="font-bold">Ketidakpastian pengukuran dinyatakan pada tingkat kepercayaan tidak kurang dari 95 % dengan faktor cakupan k = 2,01</div>
-                          <div className="text-[10px] italic text-gray-700">Uncertainty of measurement is expressed at a confidence level of no less than 95 % with coverage factor k = 2.01</div>
+                    {/* Images */}
+                    {station?.type?.toString().trim().toLowerCase() === 'geofisika' && res.images && res.images.length > 0 && (
+                      <div className="mt-4">
+                        <h5 className="text-sm font-semibold mb-2">Gambar</h5>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                          {res.images.map((image: string, imageIndex: number) => (
+                            <div key={imageIndex} className="border border-gray-200 rounded-lg overflow-hidden">
+                              <img src={image} alt={`Calibration image ${imageIndex + 1}`} className="w-full h-32 object-cover" />
+                            </div>
+                          ))}
                         </div>
                       </div>
-                    </div>
-                  )
-                })()}
-
-                {/* Images */}
-                {station?.type?.toString().trim().toLowerCase() === 'geofisika' && res.images && res.images.length > 0 && (
-                  <div className="mt-4">
-                    <h5 className="text-sm font-semibold mb-2">Gambar</h5>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {res.images.map((image: string, imageIndex: number) => (
-                        <div key={imageIndex} className="border border-gray-200 rounded-lg overflow-hidden">
-                          <img src={image} alt={`Calibration image ${imageIndex + 1}`} className="w-full h-32 object-cover" />
-                        </div>
-                      ))}
-                    </div>
+                    )}
                   </div>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-        </>
-      )}
+            </div>
+          </>
+        )}
 
-      {/* Verification Info */}
-      <div className="border-t border-gray-200 pt-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Informasi Verifikasi</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="text-center p-4 bg-blue-50 rounded-lg">
-            <h4 className="font-semibold text-blue-900">Verifikator 1</h4>
-            <p className="text-blue-700">{verifikator1?.name || 'Belum ditentukan'}</p>
-          </div>
-          <div className="text-center p-4 bg-green-50 rounded-lg">
-            <h4 className="font-semibold text-green-900">Verifikator 2</h4>
-            <p className="text-green-700">{verifikator2?.name || 'Belum ditentukan'}</p>
-          </div>
-          <div className="text-center p-4 bg-purple-50 rounded-lg">
-            <h4 className="font-semibold text-purple-900">Assignor</h4>
-            <p className="text-purple-700">{assignor?.name || 'Belum ditentukan'}</p>
+        {/* Verification Info */}
+        <div className="border-t border-gray-200 pt-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Informasi Verifikasi</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="text-center p-4 bg-blue-50 rounded-lg">
+              <h4 className="font-semibold text-blue-900">Verifikator 1</h4>
+              <p className="text-blue-700">{verifikator1?.name || 'Belum ditentukan'}</p>
+            </div>
+            <div className="text-center p-4 bg-green-50 rounded-lg">
+              <h4 className="font-semibold text-green-900">Verifikator 2</h4>
+              <p className="text-green-700">{verifikator2?.name || 'Belum ditentukan'}</p>
+            </div>
+            <div className="text-center p-4 bg-purple-50 rounded-lg">
+              <h4 className="font-semibold text-purple-900">Assignor</h4>
+              <p className="text-purple-700">{assignor?.name || 'Belum ditentukan'}</p>
+            </div>
           </div>
         </div>
-      </div>
 
-      <footer className="mt-6 text-xs">
-        <div className="text-center text-[10px] text-gray-700">
-          Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
-        </div>
-        <div className="flex justify-between items-end mt-2">
-          <span className="font-semibold">F/IKK 7.8.1</span>
-          <div className="text-center text-[10px] text-gray-700 leading-tight">
-            Jl. Angkasa I No. 02 Kemayoran Jakarta Pusat
-            <br />
-            Tlp. 021-4246321 Ext. 5125; Fax: 021-6545626; P.O. Box 3540 Jkt; Website: http://www.bmkg.go.id
+        <footer className="mt-6 text-xs">
+          <div className="text-center text-[10px] text-gray-700">
+            Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
           </div>
-          <span className="font-semibold">Edisi/Revisi: 11/0</span>
-        </div>
-      </footer>
+          <div className="flex justify-between items-end mt-2">
+            <span className="font-semibold">F/IKK 7.8.1</span>
+            <div className="text-center text-[10px] text-gray-700 leading-tight">
+              Jl. Angkasa I No. 02 Kemayoran Jakarta Pusat
+              <br />
+              Tlp. 021-4246321 Ext. 5125; Fax: 021-6545626; P.O. Box 3540 Jkt; Website: http://www.bmkg.go.id
+            </div>
+            <span className="font-semibold">Edisi/Revisi: 11/0</span>
+          </div>
+        </footer>
       </div>
     </div>
   )
@@ -935,7 +935,7 @@ const DraftView: React.FC<{
         verifikator_2: selectedVerifikator2 || null
       })
       setIsEditing(false)
-      
+
       // Update local state to reflect changes
       certificate.verifikator_1 = selectedVerifikator1 || null
       certificate.verifikator_2 = selectedVerifikator2 || null
@@ -980,18 +980,17 @@ const DraftView: React.FC<{
           <button
             onClick={() => { if (!(isSending || hasSent)) setShowModal(true) }}
             disabled={isSending || hasSent || !isReadyToSend}
-            className={`flex items-center px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 ${
-              isReadyToSend && !(isSending || hasSent)
-                ? 'bg-green-600 hover:bg-green-700' 
+            className={`flex items-center px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 ${isReadyToSend && !(isSending || hasSent)
+                ? 'bg-green-600 hover:bg-green-700'
                 : 'bg-gray-400 cursor-not-allowed'
-            }`}
+              }`}
           >
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
             </svg>
             {isSending ? 'MENGIRIM...' : hasSent ? 'TERKIRIM' : 'KIRIM KONSEP'}
           </button>
-          <button 
+          <button
             onClick={handleBack}
             className="flex items-center px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
           >
@@ -1127,8 +1126,8 @@ const DraftView: React.FC<{
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Preview Sertifikat</h3>
             <p className="text-sm text-gray-600">Tampilan sertifikat seperti yang akan dilihat verifikator</p>
           </div>
-          
-          <CertificatePreview 
+
+          <CertificatePreview
             certificate={certificate}
             stations={stations}
             instruments={instruments}
@@ -1219,7 +1218,7 @@ const DraftViewPage: React.FC = () => {
       }
 
       showAlert({ type: 'success', message: 'Sertifikat berhasil dikirim ke verifikator!' })
-      
+
       // Redirect back to certificates page after successful send
       router.push('/certificates')
     } catch (error) {
@@ -1233,11 +1232,11 @@ const DraftViewPage: React.FC = () => {
     try {
       // Get session from Supabase client
       const { data: { session } } = await supabase.auth.getSession()
-      
+
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
       }
-      
+
       // Add authorization header if session exists
       if (session?.access_token) {
         headers['Authorization'] = `Bearer ${session.access_token}`
@@ -1291,9 +1290,9 @@ const DraftViewPage: React.FC = () => {
 
   // Filter draft certificates
   const draftCertificates = certificates.filter(cert => cert.status === 'draft')
-  
+
   // If specific certificate is selected, show only that one
-  const certificatesToShow = selectedCertificateId 
+  const certificatesToShow = selectedCertificateId
     ? draftCertificates.filter(cert => cert.id === selectedCertificateId)
     : draftCertificates
 
@@ -1339,7 +1338,7 @@ const DraftViewPage: React.FC = () => {
                   {selectedCertificateId ? 'Sertifikat tidak ditemukan' : 'Tidak ada draft sertifikat'}
                 </h3>
                 <p className="text-gray-600">
-                  {selectedCertificateId 
+                  {selectedCertificateId
                     ? 'Sertifikat yang dipilih tidak ada atau bukan dalam status draft.'
                     : 'Semua sertifikat sudah dikirim atau belum ada yang dibuat.'
                   }
