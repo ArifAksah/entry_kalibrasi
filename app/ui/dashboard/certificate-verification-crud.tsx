@@ -17,6 +17,7 @@ import { useCertificateRejection } from '../../../hooks/useCertificateRejection'
 import RejectionModal from './rejection-modal'
 import { Certificate, CertificateInsert, Station, Instrument, Sensor } from '../../../lib/supabase'
 import { EditIcon, DeleteIcon, ViewIcon, CloseIcon, CheckIcon, XIcon, EditButton, ViewButton, VerifyButton, RejectButton } from '../../../components/ui/ActionIcons'
+import Dropdown, { DropdownItem } from '../../../components/ui/Dropdown'
 
 const CertificateVerificationCRUD: React.FC = () => {
   const { pendingCertificates, loading, error, createVerification, updateVerification } = useCertificateVerification()
@@ -570,30 +571,91 @@ const CertificateVerificationCRUD: React.FC = () => {
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <div className="flex space-x-2">
-                    <a
-                      href={`/certificates/${cert.id}/print`}
-                      target="_blank"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200 border border-transparent hover:border-green-200"
+                  <div className="flex items-center space-x-2">
+                    {/* Primary Action */}
+                    {cert.verification_status.user_can_act ? (
+                      <button
+                        onClick={() => openModal(cert)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-all duration-200 shadow-sm"
+                      >
+                        <CheckIcon className="w-4 h-4" />
+                        <span>{cert.verification_status.user_verification_id ? 'Update' : 'Verify'}</span>
+                      </button>
+                    ) : (
+                      <a
+                        href={`/certificates/${cert.id}/print`}
+                        target="_blank"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-all duration-200 shadow-sm"
+                      >
+                        <ViewIcon className="w-4 h-4" />
+                        <span>View</span>
+                      </a>
+                    )}
+
+                    {/* Secondary Actions Dropdown */}
+                    <Dropdown
+                      trigger={
+                        <button className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+                          <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                          </svg>
+                        </button>
+                      }
                     >
-                      <ViewIcon className="w-4 h-4" />
-                      <span>View</span>
-                    </a>
-                    {/* Download PDF button - only show if Level 3 approved and PDF already signed (exists in e-certificate-signed) */}
-                    {cert.verification_status.authorized_by === 'approved' && (cert as any).pdf_path && (
-                      <>
-                        <button
+                      {/* View (if not primary) */}
+                      {cert.verification_status.user_can_act && (
+                        <DropdownItem
+                          href={`/certificates/${cert.id}/print`}
+                          target="_blank"
+                          icon={<ViewIcon className="w-4 h-4" />}
+                        >
+                          View Certificate
+                        </DropdownItem>
+                      )}
+
+                      {/* Edit Certificate (if pending) */}
+                      {cert.verification_status.user_verification_status === 'pending' && (
+                        <DropdownItem
+                          href={`/certificates?edit=${cert.id}&from=verification`}
+                          icon={<EditIcon className="w-4 h-4" />}
+                        >
+                          Edit Data
+                        </DropdownItem>
+                      )}
+
+                      {/* Reject (if can act) */}
+                      {cert.verification_status.user_can_act && (
+                        <DropdownItem
+                          onClick={() => openRejectionModal(cert)}
+                          variant="danger"
+                          icon={<XIcon className="w-4 h-4" />}
+                        >
+                          Reject
+                        </DropdownItem>
+                      )}
+
+                      {/* Edit Verification (if can act and already verified) */}
+                      {cert.verification_status.user_can_act && cert.verification_status.user_verification_id && (
+                        <DropdownItem
+                          onClick={() => openEditModal(cert)}
+                          variant="warning"
+                          icon={<EditIcon className="w-4 h-4" />}
+                        >
+                          Edit Verification
+                        </DropdownItem>
+                      )}
+
+                      {/* Download Signed PDF */}
+                      {cert.verification_status.authorized_by === 'approved' && (cert as any).pdf_path && (
+                        <DropdownItem
                           onClick={async () => {
                             try {
-                              // Download PDF from e-certificate-signed folder
                               const response = await fetch(`/api/certificates/${cert.id}/pdf?download=true`)
                               if (!response.ok) {
                                 const errorData = await response.json().catch(() => ({ error: 'Failed to download PDF' }))
-                                showError(errorData.error || 'Gagal mengunduh PDF. Pastikan PDF sudah ditandatangani.')
+                                showError(errorData.error || 'Gagal mengunduh PDF.')
                                 return
                               }
-
-                              // Get PDF blob from response
                               const blob = await response.blob()
                               const url = window.URL.createObjectURL(blob)
                               const a = document.createElement('a')
@@ -605,92 +667,36 @@ const CertificateVerificationCRUD: React.FC = () => {
                               a.click()
                               window.URL.revokeObjectURL(url)
                               document.body.removeChild(a)
-                              showSuccess('PDF yang ditandatangani berhasil diunduh')
+                              showSuccess('PDF berhasil diunduh')
                             } catch (err) {
-                              console.error('Error downloading signed PDF:', err)
-                              showError('Gagal mengunduh PDF. Silakan coba lagi.')
+                              console.error('Error downloading PDF:', err)
+                              showError('Gagal mengunduh PDF.')
                             }
                           }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-all duration-200 border border-transparent hover:border-indigo-200"
-                          title="Download PDF yang sudah ditandatangani dari e-certificate-signed"
+                          icon={
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                          }
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                          <span>Download PDF Signed</span>
-                        </button>
+                          Download Signed PDF
+                        </DropdownItem>
+                      )}
 
-                        <button
+                      {/* Verify BSrE */}
+                      {cert.verification_status.authorized_by === 'approved' && (cert as any).pdf_path && (
+                        <DropdownItem
                           onClick={() => handleVerifyBSrE(cert)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-teal-600 hover:text-teal-800 hover:bg-teal-50 rounded-lg transition-all duration-200 border border-transparent hover:border-teal-200"
-                          title="Verifikasi Keaslian Dokumen via BSrE"
+                          icon={
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          }
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span>Verify BSrE</span>
-                        </button>
-                      </>
-                    )}
-                    {cert.verification_status.user_verification_status === 'pending' && (
-                      <a
-                        href={`/certificates?edit=${cert.id}&from=verification`}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-all duration-200 border border-transparent hover:border-purple-200"
-                        title="Edit Certificate"
-                      >
-                        <EditIcon className="w-4 h-4" />
-                        <span>Edit</span>
-                      </a>
-                    )}
-                    {cert.verification_status.user_can_act ? (
-                      <>
-                        <button
-                          onClick={() => {
-                            openModal(cert)
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all duration-200 border border-transparent hover:border-blue-200"
-                          title={cert.verification_status.user_verification_id ? 'Update Verification' : 'Verify Certificate'}
-                        >
-                          <CheckIcon className="w-4 h-4" />
-                          <span>{cert.verification_status.user_verification_id ? 'Update' : 'Verify'}</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            openRejectionModal(cert)
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200 border border-transparent hover:border-red-200"
-                          title="Tolak Sertifikat"
-                        >
-                          <XIcon className="w-4 h-4" />
-                          <span>Reject</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            console.log('Edit button clicked for cert:', cert.id, 'status:', cert.verification_status.user_verification_status)
-                            openEditModal(cert)
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-orange-600 hover:text-orange-800 hover:bg-orange-50 rounded-lg transition-all duration-200 border border-transparent hover:border-orange-200"
-                          title="Edit verification"
-                        >
-                          <EditIcon className="w-4 h-4" />
-                          <span>Edit</span>
-                        </button>
-                      </>
-                    ) : (
-                      <div className="flex flex-col space-y-1">
-                        <span className="text-xs text-gray-400">Waiting previous step</span>
-                        {cert.verification_status.user_verification_status !== 'approved' && (
-                          <span className="text-xs text-purple-600">
-                            Edit data available after your turn
-                          </span>
-                        )}
-                        {cert.verification_status.user_verification_status === 'approved' && (
-                          <span className="text-xs text-green-600">
-                            Approved - edit locked
-                          </span>
-                        )}
-                      </div>
-                    )}
+                          Verify BSrE
+                        </DropdownItem>
+                      )}
+                    </Dropdown>
                   </div>
                 </td>
               </tr>
