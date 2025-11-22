@@ -28,6 +28,36 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
     // Get userId from certificate if not provided
     const authorizedByUserId = userId || existingCert?.authorized_by
 
+    // PRE-CHECK: Fetch NIK early to fail fast if missing
+    // This avoids expensive PDF generation if the user cannot sign anyway
+    let nik: string | null = null
+    if (authorizedByUserId) {
+      try {
+        const { data: personelData, error: personelError } = await supabaseAdmin
+          .from('personel')
+          .select('nik')
+          .eq('id', authorizedByUserId)
+          .single()
+
+        if (!personelError && personelData?.nik) {
+          nik = personelData.nik
+          console.log(`[PDF Helper] Found NIK for user ${authorizedByUserId}: ${nik}`)
+        } else {
+          console.warn(`[PDF Helper] NIK not found for user ${authorizedByUserId}`)
+        }
+      } catch (nikError: any) {
+        console.error(`[PDF Helper] Error fetching NIK:`, nikError)
+      }
+    }
+
+    // Fail immediately if NIK is missing (unless we are just simulating or BSrE is disabled)
+    const bsreUsername = process.env.BSRE_USERNAME
+    const bsrePassword = process.env.BSRE_PASSWORD
+    if (bsreUsername && bsrePassword && !nik) {
+      console.error('[PDF Helper] NIK not available, cannot sign PDF. Aborting generation.')
+      return { success: false, error: 'NIK_NOT_FOUND_IN_DB' }
+    }
+
     if (existingCert?.pdf_path) {
       // Check if file exists in local filesystem
       const localPath = path.join(process.cwd(), 'e-certificate-signed', path.basename(existingCert.pdf_path))
@@ -232,26 +262,8 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
           console.warn('[PDF Helper] Required: BSRE_USERNAME and BSRE_PASSWORD in environment variables')
           // Continue without signing if credentials not available
         } else {
-          // Get NIK from personel table
-          let nik: string | null = null
-          if (authorizedByUserId) {
-            try {
-              const { data: personelData, error: personelError } = await supabaseAdmin
-                .from('personel')
-                .select('nik')
-                .eq('id', authorizedByUserId)
-                .single()
-
-              if (!personelError && personelData?.nik) {
-                nik = personelData.nik
-                console.log(`[PDF Helper] Found NIK for user ${authorizedByUserId}: ${nik}`)
-              } else {
-                console.warn(`[PDF Helper] NIK not found for user ${authorizedByUserId}`)
-              }
-            } catch (nikError: any) {
-              console.error(`[PDF Helper] Error fetching NIK:`, nikError)
-            }
-          }
+          // Get NIK from personel table (already fetched at top)
+          // nik variable is already available from the pre-check
 
           if (!nik) {
             console.error('[PDF Helper] NIK not available, cannot sign PDF')
