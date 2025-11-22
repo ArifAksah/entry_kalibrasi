@@ -80,6 +80,7 @@ const ViewCertificatePage: React.FC = () => {
   const [stations, setStations] = useState<Station[]>([])
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [personel, setPersonel] = useState<Personel[]>([])
+  const [sensors, setSensors] = useState<any[]>([])
   const [isSigned, setIsSigned] = useState<boolean>(false)
 
   const station = stations.find(s => s.id === (cert?.station ?? -1)) || null
@@ -127,15 +128,21 @@ const ViewCertificatePage: React.FC = () => {
       try {
         console.log('Loading certificate data for ID:', id)
 
-        const [cRes, iRes, pRes] = await Promise.all([
+        const [cRes, iRes, pRes, sRes] = await Promise.all([
           fetch(`/api/certificates/${id}`),
           fetch('/api/instruments?page=1&pageSize=100'),
           fetch('/api/personel'),
+          fetch('/api/sensors'),
         ])
 
         const c = await cRes.json()
         const i = await iRes.json()
         const p = await pRes.json()
+
+        if (sRes.ok) {
+          const sData = await sRes.json()
+          setSensors(Array.isArray(sData) ? sData : (sData?.data ?? []))
+        }
 
         console.log('Certificate data:', c)
         console.log('Instruments data:', i)
@@ -511,8 +518,8 @@ const ViewCertificatePage: React.FC = () => {
                       <div className="text-[10px] italic text-gray-700">Date of issue</div>
                     </div>
                     <div className="mb-4">
-                      <div className="font-semibold">Kepala Pusat Instrumentasi,</div>
-                      <div className="font-semibold">Kalibrasi dan Rekayasa</div>
+                      <div className="font-semibold">Direktur Direktorat </div>
+                      <div className="font-semibold">Instrumentasi dan Kalibrasi</div>
                     </div>
                     <div className="flex justify-start mb-2">
                       {cert.no_certificate && (
@@ -800,7 +807,29 @@ const ViewCertificatePage: React.FC = () => {
                                     <div className="italic text-[10px] text-gray-700 leading-tight">Calibration Standard</div>
                                   </td>
                                   <td className="w-[5%] align-top">:</td>
-                                  <td className="w-[60%] align-top whitespace-pre-line">{nf.others || '-'}</td>
+                                  <td className="w-[60%] align-top whitespace-pre-line">
+                                    {(() => {
+                                      const parts = []
+                                      if (nf.others) parts.push(nf.others)
+
+                                      if (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0) {
+                                        const standards = nf.standardInstruments.map((sid: number) => {
+                                          const s = sensors.find((sensor: any) => sensor.id === sid)
+                                          if (!s) return null
+                                          // Format: Name - SN (if available)
+                                          const name = s.name || s.type || 'Sensor'
+                                          const sn = s.serial_number ? `SN ${s.serial_number}` : ''
+                                          return sn ? `${name} — ${sn}` : name
+                                        }).filter(Boolean)
+
+                                        if (standards.length > 0) {
+                                          parts.push(standards.join('\n'))
+                                        }
+                                      }
+
+                                      return parts.join('\n') || '-'
+                                    })()}
+                                  </td>
                                 </tr>
                               )}
                               {nf.traceable_to_si_through && (

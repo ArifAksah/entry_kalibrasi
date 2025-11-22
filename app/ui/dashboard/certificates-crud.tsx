@@ -247,7 +247,7 @@ const CertificatesCRUD: React.FC = () => {
   const [stations, setStations] = useState<Station[]>([])
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [sensors, setSensors] = useState<Array<{ id: number; name?: string | null }>>([])
-  const [personel, setPersonel] = useState<Array<{ id: string; name: string; nip?: string }>>([])
+  const [personel, setPersonel] = useState<Array<{ id: string; name: string; nip?: string; role?: string }>>([])
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -1308,12 +1308,14 @@ const CertificatesCRUD: React.FC = () => {
                       <SearchableDropdown
                         value={form.authorized_by}
                         onChange={(value) => setForm({ ...form, authorized_by: value as string | null })}
-                        options={personel.map(p => ({
-                          id: p.id,
-                          name: p.nip ? `${p.name} (${p.nip})` : p.name,
-                          station_id: p.id.slice(0, 8),
-                          nip: p.nip || ''
-                        }))}
+                        options={personel
+                          .filter(p => p.role === 'assignor')
+                          .map(p => ({
+                            id: p.id,
+                            name: p.nip ? `${p.name} (${p.nip})` : p.name,
+                            station_id: p.id.slice(0, 8),
+                            nip: p.nip || ''
+                          }))}
                         placeholder="Pilih personel"
                         searchPlaceholder="Cari personel (nama, NIP atau ID)..."
                       />
@@ -1324,12 +1326,14 @@ const CertificatesCRUD: React.FC = () => {
                       <SearchableDropdown
                         value={(form as any).verifikator_1 ?? null}
                         onChange={(value) => setForm({ ...form, verifikator_1: value as string | null } as any)}
-                        options={personel.map(p => ({
-                          id: p.id,
-                          name: p.nip ? `${p.name} (${p.nip})` : p.name,
-                          station_id: p.id.slice(0, 8),
-                          nip: p.nip || ''
-                        }))}
+                        options={personel
+                          .filter(p => p.role === 'verifikator')
+                          .map(p => ({
+                            id: p.id,
+                            name: p.nip ? `${p.name} (${p.nip})` : p.name,
+                            station_id: p.id.slice(0, 8),
+                            nip: p.nip || ''
+                          }))}
                         placeholder="Pilih personel"
                         searchPlaceholder="Cari personel (nama, NIP atau ID)..."
                       />
@@ -1340,12 +1344,14 @@ const CertificatesCRUD: React.FC = () => {
                       <SearchableDropdown
                         value={(form as any).verifikator_2 ?? null}
                         onChange={(value) => setForm({ ...form, verifikator_2: value as string | null } as any)}
-                        options={personel.map(p => ({
-                          id: p.id,
-                          name: p.nip ? `${p.name} (${p.nip})` : p.name,
-                          station_id: p.id.slice(0, 8),
-                          nip: p.nip || ''
-                        }))}
+                        options={personel
+                          .filter(p => p.role === 'verifikator')
+                          .map(p => ({
+                            id: p.id,
+                            name: p.nip ? `${p.name} (${p.nip})` : p.name,
+                            station_id: p.id.slice(0, 8),
+                            nip: p.nip || ''
+                          }))}
                         placeholder="Pilih personel"
                         searchPlaceholder="Cari personel (nama, NIP atau ID)..."
                       />

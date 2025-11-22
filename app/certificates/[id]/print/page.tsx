@@ -190,6 +190,7 @@ const PrintCertificatePage: React.FC = () => {
   const [stations, setStations] = useState<Station[]>([])
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [personel, setPersonel] = useState<Personel[]>([])
+  const [sensors, setSensors] = useState<any[]>([])
   const [isSigned, setIsSigned] = useState<boolean>(false)
   const [verificationLoaded, setVerificationLoaded] = useState<boolean>(false)
   const hasPrintedRef = useRef<boolean>(false)
@@ -262,12 +263,18 @@ const PrintCertificatePage: React.FC = () => {
     const load = async () => {
       try {
         // Fetch certificate dan personel
-        const [cRes, pRes] = await Promise.all([
+        const [cRes, pRes, sRes] = await Promise.all([
           fetch(`/api/certificates/${id}`),
           fetch('/api/personel'),
+          fetch('/api/sensors'),
         ])
         const c = await cRes.json()
         const p = await pRes.json()
+
+        if (sRes.ok) {
+          const sData = await sRes.json()
+          setSensors(Array.isArray(sData) ? sData : (sData?.data ?? []))
+        }
 
         if (!cRes.ok) throw new Error(c?.error || 'Failed to load certificate')
         setCert(c)
@@ -959,7 +966,7 @@ const PrintCertificatePage: React.FC = () => {
               </div>
 
               <div className="mb-4">
-                <div className="font-semibold">Direktorat </div>
+                <div className="font-semibold">Direktur Direktorat </div>
                 <div className="font-semibold">Instrumentasi dan Kalibrasi</div>
               </div>
 
@@ -1305,7 +1312,29 @@ const PrintCertificatePage: React.FC = () => {
                                         <div className="italic text-[10px] text-gray-700 leading-tight">Calibration Standard</div>
                                       </td>
                                       <td className="w-[5%] align-top py-0">:</td>
-                                      <td className="w-[60%] align-top whitespace-pre-line py-0">{nf.others || '-'}</td>
+                                      <td className="w-[60%] align-top whitespace-pre-line py-0">
+                                        {(() => {
+                                          const parts = []
+                                          if (nf.others) parts.push(nf.others)
+
+                                          if (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0) {
+                                            const standards = nf.standardInstruments.map((sid: number) => {
+                                              const s = sensors.find((sensor: any) => sensor.id === sid)
+                                              if (!s) return null
+                                              // Format: Name - SN (if available)
+                                              const name = s.name || s.type || 'Sensor'
+                                              const sn = s.serial_number ? `SN ${s.serial_number}` : ''
+                                              return sn ? `${name} — ${sn}` : name
+                                            }).filter(Boolean)
+
+                                            if (standards.length > 0) {
+                                              parts.push(standards.join('\n'))
+                                            }
+                                          }
+
+                                          return parts.join('\n') || '-'
+                                        })()}
+                                      </td>
                                     </tr>
                                   )}
                                   {nf.traceable_to_si_through && (
