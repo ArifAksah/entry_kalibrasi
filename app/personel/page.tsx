@@ -9,6 +9,26 @@ import { supabase } from '../../lib/supabase'
 import { useAlert } from '../../hooks/useAlert'
 import Alert from '../../components/ui/Alert'
 import { EditButton, DeleteButton } from '../../components/ui/ActionIcons'
+import JSEncrypt from 'jsencrypt'
+
+const encryptNIK = (nik: string) => {
+  if (!nik) return nik
+  const publicKey = process.env.NEXT_PUBLIC_NIK_RSA_PUBLIC_KEY
+  if (!publicKey) {
+    console.warn('Missing NEXT_PUBLIC_NIK_RSA_PUBLIC_KEY, sending clear text NIK')
+    return nik
+  }
+  console.log('Encrypting NIK with public key...')
+  const encryptor = new JSEncrypt()
+  encryptor.setPublicKey(publicKey)
+  const encrypted = encryptor.encrypt(nik)
+  if (!encrypted) {
+    console.error('Failed to encrypt NIK')
+    return nik
+  }
+  console.log('NIK Encrypted successfully')
+  return encrypted
+}
 
 const roles: Person['role'][] = ['admin', 'calibrator', 'verifikator', 'assignor', 'user_station']
 
@@ -85,7 +105,7 @@ const PersonelPage: React.FC = () => {
             setStations(first)
           }
         }
-      } catch {}
+      } catch { }
     }
     loadStations()
   }, [isRegisterOpen])
@@ -102,10 +122,10 @@ const PersonelPage: React.FC = () => {
     if (score > 4) score = 4
     const map: Record<number, { label: string; color: string }> = {
       0: { label: 'Very weak', color: 'bg-red-500' },
-      1: { label: 'Weak',      color: 'bg-orange-500' },
-      2: { label: 'Fair',      color: 'bg-amber-500' },
-      3: { label: 'Good',      color: 'bg-green-500' },
-      4: { label: 'Strong',    color: 'bg-emerald-600' },
+      1: { label: 'Weak', color: 'bg-orange-500' },
+      2: { label: 'Fair', color: 'bg-amber-500' },
+      3: { label: 'Good', color: 'bg-green-500' },
+      4: { label: 'Strong', color: 'bg-emerald-600' },
     }
     setPwStrength({ score, ...map[score] })
   }, [regForm.password])
@@ -136,12 +156,12 @@ const PersonelPage: React.FC = () => {
           id: userId,
           name: regForm.name,
           nip: regForm.nip,
-          nik: regForm.nik,
+          nik: encryptNIK(regForm.nik),
           phone: regForm.phone,
           email: regForm.email,
         }),
       })
-      const body = await res.json().catch(()=>({}))
+      const body = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(body?.error || 'Failed to save personel profile')
 
       if (regForm.role) {
@@ -153,7 +173,7 @@ const PersonelPage: React.FC = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ user_id: userId, role: regForm.role, station_id: regForm.station_id ? parseInt(regForm.station_id as any) : null })
         })
-        const roleBody = await roleRes.json().catch(()=>({}))
+        const roleBody = await roleRes.json().catch(() => ({}))
         if (!roleRes.ok) throw new Error(roleBody?.error || 'Gagal menyimpan role user')
       }
 
@@ -183,12 +203,12 @@ const PersonelPage: React.FC = () => {
       const response = await fetch(`/api/personel/${editing.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name: form.name, 
-          email: form.email, 
-          phone: form.phone, 
+        body: JSON.stringify({
+          name: form.name,
+          email: form.email,
+          phone: form.phone,
           nip: form.nip,
-          nik: (form as any).nik
+          nik: encryptNIK((form as any).nik)
         }),
       })
       if (!response.ok) {
@@ -266,13 +286,13 @@ const PersonelPage: React.FC = () => {
 
               <div className="bg-white p-6 rounded-xl shadow-md">
                 <div className="mb-4">
-                    <input
-                        type="text"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder="Cari berdasarkan nama atau email..."
-                        className="w-full max-w-sm px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                    />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Cari berdasarkan nama atau email..."
+                    className="w-full max-w-sm px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                  />
                 </div>
 
                 {error && <div className="mb-4 text-red-600 bg-red-100 p-3 rounded-lg">Error: {error}</div>}
@@ -315,9 +335,9 @@ const PersonelPage: React.FC = () => {
                               {p.role ? p.role.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') : '-'}
                             </td>
                             <td className="px-6 py-4">
-                              <select 
-                                value={p.role || ''} 
-                                onChange={(e) => saveRole(p.id, e.target.value as any)} 
+                              <select
+                                value={p.role || ''}
+                                onChange={(e) => saveRole(p.id, e.target.value as any)}
                                 className="px-2 py-1 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
                                 disabled={savingRole === p.id}
                               >
@@ -405,19 +425,19 @@ const PersonelPage: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                    <input required value={regForm.name} onChange={e=>setRegForm({ ...regForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input required value={regForm.name} onChange={e => setRegForm({ ...regForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">NIP</label>
-                    <input value={regForm.nip} onChange={e=>setRegForm({ ...regForm, nip: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input value={regForm.nip} onChange={e => setRegForm({ ...regForm, nip: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">NIK</label>
-                    <input value={regForm.nik} onChange={e=>setRegForm({ ...regForm, nik: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nomor Induk Kependudukan" />
+                    <input value={regForm.nik} onChange={e => setRegForm({ ...regForm, nik: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nomor Induk Kependudukan" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                    <input value={regForm.phone} onChange={e=>setRegForm({ ...regForm, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input value={regForm.phone} onChange={e => setRegForm({ ...regForm, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>
               </div>
@@ -427,24 +447,24 @@ const PersonelPage: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                    <input required type="email" value={regForm.email} onChange={e=>setRegForm({ ...regForm, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input required type="email" value={regForm.email} onChange={e => setRegForm({ ...regForm, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
                     <div className="relative">
-                      <input required type={showPass ? 'text' : 'password'} value={regForm.password} onChange={e=>setRegForm({ ...regForm, password: e.target.value })} className="w-full px-3 py-2 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      <button type="button" onClick={()=>setShowPass(s=>!s)} className="absolute inset-y-0 right-0 px-3 text-sm text-gray-600 hover:text-gray-800">{showPass ? 'Hide' : 'Show'}</button>
+                      <input required type={showPass ? 'text' : 'password'} value={regForm.password} onChange={e => setRegForm({ ...regForm, password: e.target.value })} className="w-full px-3 py-2 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <button type="button" onClick={() => setShowPass(s => !s)} className="absolute inset-y-0 right-0 px-3 text-sm text-gray-600 hover:text-gray-800">{showPass ? 'Hide' : 'Show'}</button>
                     </div>
                     <div className="mt-2">
                       <div className="w-full h-2 bg-gray-200 rounded">
-                        <div className={`h-2 ${pwStrength.color} rounded`} style={{ width: `${(pwStrength.score+1)*20}%` }} />
+                        <div className={`h-2 ${pwStrength.color} rounded`} style={{ width: `${(pwStrength.score + 1) * 20}%` }} />
                       </div>
                       <div className="text-xs text-gray-600 mt-1">Strength: {pwStrength.label}.</div>
                     </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                    <select value={(regForm as any).role || ''} onChange={e=>setRegForm({ ...regForm, role: e.target.value as any })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <select value={(regForm as any).role || ''} onChange={e => setRegForm({ ...regForm, role: e.target.value as any })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                       <option value="">Pilih Role</option>
                       <option value="admin">Admin</option>
                       <option value="calibrator">Calibrator</option>
@@ -455,7 +475,7 @@ const PersonelPage: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Station (opsional)</label>
-                    <select value={(regForm as any).station_id || ''} onChange={e=>setRegForm({ ...regForm, station_id: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <select value={(regForm as any).station_id || ''} onChange={e => setRegForm({ ...regForm, station_id: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                       <option value="">Tidak ada</option>
                       {stations.map(s => (
                         <option key={s.id} value={String(s.id)}>{s.name} ({s.station_id})</option>
@@ -467,7 +487,7 @@ const PersonelPage: React.FC = () => {
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={()=>setIsRegisterOpen(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors">Batal</button>
+                <button type="button" onClick={() => setIsRegisterOpen(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors">Batal</button>
                 <button type="submit" disabled={regLoading} className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-colors disabled:opacity-50">{regLoading ? 'Registering...' : 'Register'}</button>
               </div>
             </form>

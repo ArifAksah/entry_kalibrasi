@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../lib/supabase'
+import { decryptRSA, encryptAES, decryptAES, createBlindIndex } from '../../../lib/crypto'
 
 export async function GET() {
   try {
@@ -27,11 +28,24 @@ export async function GET() {
       return NextResponse.json(personelData)
     }
 
-    // Merge role into personel data
+    // Merge role into personel data and decrypt NIK
     const mergedData = personelData.map((p: any) => {
       const roleInfo = rolesData.find((r: any) => r.user_id === p.id)
+
+      // Decrypt NIK if it exists and looks encrypted (contains colon for IV)
+      let clearNik = p.nik
+      if (p.nik && p.nik.includes(':')) {
+        try {
+          clearNik = decryptAES(p.nik)
+        } catch (e) {
+          console.warn(`Failed to decrypt NIK for user ${p.id}`, e)
+          clearNik = 'Error Decrypting'
+        }
+      }
+
       return {
         ...p,
+        nik: clearNik, // Return clear NIK to frontend
         role: roleInfo?.role || null
       }
     })
@@ -54,16 +68,54 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'id, name and email are required' }, { status: 400 })
     }
 
+    // Handle NIK Security
+    let encryptedNik = null
+    let nikIndex = null
+
+    if (nik) {
+      try {
+        // 1. Decrypt the RSA encrypted NIK from client
+        let clearNik = nik
+
+        try {
+          clearNik = decryptRSA(nik)
+        } catch (rsaError) {
+          console.warn('RSA Decryption failed, assuming clear text for dev/legacy:', rsaError)
+          // If strictly enforcing, we should throw. But for dev resilience:
+          clearNik = nik
+        }
+
+        // 2. Create Blind Index (Hash)
+        nikIndex = createBlindIndex(clearNik)
+
+        // 3. Encrypt for Storage (AES)
+        encryptedNik = encryptAES(clearNik)
+
+      } catch (cryptoError) {
+        console.error('Crypto processing failed:', cryptoError)
+        return NextResponse.json({ error: 'Failed to process secure NIK' }, { status: 500 })
+      }
+    }
+
     // Use admin client to bypass RLS
     const { data, error } = await supabaseAdmin
       .from('personel')
-      .insert({ id, name, nip, nik, phone, email })
+      .insert({
+        id,
+        name,
+        nip,
+        nik: encryptedNik, // Store AES encrypted
+        nik_index: nikIndex, // Store Hash
+        phone,
+        email
+      })
       .select()
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data, { status: 201 })
   } catch (e) {
+    console.error('Create personel error:', e)
     return NextResponse.json({ error: 'Failed to create personel' }, { status: 500 })
   }
 }

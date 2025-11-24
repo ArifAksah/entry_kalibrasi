@@ -213,9 +213,7 @@ const SideNav: React.FC = () => {
               priority
             />
           </div>
-          <h1 className="text-white font-bold text-lg mb-1 tracking-tight">
-            SIKAP-MKG
-          </h1>
+
           <p className="text-blue-200 text-xs font-medium">BMKG Calibration System</p>
         </div>
       </div>
@@ -239,8 +237,8 @@ const SideNav: React.FC = () => {
                     <a
                       href={item.href}
                       className={`group flex items-center space-x-3 px-3 py-3 rounded-xl transition-all duration-300 border-l-4 ${isActive(item.href)
-                          ? 'bg-gradient-to-r from-blue-600/30 to-cyan-600/30 text-white border-cyan-400 shadow-lg'
-                          : 'text-slate-300 hover:bg-slate-700/50 hover:text-white border-transparent hover:border-cyan-400/50 hover:shadow-md'
+                        ? 'bg-gradient-to-r from-blue-600/30 to-cyan-600/30 text-white border-cyan-400 shadow-lg'
+                        : 'text-slate-300 hover:bg-slate-700/50 hover:text-white border-transparent hover:border-cyan-400/50 hover:shadow-md'
                         }`}
                     >
                       <span className={`flex-shrink-0 transition-transform duration-300 group-hover:scale-110 ${isActive(item.href) ? 'text-cyan-400' : 'text-slate-400 group-hover:text-cyan-400'

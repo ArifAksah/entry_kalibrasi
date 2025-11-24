@@ -15,6 +15,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
     "@types/nodemailer": "^7.0.2",
+    "jsencrypt": "^3.5.4",
     "next": "latest",
     "nodemailer": "^7.0.9",
     "playwright": "^1.56.1",

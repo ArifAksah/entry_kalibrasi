@@ -106,5 +106,3 @@ tmp/
 temp/
 
 # Certificate PDF storage (local filesystem)
-e-certificate-signed/
-

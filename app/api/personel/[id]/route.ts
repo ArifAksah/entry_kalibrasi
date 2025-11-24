@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '../../../../lib/supabase'
+import { supabaseAdmin } from '../../../../lib/supabase'
+import { decryptRSA, encryptAES, decryptAES, createBlindIndex } from '../../../../lib/crypto'
 
 export async function GET(
   request: NextRequest,
@@ -7,12 +8,26 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const { data, error } = await supabase
+    // Use admin to bypass RLS if needed, or just standard client if RLS allows
+    // Using admin to be consistent with main route
+    const { data, error } = await supabaseAdmin
       .from('personel')
       .select('*')
       .eq('id', id)
       .single()
+
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // Decrypt NIK if needed
+    if (data && data.nik && data.nik.includes(':')) {
+      try {
+        data.nik = decryptAES(data.nik)
+      } catch (e) {
+        console.warn(`Failed to decrypt NIK for user ${id}`, e)
+        data.nik = 'Error Decrypting'
+      }
+    }
+
     return NextResponse.json(data)
   } catch (e) {
     return NextResponse.json({ error: 'Failed to fetch personel' }, { status: 500 })
@@ -27,12 +42,41 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
     const { name, nip, nik, phone, email } = body
-    const { data, error } = await supabase
+
+    // Prepare update object
+    const updateData: any = { name, nip, phone, email }
+
+    // Handle NIK Security
+    if (nik) {
+      try {
+        // 1. Decrypt RSA (if encrypted)
+        let clearNik = nik
+        try {
+          clearNik = decryptRSA(nik)
+        } catch (rsaError) {
+          console.warn('RSA Decryption failed, assuming clear text or already processed:', rsaError)
+          clearNik = nik
+        }
+
+        // 2. Create Blind Index
+        updateData.nik_index = createBlindIndex(clearNik)
+
+        // 3. Encrypt AES
+        updateData.nik = encryptAES(clearNik)
+
+      } catch (cryptoError) {
+        console.error('Crypto processing failed:', cryptoError)
+        return NextResponse.json({ error: 'Failed to process secure NIK' }, { status: 500 })
+      }
+    }
+
+    const { data, error } = await supabaseAdmin
       .from('personel')
-      .update({ name, nip, nik, phone, email })
+      .update(updateData)
       .eq('id', id)
       .select()
       .single()
+
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data)
   } catch (e) {
@@ -46,7 +90,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('personel')
       .delete()
       .eq('id', id)
@@ -56,13 +100,3 @@ export async function DELETE(
     return NextResponse.json({ error: 'Failed to delete personel' }, { status: 500 })
   }
 }
-
-
-
-
-
-
-
-
-
-
