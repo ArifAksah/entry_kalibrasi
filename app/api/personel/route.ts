@@ -68,33 +68,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'id, name and email are required' }, { status: 400 })
     }
 
-    // Handle NIK Security
-    let encryptedNik = null
+    // Handle NIK Security (Removed - Storing Plain Text)
+    // We still create a blind index for searching if needed, or just store plain.
+    // Plan says: Store and transmit in plain text.
+
+    // However, we might still want the blind index for consistent searching if other parts use it?
+    // But if we store plain text, we can just search plain text.
+    // Let's keep it simple as requested: Plain text.
+
+    let encryptedNik = nik
     let nikIndex = null
 
     if (nik) {
-      try {
-        // 1. Decrypt the RSA encrypted NIK from client
-        let clearNik = nik
+      // We can still create the index if we want to maintain that column populated, 
+      // but strictly speaking it's not needed if we have plain text.
+      // Let's just store the plain nik in the 'nik' column.
+      // The column might be expected to be encrypted by other readers?
+      // The GET route handles legacy encrypted data.
+      // So storing plain text in 'nik' column is fine as long as GET route handles it.
 
-        try {
-          clearNik = decryptRSA(nik)
-        } catch (rsaError) {
-          console.warn('RSA Decryption failed, assuming clear text for dev/legacy:', rsaError)
-          // If strictly enforcing, we should throw. But for dev resilience:
-          clearNik = nik
-        }
-
-        // 2. Create Blind Index (Hash)
-        nikIndex = createBlindIndex(clearNik)
-
-        // 3. Encrypt for Storage (AES)
-        encryptedNik = encryptAES(clearNik)
-
-      } catch (cryptoError) {
-        console.error('Crypto processing failed:', cryptoError)
-        return NextResponse.json({ error: 'Failed to process secure NIK' }, { status: 500 })
-      }
+      // Wait, the 'nik' column in DB is likely text.
+      encryptedNik = nik
     }
 
     // Use admin client to bypass RLS

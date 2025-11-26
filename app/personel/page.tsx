@@ -9,26 +9,8 @@ import { supabase } from '../../lib/supabase'
 import { useAlert } from '../../hooks/useAlert'
 import Alert from '../../components/ui/Alert'
 import { EditButton, DeleteButton } from '../../components/ui/ActionIcons'
-import JSEncrypt from 'jsencrypt'
 
-const encryptNIK = (nik: string) => {
-  if (!nik) return nik
-  const publicKey = process.env.NEXT_PUBLIC_NIK_RSA_PUBLIC_KEY
-  if (!publicKey) {
-    console.warn('Missing NEXT_PUBLIC_NIK_RSA_PUBLIC_KEY, sending clear text NIK')
-    return nik
-  }
-  console.log('Encrypting NIK with public key...')
-  const encryptor = new JSEncrypt()
-  encryptor.setPublicKey(publicKey)
-  const encrypted = encryptor.encrypt(nik)
-  if (!encrypted) {
-    console.error('Failed to encrypt NIK')
-    return nik
-  }
-  console.log('NIK Encrypted successfully')
-  return encrypted
-}
+
 
 const roles: Person['role'][] = ['admin', 'calibrator', 'verifikator', 'assignor', 'user_station']
 
@@ -156,7 +138,7 @@ const PersonelPage: React.FC = () => {
           id: userId,
           name: regForm.name,
           nip: regForm.nip,
-          nik: encryptNIK(regForm.nik),
+          nik: regForm.nik,
           phone: regForm.phone,
           email: regForm.email,
         }),
@@ -208,7 +190,7 @@ const PersonelPage: React.FC = () => {
           email: form.email,
           phone: form.phone,
           nip: form.nip,
-          nik: encryptNIK((form as any).nik)
+          nik: (form as any).nik
         }),
       })
       if (!response.ok) {
