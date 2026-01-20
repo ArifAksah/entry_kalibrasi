@@ -138,8 +138,14 @@ const SideNav: React.FC = () => {
             // Certificate Logs visible to admin and assignor only
             return role === 'admin' || role === 'assignor';
           }
-          return true; // Certificates stays; Draft View already removed above
+          if (item.name === 'Certificates') {
+            // Hide Certificates for verifikator and assignor
+            return role !== 'verifikator' && role !== 'assignor';
+          }
+          return true; // Draft View already removed above
         });
+
+
 
         // Keep Certificate Verification for verifikator and assignor roles
         if (role === 'verifikator' || role === 'assignor') {
@@ -155,8 +161,11 @@ const SideNav: React.FC = () => {
 
       // For other sections, check permissions
       const filteredItems = section.items.filter(item => {
-        // Instruments, Stations - all roles can see
+        // Instruments, Stations - hidden for verifikator and assignor
         if (['Instruments', 'Stations'].includes(item.name)) {
+          if (role === 'verifikator' || role === 'assignor') {
+            return false;
+          }
           return true;
         }
 
