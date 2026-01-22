@@ -206,7 +206,7 @@ const SideNav: React.FC = () => {
   }
 
   return (
-    <aside className="h-screen sticky top-0 bg-gradient-to-b from-slate-800 to-blue-900 border-r border-slate-700 flex flex-col w-64 shadow-2xl">
+    <aside id="sidenav-container" className="h-screen sticky top-0 bg-gradient-to-b from-slate-800 to-blue-900 border-r border-slate-700 flex flex-col w-64 shadow-2xl">
       {/* Logo Section - Flat Design */}
       <div className="px-4 py-4 border-b border-slate-700">
         <div className="flex flex-col items-center text-center">

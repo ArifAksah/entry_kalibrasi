@@ -136,7 +136,8 @@ const SearchableDropdown = ({
   options,
   placeholder = "Pilih...",
   searchPlaceholder = "Cari...",
-  className = ""
+  className = "",
+  id = ""
 }: {
   value: string | number | null
   onChange: (value: string | number | null) => void
@@ -144,6 +145,7 @@ const SearchableDropdown = ({
   placeholder?: string
   searchPlaceholder?: string
   className?: string
+  id?: string
 }) => {
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -161,7 +163,7 @@ const SearchableDropdown = ({
   const selectedOption = options.find(opt => opt.id === value)
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={`relative ${className}`} id={id}>
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
@@ -902,6 +904,7 @@ const CertificatesCRUD: React.FC = () => {
           {can('certificate', 'create') && (
             <button
               onClick={() => openModal()}
+              id="btn-add-certificate"
               disabled={isSubmitting}
               className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 text-sm ${isSubmitting
                 ? 'bg-gray-400 cursor-not-allowed'
@@ -1259,6 +1262,7 @@ const CertificatesCRUD: React.FC = () => {
                     <div className="space-y-1 md:col-span-2">
                       <label className="block text-xs font-semibold text-gray-700">Stasiun</label>
                       <SearchableDropdown
+                        id="form-station"
                         value={form.station}
                         onChange={(value) => {
                           const selectedId = (value as number | null)
@@ -1294,6 +1298,13 @@ const CertificatesCRUD: React.FC = () => {
                       <div key={index} className="space-y-1">
                         <label className="block text-xs font-semibold text-gray-700">{field.label}</label>
                         <input
+                          id={
+                            field.label.includes('No. Sertifikat') ? 'form-no-certificate' :
+                              field.label.includes('No. Order') ? 'form-no-order' :
+                                field.label.includes('No. Identifikasi') ? 'form-no-identification' :
+                                  field.label.includes('Tanggal Terbit') ? 'form-issue-date' :
+                                    undefined
+                          }
                           required={field.required}
                           type={field.type}
                           value={field.value}
@@ -1306,6 +1317,7 @@ const CertificatesCRUD: React.FC = () => {
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Authorized By</label>
                       <SearchableDropdown
+                        id="form-authorized-by"
                         value={form.authorized_by}
                         onChange={(value) => setForm({ ...form, authorized_by: value as string | null })}
                         options={personel
@@ -1324,6 +1336,7 @@ const CertificatesCRUD: React.FC = () => {
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Verifikator 1 *</label>
                       <SearchableDropdown
+                        id="form-verifikator-1"
                         value={(form as any).verifikator_1 ?? null}
                         onChange={(value) => setForm({ ...form, verifikator_1: value as string | null } as any)}
                         options={personel
@@ -1342,6 +1355,7 @@ const CertificatesCRUD: React.FC = () => {
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Verifikator 2 *</label>
                       <SearchableDropdown
+                        id="form-verifikator-2"
                         value={(form as any).verifikator_2 ?? null}
                         onChange={(value) => setForm({ ...form, verifikator_2: value as string | null } as any)}
                         options={personel
@@ -1372,6 +1386,7 @@ const CertificatesCRUD: React.FC = () => {
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Nama Instrumen</label>
                       <SearchableDropdown
+                        id="form-instrument"
                         value={form.instrument}
                         onChange={(value) => setForm({ ...form, instrument: value as number | null })}
                         options={instruments.map(i => ({
@@ -1417,6 +1432,7 @@ const CertificatesCRUD: React.FC = () => {
                     <button
                       type="button"
                       onClick={addResult}
+                      id="btn-add-result"
                       className="flex items-center gap-1 px-2 py-1.5 bg-[#1e377c] text-white rounded-lg hover:bg-[#2a4a9d] transition-all duration-200 shadow text-xs font-semibold"
                     >
                       <PlusIcon className="w-3 h-3" />
@@ -1725,6 +1741,12 @@ const CertificatesCRUD: React.FC = () => {
                             <button
                               key={btnIdx}
                               type="button"
+                              id={
+                                button.label === 'Kondisi Lingkungan' ? 'btn-env-conditions' :
+                                  button.label === 'Tabel Hasil' ? 'btn-result-table' :
+                                    button.label === 'Catatan' ? 'btn-calibration-notes' :
+                                      undefined
+                              }
                               onClick={button.onClick}
                               className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-medium"
                             >
@@ -1748,6 +1770,7 @@ const CertificatesCRUD: React.FC = () => {
                   </button>
                   <button
                     type="submit"
+                    id="btn-save-certificate"
                     disabled={isSubmitting || submitDisabled}
                     className={`flex items-center gap-1 px-4 py-2 text-xs font-semibold text-white rounded-lg transition-all duration-200 shadow hover:shadow-lg ${isSubmitting || submitDisabled
                       ? 'bg-gray-400 cursor-not-allowed'
@@ -1849,6 +1872,7 @@ const CertificatesCRUD: React.FC = () => {
                 Batal
               </button>
               <button
+                id="btn-save-env-conditions"
                 onClick={() => {
                   if (envEditIndex === null) return;
                   updateResult(envEditIndex, { environment: envDraft.filter(r => r.key || r.value) });
@@ -2219,6 +2243,7 @@ const CertificatesCRUD: React.FC = () => {
                 Batal
               </button>
               <button
+                id="btn-save-result-table"
                 onClick={() => {
                   if (tableEditIndex === null) return;
                   const cleaned = tableDraft.map(sec => ({
@@ -2373,6 +2398,7 @@ const CertificatesCRUD: React.FC = () => {
                 Batal
               </button>
               <button
+                id="btn-save-notes"
                 onClick={() => {
                   if (noteEditIndex === null) return;
                   updateResult(noteEditIndex, { notesForm: { ...noteDraft } });
