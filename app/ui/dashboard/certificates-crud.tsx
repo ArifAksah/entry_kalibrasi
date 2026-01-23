@@ -440,51 +440,27 @@ const CertificatesCRUD: React.FC = () => {
         const firstRowLower = firstRow.map(c => c.toLowerCase())
 
         // Check if first row looks like a header
-        if (firstRowLower.some(cell => cell.includes('parameter') || cell.includes('key') || cell.includes('unit') || cell.includes('nilai') || cell.includes('value') || cell.includes('koreksi') || cell.includes('standar'))) {
+        if (firstRowLower.some(cell => cell.includes('parameter') || cell.includes('key') || cell.includes('unit') || cell.includes('nilai') || cell.includes('value') || cell.includes('koreksi') || cell.includes('standar') || cell.includes('alat'))) {
           detectedHeaders = firstRow
           rowsToProcess = rowsToProcess.slice(1)
 
-          // SMART UNIT DETECTION: Check if the NEXT row (now rowsToProcess[0]) looks like a Unit row
-          // Heuristic: 
-          // 1. Row exists
-          // 2. Contains typical unit characters like '(', ')', '°', '%', '/' OR is empty/short string
-          // 3. Does NOT look like data (e.g. not just numbers)
-          if (rowsToProcess.length > 0) {
-            const potentialUnitRow = rowsToProcess[0].map(cell => String(cell || ''))
-            const isUnitRow = potentialUnitRow.some(cell =>
-              cell.includes('(') || cell.includes(')') || cell.includes('°') || cell.includes('%') || cell.toLowerCase().includes('derajat')
-            )
-
-            // Also check if it's NOT purely numeric (which would be data)
-            const isNumericData = potentialUnitRow.every(cell => !isNaN(parseFloat(cell.replace(',', '.'))) && cell.trim() !== '')
-
-            if (isUnitRow && !isNumericData) {
-              // Merge headers: "Header" + " " + "Unit"
-              detectedHeaders = detectedHeaders.map((h, i) => {
-                const unit = potentialUnitRow[i]
-                return unit ? `${h} ${unit}` : h
-              })
-              // Skip this row as it is now part of the header
-              rowsToProcess = rowsToProcess.slice(1)
-            }
-          }
+          // SMART UNIT DETECTION (Optional, can be removed if user prefers raw imports)
+          // ... (Existing logic kept simple: just trust detectedHeaders)
         }
       }
 
       const newRows: TableRow[] = rowsToProcess
         .filter(row => row.length >= 1) // At least 1 column
         .map(row => {
-          // Map standard 3 columns
+          // Map to schema based on column index
           const key = row[0] ? String(row[0]) : ''
           const unit = row[1] ? String(row[1]) : ''
           const value = row[2] ? String(row[2]) : ''
-
-          // Map extra columns (starting from index 3)
           const extraValues = row.slice(3).map(cell => cell ? String(cell) : '')
 
           return { key, unit, value, extraValues }
         })
-        .filter(r => r.key || r.value || (r.extraValues && r.extraValues.some(v => v)))
+        .filter(r => r.key || r.unit || r.value || (r.extraValues && r.extraValues.some(v => v)))
 
       if (newRows.length === 0) {
         showWarning('Tidak ada data yang dapat dibaca dari file Excel')
@@ -494,30 +470,15 @@ const CertificatesCRUD: React.FC = () => {
       setTableDraft(prev => {
         const newDraft = [...prev]
 
-        // If headers were detected, update the section headers
-        let newHeaders = newDraft[sectionIndex].headers
-        if (detectedHeaders) {
-          // Map Excel headers to our structure: 
-          // Col 0 -> Parameter (Header 0)
-          // Col 1 -> Unit (Header 1)
-          // Col 2 -> Value (Header 2)
-          // Col 3+ -> Extra Headers
-
-          // We only update headers if we have enough columns
-          if (detectedHeaders.length >= 3) {
-            const standardHeaders = detectedHeaders.slice(0, 3)
-            const extraHeaders = detectedHeaders.slice(3)
-            newHeaders = [...standardHeaders, ...extraHeaders]
-          } else {
-            // If less than 3, just use what we have
-            newHeaders = detectedHeaders
-          }
+        // If headers were detected, update the section headers completely to match Excel structure
+        if (detectedHeaders && detectedHeaders.length > 0) {
+          newDraft[sectionIndex].headers = detectedHeaders
         }
 
         // Append new rows to existing rows
         newDraft[sectionIndex] = {
           ...newDraft[sectionIndex],
-          headers: newHeaders,
+          // Keep new headers if found, otherwise keep existing
           rows: [...newDraft[sectionIndex].rows.filter(r => r.key || r.unit || r.value || (r.extraValues && r.extraValues.some(v => v))), ...newRows]
         }
         return newDraft
@@ -1969,7 +1930,7 @@ const CertificatesCRUD: React.FC = () => {
                     </div>
 
                     <div className="space-y-2">
-                      {/* Headers Editor */}
+                      {/* Headers Editor - Dynamic */}
                       <div className={`grid grid-cols-1 md:grid-cols-${(section.headers || ['Parameter', 'Unit', 'Nilai']).length + 1} gap-2 p-2 border-b border-gray-100 bg-gray-100/50 rounded-t-lg`}>
                         {(section.headers || ['Parameter', 'Unit', 'Nilai']).map((header, hi) => (
                           <div key={hi} className="relative group">
@@ -1977,9 +1938,7 @@ const CertificatesCRUD: React.FC = () => {
                               value={header}
                               onChange={e => {
                                 const v = [...tableDraft];
-                                const currentHeaders = v[si].headers || ['Parameter', 'Unit', 'Nilai'];
-                                // Ensure we have enough headers in the array
-                                while (currentHeaders.length <= hi) currentHeaders.push(`Col ${currentHeaders.length + 1}`);
+                                const currentHeaders = [...(v[si].headers || ['Parameter', 'Unit', 'Nilai'])];
                                 currentHeaders[hi] = e.target.value;
                                 v[si].headers = currentHeaders;
                                 setTableDraft(v);
@@ -1987,40 +1946,50 @@ const CertificatesCRUD: React.FC = () => {
                               className="w-full px-2 py-1 text-xs font-bold text-gray-700 bg-transparent border border-transparent hover:border-gray-300 focus:border-[#1e377c] rounded focus:outline-none"
                               placeholder={`Header ${hi + 1}`}
                             />
-                            {/* Allow removing extra columns (index > 2) */}
-                            {hi > 2 && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const v = [...tableDraft];
-                                  const currentHeaders = v[si].headers || ['Parameter', 'Unit', 'Nilai'];
-                                  // Remove header
-                                  currentHeaders.splice(hi, 1);
-                                  v[si].headers = currentHeaders;
+                            {/* Allow removing ANY column */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const v = [...tableDraft];
+                                const currentHeaders = [...(v[si].headers || ['Parameter', 'Unit', 'Nilai'])];
 
-                                  // Remove corresponding values from all rows
-                                  v[si].rows = v[si].rows.map(row => {
-                                    const extra = [...(row.extraValues || [])];
-                                    // The extraValues index is hi - 3
-                                    extra.splice(hi - 3, 1);
-                                    return { ...row, extraValues: extra };
-                                  });
+                                // Remove header
+                                currentHeaders.splice(hi, 1);
+                                v[si].headers = currentHeaders;
 
-                                  setTableDraft(v);
-                                }}
-                                className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="Hapus Kolom"
-                              >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                              </button>
-                            )}
+                                // Helper to convert row object to array based on schema
+                                // Schema: [key, unit, value, ...extraValues]
+                                const rowToArray = (r: TableRow) => [r.key || '', r.unit || '', r.value || '', ...(r.extraValues || [])];
+
+                                // Helper to convert array back to row object
+                                const arrayToRow = (arr: string[]): TableRow => ({
+                                  key: arr[0] || '',
+                                  unit: arr[1] || '',
+                                  value: arr[2] || '',
+                                  extraValues: arr.slice(3)
+                                });
+
+                                // Update all rows: convert to array, splice, convert back
+                                v[si].rows = v[si].rows.map(row => {
+                                  const arr = rowToArray(row);
+                                  arr.splice(hi, 1); // Remove the column data
+                                  return arrayToRow(arr);
+                                });
+
+                                setTableDraft(v);
+                              }}
+                              className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Hapus Kolom"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
                           </div>
                         ))}
                         <button
                           type="button"
                           onClick={() => {
                             const v = [...tableDraft];
-                            const currentHeaders = v[si].headers || ['Parameter', 'Unit', 'Nilai'];
+                            const currentHeaders = [...(v[si].headers || ['Parameter', 'Unit', 'Nilai'])];
                             v[si].headers = [...currentHeaders, 'New Column'];
                             setTableDraft(v);
                           }}
@@ -2031,89 +2000,69 @@ const CertificatesCRUD: React.FC = () => {
                         </button>
                       </div>
 
-                      {section.rows.map((row, ri) => (
-                        <div key={ri} className={`grid grid-cols-1 md:grid-cols-${(section.headers || ['Parameter', 'Unit', 'Nilai']).length + 1} gap-2 p-2 border border-gray-100 rounded bg-gray-50 relative`}>
+                      {section.rows.map((row, ri) => {
+                        // Helper to access data by index dynamically
+                        const rowData = [row.key || '', row.unit || '', row.value || '', ...(row.extraValues || [])];
 
+                        return (
+                          <div key={ri} className={`grid grid-cols-1 md:grid-cols-${(section.headers || ['Parameter', 'Unit', 'Nilai']).length + 1} gap-2 p-2 border border-gray-100 rounded bg-gray-50 relative`}>
 
-                          {/* Standard Columns */}
-                          <div className="space-y-1">
-                            <input
-                              placeholder={(section.headers?.[0] || "Parameter")}
-                              value={row.key}
-                              onChange={e => {
-                                const v = [...tableDraft];
-                                v[si].rows[ri] = { ...row, key: e.target.value };
-                                setTableDraft(v)
-                              }}
-                              className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <input
-                              placeholder={(section.headers?.[1] || "Unit")}
-                              value={row.unit}
-                              onChange={e => {
-                                const v = [...tableDraft];
-                                v[si].rows[ri] = { ...row, unit: e.target.value };
-                                setTableDraft(v)
-                              }}
-                              className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <input
-                              placeholder={(section.headers?.[2] || "Nilai")}
-                              value={row.value}
-                              onChange={e => {
-                                const v = [...tableDraft];
-                                v[si].rows[ri] = { ...row, value: e.target.value };
-                                setTableDraft(v)
-                              }}
-                              className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                            />
-                          </div>
+                            {(section.headers || ['Parameter', 'Unit', 'Nilai']).map((header, colIdx) => (
+                              <div key={colIdx} className="space-y-1">
+                                <input
+                                  placeholder={header}
+                                  value={rowData[colIdx] || ''}
+                                  onChange={e => {
+                                    const v = [...tableDraft];
+                                    const newVal = e.target.value;
 
-                          {/* Extra Columns */}
-                          {((section.headers || ['Parameter', 'Unit', 'Nilai']).slice(3)).map((header, extraIdx) => (
-                            <div key={extraIdx} className="space-y-1">
-                              <input
-                                placeholder={header}
-                                value={row.extraValues?.[extraIdx] || ''}
-                                onChange={e => {
-                                  const v = [...tableDraft];
-                                  const newExtra = [...(row.extraValues || [])];
-                                  newExtra[extraIdx] = e.target.value;
-                                  v[si].rows[ri] = { ...row, extraValues: newExtra };
-                                  setTableDraft(v)
-                                }}
-                                className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                              />
+                                    // Update specific field based on index
+                                    const r = { ...v[si].rows[ri] };
+                                    if (colIdx === 0) r.key = newVal;
+                                    else if (colIdx === 1) r.unit = newVal;
+                                    else if (colIdx === 2) r.value = newVal;
+                                    else {
+                                      const extras = [...(r.extraValues || [])];
+                                      // Ensure extras has enough length
+                                      while (extras.length < colIdx - 3) extras.push('');
+                                      extras[colIdx - 3] = newVal;
+                                      r.extraValues = extras;
+                                    }
+
+                                    v[si].rows[ri] = r;
+                                    setTableDraft(v);
+                                  }}
+                                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                                />
+                              </div>
+                            ))}
+
+                            <div className="flex items-center justify-end w-8">
+                              {section.rows.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const v = [...tableDraft];
+                                    v[si].rows = v[si].rows.filter((_, index) => index !== ri);
+                                    setTableDraft(v);
+                                  }}
+                                  className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-all duration-200"
+                                  title="Hapus Baris"
+                                >
+                                  <TrashIcon className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
-                          ))}
-
-                          <div className="flex items-center justify-end w-8">
-                            {section.rows.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const v = [...tableDraft];
-                                  v[si].rows = v[si].rows.filter((_, index) => index !== ri);
-                                  setTableDraft(v);
-                                }}
-                                className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-all duration-200"
-                                title="Hapus Baris"
-                              >
-                                <TrashIcon className="w-4 h-4" />
-                              </button>
-                            )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
 
                       <button
                         onClick={() => {
                           const v = [...tableDraft];
-                          v[si].rows = [...v[si].rows, { key: '', unit: '', value: '', extraValues: [] }];
+                          const newRow: TableRow = { key: '', unit: '', value: '', extraValues: [] };
+                          // Pre-fill extraValues to match header count if needed (optional, logic handles undefined)
+                          v[si].rows = [...v[si].rows, newRow];
                           setTableDraft(v)
                         }}
                         className="flex items-center gap-1 px-2 py-1 text-xs border border-dashed border-gray-300 rounded hover:border-[#1e377c] hover:bg-blue-50 text-gray-600 hover:text-[#1e377c] transition-all duration-200"

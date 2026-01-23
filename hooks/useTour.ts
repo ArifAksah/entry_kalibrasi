@@ -12,10 +12,7 @@ export const useTour = ({ steps }: UseTourProps) => {
     useEffect(() => {
         driverObj.current = driver({
             showProgress: true,
-            steps: steps,
-            onDestroy: () => {
-                // Optional cleanup if needed
-            }
+            steps: steps
         });
 
         return () => {

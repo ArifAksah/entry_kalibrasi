@@ -93,7 +93,7 @@ const Alert: React.FC<AlertProps> = ({
   const styles = getAlertStyles()
 
   return (
-    <div className={`fixed top-4 right-4 z-50 max-w-sm w-full ${className}`}>
+    <div className={`fixed top-4 right-4 z-[9999] max-w-sm w-full ${className}`}>
       <div className={`${styles.bg} ${styles.border} border rounded-lg p-3 shadow-lg transform transition-all duration-300 ease-in-out animate-slide-in`}>
         <div className="flex items-start">
           <div className={`${styles.icon} flex-shrink-0 mr-3 mt-0.5`}>
@@ -117,7 +117,7 @@ const Alert: React.FC<AlertProps> = ({
           )}
         </div>
       </div>
-      
+
       <style jsx>{`
         @keyframes slide-in {
           from {
