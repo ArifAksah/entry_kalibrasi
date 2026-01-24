@@ -47,28 +47,29 @@ export async function PUT(
     const updateData: any = { name, nip, phone, email }
 
     // Handle NIK Security
-    if (nik) {
-      try {
-        // 1. Decrypt RSA (if encrypted)
-        let clearNik = nik
-        try {
-          clearNik = decryptRSA(nik)
-        } catch (rsaError) {
-          console.warn('RSA Decryption failed, assuming clear text or already processed:', rsaError)
-          clearNik = nik
-        }
-
-        // 2. Create Blind Index
-        updateData.nik_index = createBlindIndex(clearNik)
-
-        // 3. Encrypt AES
-        updateData.nik = encryptAES(clearNik)
-
-      } catch (cryptoError) {
-        console.error('Crypto processing failed:', cryptoError)
-        return NextResponse.json({ error: 'Failed to process secure NIK' }, { status: 500 })
-      }
-    }
+    // Handle NIK Security - TEMPORARILY DISABLED
+    // if (nik) {
+    //   try {
+    //     // 1. Decrypt RSA (if encrypted)
+    //     let clearNik = nik
+    //     try {
+    //       clearNik = decryptRSA(nik)
+    //     } catch (rsaError) {
+    //       console.warn('RSA Decryption failed, assuming clear text or already processed:', rsaError)
+    //       clearNik = nik
+    //     }
+    //
+    //     // 2. Create Blind Index
+    //     updateData.nik_index = createBlindIndex(clearNik)
+    //
+    //     // 3. Encrypt AES
+    //     updateData.nik = encryptAES(clearNik)
+    //
+    //   } catch (cryptoError) {
+    //     console.error('Crypto processing failed:', cryptoError)
+    //     return NextResponse.json({ error: 'Failed to process secure NIK' }, { status: 500 })
+    //   }
+    // }
 
     const { data, error } = await supabaseAdmin
       .from('personel')

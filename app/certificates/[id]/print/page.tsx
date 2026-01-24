@@ -1229,15 +1229,15 @@ const PrintCertificatePage: React.FC = () => {
                                         {/* Use explicit headers if available, otherwise fallback to Key/Unit/Value logic */}
                                         {sec.headers ? (
                                           sec.headers.map((h: string, i: number) => (
-                                            <td key={i} className="p-1 border border-black">{h}</td>
+                                            <td key={i} className="p-1 border border-black text-center">{h}</td>
                                           ))
                                         ) : (
                                           // Fallback for old data without headers
                                           rows.length > 0 && (
                                             <>
-                                              <td className="p-1 border border-black">Parameter</td>
-                                              <td className="p-1 border border-black">Unit</td>
-                                              <td className="p-1 border border-black">Nilai</td>
+                                              <td className="p-1 border border-black text-center">Parameter</td>
+                                              <td className="p-1 border border-black text-center">Unit</td>
+                                              <td className="p-1 border border-black text-center">Nilai</td>
                                             </>
                                           )
                                         )}
@@ -1250,7 +1250,7 @@ const PrintCertificatePage: React.FC = () => {
                                           {sec.headers ? (
                                             <>
                                               <td className="p-1 border border-black text-left">{row.key || '-'}</td>
-                                              <td className="p-1 border border-black text-left">{row.unit || '-'}</td>
+                                              <td className="p-1 border border-black text-center">{row.unit || '-'}</td>
                                               <td className="p-1 border border-black text-left">{row.value || '-'}</td>
                                               {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
                                                 <td key={`extra-${vi}`} className="p-1 border border-black text-left">{v || '-'}</td>
@@ -1260,7 +1260,7 @@ const PrintCertificatePage: React.FC = () => {
                                             // Fallback
                                             <>
                                               <td className="p-1 border border-black text-left">{row.key || '-'}</td>
-                                              <td className="p-1 border border-black text-left">{row.unit || '-'}</td>
+                                              <td className="p-1 border border-black text-center">{row.unit || '-'}</td>
                                               <td className="p-1 border border-black text-left">{row.value || '-'}</td>
                                             </>
                                           )}
