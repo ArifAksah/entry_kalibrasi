@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../../contexts/AuthContext'
 import { useCertificates } from '../../../hooks/useCertificates'
 import { useCertificateVerification } from '../../../hooks/useCertificateVerification'
-import { Certificate, CertificateInsert, Station, Instrument, Sensor } from '../../../lib/supabase'
+import { Certificate, CertificateInsert, Station, Instrument, Sensor, CertStandard, CalibrationSession, RawData } from '../../../lib/supabase'
 import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
@@ -248,8 +248,21 @@ const CertificatesCRUD: React.FC = () => {
   const [isImageUploading, setIsImageUploading] = useState(false)
   const [stations, setStations] = useState<Station[]>([])
   const [instruments, setInstruments] = useState<Instrument[]>([])
-  const [sensors, setSensors] = useState<Array<{ id: number; name?: string | null }>>([])
+  const [sensors, setSensors] = useState<Array<{ id: number; name?: string | null; is_standard?: boolean }>>([])
+  const [standardCerts, setStandardCerts] = useState<CertStandard[]>([])
   const [personel, setPersonel] = useState<Array<{ id: string; name: string; nip?: string; role?: string }>>([])
+
+  // New Layout States
+  const [activeTab, setActiveTab] = useState<'lingkungan' | 'hasil' | 'catatan'>('lingkungan')
+  const [sessionDetails, setSessionDetails] = useState({
+    start_date: '',
+    end_date: '',
+    place: '',
+    notes: ''
+  })
+  const [selectedStandard, setSelectedStandard] = useState<CertStandard | null>(null)
+  const [uploadedRawData, setUploadedRawData] = useState<any[]>([])
+  const [rawMap, setRawMap] = useState({ timestamp: '', standard: '', uut: '' })
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -547,6 +560,7 @@ const CertificatesCRUD: React.FC = () => {
           fetch('/api/instruments'),
           fetch('/api/sensors'),
           fetch('/api/personel'),
+          fetch('/api/cert-standards'), // Assuming this endpoint exists or we use a direct query
         ])
 
         setStations(Array.isArray(stationsAll) ? stationsAll : (stationsAll as any)?.data ?? [])
@@ -564,6 +578,13 @@ const CertificatesCRUD: React.FC = () => {
           const p = await personelRes.json()
           setPersonel(Array.isArray(p) ? p : [])
         }
+
+        // Handle standard certs (mocking if endpoint fails for now as it's new)
+        try {
+          // In a real scenario, we would check certStandardsRes.ok
+          // For now initializing empty or mocking if needed
+          setStandardCerts([])
+        } catch (e) { }
 
       } catch (e) {
         console.error('Failed to fetch data:', e)
@@ -1178,49 +1199,52 @@ const CertificatesCRUD: React.FC = () => {
 
       {/* Modal dengan desain sertifikat mewah */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 backdrop-blur-sm">
-          <div className="w-full max-w-4xl bg-white rounded-xl shadow-xl overflow-hidden border border-[#1e377c] relative">
-            {/* Header Modal dengan gradient elegan dan background batik */}
-            <div className="relative bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] p-5 overflow-hidden">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-0 overflow-hidden">
+          <div className="w-full h-full bg-white shadow-xl overflow-hidden border border-[#1e377c] relative flex flex-col">
+            {/* Header Modal - Info Sesi */}
+            <div className="relative bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] p-4 overflow-hidden shrink-0">
               <ModalBatikHeader />
               <div className="relative z-10 flex items-center justify-between">
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3">
                   <div className="p-2 bg-white/10 rounded-lg">
-                    <CertificateIcon className="w-5 h-5 text-white" />
+                    <CertificateIcon className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-white">
-                      {editing ? 'Edit Certificate' : 'Create New Certificate'}
+                    <h2 className="text-xl font-bold text-white tracking-wide">
+                      Kalibrasi Sensor
                     </h2>
-                    <p className="text-blue-100 text-xs mt-0.5">
-                      {editing ? 'Update existing certificate details' : 'Fill in the certificate information below'}
-                    </p>
+                    <div className="flex items-center text-blue-100 text-xs mt-1 space-x-2">
+                      <span>Kalibrasi</span>
+                      <span>/</span>
+                      <span className="font-semibold text-white">{editing ? 'Edit Sesi' : 'Sesi Baru'}</span>
+                    </div>
                   </div>
                 </div>
-                <button
-                  onClick={closeModal}
-                  className="text-white hover:text-blue-200 transition-colors p-1 rounded-lg hover:bg-white/10 relative z-20"
-                >
-                  <CloseIcon className="w-5 h-5" />
-                </button>
+                <div className="flex items-center space-x-3">
+                  {/* Opsional: Dropdown Pilih Sesi jika needed */}
+                  <button
+                    onClick={closeModal}
+                    className="text-white hover:text-blue-200 transition-colors p-1.5 rounded-lg hover:bg-white/10 relative z-20"
+                  >
+                    <CloseIcon className="w-6 h-6" />
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Form Content */}
-            <div className="max-h-[70vh] overflow-y-auto p-4 bg-gradient-to-br from-white to-gray-50/30">
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Data Sertifikat - Card Elegan */}
-                <div className="bg-white rounded-lg shadow border border-gray-100 p-3 relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#1e377c] to-[#2a4a9d]"></div>
-                  <div className="flex items-center space-x-2 mb-3">
-                    <div className="p-1.5 bg-blue-50 rounded-lg">
-                      <FileTextIcon className="w-4 h-4 text-[#1e377c]" />
-                    </div>
-                    <h3 className="text-base font-bold text-gray-900">Certificate Data</h3>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {/* Stasiun di paling atas */}
-                    <div className="space-y-1 md:col-span-2">
+            {/* Form Content - Scrollable */}
+            <div className="flex-1 overflow-y-auto bg-gray-50/50 p-4">
+              <form onSubmit={handleSubmit} className="space-y-6 max-w-7xl mx-auto">
+
+                {/* Bagian I – Data Sertifikat & Stasiun (Restored) */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100 flex items-center gap-2">
+                    <span className="bg-gray-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">1</span>
+                    Data Sertifikat & Stasiun
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Stasiun & Alamat */}
+                    <div className="md:col-span-2 space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Stasiun</label>
                       <SearchableDropdown
                         id="form-station"
@@ -1239,8 +1263,7 @@ const CertificatesCRUD: React.FC = () => {
                         searchPlaceholder="Cari stasiun..."
                       />
                     </div>
-
-                    <div className="space-y-1 md:col-span-2">
+                    <div className="md:col-span-2 space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Alamat Stasiun</label>
                       <textarea
                         value={(form as any).station_address || (form.station ? (stations.find(s => s.id === form.station)?.address ?? '') : '')}
@@ -1250,6 +1273,7 @@ const CertificatesCRUD: React.FC = () => {
                       />
                     </div>
 
+                    {/* Certificate Numbers */}
                     {[
                       { label: 'No. Sertifikat *', value: form.no_certificate, onChange: (e: any) => setForm({ ...form, no_certificate: e.target.value }), type: 'text', required: true },
                       { label: 'No. Order *', value: form.no_order, onChange: (e: any) => setForm({ ...form, no_order: e.target.value }), type: 'text', required: true },
@@ -1259,22 +1283,16 @@ const CertificatesCRUD: React.FC = () => {
                       <div key={index} className="space-y-1">
                         <label className="block text-xs font-semibold text-gray-700">{field.label}</label>
                         <input
-                          id={
-                            field.label.includes('No. Sertifikat') ? 'form-no-certificate' :
-                              field.label.includes('No. Order') ? 'form-no-order' :
-                                field.label.includes('No. Identifikasi') ? 'form-no-identification' :
-                                  field.label.includes('Tanggal Terbit') ? 'form-issue-date' :
-                                    undefined
-                          }
                           required={field.required}
                           type={field.type}
                           value={field.value}
                           onChange={field.onChange}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] focus:border-transparent transition-all duration-200 bg-white text-sm"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
                         />
                       </div>
                     ))}
 
+                    {/* Signatories */}
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Authorized By</label>
                       <SearchableDropdown
@@ -1290,10 +1308,9 @@ const CertificatesCRUD: React.FC = () => {
                             nip: p.nip || ''
                           }))}
                         placeholder="Pilih personel"
-                        searchPlaceholder="Cari personel (nama, NIP atau ID)..."
+                        searchPlaceholder="Cari authorized by..."
                       />
                     </div>
-
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Verifikator 1 *</label>
                       <SearchableDropdown
@@ -1308,11 +1325,10 @@ const CertificatesCRUD: React.FC = () => {
                             station_id: p.id.slice(0, 8),
                             nip: p.nip || ''
                           }))}
-                        placeholder="Pilih personel"
-                        searchPlaceholder="Cari personel (nama, NIP atau ID)..."
+                        placeholder="Pilih verifikator 1"
+                        searchPlaceholder="Cari verifikator 1..."
                       />
                     </div>
-
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Verifikator 2 *</label>
                       <SearchableDropdown
@@ -1327,425 +1343,295 @@ const CertificatesCRUD: React.FC = () => {
                             station_id: p.id.slice(0, 8),
                             nip: p.nip || ''
                           }))}
-                        placeholder="Pilih personel"
-                        searchPlaceholder="Cari personel (nama, NIP atau ID)..."
+                        placeholder="Pilih verifikator 2"
+                        searchPlaceholder="Cari verifikator 2..."
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* Data Instrumen - Card Elegan */}
-                <div className="bg-white rounded-lg shadow border border-gray-100 p-3 relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#1e377c] to-[#2a4a9d]"></div>
-                  <div className="flex items-center space-x-2 mb-3">
-                    <div className="p-1.5 bg-blue-50 rounded-lg">
-                      <InstrumentIcon className="w-4 h-4 text-[#1e377c]" />
-                    </div>
-                    <h3 className="text-base font-bold text-gray-900">Instrument Data</h3>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Nama Instrumen</label>
-                      <SearchableDropdown
-                        id="form-instrument"
-                        value={form.instrument}
-                        onChange={(value) => setForm({ ...form, instrument: value as number | null })}
-                        options={instruments.map(i => ({
-                          id: i.id,
-                          name: ((i as any).name && (i as any).name !== 'Instrument')
-                            ? (i as any).name
-                            : `${(i as any).manufacturer || ''} ${(i as any).type || ''} ${(i as any).serial_number || ''}`.trim() || 'Instrument',
-                          // Reuse station_id slot for secondary info in dropdown/search
-                          station_id: `${(i as any).type || ''} ${(i as any).serial_number || ''} ${(i as any).manufacturer || ''}`.trim()
-                        }))}
-                        placeholder="Pilih Instrumen"
-                        searchPlaceholder="Cari instrumen (nama/tipe/serial/pabrikan)..."
-                      />
+                {/* Bagian II – Identitas Alat UUT dan Standar */}
+                <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2 px-1">
+                  <span className="bg-gray-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span>
+                  Identitas Alat
+                </h3>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* 1. Alat UUT */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative overflow-hidden group hover:border-[#1e377c]/30 transition-all">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-[#1e377c]"></div>
+                    <div className="flex items-center justify-between mb-4 pl-2">
+                      <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                        <SensorIcon className="w-5 h-5 text-[#1e377c]" />
+                        Alat UUT (Unit Under Test)
+                      </h3>
+                      <button type="button" className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded hover:bg-blue-100 transition-colors">
+                        + Tambah Sensor
+                      </button>
                     </div>
 
-                    {[
-                      { label: 'Pabrikan', value: instrumentPreview.manufacturer || '', disabled: true },
-                      { label: 'Tipe', value: instrumentPreview.type || '', disabled: true },
-                      { label: 'Serial Number', value: instrumentPreview.serial || '', disabled: true },
-                    ].map((field, index) => (
-                      <div key={index} className="space-y-1">
-                        <label className="block text-xs font-semibold text-gray-700">{field.label}</label>
-                        <input
-                          value={field.value}
-                          disabled={field.disabled}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600 text-sm"
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-gray-600">Pilih Sensor UUT</label>
+                        <SearchableDropdown
+                          value={form.instrument} // Mapping instrument to UUT for now
+                          onChange={(val) => {
+                            // Logic to select UUT and auto-fill details
+                            setForm({ ...form, instrument: val as number });
+                            const selectedSensor = sensors.find(s => s.id === val);
+                            // Trigger auto-fill logic here if needed or rely on useEffect
+                          }}
+                          options={sensors.filter(s => !s.is_standard).map(s => ({
+                            id: s.id,
+                            name: s.name || `Sensor ${s.id}`,
+                            station_id: `${s.id}` // extra info
+                          }))}
+                          placeholder="Pilih Sensor UUT..."
                         />
                       </div>
-                    ))}
+
+                      {/* Detail UUT Form (Read-only or Editable) */}
+                      <div className="grid grid-cols-2 gap-3 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                        <div className="col-span-2 text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Detail Sensor</div>
+                        {[
+                          { label: 'Pabrikan', val: instrumentPreview.manufacturer },
+                          { label: 'Tipe', val: instrumentPreview.type },
+                          { label: 'Serial Number', val: instrumentPreview.serial },
+                          // Add more fields as requested (Range, Graduasi, etc) - mocking for now
+                          { label: 'Range/Kapasitas', val: '-' },
+                        ].map((f, i) => (
+                          <div key={i}>
+                            <label className="text-[10px] text-gray-500 block">{f.label}</label>
+                            <div className="text-sm font-medium text-gray-800">{f.val || '-'}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. Alat Standar */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative overflow-hidden group hover:border-[#1e377c]/30 transition-all">
+                    <div className="absolute top-0 right-0 w-1 h-full bg-green-600"></div>
+                    <div className="flex items-center justify-between mb-4 pr-2">
+                      <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                        <CertificateIcon className="w-5 h-5 text-green-700" />
+                        Alat Standar
+                      </h3>
+                      <button type="button" className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded hover:bg-green-100 transition-colors">
+                        + Tambah Sertifikat
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-gray-600">Pilih Sertifikat Standar</label>
+                        <SearchableDropdown
+                          value={selectedStandard?.id || null}
+                          onChange={(val) => {
+                            const std = standardCerts.find(c => c.id === val);
+                            setSelectedStandard(std || null);
+                          }}
+                          options={standardCerts.map(c => ({
+                            id: c.id,
+                            name: `${c.no_certificate} (${c.calibration_date})`,
+                            station_id: `Drift: ${c.drift}`
+                          }))}
+                          placeholder="Pilih Sertifikat Standar..."
+                        />
+                      </div>
+
+                      {selectedStandard ? (
+                        <div className="grid grid-cols-2 gap-3 bg-green-50/50 p-3 rounded-lg border border-green-100">
+                          <div className="col-span-2 text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Detail Sertifikat</div>
+                          {[
+                            { label: 'No. Sertifikat', val: selectedStandard.no_certificate },
+                            { label: 'Tgl Kalibrasi', val: selectedStandard.calibration_date },
+                            { label: 'Drift', val: selectedStandard.drift },
+                            { label: 'U95', val: selectedStandard.u95_general },
+                          ].map((f, i) => (
+                            <div key={i}>
+                              <label className="text-[10px] text-gray-500 block">{f.label}</label>
+                              <div className="text-sm font-medium text-gray-800 text-ellipsis overflow-hidden">{f.val}</div>
+                            </div>
+                          ))}
+                          <div className="col-span-2 mt-1">
+                            <a href="#" className="text-xs text-blue-600 hover:underline">Lihat Ringkasan Tabel Koreksi &rarr;</a>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-gray-50 border border-dashed border-gray-300 rounded-lg text-center text-xs text-gray-400">
+                          Belum ada sertifikat standar dipilih
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {/* Hasil Kalibrasi Sensor - Card Elegan */}
-                <div className="bg-white rounded-lg shadow border border-gray-100 p-3 relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#1e377c] to-[#2a4a9d]"></div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center space-x-2">
-                      <div className="p-1.5 bg-blue-50 rounded-lg">
-                        <SensorIcon className="w-4 h-4 text-[#1e377c]" />
-                      </div>
-                      <h3 className="text-base font-bold text-gray-900">Sensor Calibration Results</h3>
+                {/* Bagian II – Detail Sesi Kalibrasi */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100 flex items-center gap-2">
+                    <span className="bg-gray-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">3</span>
+                    Detail Sesi Kalibrasi
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700">Tanggal Mulai</label>
+                      <input
+                        type="datetime-local"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                        value={sessionDetails.start_date}
+                        onChange={e => setSessionDetails({ ...sessionDetails, start_date: e.target.value })}
+                      />
                     </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700">Tanggal Selesai</label>
+                      <input
+                        type="datetime-local"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                        value={sessionDetails.end_date}
+                        onChange={e => setSessionDetails({ ...sessionDetails, end_date: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700">Tempat Kalibrasi</label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                        placeholder="Laboratorium Kalibrasi BMKG..."
+                        value={sessionDetails.place}
+                        onChange={e => setSessionDetails({ ...sessionDetails, place: e.target.value })}
+                      />
+                    </div>
+                    <div className="md:col-span-3 space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700">Catatan Sesi (Opsional)</label>
+                      <textarea
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                        placeholder="Catatan kondisi khusus..."
+                        rows={2}
+                        value={sessionDetails.notes}
+                        onChange={e => setSessionDetails({ ...sessionDetails, notes: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bagian III – Unggah Data Mentah */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100 flex items-center gap-2">
+                    <span className="bg-gray-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">4</span>
+                    Unggah Data Mentah
+                  </h3>
+                  <div className="flex flex-col md:flex-row gap-4">
+                    <div className="flex-1 space-y-3">
+                      <div className="border-2 border-dashed border-blue-200 bg-blue-50/50 rounded-xl p-6 text-center hover:bg-blue-50 transition-colors">
+                        <input type="file" className="hidden" id="raw-upload" accept=".xlsx,.csv" />
+                        <label htmlFor="raw-upload" className="cursor-pointer flex flex-col items-center">
+                          <div className="p-3 bg-white rounded-full shadow-sm mb-3">
+                            <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                          </div>
+                          <span className="text-sm font-semibold text-gray-700">Klik untuk upload Excel/CSV</span>
+                          <span className="text-xs text-gray-500 mt-1">Format: Waktu, Data Standar, Data UUT</span>
+                        </label>
+                      </div>
+                    </div>
+                    <div className="flex-1 bg-gray-50 rounded-lg p-4 border border-gray-200">
+                      <h4 className="text-sm font-bold text-gray-700 mb-3">Mapping Kolom</h4>
+                      <div className="space-y-2">
+                        {['Timestamp', 'Nilai Standar', 'Nilai UUT'].map((label) => (
+                          <div key={label} className="flex items-center justify-between">
+                            <span className="text-xs text-gray-600">{label}</span>
+                            <select className="text-xs border border-gray-300 rounded px-2 py-1 w-32 bg-white">
+                              <option>Pilih Kolom...</option>
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                      <button type="button" className="w-full mt-4 bg-gray-800 text-white text-xs py-2 rounded-lg hover:bg-gray-700 font-semibold" disabled>
+                        Import Data
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bagian V – Kondisi Lingkungan, Tabel Hasil, Catatan */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="bg-gray-100 border-b border-gray-200 flex px-2 overflow-x-auto">
+                    {(['lingkungan', 'hasil', 'catatan'] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setActiveTab(tab)}
+                        className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${activeTab === tab
+                          ? 'border-[#1e377c] text-[#1e377c] bg-white'
+                          : 'border-transparent text-gray-500 hover:text-gray-700'
+                          }`}
+                      >
+                        {tab === 'lingkungan' ? 'Kondisi Lingkungan' : tab === 'hasil' ? 'Tabel Hasil' : 'Catatan'}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="p-5 min-h-[200px]">
+                    {activeTab === 'lingkungan' && (
+                      <div className="space-y-4">
+                        {/* Reuse existing env logic for simplicity, just tailored to layout */}
+                        {results[0]?.environment.map((env, i) => (
+                          <div key={i} className="flex gap-2 mb-2">
+                            <input readOnly value={env.key} className="flex-1 bg-gray-50 border border-gray-200 rounded px-3 py-2 text-sm" />
+                            <input readOnly value={env.value} className="flex-1 bg-gray-50 border border-gray-200 rounded px-3 py-2 text-sm" />
+                          </div>
+                        ))}
+                        <button type="button" onClick={() => setEnvEditIndex(0)} className="text-[#1e377c] text-sm font-semibold hover:underline flex items-center gap-1">
+                          <EditIcon className="w-4 h-4" /> Edit Kondisi Lingkungan
+                        </button>
+                      </div>
+                    )}
+
+                    {activeTab === 'hasil' && (
+                      <div className="space-y-4">
+                        <div className="text-center text-gray-500 py-8">
+                          <FileTextIcon className="w-12 h-12 mx-auto text-gray-300 mb-2" />
+                          <p className="text-sm">Tabel hasil akan digenerate dari Raw Data atau input manual.</p>
+                          <button type="button" onClick={() => setTableEditIndex(0)} className="mt-2 text-[#1e377c] text-sm font-semibold hover:underline">
+                            Input Manual Tabel Hasil
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === 'catatan' && (
+                      <div>
+                        <textarea
+                          className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-1 focus:ring-[#1e377c]"
+                          rows={5}
+                          placeholder="Tambahkan catatan, observasi, atau komentar tambahan..."
+                        ></textarea>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Footer Action Buttons */}
+                <div className="sticky bottom-0 bg-white/90 backdrop-blur-sm border-t border-gray-200 p-4 -mx-4 -mb-4 flex justify-between items-center z-10">
+                  <div className="text-xs text-gray-500">
+                    Pastikan semua data mandatory terisi sebelum menyimpan.
+                  </div>
+                  <div className="flex space-x-3">
                     <button
                       type="button"
-                      onClick={addResult}
-                      id="btn-add-result"
-                      className="flex items-center gap-1 px-2 py-1.5 bg-[#1e377c] text-white rounded-lg hover:bg-[#2a4a9d] transition-all duration-200 shadow text-xs font-semibold"
+                      onClick={closeModal}
+                      className="px-5 py-2.5 text-sm font-semibold text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-all"
                     >
-                      <PlusIcon className="w-3 h-3" />
-                      <span>Add Result</span>
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c] rounded-lg shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5"
+                    >
+                      Simpan Sesi Kalibrasi
                     </button>
                   </div>
-
-                  <div className="space-y-3">
-                    {results.map((r, idx) => (
-                      <div key={idx} className="border border-gray-200 bg-gray-50/50 rounded-lg p-3 hover:bg-white transition-all duration-200">
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className="font-semibold text-gray-900 text-xs uppercase tracking-wide">Sensor #{idx + 1}</h4>
-                          <div className="flex items-center gap-2">
-                            <div className="w-64">
-                              <SearchableDropdown
-                                value={r.sensorId}
-                                onChange={(value) => applySensorToResult(idx, value as number | null)}
-                                options={sensors.map((s: any) => ({
-                                  id: s.id,
-                                  name: s.name || s.type || `Sensor ${s.id}`,
-                                  // Put extra searchable info in station_id field for the dropdown's filter
-                                  station_id: `${s.manufacturer || ''} ${s.type || ''} ${s.serial_number || ''} ID:${s.id}`.trim()
-                                }))}
-                                placeholder="Pilih Sensor"
-                                searchPlaceholder="Cari sensor (nama/tipe/serial/pabrikan)..."
-                                className="text-xs"
-                              />
-                            </div>
-                            {results.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => removeResult(idx)}
-                                className="inline-flex items-center p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200 border border-transparent hover:border-red-200"
-                                title="Hapus Sensor"
-                              >
-                                <TrashIcon className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Sensor Details - Editable fields with auto-fill */}
-                        {r.sensorDetails && (
-                          <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                            <div className="flex items-center justify-between mb-2">
-                              <h5 className="text-xs font-semibold text-blue-900">Detail Sensor (Dapat Diedit)</h5>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const originalSensor = sensors.find((s: any) => s.id === r.sensorId) as unknown as Sensor | undefined
-                                  if (originalSensor) {
-                                    updateResult(idx, {
-                                      sensorDetails: {
-                                        id: originalSensor.id,
-                                        manufacturer: originalSensor.manufacturer,
-                                        type: originalSensor.type,
-                                        serial_number: originalSensor.serial_number,
-                                        range_capacity: originalSensor.range_capacity,
-                                        range_capacity_unit: originalSensor.range_capacity_unit,
-                                        graduating: originalSensor.graduating,
-                                        graduating_unit: originalSensor.graduating_unit,
-                                        funnel_diameter: originalSensor.funnel_diameter,
-                                        funnel_diameter_unit: originalSensor.funnel_diameter_unit,
-                                        funnel_area: originalSensor.funnel_area,
-                                        funnel_area_unit: originalSensor.funnel_area_unit,
-                                        volume_per_tip: originalSensor.volume_per_tip,
-                                        volume_per_tip_unit: originalSensor.volume_per_tip_unit,
-                                        name: originalSensor.name,
-                                        created_at: originalSensor.created_at,
-                                      }
-                                    })
-                                  }
-                                }}
-                                className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                                title="Reset ke nilai asli dari database"
-                              >
-                                Reset ke Default
-                              </button>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              <div className="space-y-2">
-                                <div className="space-y-1">
-                                  <label className="block text-xs font-medium text-gray-600">Nama Sensor</label>
-                                  <input
-                                    type="text"
-                                    value={r.sensorDetails.name || ''}
-                                    onChange={(e) => updateResult(idx, {
-                                      sensorDetails: { ...r.sensorDetails!, name: e.target.value }
-                                    })}
-                                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                                    placeholder="Nama sensor"
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="block text-xs font-medium text-gray-600">Pabrikan</label>
-                                  <input
-                                    type="text"
-                                    value={r.sensorDetails.manufacturer || ''}
-                                    onChange={(e) => updateResult(idx, {
-                                      sensorDetails: { ...r.sensorDetails!, manufacturer: e.target.value }
-                                    })}
-                                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                                    placeholder="Pabrikan"
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="block text-xs font-medium text-gray-600">Tipe</label>
-                                  <input
-                                    type="text"
-                                    value={r.sensorDetails.type || ''}
-                                    onChange={(e) => updateResult(idx, {
-                                      sensorDetails: { ...r.sensorDetails!, type: e.target.value }
-                                    })}
-                                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                                    placeholder="Tipe sensor"
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="block text-xs font-medium text-gray-600">Serial Number</label>
-                                  <input
-                                    type="text"
-                                    value={r.sensorDetails.serial_number || ''}
-                                    onChange={(e) => updateResult(idx, {
-                                      sensorDetails: { ...r.sensorDetails!, serial_number: e.target.value }
-                                    })}
-                                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                                    placeholder="Serial number"
-                                  />
-                                </div>
-                              </div>
-                              <div className="space-y-2">
-                                <div className="space-y-1">
-                                  <label className="block text-xs font-medium text-gray-600">Range/Kapasitas</label>
-                                  <div className="flex gap-1">
-                                    <input
-                                      type="text"
-                                      value={r.sensorDetails.range_capacity || ''}
-                                      onChange={(e) => updateResult(idx, {
-                                        sensorDetails: { ...r.sensorDetails!, range_capacity: e.target.value }
-                                      })}
-                                      className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                                      placeholder="Nilai"
-                                    />
-                                    <input
-                                      type="text"
-                                      value={r.sensorDetails.range_capacity_unit || ''}
-                                      onChange={(e) => updateResult(idx, {
-                                        sensorDetails: { ...r.sensorDetails!, range_capacity_unit: e.target.value }
-                                      })}
-                                      className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                                      placeholder="Unit"
-                                    />
-                                  </div>
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="block text-xs font-medium text-gray-600">Graduating</label>
-                                  <div className="flex gap-1">
-                                    <input
-                                      type="text"
-                                      value={r.sensorDetails.graduating || ''}
-                                      onChange={(e) => updateResult(idx, {
-                                        sensorDetails: { ...r.sensorDetails!, graduating: e.target.value }
-                                      })}
-                                      className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                                      placeholder="Nilai"
-                                    />
-                                    <input
-                                      type="text"
-                                      value={r.sensorDetails.graduating_unit || ''}
-                                      onChange={(e) => updateResult(idx, {
-                                        sensorDetails: { ...r.sensorDetails!, graduating_unit: e.target.value }
-                                      })}
-                                      className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                                      placeholder="Unit"
-                                    />
-                                  </div>
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="block text-xs font-medium text-gray-600">Diameter Corong</label>
-                                  <div className="flex gap-1">
-                                    <input
-                                      type="number"
-                                      value={r.sensorDetails.funnel_diameter || ''}
-                                      onChange={(e) => updateResult(idx, {
-                                        sensorDetails: { ...r.sensorDetails!, funnel_diameter: parseFloat(e.target.value) || 0 }
-                                      })}
-                                      className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                                      placeholder="Nilai"
-                                    />
-                                    <input
-                                      type="text"
-                                      value={r.sensorDetails.funnel_diameter_unit || ''}
-                                      onChange={(e) => updateResult(idx, {
-                                        sensorDetails: { ...r.sensorDetails!, funnel_diameter_unit: e.target.value }
-                                      })}
-                                      className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                                      placeholder="Unit"
-                                    />
-                                  </div>
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="block text-xs font-medium text-gray-600">Volume per Tip</label>
-                                  <div className="flex gap-1">
-                                    <input
-                                      type="text"
-                                      value={r.sensorDetails.volume_per_tip || ''}
-                                      onChange={(e) => updateResult(idx, {
-                                        sensorDetails: { ...r.sensorDetails!, volume_per_tip: e.target.value }
-                                      })}
-                                      className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                                      placeholder="Nilai"
-                                    />
-                                    <input
-                                      type="text"
-                                      value={r.sensorDetails.volume_per_tip_unit || ''}
-                                      onChange={(e) => updateResult(idx, {
-                                        sensorDetails: { ...r.sensorDetails!, volume_per_tip_unit: e.target.value }
-                                      })}
-                                      className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                                      placeholder="Unit"
-                                    />
-                                  </div>
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="block text-xs font-medium text-gray-600">Luas Corong</label>
-                                  <div className="flex gap-1">
-                                    <input
-                                      type="number"
-                                      value={r.sensorDetails.funnel_area || ''}
-                                      onChange={(e) => updateResult(idx, {
-                                        sensorDetails: { ...r.sensorDetails!, funnel_area: parseFloat(e.target.value) || 0 }
-                                      })}
-                                      className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                                      placeholder="Nilai"
-                                    />
-                                    <input
-                                      type="text"
-                                      value={r.sensorDetails.funnel_area_unit || ''}
-                                      onChange={(e) => updateResult(idx, {
-                                        sensorDetails: { ...r.sensorDetails!, funnel_area_unit: e.target.value }
-                                      })}
-                                      className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                                      placeholder="Unit"
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-3">
-                          {[
-                            { label: 'Tanggal Mulai', value: r.startDate, onChange: (e: any) => updateResult(idx, { startDate: e.target.value }), type: 'date' },
-                            { label: 'Tanggal Selesai', value: r.endDate, onChange: (e: any) => updateResult(idx, { endDate: e.target.value }), type: 'date' },
-                            { label: 'Tempat Kalibrasi', value: r.place, onChange: (e: any) => updateResult(idx, { place: e.target.value }), type: 'text' },
-                          ].map((field, fieldIdx) => (
-                            <div key={fieldIdx} className="space-y-1">
-                              <label className="block text-xs font-medium text-gray-600">{field.label}</label>
-                              <input
-                                type={field.type}
-                                value={field.value}
-                                onChange={field.onChange}
-                                className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                              />
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="flex flex-wrap gap-1">
-                          {[
-                            {
-                              label: 'Kondisi Lingkungan', onClick: () => {
-                                // Only use existing data, don't auto-fill
-                                setEnvDraft(r.environment.length ? r.environment : []);
-                                setEnvEditIndex(idx)
-                              }
-                            },
-                            {
-                              label: 'Tabel Hasil', onClick: () => {
-                                if (!form.station) {
-                                  showWarning('Pilih stasiun terlebih dahulu');
-                                  return;
-                                }
-                                // Only use existing data, don't auto-fill
-                                setTableDraft(r.table.length ? r.table : [{ title: '', rows: [{ key: '', unit: '', value: '', extraValues: [] }] }]);
-                                setTableEditIndex(idx)
-                              }
-                            },
-                            {
-                              label: 'Catatan', onClick: () => {
-                                // Only use existing data, don't auto-fill
-                                setNoteDraft(r.notesForm && (r.notesForm.traceable_to_si_through || r.notesForm.reference_document || r.notesForm.calibration_methode || r.notesForm.others)
-                                  ? r.notesForm
-                                  : {
-                                    traceable_to_si_through: '',
-                                    reference_document: '',
-                                    calibration_methode: '',
-                                    others: '',
-                                    standardInstruments: r.notesForm?.standardInstruments || []
-                                  });
-                                setNoteEditIndex(idx)
-                              }
-                            },
-                          ].map((button, btnIdx) => (
-                            <button
-                              key={btnIdx}
-                              type="button"
-                              id={
-                                button.label === 'Kondisi Lingkungan' ? 'btn-env-conditions' :
-                                  button.label === 'Tabel Hasil' ? 'btn-result-table' :
-                                    button.label === 'Catatan' ? 'btn-calibration-notes' :
-                                      undefined
-                              }
-                              onClick={button.onClick}
-                              className="px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-medium"
-                            >
-                              {button.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
                 </div>
 
-                {/* Action Buttons */}
-                <div className="flex justify-end space-x-2 pt-4 border-t border-gray-200">
-                  <button
-                    type="button"
-                    onClick={closeModal}
-                    className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all duration-200 border border-gray-300"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    id="btn-save-certificate"
-                    disabled={isSubmitting || submitDisabled}
-                    className={`flex items-center gap-1 px-4 py-2 text-xs font-semibold text-white rounded-lg transition-all duration-200 shadow hover:shadow-lg ${isSubmitting || submitDisabled
-                      ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c]'
-                      }`}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-                        {editing ? 'Updating...' : 'Creating...'}
-                      </>
-                    ) : editing ? 'Update Certificate' : 'Create Certificate'}
-                  </button>
-                </div>
               </form>
             </div>
           </div>

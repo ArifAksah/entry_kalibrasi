@@ -74,6 +74,54 @@ export interface Sensor {
   funnel_area_unit: string
   name: string // Name from sensor_names table
   is_standard: boolean   // ✅ tambahkan ini
+  // New fields for sensor identity from schema
+  instrument_id?: number
+  sensor_name_id?: number
+  setpoint?: any
+}
+
+export interface CertStandard {
+  id: number
+  created_at: string
+  no_certificate: string
+  calibration_date: string
+  drift: number
+  range: string
+  resolution: number
+  u95_general: number
+  sensor_id: number
+  correction_std: any
+  u95_std: any
+}
+
+export interface CalibrationSession {
+  session_id: string // UUID
+  created_at: string
+  station_id: number | null
+  uut_instrument_id: number | null // Points to Sensor (UUT)
+  tgl_kalibrasi: string
+  order_no: string
+  ident: string
+  no_sertifikat: string
+  nomor_akreditasi: string
+  status: any
+  keterangan: any
+  updated_at: string
+  uut_sensor_id: number | null
+  std_cert_id: number | null
+  start_date: string
+  end_date: string
+  place: string
+}
+
+export interface RawData {
+  id: number
+  created_at: string
+  timestamp: string
+  standard_data: number
+  uut_data: number
+  sensor_id: number
+  session_id: string
 }
 
 export type SensorInsert = Omit<Sensor, 'id' | 'created_at'>
