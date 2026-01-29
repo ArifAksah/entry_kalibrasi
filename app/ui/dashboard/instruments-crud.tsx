@@ -30,11 +30,12 @@ const InstrumentsCRUD: React.FC = () => {
   })
   const pageSize = 10
   const [currentPage, setCurrentPage] = useState(1)
+  const [activeTab, setActiveTab] = useState<'uut' | 'standard' | 'certStandard'>('uut')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [stationSearch, setStationSearch] = useState('')
   const [showStationDropdown, setShowStationDropdown] = useState(false)
-  
+
   // State untuk sensor form (kondisional) - sekarang array untuk multiple sensors
   const [sensorForms, setSensorForms] = useState<Array<{
     id: string;
@@ -55,15 +56,52 @@ const InstrumentsCRUD: React.FC = () => {
     is_standard: boolean;
   }>>([])
   const [isLoadingSensors, setIsLoadingSensors] = useState(false)
-  
+
+  // State for Certificate Management
+  const [selectedSensorForCert, setSelectedSensorForCert] = useState<string>('')
+  const [certList, setCertList] = useState<any[]>([])
+  const [isCertModalOpen, setIsCertModalOpen] = useState(false)
+  const [editingCert, setEditingCert] = useState<any>(null)
+  const [certForm, setCertForm] = useState({
+    no_certificate: '',
+    calibration_date: '',
+    drift: 0,
+    range: '',
+    resolution: 0,
+    u95_general: 0,
+    correction_data: [] as Array<{ setpoint: string, correction: string, u95: string }>
+  })
+
+  // Fetch certificates when sensor selected in Cert Management tab
+  useEffect(() => {
+    if (activeTab === 'certStandard' && selectedSensorForCert) {
+      const fetchCerts = async () => {
+        try {
+          const res = await fetch(`/api/cert-standards?sensor_id=${selectedSensorForCert}`)
+          if (res.ok) {
+            const data = await res.json()
+            setCertList(data)
+          }
+        } catch (e) { console.error(e) }
+      }
+      fetchCerts()
+    }
+  }, [activeTab, selectedSensorForCert])
+
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300)
     return () => clearTimeout(t)
   }, [search])
 
   useEffect(() => {
-    fetchInstruments({ q: debouncedSearch, page: currentPage, pageSize })
-  }, [debouncedSearch, currentPage])
+    fetchInstruments({
+      q: debouncedSearch,
+      page: currentPage,
+      pageSize,
+      type: activeTab === 'certStandard' ? 'standard' : activeTab
+    })
+  }, [debouncedSearch, currentPage, activeTab])
+
 
   useEffect(() => {
     // Set initial station search value if editing an instrument with a station
@@ -114,7 +152,7 @@ const InstrumentsCRUD: React.FC = () => {
         memiliki_lebih_satu: item.memiliki_lebih_satu || false,
       }
       setForm(formData)
-      
+
       // Load existing sensors if instrument has multi sensor
       // Do this AFTER setting the form to avoid race conditions
       if (item.memiliki_lebih_satu) {
@@ -129,8 +167,8 @@ const InstrumentsCRUD: React.FC = () => {
             // Ensure sensors array is not empty before setting
             if (Array.isArray(sensors) && sensors.length > 0) {
               console.log('Setting sensorForms with', sensors.length, 'sensors')
-            setSensorForms(sensors)
-          } else {
+              setSensorForms(sensors)
+            } else {
               console.log('No sensors found, setting empty array')
               setSensorForms([])
             }
@@ -151,11 +189,11 @@ const InstrumentsCRUD: React.FC = () => {
       }
     } else {
       setEditing(null)
-      setForm({ 
-        manufacturer: '', 
-        type: '', 
-        serial_number: '', 
-        name: '', 
+      setForm({
+        manufacturer: '',
+        type: '',
+        serial_number: '',
+        name: '',
         station_id: null,
         memiliki_lebih_satu: false,
       })
@@ -163,6 +201,16 @@ const InstrumentsCRUD: React.FC = () => {
     }
     setIsModalOpen(true)
   }
+
+  // Effect to set up form defaults when opening modal in Standard tab
+  useEffect(() => {
+    if (isModalOpen && !editing && activeTab === 'standard' && sensorForms.length === 0) {
+      // If adding in Standard tab, default to multi-sensor (needed for is_standard flag on sensor)
+      setForm(f => ({ ...f, memiliki_lebih_satu: true }))
+      // Pre-add one standard sensor
+      addSensor(true)
+    }
+  }, [isModalOpen, editing, activeTab])
 
   const closeModal = () => {
     setIsModalOpen(false)
@@ -173,7 +221,7 @@ const InstrumentsCRUD: React.FC = () => {
   }
 
   // Fungsi untuk menambah sensor baru
-  const addSensor = () => {
+  const addSensor = (isStandardOverride?: boolean) => {
     const newSensor = {
       id: `sensor_${Date.now()}`,
       nama_sensor: '',
@@ -190,9 +238,9 @@ const InstrumentsCRUD: React.FC = () => {
       volume_per_tip_unit: '',
       funnel_area: 0,
       funnel_area_unit: '',
-      is_standard: false
+      is_standard: typeof isStandardOverride === 'boolean' ? isStandardOverride : (activeTab === 'standard')
     }
-    setSensorForms([...sensorForms, newSensor])
+    setSensorForms(prev => [...prev, newSensor])
   }
 
   // Fungsi untuk menghapus sensor
@@ -208,13 +256,13 @@ const InstrumentsCRUD: React.FC = () => {
         console.error('Error deleting sensor:', error)
       }
     }
-    
+
     setSensorForms(sensorForms.filter(sensor => sensor.id !== sensorId))
   }
 
   // Fungsi untuk update sensor
   const updateSensor = (sensorId: string, field: string, value: any) => {
-    setSensorForms(sensorForms.map(sensor => 
+    setSensorForms(sensorForms.map(sensor =>
       sensor.id === sensorId ? { ...sensor, [field]: value } : sensor
     ))
   }
@@ -227,13 +275,13 @@ const InstrumentsCRUD: React.FC = () => {
       if (editing) {
         await updateInstrument(editing.id, form)
         showSuccess('Instrument updated successfully')
-        
+
         // Handle sensor data for multi-sensor instruments
         if (form.memiliki_lebih_satu && editing.id) {
           // Get existing sensors
           const existingRes = await fetch(`/api/instruments/${editing.id}/sensors`)
           const existingSensors = existingRes.ok ? await existingRes.json() : []
-          
+
           // Delete existing sensors that are not in the current form
           for (const existingSensor of existingSensors) {
             const stillExists = sensorForms.some(sf => sf.id === existingSensor.id.toString())
@@ -243,7 +291,7 @@ const InstrumentsCRUD: React.FC = () => {
               })
             }
           }
-          
+
           // Add new sensors (only those with prefixed IDs are new)
           for (const sensorForm of sensorForms) {
             if (sensorForm.id.startsWith('sensor_')) {
@@ -261,7 +309,7 @@ const InstrumentsCRUD: React.FC = () => {
       } else {
         const newInstrument = await addInstrument(form)
         showSuccess('Instrument created successfully')
-        
+
         // Handle sensor data for new multi-sensor instruments
         if (form.memiliki_lebih_satu && newInstrument && sensorForms.length > 0) {
           for (const sensorForm of sensorForms) {
@@ -284,7 +332,7 @@ const InstrumentsCRUD: React.FC = () => {
 
   const handleDelete = async (id: number) => {
     if (!confirm('Are you sure you want to delete this instrument?')) return
-    try { 
+    try {
       await deleteInstrument(id)
       showSuccess('Instrument deleted successfully')
     } catch (e) {
@@ -305,7 +353,7 @@ const InstrumentsCRUD: React.FC = () => {
         <Breadcrumb items={[{ label: 'Instruments', href: '#' }, { label: 'Manager' }]} />
       </div>
       {alert.show && (
-        <Alert 
+        <Alert
           type={alert.type}
           message={alert.message}
           onClose={hideAlert}
@@ -313,6 +361,46 @@ const InstrumentsCRUD: React.FC = () => {
           duration={alert.duration}
         />
       )}
+
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+          <button
+            onClick={() => { setActiveTab('uut'); setCurrentPage(1); }}
+            className={`
+              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+              ${activeTab === 'uut'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
+            `}
+          >
+            Alat UUT
+          </button>
+          <button
+            onClick={() => { setActiveTab('standard'); setCurrentPage(1); }}
+            className={`
+              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+              ${activeTab === 'standard'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
+            `}
+          >
+            Alat Standar
+          </button>
+          <button
+            onClick={() => { setActiveTab('certStandard'); }}
+            className={`
+              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+              ${activeTab === 'certStandard'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
+            `}
+          >
+            Sertifikat Standar
+          </button>
+        </nav>
+      </div>
+
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Instruments</h2>
         <div className="flex items-center gap-3">
@@ -323,9 +411,9 @@ const InstrumentsCRUD: React.FC = () => {
             className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           {loading && <span className="text-sm text-gray-500">Loading...</span>}
-          {can('instrument','create') && (
-            <button 
-              onClick={() => openModal()} 
+          {can('instrument', 'create') && (
+            <button
+              onClick={() => openModal()}
               className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-4 py-2 rounded-lg transition-all duration-200 shadow hover:shadow-md font-medium text-sm"
             >
               Add New
@@ -340,562 +428,831 @@ const InstrumentsCRUD: React.FC = () => {
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Instrument Name
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Manufacturer
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Serial No.
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Station
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Multi Sensor
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {paged.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {item.name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {item.manufacturer}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {item.type}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {item.serial_number}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {item.station?.name ?? '-'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      item.memiliki_lebih_satu 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {item.memiliki_lebih_satu ? 'Yes' : 'No'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                    {can('instrument','update') && canEndpoint('PUT', `/api/instruments/${item.id}`) && (
-                      <EditButton onClick={() => openModal(item)} title="Edit Instrument" />
-                    )}
-                    {can('instrument','delete') && canEndpoint('DELETE', `/api/instruments/${item.id}`) && (
-                      <DeleteButton onClick={() => handleDelete(item.id)} title="Delete Instrument" />
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+
+
+      {/* Content for Certificate Management Tab */}
+      {
+        activeTab === 'certStandard' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Alat Standar (Sensor)</label>
+              <select
+                className="w-full md:w-1/2 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                value={selectedSensorForCert}
+                onChange={(e) => setSelectedSensorForCert(e.target.value)}
+              >
+                <option value="">-- Pilih Sensor --</option>
+                {/* Collect all standard sensors from loaded instruments (this is a simplification, might need separate fetch) */}
+                {instruments.flatMap(i => (i.sensor || []).filter(s => s.is_standard).map(s => (
+                  <option key={`${i.id}-${s.id}`} value={s.id}>
+                    {s.name} - {s.serial_number} (Ref: {i.name})
+                  </option>
+                )))}
+              </select>
+            </div>
+
+            {selectedSensorForCert && (
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-medium text-gray-900">Daftar Sertifikat</h3>
+                  <button
+                    onClick={() => {
+                      setEditingCert(null)
+                      setCertForm({
+                        no_certificate: '',
+                        calibration_date: new Date().toISOString().split('T')[0],
+                        drift: 0,
+                        range: '',
+                        resolution: 0,
+                        u95_general: 0,
+                        correction_data: [{ setpoint: '', correction: '', u95: '' }]
+                      })
+                      setIsCertModalOpen(true)
+                    }}
+                    className="bg-blue-600 text-white px-3 py-1.5 rounded-md text-sm hover:bg-blue-700"
+                  >
+                    + Tambah Sertifikat
+                  </button>
+                </div>
+
+                {certList.length === 0 ? (
+                  <p className="text-gray-500 italic">Belum ada sertifikat untuk sensor ini.</p>
+                ) : (
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No. Sertifikat</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tgl Kalibrasi</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Drift</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">U95</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {certList.map((cert) => (
+                          <tr key={cert.id}>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{cert.no_certificate}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{cert.calibration_date}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{cert.drift}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{cert.u95_general}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                              <button
+                                onClick={async () => {
+                                  if (!confirm('Hapus sertifikat?')) return;
+                                  await fetch(`/api/cert-standards/${cert.id}`, { method: 'DELETE' });
+                                  setCertList(p => p.filter(c => c.id !== cert.id));
+                                }}
+                                className="text-red-600 hover:text-red-900"
+                              >
+                                Hapus
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      }
+
+      {/* Modal for Certificate */}
+      {
+        isCertModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                <h3 className="text-lg font-medium text-gray-900">
+                  {editingCert ? 'Edit Sertifikat' : 'Tambah Sertifikat Standar'}
+                </h3>
+                <button onClick={() => setIsCertModalOpen(false)} className="text-gray-400 hover:text-gray-500">
+                  <span className="sr-only">Close</span>
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  // Construct payload
+                  const payload = {
+                    sensor_id: parseInt(selectedSensorForCert),
+                    no_certificate: certForm.no_certificate,
+                    calibration_date: certForm.calibration_date,
+                    drift: Number(certForm.drift),
+                    range: certForm.range,
+                    resolution: Number(certForm.resolution),
+                    u95_general: Number(certForm.u95_general),
+                    correction_std: certForm.correction_data, // Save as JSON
+                    u95_std: null // Used if storing u95 separate, but here we bundled in correction_data mostly
+                  }
+
+                  const res = await fetch('/api/cert-standards', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                  });
+
+                  if (res.ok) {
+                    const newCert = await res.json();
+                    setCertList(p => [newCert, ...p]);
+                    setIsCertModalOpen(false);
+                    showSuccess('Sertifikat berhasil ditambahkan');
+                  } else {
+                    const err = await res.json();
+                    showError(err.error);
+                  }
+                } catch (err: any) { showError(err.message) }
+              }}>
+                <div className="p-6 space-y-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">No. Sertifikat</label>
+                      <input required type="text" className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        value={certForm.no_certificate} onChange={e => setCertForm({ ...certForm, no_certificate: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Tgl Kalibrasi</label>
+                      <input required type="date" className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        value={certForm.calibration_date} onChange={e => setCertForm({ ...certForm, calibration_date: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Range</label>
+                      <input type="text" className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        value={certForm.range} onChange={e => setCertForm({ ...certForm, range: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Resolusi</label>
+                      <input type="number" step="any" className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        value={certForm.resolution} onChange={e => setCertForm({ ...certForm, resolution: parseFloat(e.target.value) })} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Drift</label>
+                      <input type="number" step="any" className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        value={certForm.drift} onChange={e => setCertForm({ ...certForm, drift: parseFloat(e.target.value) })} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">U95 General</label>
+                      <input type="number" step="any" className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        value={certForm.u95_general} onChange={e => setCertForm({ ...certForm, u95_general: parseFloat(e.target.value) })} />
+                    </div>
+                  </div>
+
+                  {/* Correction Table */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Tabel Koreksi & Ketidakpastian</label>
+                    <div className="border rounded-md overflow-hidden">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Setpoint</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Koreksi</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">U95</th>
+                            <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase w-10"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {certForm.correction_data.map((row, idx) => (
+                            <tr key={idx}>
+                              <td className="px-2 py-1">
+                                <input type="text" className="w-full border-gray-300 rounded text-sm" placeholder="ex: 800"
+                                  value={row.setpoint}
+                                  onChange={e => {
+                                    const newData = [...certForm.correction_data];
+                                    newData[idx].setpoint = e.target.value;
+                                    setCertForm({ ...certForm, correction_data: newData });
+                                  }}
+                                />
+                              </td>
+                              <td className="px-2 py-1">
+                                <input type="text" className="w-full border-gray-300 rounded text-sm" placeholder="ex: 0.02"
+                                  value={row.correction}
+                                  onChange={e => {
+                                    const newData = [...certForm.correction_data];
+                                    newData[idx].correction = e.target.value;
+                                    setCertForm({ ...certForm, correction_data: newData });
+                                  }}
+                                />
+                              </td>
+                              <td className="px-2 py-1">
+                                <input type="text" className="w-full border-gray-300 rounded text-sm" placeholder="ex: 0.14"
+                                  value={row.u95}
+                                  onChange={e => {
+                                    const newData = [...certForm.correction_data];
+                                    newData[idx].u95 = e.target.value;
+                                    setCertForm({ ...certForm, correction_data: newData });
+                                  }}
+                                />
+                              </td>
+                              <td className="px-2 py-1 text-center">
+                                <button type="button" onClick={() => {
+                                  const newData = certForm.correction_data.filter((_, i) => i !== idx);
+                                  setCertForm({ ...certForm, correction_data: newData });
+                                }} className="text-red-500 hover:text-red-700">
+                                  &times;
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <button type="button"
+                        onClick={() => setCertForm({ ...certForm, correction_data: [...certForm.correction_data, { setpoint: '', correction: '', u95: '' }] })}
+                        className="w-full py-2 bg-gray-50 text-xs text-blue-600 font-medium hover:bg-gray-100 border-t"
+                      >
+                        + Tambah Baris
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="px-6 py-4 bg-gray-50 text-right flex justify-end gap-3">
+                  <button type="button" onClick={() => setIsCertModalOpen(false)} className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Batal
+                  </button>
+                  <button type="submit" className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                    Simpan
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Existing Table Code but wrapped to only show when activeTab is not certStandard */}
+      {
+        activeTab !== 'certStandard' && (
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Instrument Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Manufacturer
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Type
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Serial No.
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Station
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Multi Sensor
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {paged.map((item) => (
+                    <tr key={item.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <div className="flex items-center">
+                          <span className="font-medium">{item.name}</span>
+                          {item.sensor?.some(s => s.is_standard) && (
+                            <span className="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                              Standard
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {item.manufacturer}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {item.type}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {item.serial_number}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {item.station?.name ?? '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.memiliki_lebih_satu
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-gray-100 text-gray-800'
+                          }`}>
+                          {item.memiliki_lebih_satu ? 'Yes' : 'No'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                        {can('instrument', 'update') && canEndpoint('PUT', `/api/instruments/${item.id}`) && (
+                          <EditButton onClick={() => openModal(item)} title="Edit Instrument" />
+                        )}
+                        {can('instrument', 'delete') && canEndpoint('DELETE', `/api/instruments/${item.id}`) && (
+                          <DeleteButton onClick={() => handleDelete(item.id)} title="Delete Instrument" />
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      }
 
       <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-white rounded-b-lg shadow">
         <div className="text-sm text-gray-600">Page <span className="font-medium">{currentPage}</span> of <span className="font-medium">{totalPages}</span></div>
         <div className="inline-flex items-center gap-2">
-          <button className={`px-3 py-1 rounded border ${currentPage===1?'text-gray-400 border-gray-200 cursor-not-allowed':'text-gray-700 border-gray-300 hover:bg-gray-50'}`} disabled={currentPage===1} onClick={()=>setCurrentPage(1)}>First</button>
-          <button className={`px-3 py-1 rounded border ${currentPage===1?'text-gray-400 border-gray-200 cursor-not-allowed':'text-gray-700 border-gray-300 hover:bg-gray-50'}`} disabled={currentPage===1} onClick={()=>setCurrentPage(p=>Math.max(1,p-1))}>Prev</button>
-          <button className={`px-3 py-1 rounded border ${currentPage===totalPages?'text-gray-400 border-gray-200 cursor-not-allowed':'text-gray-700 border-gray-300 hover:bg-gray-50'}`} disabled={currentPage===totalPages} onClick={()=>setCurrentPage(p=>Math.min(totalPages,p+1))}>Next</button>
-          <button className={`px-3 py-1 rounded border ${currentPage===totalPages?'text-gray-400 border-gray-200 cursor-not-allowed':'text-gray-700 border-gray-300 hover:bg-gray-50'}`} disabled={currentPage===totalPages} onClick={()=>setCurrentPage(totalPages)}>Last</button>
+          <button className={`px-3 py-1 rounded border ${currentPage === 1 ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`} disabled={currentPage === 1} onClick={() => setCurrentPage(1)}>First</button>
+          <button className={`px-3 py-1 rounded border ${currentPage === 1 ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`} disabled={currentPage === 1} onClick={() => setCurrentPage(p => Math.max(1, p - 1))}>Prev</button>
+          <button className={`px-3 py-1 rounded border ${currentPage === totalPages ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`} disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}>Next</button>
+          <button className={`px-3 py-1 rounded border ${currentPage === totalPages ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`} disabled={currentPage === totalPages} onClick={() => setCurrentPage(totalPages)}>Last</button>
         </div>
       </div>
 
       {/* Modal dengan scroll dan layout yang lebih baik */}
-      {isModalOpen && can('instrument', editing ? 'update' : 'create') && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="relative w-full max-w-6xl h-[90vh]">
-            {/* Ambient Light Effect */}
-            <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/20 to-cyan-600/20 rounded-xl blur-lg -z-10"></div>
-            
-            {/* Modal Container */}
-            <div className="bg-white rounded-xl shadow-2xl relative flex flex-col h-full">
-              {/* Header dengan gradient - Fixed */}
-              <div className="bg-gradient-to-r from-slate-800 to-blue-900 px-6 py-4 flex-shrink-0">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-xl font-semibold text-white">
-                  {editing ? 'Edit Instrument' : 'Add New Instrument'}
-                </h3>
-                    <p className="text-blue-200 text-sm mt-1">
-                      {editing ? 'Update existing instrument information' : 'Create new instrument with optional sensor details'}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={closeModal}
-                    className="text-white hover:text-gray-300 transition-colors duration-200 p-1"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              
-              {/* Scrollable Content */}
-              <div className="flex-1 overflow-y-auto">
-                <form onSubmit={handleSubmit} className="p-6 space-y-8" id="instrument-form">
-                  {/* Instrument Information Section */}
-                  <div className="bg-gray-50 rounded-lg p-6">
-                    <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                      <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      Informasi Alat
-                    </h4>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Instrument Name *
-                    </label>
-                    <input 
-                      value={form.name} 
-                      onChange={e => setForm({ ...form, name: e.target.value })} 
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                      placeholder="Enter instrument name" 
-                      required 
-                    />
-                  </div>
-                  <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Manufacturer *
-                    </label>
-                    <input 
-                      value={form.manufacturer} 
-                      onChange={e => setForm({ ...form, manufacturer: e.target.value })} 
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                          placeholder="Enter manufacturer name"
-                      required 
-                    />
-                  </div>
-                  <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Type *
-                    </label>
-                    <input 
-                      value={form.type} 
-                      onChange={e => setForm({ ...form, type: e.target.value })} 
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                          placeholder="Enter instrument type"
-                      required 
-                    />
-                  </div>
-                  <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Serial Number *
-                    </label>
-                    <input 
-                      value={form.serial_number} 
-                      onChange={e => setForm({ ...form, serial_number: e.target.value })} 
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                          placeholder="Enter serial number"
-                      required 
-                    />
-                  </div>
-                      <div className="lg:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Station
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="Search station..."
-                        value={stationSearch}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                        onChange={(e) => {
-                          setStationSearch(e.target.value);
-                          setShowStationDropdown(true);
-                        }}
-                        onFocus={() => setShowStationDropdown(true)}
-                        onBlur={() => {
-                          // Delay hiding dropdown to allow for click events
-                          setTimeout(() => setShowStationDropdown(false), 200);
-                        }}
-                        disabled={stationsLoading}
-                      />
-                      {showStationDropdown && (
-                        <div 
-                          className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
-                        >
-                          <div 
-                                className="p-3 hover:bg-gray-100 cursor-pointer border-b"
-                            onMouseDown={() => {
-                              setForm({ ...form, station_id: null });
-                              setStationSearch('');
-                            }}
-                          >
-                                <span className="text-gray-500">No station selected</span>
-                          </div>
-                          {stations
-                            .filter(s => s.name.toLowerCase().includes(stationSearch.toLowerCase()))
-                            .map(s => (
-                              <div 
-                                key={s.id} 
-                                    className="p-3 hover:bg-gray-100 cursor-pointer"
-                                onMouseDown={() => {
-                                  setForm({ ...form, station_id: s.id });
-                                  setStationSearch(s.name);
-                                }}
-                              >
-                                {s.name}
-                              </div>
-                            ))
-                          }
-                        </div>
-                      )}
-                          {form.station_id && (
-                            <div className="mt-2 flex items-center text-sm text-green-600">
-                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                              </svg>
-                              Selected: {stations.find(s => s.id === form.station_id)?.name || ''}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="lg:col-span-2">
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                          <div className="flex items-center space-x-3">
-                            <input
-                              type="checkbox"
-                              id="memiliki_lebih_satu"
-                              checked={form.memiliki_lebih_satu || false}
-                              onChange={(e) => setForm({ ...form, memiliki_lebih_satu: e.target.checked })}
-                              className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                            />
-                            <label htmlFor="memiliki_lebih_satu" className="text-sm font-medium text-gray-700">
-                              Memiliki Lebih Satu Sensor
-                            </label>
-                          </div>
-                          <p className="text-xs text-gray-600 mt-2 ml-8">
-                            Centang jika alat ini memiliki lebih dari satu sensor. Form sensor akan muncul untuk diisi.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+      {
+        isModalOpen && can('instrument', editing ? 'update' : 'create') && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="relative w-full max-w-6xl h-[90vh]">
+              {/* Ambient Light Effect */}
+              <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/20 to-cyan-600/20 rounded-xl blur-lg -z-10"></div>
 
-                {/* Sensor Information - Conditional */}
-                {form.memiliki_lebih_satu && (
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200">
-                    <div className="flex items-center justify-between mb-6 sticky top-0 z-20 bg-gradient-to-r from-blue-50 to-indigo-50 -mx-6 px-6 py-3 border-b border-blue-200 shadow-sm">
-                      <div className="flex items-center">
-                        <div className="bg-blue-100 rounded-full p-2 mr-3">
-                          <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-                          </svg>
+              {/* Modal Container */}
+              <div className="bg-white rounded-xl shadow-2xl relative flex flex-col h-full">
+                {/* Header dengan gradient - Fixed */}
+                <div className="bg-gradient-to-r from-slate-800 to-blue-900 px-6 py-4 flex-shrink-0">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-semibold text-white">
+                        {editing ? 'Edit Instrument' : 'Add New Instrument'}
+                      </h3>
+                      <p className="text-blue-200 text-sm mt-1">
+                        {editing ? 'Update existing instrument information' : 'Create new instrument with optional sensor details'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      className="text-white hover:text-gray-300 transition-colors duration-200 p-1"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Scrollable Content */}
+                <div className="flex-1 overflow-y-auto">
+                  <form onSubmit={handleSubmit} className="p-6 space-y-8" id="instrument-form">
+                    {/* Instrument Information Section */}
+                    <div className="bg-gray-50 rounded-lg p-6">
+                      <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                        <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Informasi Alat
+                      </h4>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Instrument Name *
+                          </label>
+                          <input
+                            value={form.name}
+                            onChange={e => setForm({ ...form, name: e.target.value })}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                            placeholder="Enter instrument name"
+                            required
+                          />
                         </div>
                         <div>
-                          <h4 className="text-lg font-semibold text-blue-900">Informasi Sensor</h4>
-                          <p className="text-sm text-blue-700">Kelola sensor untuk alat ini ({sensorForms.length} sensor)</p>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Manufacturer *
+                          </label>
+                          <input
+                            value={form.manufacturer}
+                            onChange={e => setForm({ ...form, manufacturer: e.target.value })}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                            placeholder="Enter manufacturer name"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Type *
+                          </label>
+                          <input
+                            value={form.type}
+                            onChange={e => setForm({ ...form, type: e.target.value })}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                            placeholder="Enter instrument type"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Serial Number *
+                          </label>
+                          <input
+                            value={form.serial_number}
+                            onChange={e => setForm({ ...form, serial_number: e.target.value })}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                            placeholder="Enter serial number"
+                            required
+                          />
+                        </div>
+                        <div className="lg:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Station
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              placeholder="Search station..."
+                              value={stationSearch}
+                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                              onChange={(e) => {
+                                setStationSearch(e.target.value);
+                                setShowStationDropdown(true);
+                              }}
+                              onFocus={() => setShowStationDropdown(true)}
+                              onBlur={() => {
+                                // Delay hiding dropdown to allow for click events
+                                setTimeout(() => setShowStationDropdown(false), 200);
+                              }}
+                              disabled={stationsLoading}
+                            />
+                            {showStationDropdown && (
+                              <div
+                                className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                              >
+                                <div
+                                  className="p-3 hover:bg-gray-100 cursor-pointer border-b"
+                                  onMouseDown={() => {
+                                    setForm({ ...form, station_id: null });
+                                    setStationSearch('');
+                                  }}
+                                >
+                                  <span className="text-gray-500">No station selected</span>
+                                </div>
+                                {stations
+                                  .filter(s => s.name.toLowerCase().includes(stationSearch.toLowerCase()))
+                                  .map(s => (
+                                    <div
+                                      key={s.id}
+                                      className="p-3 hover:bg-gray-100 cursor-pointer"
+                                      onMouseDown={() => {
+                                        setForm({ ...form, station_id: s.id });
+                                        setStationSearch(s.name);
+                                      }}
+                                    >
+                                      {s.name}
+                                    </div>
+                                  ))
+                                }
+                              </div>
+                            )}
+                            {form.station_id && (
+                              <div className="mt-2 flex items-center text-sm text-green-600">
+                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                Selected: {stations.find(s => s.id === form.station_id)?.name || ''}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="lg:col-span-2">
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <div className="flex items-center space-x-3">
+                              <input
+                                type="checkbox"
+                                id="memiliki_lebih_satu"
+                                checked={form.memiliki_lebih_satu || false}
+                                onChange={(e) => setForm({ ...form, memiliki_lebih_satu: e.target.checked })}
+                                className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                              />
+                              <label htmlFor="memiliki_lebih_satu" className="text-sm font-medium text-gray-700">
+                                Memiliki Lebih Satu Sensor
+                              </label>
+                            </div>
+                            <p className="text-xs text-gray-600 mt-2 ml-8">
+                              Centang jika alat ini memiliki lebih dari satu sensor. Form sensor akan muncul untuk diisi.
+                            </p>
+                          </div>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={addSensor}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center text-sm font-medium"
-                      >
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                        </svg>
-                        Tambah Sensor
-                      </button>
                     </div>
-                    
-                    {sensorForms.length === 0 ? (
-                      <div className="text-center py-8">
-                        <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-                        </svg>
-                        <p className="text-gray-500 text-sm">Belum ada sensor. Klik "Tambah Sensor" untuk menambahkan sensor pertama.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-6">
-                        {sensorForms.map((sensor, index) => (
-                          <div key={sensor.id} className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
-                            <div className="flex items-center justify-between mb-4">
-                              <h5 className="text-md font-semibold text-gray-800 flex items-center">
-                                <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-                                </svg>
-                                Sensor {index + 1}
-                              </h5>
-                              <button
-                                type="button"
-                                onClick={() => removeSensor(sensor.id)}
-                                className="text-red-600 hover:text-red-800 transition-colors duration-200 p-1"
-                                title="Hapus sensor ini"
-                              >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
+
+                    {/* Sensor Information - Conditional */}
+                    {form.memiliki_lebih_satu && (
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200">
+                        <div className="flex items-center justify-between mb-6 sticky top-0 z-20 bg-gradient-to-r from-blue-50 to-indigo-50 -mx-6 px-6 py-3 border-b border-blue-200 shadow-sm">
+                          <div className="flex items-center">
+                            <div className="bg-blue-100 rounded-full p-2 mr-3">
+                              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                              </svg>
                             </div>
-                            
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Nama Sensor
-                                </label>
-                                <input
-                                  type="text"
-                                  value={sensor.nama_sensor}
-                                  onChange={(e) => updateSensor(sensor.id, 'nama_sensor', e.target.value)}
-                                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                  placeholder="Enter sensor name"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Merk Sensor
-                                </label>
-                                <input
-                                  type="text"
-                                  value={sensor.merk_sensor}
-                                  onChange={(e) => updateSensor(sensor.id, 'merk_sensor', e.target.value)}
-                                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                  placeholder="Enter sensor manufacturer"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Tipe Sensor
-                                </label>
-                                <input
-                                  type="text"
-                                  value={sensor.tipe_sensor}
-                                  onChange={(e) => updateSensor(sensor.id, 'tipe_sensor', e.target.value)}
-                                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                  placeholder="Enter sensor type"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Serial Number Sensor
-                                </label>
-                                <input
-                                  type="text"
-                                  value={sensor.serial_number_sensor}
-                                  onChange={(e) => updateSensor(sensor.id, 'serial_number_sensor', e.target.value)}
-                                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                  placeholder="Enter sensor serial number"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Range Capacity
-                                </label>
-                                <input
-                                  type="text"
-                                  value={sensor.range_capacity}
-                                  onChange={(e) => updateSensor(sensor.id, 'range_capacity', e.target.value)}
-                                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                  placeholder="Enter range capacity"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Range Capacity Unit
-                                </label>
-                                <input
-                                  type="text"
-                                  value={sensor.range_capacity_unit}
-                                  onChange={(e) => updateSensor(sensor.id, 'range_capacity_unit', e.target.value)}
-                                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                  placeholder="Enter unit"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Graduating
-                                </label>
-                                <input
-                                  type="text"
-                                  value={sensor.graduating}
-                                  onChange={(e) => updateSensor(sensor.id, 'graduating', e.target.value)}
-                                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                  placeholder="Enter graduating value"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Graduating Unit
-                                </label>
-                                <input
-                                  type="text"
-                                  value={sensor.graduating_unit}
-                                  onChange={(e) => updateSensor(sensor.id, 'graduating_unit', e.target.value)}
-                                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                  placeholder="Enter unit"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Funnel Diameter
-                                </label>
-                                <input
-                                  type="number"
-                                  value={sensor.funnel_diameter}
-                                  onChange={(e) => updateSensor(sensor.id, 'funnel_diameter', parseFloat(e.target.value) || 0)}
-                                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                  placeholder="Enter diameter"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Funnel Diameter Unit
-                                </label>
-                                <input
-                                  type="text"
-                                  value={sensor.funnel_diameter_unit}
-                                  onChange={(e) => updateSensor(sensor.id, 'funnel_diameter_unit', e.target.value)}
-                                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                  placeholder="Enter unit"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Volume Per Tip
-                                </label>
-                                <input
-                                  type="text"
-                                  value={sensor.volume_per_tip}
-                                  onChange={(e) => updateSensor(sensor.id, 'volume_per_tip', e.target.value)}
-                                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                  placeholder="Enter volume per tip"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Volume Per Tip Unit
-                                </label>
-                                <input
-                                  type="text"
-                                  value={sensor.volume_per_tip_unit}
-                                  onChange={(e) => updateSensor(sensor.id, 'volume_per_tip_unit', e.target.value)}
-                                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                  placeholder="Enter unit"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Funnel Area
-                                </label>
-                                <input
-                                  type="number"
-                                  value={sensor.funnel_area}
-                                  onChange={(e) => updateSensor(sensor.id, 'funnel_area', parseFloat(e.target.value) || 0)}
-                                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                  placeholder="Enter area"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Funnel Area Unit
-                                </label>
-                                <input
-                                  type="text"
-                                  value={sensor.funnel_area_unit}
-                                  onChange={(e) => updateSensor(sensor.id, 'funnel_area_unit', e.target.value)}
-                                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                  placeholder="Enter unit"
-                                />
-                              </div>
-                              <div className="lg:col-span-2">
-                                <div className="flex items-center space-x-3">
-                                  <input
-                                    type="checkbox"
-                                    id={`is_standard_${sensor.id}`}
-                                    checked={sensor.is_standard}
-                                    onChange={(e) => updateSensor(sensor.id, 'is_standard', e.target.checked)}
-                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                  />
-                                  <label htmlFor={`is_standard_${sensor.id}`} className="text-sm font-medium text-gray-700">
-                                    Is Standard
-                                  </label>
-                                </div>
-                              </div>
+                            <div>
+                              <h4 className="text-lg font-semibold text-blue-900">Informasi Sensor</h4>
+                              <p className="text-sm text-blue-700">Kelola sensor untuk alat ini ({sensorForms.length} sensor)</p>
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-                </form>
-                </div>
-
-              {/* Fixed Footer */}
-              <div className="flex-shrink-0 border-t border-gray-200 bg-gray-50 px-6 py-4 rounded-b-xl">
-                <div className="flex justify-end space-x-3">
-                  <button
-                    type="button"
-                    onClick={closeModal}
-                    className="px-6 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-all duration-200 shadow-sm"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    form="instrument-form"
-                    disabled={isSubmitting}
-                    className="px-6 py-3 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-all duration-200 shadow-sm"
-                  >
-                    {isSubmitting ? (
-                      <span className="flex items-center">
-                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        {editing ? 'Updating...' : 'Creating...'}
-                      </span>
-                    ) : (
-                      <span className="flex items-center">
-                        {editing ? (
-                          <>
-                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                            Update Instrument
-                          </>
-                        ) : (
-                          <>
+                          <button
+                            type="button"
+                            onClick={() => addSensor(activeTab === 'standard')}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center text-sm font-medium"
+                          >
                             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                             </svg>
-                            Create Instrument
-                          </>
+                            Tambah Sensor
+                          </button>
+                        </div>
+
+                        {sensorForms.length === 0 ? (
+                          <div className="text-center py-8">
+                            <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                            </svg>
+                            <p className="text-gray-500 text-sm">Belum ada sensor. Klik "Tambah Sensor" untuk menambahkan sensor pertama.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-6">
+                            {sensorForms.map((sensor, index) => (
+                              <div key={sensor.id} className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
+                                <div className="flex items-center justify-between mb-4">
+                                  <h5 className="text-md font-semibold text-gray-800 flex items-center">
+                                    <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                                    </svg>
+                                    Sensor {index + 1}
+                                  </h5>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeSensor(sensor.id)}
+                                    className="text-red-600 hover:text-red-800 transition-colors duration-200 p-1"
+                                    title="Hapus sensor ini"
+                                  >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Nama Sensor
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={sensor.nama_sensor}
+                                      onChange={(e) => updateSensor(sensor.id, 'nama_sensor', e.target.value)}
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                      placeholder="Enter sensor name"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Merk Sensor
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={sensor.merk_sensor}
+                                      onChange={(e) => updateSensor(sensor.id, 'merk_sensor', e.target.value)}
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                      placeholder="Enter sensor manufacturer"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Tipe Sensor
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={sensor.tipe_sensor}
+                                      onChange={(e) => updateSensor(sensor.id, 'tipe_sensor', e.target.value)}
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                      placeholder="Enter sensor type"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Serial Number Sensor
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={sensor.serial_number_sensor}
+                                      onChange={(e) => updateSensor(sensor.id, 'serial_number_sensor', e.target.value)}
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                      placeholder="Enter sensor serial number"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Range Capacity
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={sensor.range_capacity}
+                                      onChange={(e) => updateSensor(sensor.id, 'range_capacity', e.target.value)}
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                      placeholder="Enter range capacity"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Range Capacity Unit
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={sensor.range_capacity_unit}
+                                      onChange={(e) => updateSensor(sensor.id, 'range_capacity_unit', e.target.value)}
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                      placeholder="Enter unit"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Graduating
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={sensor.graduating}
+                                      onChange={(e) => updateSensor(sensor.id, 'graduating', e.target.value)}
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                      placeholder="Enter graduating value"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Graduating Unit
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={sensor.graduating_unit}
+                                      onChange={(e) => updateSensor(sensor.id, 'graduating_unit', e.target.value)}
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                      placeholder="Enter unit"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Funnel Diameter
+                                    </label>
+                                    <input
+                                      type="number"
+                                      value={sensor.funnel_diameter}
+                                      onChange={(e) => updateSensor(sensor.id, 'funnel_diameter', parseFloat(e.target.value) || 0)}
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                      placeholder="Enter diameter"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Funnel Diameter Unit
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={sensor.funnel_diameter_unit}
+                                      onChange={(e) => updateSensor(sensor.id, 'funnel_diameter_unit', e.target.value)}
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                      placeholder="Enter unit"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Volume Per Tip
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={sensor.volume_per_tip}
+                                      onChange={(e) => updateSensor(sensor.id, 'volume_per_tip', e.target.value)}
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                      placeholder="Enter volume per tip"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Volume Per Tip Unit
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={sensor.volume_per_tip_unit}
+                                      onChange={(e) => updateSensor(sensor.id, 'volume_per_tip_unit', e.target.value)}
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                      placeholder="Enter unit"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Funnel Area
+                                    </label>
+                                    <input
+                                      type="number"
+                                      value={sensor.funnel_area}
+                                      onChange={(e) => updateSensor(sensor.id, 'funnel_area', parseFloat(e.target.value) || 0)}
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                      placeholder="Enter area"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Funnel Area Unit
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={sensor.funnel_area_unit}
+                                      onChange={(e) => updateSensor(sensor.id, 'funnel_area_unit', e.target.value)}
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                      placeholder="Enter unit"
+                                    />
+                                  </div>
+                                  <div className="lg:col-span-2">
+                                    <div className="flex items-center space-x-3">
+                                      <input
+                                        type="checkbox"
+                                        id={`is_standard_${sensor.id}`}
+                                        checked={sensor.is_standard}
+                                        onChange={(e) => updateSensor(sensor.id, 'is_standard', e.target.checked)}
+                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                      />
+                                      <label htmlFor={`is_standard_${sensor.id}`} className="text-sm font-medium text-gray-700">
+                                        Is Standard
+                                      </label>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         )}
-                      </span>
+                      </div>
                     )}
-                  </button>
+                  </form>
+                </div>
+
+                {/* Fixed Footer */}
+                <div className="flex-shrink-0 border-t border-gray-200 bg-gray-50 px-6 py-4 rounded-b-xl">
+                  <div className="flex justify-end space-x-3">
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      className="px-6 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-all duration-200 shadow-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      form="instrument-form"
+                      disabled={isSubmitting}
+                      className="px-6 py-3 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-all duration-200 shadow-sm"
+                    >
+                      {isSubmitting ? (
+                        <span className="flex items-center">
+                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          {editing ? 'Updating...' : 'Creating...'}
+                        </span>
+                      ) : (
+                        <span className="flex items-center">
+                          {editing ? (
+                            <>
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                              Update Instrument
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                              </svg>
+                              Create Instrument
+                            </>
+                          )}
+                        </span>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   )
 }
 

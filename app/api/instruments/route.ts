@@ -9,18 +9,38 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
     const pageSize = Math.max(1, Math.min(100, parseInt(searchParams.get('pageSize') || '10', 10) || 10))
     const q = (searchParams.get('q') || '').trim()
+    const type = searchParams.get('type') // 'standard' or 'uut'
 
-    // Query dasar dengan join ke tabel station
+    // Query dasar dengan join ke tabel station dan sensor (untuk filtering)
     let query = supabaseAdmin
       .from('instrument')
-      .select('*, station(id, name)', { count: 'exact' }) // Ambil data station terkait
+      // Select sensor info to check standard status
+      .select('*, station(id, name), sensor!left(is_standard)', { count: 'exact' })
+
+    // Tambahkan filter 'type' jika ada
+    if (type === 'standard') {
+      // Hanya ambil instrument yang memiliki minimal satu sensor standar
+      // Menggunakan !inner untuk memaksa filtering berdasarkan child
+      query = supabaseAdmin
+        .from('instrument')
+        .select('*, station(id, name), sensor!inner(is_standard)', { count: 'exact' })
+        .eq('sensor.is_standard', true)
+    } else if (type === 'uut') {
+      // Optional: Filter UUT only (exclude standards)
+      // Ini agak tricky di Supabase, tapi kita bisa client-side filter atau
+      // asumsi UUT = yang memiliki sensor dengan is_standard=false atau tidak punya sensor
+      // Untuk amannya, kita load semua dan biarkan user melihat 'semua' di tab UUT/All, 
+      // atau kita coba filter strict jika perlu. 
+      // Saat ini biarkan default (semua) atau filter sensor!inner(is_standard)=false? 
+      // Jika sensor!inner(is_standard)=false, instrument tanpa sensor tidak muncul.
+      // Jadi lebih baik tampilkan semua di UUT atau gunakan logika "not standard" jika nanti butuh.
+      // Untuk MVP: Tab "Alat Standar" filter strict, Tab "Alat UUT" tampilkan semua (atau filter client side).
+    }
 
     // Tambahkan filter pencarian jika ada query 'q'
     if (q) {
       query = query.or(
-          `manufacturer.ilike.%${q}%,type.ilike.%${q}%,serial_number.ilike.%${q}%,name.ilike.%${q}%,others.ilike.%${q}%`
-          // Catatan: Pencarian berdasarkan nama station (station.name) memerlukan syntax query yang berbeda
-          // atau penggunaan database view/function. Dihilangkan sementara untuk simplifikasi.
+        `manufacturer.ilike.%${q}%,type.ilike.%${q}%,serial_number.ilike.%${q}%,name.ilike.%${q}%,others.ilike.%${q}%`
       );
     }
 
@@ -40,7 +60,7 @@ export async function GET(request: NextRequest) {
       console.error("Supabase query error in GET /api/instruments:", error); // Log error spesifik
       // Cek error terkait relasi (meskipun seharusnya tidak terjadi dengan kode yang disederhanakan)
       if (error.code === '42P01' || error.message.includes('relation "station" does not exist')) {
-         return NextResponse.json({ error: 'Database relation error: Station data could not be joined.' }, { status: 500 });
+        return NextResponse.json({ error: 'Database relation error: Station data could not be joined.' }, { status: 500 });
       }
       // Jika konektivitas ke Supabase gagal, kembalikan list kosong agar UI tetap jalan
       if (error.message?.toLowerCase?.().includes('fetch failed')) {
@@ -85,17 +105,17 @@ export async function POST(request: NextRequest) {
     }
 
     if (station_id) {
-        const { data: stationData, error: stationError } = await supabaseAdmin
-            .from('station')
-            .select('id')
-            .eq('id', station_id)
-            .single();
+      const { data: stationData, error: stationError } = await supabaseAdmin
+        .from('station')
+        .select('id')
+        .eq('id', station_id)
+        .single();
 
-        if (stationError || !stationData) {
-            return NextResponse.json({
-                error: 'Station ID tidak valid.',
-            }, { status: 400 });
-        }
+      if (stationError || !stationData) {
+        return NextResponse.json({
+          error: 'Station ID tidak valid.',
+        }, { status: 400 });
+      }
     }
 
     const { data, error } = await supabaseAdmin
@@ -113,8 +133,8 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-       console.error("POST Instrument Error:", error);
-       return NextResponse.json({ error: error.message }, { status: 400 })
+      console.error("POST Instrument Error:", error);
+      return NextResponse.json({ error: error.message }, { status: 400 })
     }
     return NextResponse.json(data, { status: 201 })
   } catch (e) {

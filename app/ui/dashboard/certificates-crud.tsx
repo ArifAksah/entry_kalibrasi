@@ -96,6 +96,13 @@ const SensorIcon = ({ className = "" }) => (
   </svg>
 )
 
+const EyeIcon = ({ className = "" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+  </svg>
+)
+
 const SearchIcon = ({ className = "" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -248,7 +255,7 @@ const CertificatesCRUD: React.FC = () => {
   const [isImageUploading, setIsImageUploading] = useState(false)
   const [stations, setStations] = useState<Station[]>([])
   const [instruments, setInstruments] = useState<Instrument[]>([])
-  const [sensors, setSensors] = useState<Array<{ id: number; name?: string | null; is_standard?: boolean }>>([])
+  const [sensors, setSensors] = useState<Sensor[]>([])
   const [standardCerts, setStandardCerts] = useState<CertStandard[]>([])
   const [personel, setPersonel] = useState<Array<{ id: string; name: string; nip?: string; role?: string }>>([])
 
@@ -431,41 +438,59 @@ const CertificatesCRUD: React.FC = () => {
   const [envEditIndex, setEnvEditIndex] = useState<number | null>(null)
   const [envDraft, setEnvDraft] = useState<KV[]>([])
   const [tableEditIndex, setTableEditIndex] = useState<number | null>(null)
-  const [tableDraft, setTableDraft] = useState<TableSection[]>([])
+
+  // Raw Data State
+  const [rawData, setRawData] = useState<{ name: string, data: any[][] }[]>([])
+  const [showRawDataModal, setShowRawDataModal] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
+
+  // New State for Raw Data Section (Part 4)
+  const [rawDataFilename, setRawDataFilename] = useState<string | null>(null)
+  const [rawPreviewSheetIndex, setRawPreviewSheetIndex] = useState(0)
 
   // Excel Import Handler
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>, sectionIndex: number) => {
     const file = e.target.files?.[0]
     if (!file) return
 
+    setIsImporting(true)
     try {
       const data = await file.arrayBuffer()
       const workbook = read(data)
       const worksheet = workbook.Sheets[workbook.SheetNames[0]]
       const jsonData = utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
 
-      // Remove header if it exists (simple heuristic: check if first row has "Parameter" or "Key")
+      console.log('Imported Excel Data:', jsonData)
+      setRawData([{ name: 'Table Import', data: jsonData }]) // Store raw data for viewing
+
+      // Attempt to map to table rows (heuristic: skip header row)
       let rowsToProcess = jsonData
       let detectedHeaders: string[] | undefined = undefined
 
       if (rowsToProcess.length > 0) {
+        // ... (existing header detection logic) ...
         const firstRow = rowsToProcess[0].map(cell => String(cell))
         const firstRowLower = firstRow.map(c => c.toLowerCase())
 
-        // Check if first row looks like a header
-        if (firstRowLower.some(cell => cell.includes('parameter') || cell.includes('key') || cell.includes('unit') || cell.includes('nilai') || cell.includes('value') || cell.includes('koreksi') || cell.includes('standar') || cell.includes('alat'))) {
+        if (firstRowLower.some(cell => cell.includes('parameter') || cell.includes('key') || cell.includes('unit') || cell.includes('nilai') || cell.includes('value'))) {
           detectedHeaders = firstRow
           rowsToProcess = rowsToProcess.slice(1)
-
-          // SMART UNIT DETECTION (Optional, can be removed if user prefers raw imports)
-          // ... (Existing logic kept simple: just trust detectedHeaders)
         }
       }
 
+      // If raw data is complex (like the user's screenshot with gaps), standard mapping might fail
+      // But we still store it in rawData. 
+      // We will try a smarter mapping: Filter out empty rows, keep all columns that have data
+
       const newRows: TableRow[] = rowsToProcess
-        .filter(row => row.length >= 1) // At least 1 column
+        .filter(row => row.length > 0 && row.some(cell => cell !== undefined && cell !== null && cell !== ''))
         .map(row => {
-          // Map to schema based on column index
+          // Flatten standard import: maintain current behavior for now
+          // If the user wants to map "Time" (Col 0), "Std" (Col 4), "UUT" (Col 5)
+          // We might need a column mapper UI later. For now, rely on "View Raw Data" to verify import.
+
+          // Simple mapping: Col 0 -> Key, Col 1 -> Unit, Col 2 -> Value, Rest -> Extras
+          // This matches the current table structure 
           const key = row[0] ? String(row[0]) : ''
           const unit = row[1] ? String(row[1]) : ''
           const value = row[2] ? String(row[2]) : ''
@@ -473,29 +498,25 @@ const CertificatesCRUD: React.FC = () => {
 
           return { key, unit, value, extraValues }
         })
-        .filter(r => r.key || r.unit || r.value || (r.extraValues && r.extraValues.some(v => v)))
 
-      if (newRows.length === 0) {
-        showWarning('Tidak ada data yang dapat dibaca dari file Excel')
-        return
+      if (newRows.length > 0) {
+        setTableDraft(prev => {
+          const newDraft = [...prev]
+
+          if (detectedHeaders && detectedHeaders.length > 0) {
+            newDraft[sectionIndex].headers = detectedHeaders
+          }
+
+          newDraft[sectionIndex] = {
+            ...newDraft[sectionIndex],
+            rows: [...newDraft[sectionIndex].rows.filter(r => r.key || r.unit || r.value), ...newRows]
+          }
+          return newDraft
+        })
       }
 
-      setTableDraft(prev => {
-        const newDraft = [...prev]
+      showSuccess(`Berhasil mengimport data. Klik tombol mata untuk melihat raw data.`)
 
-        // If headers were detected, update the section headers completely to match Excel structure
-        if (detectedHeaders && detectedHeaders.length > 0) {
-          newDraft[sectionIndex].headers = detectedHeaders
-        }
-
-        // Append new rows to existing rows
-        newDraft[sectionIndex] = {
-          ...newDraft[sectionIndex],
-          // Keep new headers if found, otherwise keep existing
-          rows: [...newDraft[sectionIndex].rows.filter(r => r.key || r.unit || r.value || (r.extraValues && r.extraValues.some(v => v))), ...newRows]
-        }
-        return newDraft
-      })
 
       showSuccess(`Berhasil mengimport ${newRows.length} baris data`)
 
@@ -504,6 +525,44 @@ const CertificatesCRUD: React.FC = () => {
     } catch (error) {
       console.error('Error parsing Excel:', error)
       showError('Gagal membaca file Excel')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  // Handler for Part 4: Raw Data Upload
+  const handleRawDataUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsImporting(true)
+    setRawDataFilename(file.name)
+    setRawData([])
+
+    try {
+      const data = await file.arrayBuffer()
+      const workbook = read(data)
+
+      const sheetsData: { name: string, data: any[][] }[] = []
+      workbook.SheetNames.forEach(name => {
+        const worksheet = workbook.Sheets[name]
+        const jsonData = utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
+        if (jsonData.length > 0) {
+          sheetsData.push({ name, data: jsonData })
+        }
+      })
+
+      console.log('Raw Data Sheets:', sheetsData)
+      setRawData(sheetsData)
+
+      showSuccess(`Berhasil load ${sheetsData.length} sheet dari ${file.name}.`)
+
+    } catch (error) {
+      console.error('Error parsing Raw Data Excel:', error)
+      showError('Gagal membaca file Excel')
+      setRawDataFilename(null)
+    } finally {
+      setIsImporting(false)
     }
   }
 
@@ -593,6 +652,28 @@ const CertificatesCRUD: React.FC = () => {
     fetchData()
   }, [])
 
+  // State specific for Standard Instrument selection
+  const [selectedStdSensorId, setSelectedStdSensorId] = useState<number | null>(null)
+
+  // Fetch standard certs when standard sensor is selected
+  useEffect(() => {
+    if (!selectedStdSensorId) {
+      setStandardCerts([]);
+      return;
+    }
+
+    const fetchCerts = async () => {
+      try {
+        const res = await fetch(`/api/cert-standards?sensor_id=${selectedStdSensorId}`)
+        if (res.ok) {
+          const data = await res.json()
+          setStandardCerts(Array.isArray(data) ? data : [])
+        }
+      } catch (e) { console.error(e) }
+    }
+    fetchCerts()
+  }, [selectedStdSensorId])
+
   // When instrument changes, update preview fields
   useEffect(() => {
     if (!form.instrument) {
@@ -600,18 +681,30 @@ const CertificatesCRUD: React.FC = () => {
       return;
     }
 
-    const inst = instruments.find(i => i.id === form.instrument);
-    if (!inst) {
-      setInstrumentPreview({});
+    // Priority: check sensors list first (since dropdown uses sensors), then instruments
+    const sensor = sensors.find(s => s.id === form.instrument);
+    if (sensor) {
+      setInstrumentPreview({
+        manufacturer: sensor.manufacturer || '',
+        type: sensor.type || '',
+        serial: sensor.serial_number || '',
+      });
       return;
     }
 
-    setInstrumentPreview({
-      manufacturer: (inst as any).manufacturer || '',
-      type: (inst as any).type || '',
-      serial: (inst as any).serial_number || '',
-    });
-  }, [form.instrument, instruments]);
+    const inst = instruments.find(i => i.id === form.instrument);
+    if (inst) {
+      setInstrumentPreview({
+        manufacturer: (inst as any).manufacturer || '',
+        type: (inst as any).type || '',
+        serial: (inst as any).serial_number || '',
+      });
+      return;
+    }
+
+    setInstrumentPreview({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.instrument, sensors.length, instruments.length]);
 
   // Pagination + personalization: only show certificates assigned to the current user
   const isUserAssigned = (item: Certificate) => {
@@ -794,8 +887,48 @@ const CertificatesCRUD: React.FC = () => {
           return
         }
       } else {
+        // Create Calibration Session first (New Logic)
+        try {
+          const sessionPayload = {
+            station_id: form.station,
+            start_date: sessionDetails.start_date,
+            end_date: sessionDetails.end_date,
+            place: sessionDetails.place,
+            notes: sessionDetails.notes,
+            status: 'draft'
+          }
+
+          const sessionRes = await fetch('/api/calibration-sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(sessionPayload)
+          })
+
+          if (sessionRes.ok) {
+            const sessionData = await sessionRes.json()
+            console.log('Session Created:', sessionData)
+
+            // If Raw Data exists, save it linked to Session
+            if (rawData.length > 0) {
+              await fetch('/api/raw-data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  session_id: sessionData.id,
+                  data: rawData, // Saving entire array as JSONB
+                  filename: 'import.xlsx', // TODO: Capture real filename
+                  uploaded_by: user?.id
+                })
+              })
+            }
+          }
+        } catch (sessionErr) {
+          console.error('Failed to save session/raw data', sessionErr)
+          // Non-blocking: continue to save certificate for backward compatibility
+        }
+
         await addCertificate(payload as any)
-        showSuccess('Certificate berhasil dibuat!')
+        showSuccess('Certificate & Session berhasil dibuat!')
       }
       closeModal()
     } catch (e) {
@@ -1390,20 +1523,133 @@ const CertificatesCRUD: React.FC = () => {
                       </div>
 
                       {/* Detail UUT Form (Read-only or Editable) */}
-                      <div className="grid grid-cols-2 gap-3 bg-gray-50 p-3 rounded-lg border border-gray-100">
-                        <div className="col-span-2 text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Detail Sensor</div>
-                        {[
-                          { label: 'Pabrikan', val: instrumentPreview.manufacturer },
-                          { label: 'Tipe', val: instrumentPreview.type },
-                          { label: 'Serial Number', val: instrumentPreview.serial },
-                          // Add more fields as requested (Range, Graduasi, etc) - mocking for now
-                          { label: 'Range/Kapasitas', val: '-' },
-                        ].map((f, i) => (
-                          <div key={i}>
-                            <label className="text-[10px] text-gray-500 block">{f.label}</label>
-                            <div className="text-sm font-medium text-gray-800">{f.val || '-'}</div>
+                      {/* Detail UUT Form (Editable) */}
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <div className="flex justify-between items-center mb-3 border-b border-gray-200 pb-2">
+                          <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Detail Sensor (Dapat Diedit)</h4>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // Reset logic to original sensor values if needed
+                              const sensor = sensors.find(s => s.id === form.instrument);
+                              if (sensor) {
+                                setInstrumentPreview({
+                                  manufacturer: sensor.manufacturer || '',
+                                  type: sensor.type || '',
+                                  serial: sensor.serial_number || '',
+                                });
+                              }
+                            }}
+                            className="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors"
+                          >
+                            Reset ke Default
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-semibold text-gray-500">Pabrikan</label>
+                            <input
+                              type="text"
+                              value={instrumentPreview.manufacturer || ''}
+                              onChange={e => setInstrumentPreview({ ...instrumentPreview, manufacturer: e.target.value })}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                            />
                           </div>
-                        ))}
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-semibold text-gray-500">Tipe</label>
+                            <input
+                              type="text"
+                              value={instrumentPreview.type || ''}
+                              onChange={e => setInstrumentPreview({ ...instrumentPreview, type: e.target.value })}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-semibold text-gray-500">Serial Number</label>
+                            <input
+                              type="text"
+                              value={instrumentPreview.serial || ''}
+                              onChange={e => setInstrumentPreview({ ...instrumentPreview, serial: e.target.value })}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-semibold text-gray-500">Range/Kapasitas</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="Nilai"
+                                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Unit"
+                                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-semibold text-gray-500">Graduating</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="Nilai"
+                                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Unit"
+                                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-semibold text-gray-500">Diameter Corong</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="Nilai"
+                                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Unit"
+                                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-semibold text-gray-500">Volume per Tip</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="Nilai"
+                                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Unit"
+                                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-semibold text-gray-500">Luas Corong</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="Nilai"
+                                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Unit"
+                                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                              />
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1522,32 +1768,86 @@ const CertificatesCRUD: React.FC = () => {
                   </h3>
                   <div className="flex flex-col md:flex-row gap-4">
                     <div className="flex-1 space-y-3">
-                      <div className="border-2 border-dashed border-blue-200 bg-blue-50/50 rounded-xl p-6 text-center hover:bg-blue-50 transition-colors">
-                        <input type="file" className="hidden" id="raw-upload" accept=".xlsx,.csv" />
+                      <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${rawDataFilename ? 'border-green-300 bg-green-50/30' : 'border-blue-200 bg-blue-50/50 hover:bg-blue-50'}`}>
+                        <input
+                          type="file"
+                          className="hidden"
+                          id="raw-upload"
+                          accept=".xlsx,.csv"
+                          onChange={handleRawDataUpload}
+                          disabled={isImporting}
+                        />
                         <label htmlFor="raw-upload" className="cursor-pointer flex flex-col items-center">
-                          <div className="p-3 bg-white rounded-full shadow-sm mb-3">
-                            <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                          </div>
-                          <span className="text-sm font-semibold text-gray-700">Klik untuk upload Excel/CSV</span>
-                          <span className="text-xs text-gray-500 mt-1">Format: Waktu, Data Standar, Data UUT</span>
+                          {isImporting ? (
+                            <div className="p-3 bg-white rounded-full shadow-sm mb-3">
+                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                            </div>
+                          ) : rawDataFilename ? (
+                            <div className="p-3 bg-green-100 rounded-full shadow-sm mb-3">
+                              <FileTextIcon className="w-6 h-6 text-green-600" />
+                            </div>
+                          ) : (
+                            <div className="p-3 bg-white rounded-full shadow-sm mb-3">
+                              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                            </div>
+                          )}
+
+                          {isImporting ? (
+                            <span className="text-sm font-semibold text-gray-700">Memproses file...</span>
+                          ) : rawDataFilename ? (
+                            <>
+                              <span className="text-sm font-bold text-gray-800">{rawDataFilename}</span>
+                              <span className="text-xs text-green-600 mt-1">Klik untuk ganti file</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-sm font-semibold text-gray-700">Klik untuk upload Excel/CSV</span>
+                              <span className="text-xs text-gray-500 mt-1">Format: Multi-sheet (Sheet 1 = Sensor 1, dst)</span>
+                            </>
+                          )}
                         </label>
                       </div>
                     </div>
+
+                    {/* Detected Sheets List */}
                     <div className="flex-1 bg-gray-50 rounded-lg p-4 border border-gray-200">
-                      <h4 className="text-sm font-bold text-gray-700 mb-3">Mapping Kolom</h4>
-                      <div className="space-y-2">
-                        {['Timestamp', 'Nilai Standar', 'Nilai UUT'].map((label) => (
-                          <div key={label} className="flex items-center justify-between">
-                            <span className="text-xs text-gray-600">{label}</span>
-                            <select className="text-xs border border-gray-300 rounded px-2 py-1 w-32 bg-white">
-                              <option>Pilih Kolom...</option>
-                            </select>
-                          </div>
-                        ))}
+                      <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center justify-between">
+                        <span>Sensor Terdeteksi (Sheets)</span>
+                        <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full">{rawData.length}</span>
+                      </h4>
+
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {rawData.length === 0 ? (
+                          <div className="text-xs text-center text-gray-400 py-4 italic">Belum ada data diupload</div>
+                        ) : (
+                          rawData.map((sheet, i) => (
+                            <div key={i} className="flex items-center justify-between p-2 bg-white border border-gray-200 rounded shadow-sm">
+                              <div className="flex items-center gap-2 overflow-hidden">
+                                <div className="bg-blue-100 p-1.5 rounded text-blue-600">
+                                  <SensorIcon className="w-4 h-4" />
+                                </div>
+                                <div className="truncate">
+                                  <div className="text-xs font-bold text-gray-800 truncate" title={sheet.name}>{sheet.name}</div>
+                                  <div className="text-[10px] text-gray-500">Sensor #{i + 1} • {sheet.data.length} baris</div>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
-                      <button type="button" className="w-full mt-4 bg-gray-800 text-white text-xs py-2 rounded-lg hover:bg-gray-700 font-semibold" disabled>
-                        Import Data
-                      </button>
+
+                      {/* Show preview button only if data loaded */}
+                      {rawData.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowRawDataModal(true)}
+                          className="w-full mt-4 bg-gray-800 text-white text-xs py-2 rounded-lg hover:bg-gray-700 font-semibold transition-colors"
+                        >
+                          <span className="flex items-center justify-center gap-2">
+                            <EyeIcon className="w-4 h-4" /> Lihat Preview Raw Data
+                          </span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1805,12 +2105,19 @@ const CertificatesCRUD: React.FC = () => {
                         />
                         <button
                           type="button"
-                          className="inline-flex items-center p-2 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200 border border-transparent hover:border-green-200"
+                          disabled={isImporting}
+                          className={`inline-flex items-center p-2 rounded-lg transition-all duration-200 border border-transparent ${isImporting
+                            ? 'bg-gray-100 text-gray-400 cursor-wait'
+                            : 'text-green-600 hover:text-green-800 hover:bg-green-50 hover:border-green-200'}`}
                           title="Import dari Excel"
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
+                          {isImporting ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400" />
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                          )}
                         </button>
                       </div>
                     </div>
@@ -1904,15 +2211,83 @@ const CertificatesCRUD: React.FC = () => {
 
                                     // Update specific field based on index
                                     const r = { ...v[si].rows[ri] };
+
+                                    // Helper function for interpolation
+                                    const interpolateCorrection = (val: number, table: any[]) => {
+                                      if (!table || table.length === 0) return 0;
+                                      // Sort table by setpoint
+                                      const sorted = [...table].sort((a, b) => parseFloat(a.setpoint) - parseFloat(b.setpoint));
+
+                                      // Find range
+                                      for (let i = 0; i < sorted.length - 1; i++) {
+                                        const p1 = parseFloat(sorted[i].setpoint);
+                                        const p2 = parseFloat(sorted[i + 1].setpoint);
+                                        const c1 = parseFloat(sorted[i].correction);
+                                        const c2 = parseFloat(sorted[i + 1].correction);
+
+                                        if (val >= p1 && val <= p2) {
+                                          // Linear interpolation
+                                          return c1 + (val - p1) * (c2 - c1) / (p2 - p1);
+                                        }
+                                      }
+
+                                      // Extrapolation or edge cases - clamp to nearest? or linear extend?
+                                      // For now simple clamp to ends
+                                      if (val < parseFloat(sorted[0].setpoint)) return parseFloat(sorted[0].correction);
+                                      if (val > parseFloat(sorted[sorted.length - 1].setpoint)) return parseFloat(sorted[sorted.length - 1].correction);
+                                      return 0;
+                                    };
+
                                     if (colIdx === 0) r.key = newVal;
                                     else if (colIdx === 1) r.unit = newVal;
                                     else if (colIdx === 2) r.value = newVal;
                                     else {
                                       const extras = [...(r.extraValues || [])];
-                                      // Ensure extras has enough length
                                       while (extras.length < colIdx - 3) extras.push('');
                                       extras[colIdx - 3] = newVal;
                                       r.extraValues = extras;
+                                    }
+
+                                    // Auto-calculate Correction if this is "Standard Reading" column (heuristic)
+                                    // Assuming Headers: [Parameter, Unit, UUT Reading, Standard Reading, Correction, True Value]
+                                    // Or searching for header names
+                                    const currentHeader = (section.headers || [])[colIdx]?.toLowerCase() || '';
+                                    if ((currentHeader.includes('standard') || currentHeader.includes('standar')) && selectedStandard?.correction_std) {
+                                      const stdReading = parseFloat(newVal);
+                                      if (!isNaN(stdReading)) {
+                                        const correction = interpolateCorrection(stdReading, selectedStandard.correction_std);
+                                        const trueValue = stdReading + correction;
+
+                                        // Find "Correction" / "Koreksi" column index
+                                        const headers = (section.headers || []).map(h => h.toLowerCase());
+                                        const corrIdx = headers.findIndex(h => h.includes('correction') || h.includes('koreksi'));
+                                        const trueIdx = headers.findIndex(h => h.includes('true') || h.includes('benar') || h.includes('sebenarnya'));
+
+                                        if (corrIdx >= 0) {
+                                          if (corrIdx === 0) r.key = correction.toFixed(4); // Unlikely
+                                          else if (corrIdx === 1) r.unit = correction.toFixed(4); // Unlikely
+                                          else if (corrIdx === 2) r.value = correction.toFixed(4);
+                                          else {
+                                            const extras = [...(r.extraValues || [])];
+                                            while (extras.length < corrIdx - 3) extras.push('');
+                                            extras[corrIdx - 3] = correction.toFixed(4);
+                                            r.extraValues = extras;
+                                          }
+                                        }
+
+                                        if (trueIdx >= 0) {
+                                          const resVal = trueValue.toFixed(4);
+                                          if (trueIdx === 0) r.key = resVal;
+                                          else if (trueIdx === 1) r.unit = resVal;
+                                          else if (trueIdx === 2) r.value = resVal;
+                                          else {
+                                            const extras = [...(r.extraValues || [])];
+                                            while (extras.length < trueIdx - 3) extras.push('');
+                                            extras[trueIdx - 3] = resVal;
+                                            r.extraValues = extras;
+                                          }
+                                        }
+                                      }
                                     }
 
                                     v[si].rows[ri] = r;
@@ -2243,6 +2618,79 @@ const CertificatesCRUD: React.FC = () => {
               >
                 Simpan Catatan
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Raw Data Preview Modal */}
+      {showRawDataModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 backdrop-blur-sm">
+          <div className="w-full max-w-5xl bg-white rounded-xl shadow-xl overflow-hidden border border-[#1e377c] max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="relative bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] p-4 flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-lg"><EyeIcon className="w-5 h-5 text-white" /></div>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Preview Raw Data</h2>
+                  <p className="text-blue-100 text-xs">{rawDataFilename || 'Data Import'} • {rawData.length} Sheets</p>
+                </div>
+              </div>
+              <button onClick={() => setShowRawDataModal(false)} className="text-white hover:bg-white/10 p-1 rounded-lg"><CloseIcon className="w-6 h-6" /></button>
+            </div>
+
+            {/* Tabs */}
+            {rawData.length > 0 && (
+              <div className="bg-gray-100 border-b border-gray-200 flex px-2 overflow-x-auto shrink-0">
+                {rawData.map((sheet, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setRawPreviewSheetIndex(idx)}
+                    className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${rawPreviewSheetIndex === idx
+                      ? 'border-[#1e377c] text-[#1e377c] bg-white'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <SensorIcon className="w-4 h-4" />
+                      {sheet.name}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Content */}
+            <div className="flex-1 overflow-auto p-4 bg-white font-mono text-xs">
+              {rawData[rawPreviewSheetIndex] ? (
+                <table className="w-full border-collapse border border-gray-200">
+                  <tbody>
+                    {(rawData[rawPreviewSheetIndex].data as any[][]).slice(0, 100).map((row, ri) => (
+                      <tr key={ri} className="hover:bg-gray-50 border-b border-gray-100">
+                        <td className="p-2 text-gray-400 select-none w-10 text-right border-r border-gray-100 bg-gray-50">{ri + 1}</td>
+                        {row.map((cell, ci) => (
+                          <td key={ci} className="p-2 border-r border-gray-100 last:border-r-0 whitespace-nowrap">
+                            {cell !== null && cell !== undefined ? String(cell) : ''}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                    {(rawData[rawPreviewSheetIndex].data as any[][]).length > 100 && (
+                      <tr>
+                        <td colSpan={20} className="p-4 text-center text-gray-500 italic">
+                          ... {(rawData[rawPreviewSheetIndex].data as any[][]).length - 100} more rows ...
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="text-center text-gray-400 py-10">No data selected</div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-3 bg-gray-50 border-t border-gray-200 text-right">
+              <button onClick={() => setShowRawDataModal(false)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-xs font-bold">Tutup Preview</button>
             </div>
           </div>
         </div>

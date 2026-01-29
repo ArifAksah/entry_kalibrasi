@@ -95,33 +95,24 @@ export interface CertStandard {
 }
 
 export interface CalibrationSession {
-  session_id: string // UUID
+  id: string // UUID
   created_at: string
   station_id: number | null
-  uut_instrument_id: number | null // Points to Sensor (UUT)
-  tgl_kalibrasi: string
-  order_no: string
-  ident: string
-  no_sertifikat: string
-  nomor_akreditasi: string
-  status: any
-  keterangan: any
-  updated_at: string
-  uut_sensor_id: number | null
-  std_cert_id: number | null
-  start_date: string
-  end_date: string
-  place: string
+  start_date: string | null
+  end_date: string | null
+  place: string | null
+  notes: string | null
+  users: string[] // Array of user IDs (evaluators, etc.)
+  status: string
 }
 
 export interface RawData {
   id: number
   created_at: string
-  timestamp: string
-  standard_data: number
-  uut_data: number
-  sensor_id: number
   session_id: string
+  data: any // JSONB or array
+  filename: string
+  uploaded_by: string
 }
 
 export type SensorInsert = Omit<Sensor, 'id' | 'created_at'>
@@ -172,6 +163,7 @@ export interface Instrument {
   station_id?: number | null // Foreign key column
   station?: Station | null // Relasi data (opsional)
   memiliki_lebih_satu?: boolean // Field untuk mengontrol tampilan sensor
+  sensor?: Sensor[]
 }
 
 export type InstrumentInsert = Omit<Instrument, 'id' | 'created_at' | 'station'>

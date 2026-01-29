@@ -6,13 +6,14 @@ export const useInstruments = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchInstruments = async (opts?: { q?: string; page?: number; pageSize?: number }) => {
+  const fetchInstruments = async (opts?: { q?: string; page?: number; pageSize?: number; type?: 'standard' | 'uut' }) => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
       if (opts?.q) params.set('q', opts.q)
       if (opts?.page) params.set('page', String(opts.page))
       if (opts?.pageSize) params.set('pageSize', String(opts.pageSize))
+      if (opts?.type) params.set('type', opts.type)
       const qs = params.toString()
       const res = await fetch(`/api/instruments${qs ? `?${qs}` : ''}`)
       if (!res.ok) throw new Error('Failed to fetch instruments')
@@ -41,6 +42,7 @@ export const useInstruments = () => {
       if (!res.ok) throw new Error(data.error || 'Failed to add instrument')
       setInstruments(prev => [data, ...prev])
       setError(null)
+      return data
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'An error occurred'
       setError(msg)
@@ -50,7 +52,7 @@ export const useInstruments = () => {
 
   const updateInstrument = async (id: number, payload: InstrumentUpdate) => {
     try {
-      const res = await fetch(`/api/instruments/${id}` ,{
+      const res = await fetch(`/api/instruments/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -59,6 +61,7 @@ export const useInstruments = () => {
       if (!res.ok) throw new Error(data.error || 'Failed to update instrument')
       setInstruments(prev => prev.map(item => item.id === id ? data : item))
       setError(null)
+      return data
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'An error occurred'
       setError(msg)
