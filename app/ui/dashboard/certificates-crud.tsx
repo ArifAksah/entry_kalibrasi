@@ -268,6 +268,8 @@ const CertificatesCRUD: React.FC = () => {
     notes: ''
   })
   const [selectedStandard, setSelectedStandard] = useState<CertStandard | null>(null)
+  const [standardInstrumentId, setStandardInstrumentId] = useState<number | null>(null)
+
   const [uploadedRawData, setUploadedRawData] = useState<any[]>([])
   const [rawMap, setRawMap] = useState({ timestamp: '', standard: '', uut: '' })
 
@@ -438,6 +440,7 @@ const CertificatesCRUD: React.FC = () => {
   const [envEditIndex, setEnvEditIndex] = useState<number | null>(null)
   const [envDraft, setEnvDraft] = useState<KV[]>([])
   const [tableEditIndex, setTableEditIndex] = useState<number | null>(null)
+  const [tableDraft, setTableDraft] = useState<TableSection[]>([])
 
   // Raw Data State
   const [rawData, setRawData] = useState<{ name: string, data: any[][] }[]>([])
@@ -614,25 +617,46 @@ const CertificatesCRUD: React.FC = () => {
           return { data: [...firstData, ...restData], total: (firstJson?.total ?? (firstData.length + restData.length)) as number, pageSize: 100, totalPages }
         }
 
-        const [stationsAll, instrumentsRes, sensorsRes, personelRes] = await Promise.all([
+        // Fetch all instruments across pages
+        const fetchAllInstruments = async () => {
+          const first = await fetch('/api/instruments?page=1&pageSize=100')
+          if (!first.ok) return { data: [], total: 0, pageSize: 100, totalPages: 1 }
+          const firstJson = await first.json()
+          const firstData = Array.isArray(firstJson) ? firstJson : (firstJson?.data ?? [])
+          const totalPages = (Array.isArray(firstJson) ? 1 : (firstJson?.totalPages ?? 1)) as number
+          if (totalPages <= 1) return { data: firstData, total: (firstJson?.total ?? firstData.length) as number, pageSize: 100, totalPages }
+          const restPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
+          const rest = await Promise.all(restPages.map(p => fetch(`/api/instruments?page=${p}&pageSize=100`).then(r => r.ok ? r.json() : { data: [] })))
+          const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
+          return { data: [...firstData, ...restData], total: (firstJson?.total ?? (firstData.length + restData.length)) as number, pageSize: 100, totalPages }
+        }
+
+        // Fetch all sensors across pages
+        const fetchAllSensors = async () => {
+          const first = await fetch('/api/sensors?page=1&pageSize=100')
+          if (!first.ok) return { data: [], total: 0, pageSize: 100, totalPages: 1 }
+          const firstJson = await first.json()
+          const firstData = Array.isArray(firstJson) ? firstJson : (firstJson?.data ?? [])
+          const totalPages = (Array.isArray(firstJson) ? 1 : (firstJson?.totalPages ?? 1)) as number
+          if (totalPages <= 1) return { data: firstData, total: (firstJson?.total ?? firstData.length) as number, pageSize: 100, totalPages }
+          const restPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
+          const rest = await Promise.all(restPages.map(p => fetch(`/api/sensors?page=${p}&pageSize=100`).then(r => r.ok ? r.json() : { data: [] })))
+          const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
+          return { data: [...firstData, ...restData], total: (firstJson?.total ?? (firstData.length + restData.length)) as number, pageSize: 100, totalPages }
+        }
+
+        const [stationsAll, instrumentsAll, sensorsAll, personelRes] = await Promise.all([
           fetchAllStations(),
-          fetch('/api/instruments'),
-          fetch('/api/sensors'),
+          fetchAllInstruments(),
+          fetchAllSensors(),
           fetch('/api/personel'),
           fetch('/api/cert-standards'), // Assuming this endpoint exists or we use a direct query
         ])
 
         setStations(Array.isArray(stationsAll) ? stationsAll : (stationsAll as any)?.data ?? [])
+        setInstruments(Array.isArray(instrumentsAll) ? instrumentsAll : (instrumentsAll as any)?.data ?? [])
+        setSensors(Array.isArray(sensorsAll) ? sensorsAll : (sensorsAll as any)?.data ?? [])
 
-        if (instrumentsRes.ok) {
-          const instrumentsData = await instrumentsRes.json()
-          setInstruments(Array.isArray(instrumentsData) ? instrumentsData : (instrumentsData?.data ?? []))
-        }
-
-        if (sensorsRes.ok) {
-          const sensorsData = await sensorsRes.json()
-          setSensors(Array.isArray(sensorsData) ? sensorsData : (sensorsData?.data ?? []))
-        }
         if (personelRes.ok) {
           const p = await personelRes.json()
           setPersonel(Array.isArray(p) ? p : [])
@@ -1488,9 +1512,43 @@ const CertificatesCRUD: React.FC = () => {
                   <span className="bg-gray-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span>
                   Identitas Alat
                 </h3>
+
+                {/* 0. Pilih Instrument (Parent) */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 relative overflow-hidden group hover:border-[#1e377c]/30 transition-all">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-[#1e377c]"></div>
+                  <div className="flex items-center justify-between mb-4 pl-2">
+                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                      <InstrumentIcon className="w-5 h-5 text-[#1e377c]" />
+                      Pilih Instrument (Device)
+                    </h3>
+                    <a href="/instruments" target="_blank" className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded hover:bg-blue-100 transition-colors">
+                      + Tambah Instrument Baru
+                    </a>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-gray-600">Instrument *</label>
+                    <SearchableDropdown
+                      value={form.instrument}
+                      onChange={(val) => {
+                        setForm({ ...form, instrument: val as number });
+                        // Reset child selections when parent changes
+                        setResults(prev => prev.map((r, i) => i === 0 ? { ...r, sensorId: null, sensorDetails: undefined } : r));
+                        setInstrumentPreview({});
+                      }}
+                      options={instruments.map(i => ({
+                        id: i.id,
+                        name: `${i.name} (${i.manufacturer} ${i.type} SN:${i.serial_number})`,
+                        station_id: i.station?.name || ''
+                      }))}
+                      placeholder="Pilih Instrument..."
+                      searchPlaceholder="Cari Instrument..."
+                    />
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* 1. Alat UUT */}
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative overflow-hidden group hover:border-[#1e377c]/30 transition-all">
+                  <div className={`bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative overflow-hidden group transition-all ${!form.instrument ? 'opacity-60 pointer-events-none grayscale' : 'hover:border-[#1e377c]/30'}`}>
                     <div className="absolute top-0 left-0 w-1 h-full bg-[#1e377c]"></div>
                     <div className="flex items-center justify-between mb-4 pl-2">
                       <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
@@ -1504,25 +1562,30 @@ const CertificatesCRUD: React.FC = () => {
 
                     <div className="space-y-3">
                       <div className="space-y-1">
-                        <label className="text-xs font-semibold text-gray-600">Pilih Sensor UUT</label>
+                        <label className="text-xs font-semibold text-gray-600">Pilih Sensor UUT *</label>
                         <SearchableDropdown
-                          value={form.instrument} // Mapping instrument to UUT for now
+                          value={results[0]?.sensorId || null}
                           onChange={(val) => {
-                            // Logic to select UUT and auto-fill details
-                            setForm({ ...form, instrument: val as number });
-                            const selectedSensor = sensors.find(s => s.id === val);
-                            // Trigger auto-fill logic here if needed or rely on useEffect
+                            if (!val) {
+                              applySensorToResult(0, null);
+                              return;
+                            }
+                            applySensorToResult(0, val as number);
                           }}
-                          options={sensors.filter(s => !s.is_standard).map(s => ({
-                            id: s.id,
-                            name: s.name || `Sensor ${s.id}`,
-                            station_id: `${s.id}` // extra info
-                          }))}
-                          placeholder="Pilih Sensor UUT..."
+                          // Filter sensors based on selected instrument
+                          options={sensors
+                            .filter(s => form.instrument ? s.instrument_id === form.instrument : true) // Show only sensors belonging to instrument
+                            .filter(s => !s.is_standard)
+                            .map(s => ({
+                              id: s.id,
+                              name: s.name || `Sensor ${s.id}`,
+                              station_id: `${s.id}` // extra info
+                            }))}
+                          placeholder={form.instrument ? "Pilih Sensor UUT..." : "Pilih Instrument Terlebih Dahulu"}
+                          searchPlaceholder="Cari Sensor..."
                         />
                       </div>
 
-                      {/* Detail UUT Form (Read-only or Editable) */}
                       {/* Detail UUT Form (Editable) */}
                       <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
                         <div className="flex justify-between items-center mb-3 border-b border-gray-200 pb-2">
@@ -1530,14 +1593,15 @@ const CertificatesCRUD: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => {
-                              // Reset logic to original sensor values if needed
-                              const sensor = sensors.find(s => s.id === form.instrument);
+                              // Use the sensor from results[0].sensorId
+                              const currentSensorId = results[0]?.sensorId;
+                              const sensor = sensors.find(s => s.id === currentSensorId);
                               if (sensor) {
-                                setInstrumentPreview({
-                                  manufacturer: sensor.manufacturer || '',
-                                  type: sensor.type || '',
-                                  serial: sensor.serial_number || '',
-                                });
+                                // For UUT details, we usually show sensor details. 
+                                // But current UI holds 'instrumentPreview' which was seemingly used for UUT.
+                                // Let's update instrumentPreview/sensorDetails in result.
+                                // Actually applySensorToResult already does this, so re-triggering it or manual set
+                                applySensorToResult(0, currentSensorId);
                               }
                             }}
                             className="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors"
@@ -1546,13 +1610,24 @@ const CertificatesCRUD: React.FC = () => {
                           </button>
                         </div>
 
+                        {/* Note: The fields below bind to instrumentPreview in the original code. 
+                            Ideally they should bind to results[0].sensorDetails or similar.
+                            For now I'll keep using instrumentPreview BUT update it when sensor changes. 
+                            However, the previous code updated instrumentPreview based on form.instrument.
+                            I already added applySensorToResult to handle sensorDetails. 
+                            Let's rely on results[0].sensorDetails if available, or fallback to instrumentPreview (migration).
+                            Wait, the inputs below bind to instrumentPreview. I should stick to that for minimal refactor, 
+                            BUT I need to ensure instrumentPreview is updated when UUT SENSOR changes (done in onChange above).
+                        */}
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-1">
                             <label className="text-[10px] uppercase font-semibold text-gray-500">Pabrikan</label>
                             <input
                               type="text"
-                              value={instrumentPreview.manufacturer || ''}
-                              onChange={e => setInstrumentPreview({ ...instrumentPreview, manufacturer: e.target.value })}
+                              // Use sensorDetails from result if available (preferred) or instrumentPreview
+                              value={results[0]?.sensorDetails?.manufacturer || instrumentPreview.manufacturer || ''}
+                              onChange={e => updateResult(0, { sensorDetails: { ...results[0]?.sensorDetails, manufacturer: e.target.value } })}
                               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
                             />
                           </div>
@@ -1560,8 +1635,8 @@ const CertificatesCRUD: React.FC = () => {
                             <label className="text-[10px] uppercase font-semibold text-gray-500">Tipe</label>
                             <input
                               type="text"
-                              value={instrumentPreview.type || ''}
-                              onChange={e => setInstrumentPreview({ ...instrumentPreview, type: e.target.value })}
+                              value={results[0]?.sensorDetails?.type || instrumentPreview.type || ''}
+                              onChange={e => updateResult(0, { sensorDetails: { ...results[0]?.sensorDetails, type: e.target.value } })}
                               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
                             />
                           </div>
@@ -1569,8 +1644,8 @@ const CertificatesCRUD: React.FC = () => {
                             <label className="text-[10px] uppercase font-semibold text-gray-500">Serial Number</label>
                             <input
                               type="text"
-                              value={instrumentPreview.serial || ''}
-                              onChange={e => setInstrumentPreview({ ...instrumentPreview, serial: e.target.value })}
+                              value={results[0]?.sensorDetails?.serial_number || instrumentPreview.serial || ''}
+                              onChange={e => updateResult(0, { sensorDetails: { ...results[0]?.sensorDetails, serial_number: e.target.value } })}
                               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
                             />
                           </div>
@@ -1667,8 +1742,45 @@ const CertificatesCRUD: React.FC = () => {
                       </button>
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="space-y-4">
+                      {/* Standard Instrument Selection - NEW */}
                       <div className="space-y-1">
+                        <label className="text-xs font-semibold text-gray-600">Pilih Instrument Standar *</label>
+                        <SearchableDropdown
+                          value={standardInstrumentId}
+                          onChange={(val) => {
+                            setStandardInstrumentId(val as number);
+                            setSelectedStandard(null); // Reset standard cert when instrument changes
+                          }}
+                          options={instruments
+                            .filter(i => {
+                              // Only show instruments that have at least one standard certificate associated via sensors
+                              // 1. Find all sensors belonging to this instrument
+                              // 2. Check if any of those sensors have a cert in standardCerts
+                              // OR more efficiently: Get all instrument_ids from standardCerts -> sensors linkage first.
+
+                              // Check if this instrument has any sensor that is linked to a standard cert
+                              // This is a bit expensive properly O(N*M), for small datasets OK.
+                              // Optimized approach:
+                              // validInstrumentIds = new Set(standardCerts.map(c => sensors.find(s => s.id === c.sensor_id)?.instrument_id).filter(Boolean))
+
+                              const hasStandard = standardCerts.some(c => {
+                                const sensor = sensors.find(s => s.id === c.sensor_id);
+                                return sensor && sensor.instrument_id === i.id;
+                              });
+                              return hasStandard;
+                            })
+                            .map(i => ({
+                              id: i.id,
+                              name: `${i.name} (${i.manufacturer} s/n ${i.serial_number})`,
+                              station_id: i.station?.name || ''
+                            }))}
+                          placeholder="Pilih Instrument Standar..."
+                          searchPlaceholder="Cari Instrument Standard..."
+                        />
+                      </div>
+
+                      <div className={`space-y-1 transition-opacity ${!standardInstrumentId ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
                         <label className="text-xs font-semibold text-gray-600">Pilih Sertifikat Standar</label>
                         <SearchableDropdown
                           value={selectedStandard?.id || null}
@@ -1676,12 +1788,19 @@ const CertificatesCRUD: React.FC = () => {
                             const std = standardCerts.find(c => c.id === val);
                             setSelectedStandard(std || null);
                           }}
-                          options={standardCerts.map(c => ({
-                            id: c.id,
-                            name: `${c.no_certificate} (${c.calibration_date})`,
-                            station_id: `Drift: ${c.drift}`
-                          }))}
-                          placeholder="Pilih Sertifikat Standar..."
+                          // Filter: Find sensors belonging to Selected Standard Instrument, then find Certs for those sensors
+                          options={standardCerts
+                            .filter(c => {
+                              if (!standardInstrumentId) return true;
+                              const sensorForCert = sensors.find(s => s.id === c.sensor_id);
+                              return sensorForCert && sensorForCert.instrument_id === standardInstrumentId;
+                            })
+                            .map(c => ({
+                              id: c.id,
+                              name: `${c.no_certificate} (${c.calibration_date})`,
+                              station_id: `Drift: ${c.drift}`
+                            }))}
+                          placeholder={standardInstrumentId ? "Pilih Sertifikat Standar..." : "Pilih Instrument Standar Terlebih Dahulu"}
                         />
                       </div>
 
