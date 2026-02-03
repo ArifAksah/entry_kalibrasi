@@ -352,8 +352,15 @@ const CertificatesCRUD: React.FC = () => {
   }])
 
   const removeResult = (idx: number) => {
-    if (results.length > 1) {
-      setResults(prev => prev.filter((_, i) => i !== idx))
+    if (results.length > 1 || rawData.length > 0) {
+      if (confirm('Hapus input sensor ini? Data yang sudah diisi akan hilang.')) {
+        setResults(prev => prev.filter((_, i) => i !== idx))
+        if (rawData.length > idx) {
+          setRawData(prev => prev.filter((_, i) => i !== idx))
+        }
+      }
+    } else {
+      showError('Minimal harus ada 1 input sensor.')
     }
   }
 
@@ -547,18 +554,73 @@ const CertificatesCRUD: React.FC = () => {
       const workbook = read(data)
 
       const sheetsData: { name: string, data: any[][] }[] = []
+      const invalidSheets: string[] = []
+
       workbook.SheetNames.forEach(name => {
         const worksheet = workbook.Sheets[name]
         const jsonData = utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
+
         if (jsonData.length > 0) {
-          sheetsData.push({ name, data: jsonData })
+          // Validation: Check headers
+          const headers = (jsonData[0] as any[]).map(h => String(h).toLowerCase().trim())
+          const required = ['timestamp', 'standar', 'uut']
+          const missing = required.filter(r => !headers.includes(r))
+
+          if (missing.length === 0) {
+            sheetsData.push({ name, data: jsonData })
+          } else {
+            invalidSheets.push(`${name} (Missing: ${missing.join(', ')})`)
+          }
         }
       })
 
       console.log('Raw Data Sheets:', sheetsData)
       setRawData(sheetsData)
 
-      showSuccess(`Berhasil load ${sheetsData.length} sheet dari ${file.name}.`)
+      if (invalidSheets.length > 0) {
+        showError(`Beberapa sheet ditolak karena format header tidak sesuai: \n${invalidSheets.join('\n')}`)
+      }
+
+      // NEW: Automatically generate ResultItems based on sheets
+      if (sheetsData.length > 0) {
+        let shouldProceed = false;
+
+        if (sheetsData.length === 1) {
+          // If only 1 sheet, use alert/notification and auto-proceed (as requested: "versi alert" for 1 valid sheet)
+          // CHANGED: Using showSuccess instead of blocking alert based on feedback
+          // showSuccess(`Terdeteksi 1 sheet valid: ${sheetsData[0].name}. Input sensor akan disiapkan otomatis.`) - will be called at end of function anyway
+          shouldProceed = true;
+        } else {
+          // If multiple sheets, ask for confirmation
+          shouldProceed = confirm(`Terdeteksi ${sheetsData.length} sheet valid. Apakah Anda ingin membuat ${sheetsData.length} input sensor berdasarkan sheet ini? (Data yang sudah diisi manual akan direset)`)
+        }
+
+        if (shouldProceed) {
+          const newResults: ResultItem[] = sheetsData.map(() => ({
+            sensorId: null,
+            startDate: sessionDetails.start_date || '', // Inherit session date if set
+            endDate: sessionDetails.end_date || '',
+            place: sessionDetails.place || '',
+            environment: [], // Could potentially parse env from sheet if formatted standardized
+            table: [], // Will be populated when mapping columns
+            images: [],
+            notesForm: {
+              traceable_to_si_through: '',
+              reference_document: '',
+              calibration_methode: '',
+              others: '',
+              standardInstruments: []
+            }
+          }))
+          setResults(newResults)
+          showSuccess(`Dibuat ${sheetsData.length} slot sensor berdasarkan sheet valid.`)
+        }
+      } else if (invalidSheets.length > 0) {
+        // If no valid sheets but some invalid ones
+        showError('Tidak ada sheet yang valid untuk diproses.')
+      } else {
+        showSuccess(`Berhasil load ${sheetsData.length} sheet dari ${file.name}.`)
+      }
 
     } catch (error) {
       console.error('Error parsing Raw Data Excel:', error)
@@ -645,12 +707,12 @@ const CertificatesCRUD: React.FC = () => {
           return { data: [...firstData, ...restData], total: (firstJson?.total ?? (firstData.length + restData.length)) as number, pageSize: 100, totalPages }
         }
 
-        const [stationsAll, instrumentsAll, sensorsAll, personelRes] = await Promise.all([
+        const [stationsAll, instrumentsAll, sensorsAll, personelRes, certStandardsRes] = await Promise.all([
           fetchAllStations(),
           fetchAllInstruments(),
           fetchAllSensors(),
           fetch('/api/personel'),
-          fetch('/api/cert-standards'), // Assuming this endpoint exists or we use a direct query
+          fetch('/api/cert-standards'),
         ])
 
         setStations(Array.isArray(stationsAll) ? stationsAll : (stationsAll as any)?.data ?? [])
@@ -662,12 +724,15 @@ const CertificatesCRUD: React.FC = () => {
           setPersonel(Array.isArray(p) ? p : [])
         }
 
-        // Handle standard certs (mocking if endpoint fails for now as it's new)
+        // Handle standard certs
         try {
-          // In a real scenario, we would check certStandardsRes.ok
-          // For now initializing empty or mocking if needed
-          setStandardCerts([])
-        } catch (e) { }
+          if (certStandardsRes.ok) {
+            const certs = await certStandardsRes.json()
+            setStandardCerts(Array.isArray(certs) ? certs : [])
+          }
+        } catch (e) {
+          console.error('Failed to load standard certs', e)
+        }
 
       } catch (e) {
         console.error('Failed to fetch data:', e)
@@ -677,15 +742,16 @@ const CertificatesCRUD: React.FC = () => {
   }, [])
 
   // State specific for Standard Instrument selection
-  const [selectedStdSensorId, setSelectedStdSensorId] = useState<number | null>(null)
+  // const [selectedStdSensorId, setSelectedStdSensorId] = useState<number | null>(null) -> Unused
 
-  // Fetch standard certs when standard sensor is selected
+  // REPLACED: Fetching standard certs is now done globally at startup to support the dropdown filter.
+  // The previous useEffect here was clearing the list.
+  /*
   useEffect(() => {
     if (!selectedStdSensorId) {
       setStandardCerts([]);
       return;
     }
-
     const fetchCerts = async () => {
       try {
         const res = await fetch(`/api/cert-standards?sensor_id=${selectedStdSensorId}`)
@@ -697,6 +763,7 @@ const CertificatesCRUD: React.FC = () => {
     }
     fetchCerts()
   }, [selectedStdSensorId])
+  */
 
   // When instrument changes, update preview fields
   useEffect(() => {
@@ -1507,10 +1574,10 @@ const CertificatesCRUD: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Bagian II – Identitas Alat UUT dan Standar */}
+                {/* Bagian II – Unggah Data Mentah & Identitas Alat */}
                 <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2 px-1">
                   <span className="bg-gray-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span>
-                  Identitas Alat
+                  Data Mentah & Identitas Alat
                 </h3>
 
                 {/* 0. Pilih Instrument (Parent) */}
@@ -1546,344 +1613,11 @@ const CertificatesCRUD: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* 1. Alat UUT */}
-                  <div className={`bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative overflow-hidden group transition-all ${!form.instrument ? 'opacity-60 pointer-events-none grayscale' : 'hover:border-[#1e377c]/30'}`}>
-                    <div className="absolute top-0 left-0 w-1 h-full bg-[#1e377c]"></div>
-                    <div className="flex items-center justify-between mb-4 pl-2">
-                      <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                        <SensorIcon className="w-5 h-5 text-[#1e377c]" />
-                        Alat UUT (Unit Under Test)
-                      </h3>
-                      <button type="button" className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded hover:bg-blue-100 transition-colors">
-                        + Tambah Sensor
-                      </button>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="space-y-1">
-                        <label className="text-xs font-semibold text-gray-600">Pilih Sensor UUT *</label>
-                        <SearchableDropdown
-                          value={results[0]?.sensorId || null}
-                          onChange={(val) => {
-                            if (!val) {
-                              applySensorToResult(0, null);
-                              return;
-                            }
-                            applySensorToResult(0, val as number);
-                          }}
-                          // Filter sensors based on selected instrument
-                          options={sensors
-                            .filter(s => form.instrument ? s.instrument_id === form.instrument : true) // Show only sensors belonging to instrument
-                            .filter(s => !s.is_standard)
-                            .map(s => ({
-                              id: s.id,
-                              name: s.name || `Sensor ${s.id}`,
-                              station_id: `${s.id}` // extra info
-                            }))}
-                          placeholder={form.instrument ? "Pilih Sensor UUT..." : "Pilih Instrument Terlebih Dahulu"}
-                          searchPlaceholder="Cari Sensor..."
-                        />
-                      </div>
-
-                      {/* Detail UUT Form (Editable) */}
-                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                        <div className="flex justify-between items-center mb-3 border-b border-gray-200 pb-2">
-                          <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Detail Sensor (Dapat Diedit)</h4>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              // Use the sensor from results[0].sensorId
-                              const currentSensorId = results[0]?.sensorId;
-                              const sensor = sensors.find(s => s.id === currentSensorId);
-                              if (sensor) {
-                                // For UUT details, we usually show sensor details. 
-                                // But current UI holds 'instrumentPreview' which was seemingly used for UUT.
-                                // Let's update instrumentPreview/sensorDetails in result.
-                                // Actually applySensorToResult already does this, so re-triggering it or manual set
-                                applySensorToResult(0, currentSensorId);
-                              }
-                            }}
-                            className="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors"
-                          >
-                            Reset ke Default
-                          </button>
-                        </div>
-
-                        {/* Note: The fields below bind to instrumentPreview in the original code. 
-                            Ideally they should bind to results[0].sensorDetails or similar.
-                            For now I'll keep using instrumentPreview BUT update it when sensor changes. 
-                            However, the previous code updated instrumentPreview based on form.instrument.
-                            I already added applySensorToResult to handle sensorDetails. 
-                            Let's rely on results[0].sensorDetails if available, or fallback to instrumentPreview (migration).
-                            Wait, the inputs below bind to instrumentPreview. I should stick to that for minimal refactor, 
-                            BUT I need to ensure instrumentPreview is updated when UUT SENSOR changes (done in onChange above).
-                        */}
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-semibold text-gray-500">Pabrikan</label>
-                            <input
-                              type="text"
-                              // Use sensorDetails from result if available (preferred) or instrumentPreview
-                              value={results[0]?.sensorDetails?.manufacturer || instrumentPreview.manufacturer || ''}
-                              onChange={e => updateResult(0, { sensorDetails: { ...results[0]?.sensorDetails, manufacturer: e.target.value } })}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-semibold text-gray-500">Tipe</label>
-                            <input
-                              type="text"
-                              value={results[0]?.sensorDetails?.type || instrumentPreview.type || ''}
-                              onChange={e => updateResult(0, { sensorDetails: { ...results[0]?.sensorDetails, type: e.target.value } })}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-semibold text-gray-500">Serial Number</label>
-                            <input
-                              type="text"
-                              value={results[0]?.sensorDetails?.serial_number || instrumentPreview.serial || ''}
-                              onChange={e => updateResult(0, { sensorDetails: { ...results[0]?.sensorDetails, serial_number: e.target.value } })}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-semibold text-gray-500">Range/Kapasitas</label>
-                            <div className="flex gap-2">
-                              <input
-                                type="text"
-                                placeholder="Nilai"
-                                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
-                              />
-                              <input
-                                type="text"
-                                placeholder="Unit"
-                                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-semibold text-gray-500">Graduating</label>
-                            <div className="flex gap-2">
-                              <input
-                                type="text"
-                                placeholder="Nilai"
-                                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
-                              />
-                              <input
-                                type="text"
-                                placeholder="Unit"
-                                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-semibold text-gray-500">Diameter Corong</label>
-                            <div className="flex gap-2">
-                              <input
-                                type="text"
-                                placeholder="Nilai"
-                                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
-                              />
-                              <input
-                                type="text"
-                                placeholder="Unit"
-                                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-semibold text-gray-500">Volume per Tip</label>
-                            <div className="flex gap-2">
-                              <input
-                                type="text"
-                                placeholder="Nilai"
-                                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
-                              />
-                              <input
-                                type="text"
-                                placeholder="Unit"
-                                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-semibold text-gray-500">Luas Corong</label>
-                            <div className="flex gap-2">
-                              <input
-                                type="text"
-                                placeholder="Nilai"
-                                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
-                              />
-                              <input
-                                type="text"
-                                placeholder="Unit"
-                                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 2. Alat Standar */}
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative overflow-hidden group hover:border-[#1e377c]/30 transition-all">
-                    <div className="absolute top-0 right-0 w-1 h-full bg-green-600"></div>
-                    <div className="flex items-center justify-between mb-4 pr-2">
-                      <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                        <CertificateIcon className="w-5 h-5 text-green-700" />
-                        Alat Standar
-                      </h3>
-                      <button type="button" className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded hover:bg-green-100 transition-colors">
-                        + Tambah Sertifikat
-                      </button>
-                    </div>
-
-                    <div className="space-y-4">
-                      {/* Standard Instrument Selection - NEW */}
-                      <div className="space-y-1">
-                        <label className="text-xs font-semibold text-gray-600">Pilih Instrument Standar *</label>
-                        <SearchableDropdown
-                          value={standardInstrumentId}
-                          onChange={(val) => {
-                            setStandardInstrumentId(val as number);
-                            setSelectedStandard(null); // Reset standard cert when instrument changes
-                          }}
-                          options={instruments
-                            .filter(i => {
-                              // Only show instruments that have at least one standard certificate associated via sensors
-                              // 1. Find all sensors belonging to this instrument
-                              // 2. Check if any of those sensors have a cert in standardCerts
-                              // OR more efficiently: Get all instrument_ids from standardCerts -> sensors linkage first.
-
-                              // Check if this instrument has any sensor that is linked to a standard cert
-                              // This is a bit expensive properly O(N*M), for small datasets OK.
-                              // Optimized approach:
-                              // validInstrumentIds = new Set(standardCerts.map(c => sensors.find(s => s.id === c.sensor_id)?.instrument_id).filter(Boolean))
-
-                              const hasStandard = standardCerts.some(c => {
-                                const sensor = sensors.find(s => s.id === c.sensor_id);
-                                return sensor && sensor.instrument_id === i.id;
-                              });
-                              return hasStandard;
-                            })
-                            .map(i => ({
-                              id: i.id,
-                              name: `${i.name} (${i.manufacturer} s/n ${i.serial_number})`,
-                              station_id: i.station?.name || ''
-                            }))}
-                          placeholder="Pilih Instrument Standar..."
-                          searchPlaceholder="Cari Instrument Standard..."
-                        />
-                      </div>
-
-                      <div className={`space-y-1 transition-opacity ${!standardInstrumentId ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-                        <label className="text-xs font-semibold text-gray-600">Pilih Sertifikat Standar</label>
-                        <SearchableDropdown
-                          value={selectedStandard?.id || null}
-                          onChange={(val) => {
-                            const std = standardCerts.find(c => c.id === val);
-                            setSelectedStandard(std || null);
-                          }}
-                          // Filter: Find sensors belonging to Selected Standard Instrument, then find Certs for those sensors
-                          options={standardCerts
-                            .filter(c => {
-                              if (!standardInstrumentId) return true;
-                              const sensorForCert = sensors.find(s => s.id === c.sensor_id);
-                              return sensorForCert && sensorForCert.instrument_id === standardInstrumentId;
-                            })
-                            .map(c => ({
-                              id: c.id,
-                              name: `${c.no_certificate} (${c.calibration_date})`,
-                              station_id: `Drift: ${c.drift}`
-                            }))}
-                          placeholder={standardInstrumentId ? "Pilih Sertifikat Standar..." : "Pilih Instrument Standar Terlebih Dahulu"}
-                        />
-                      </div>
-
-                      {selectedStandard ? (
-                        <div className="grid grid-cols-2 gap-3 bg-green-50/50 p-3 rounded-lg border border-green-100">
-                          <div className="col-span-2 text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Detail Sertifikat</div>
-                          {[
-                            { label: 'No. Sertifikat', val: selectedStandard.no_certificate },
-                            { label: 'Tgl Kalibrasi', val: selectedStandard.calibration_date },
-                            { label: 'Drift', val: selectedStandard.drift },
-                            { label: 'U95', val: selectedStandard.u95_general },
-                          ].map((f, i) => (
-                            <div key={i}>
-                              <label className="text-[10px] text-gray-500 block">{f.label}</label>
-                              <div className="text-sm font-medium text-gray-800 text-ellipsis overflow-hidden">{f.val}</div>
-                            </div>
-                          ))}
-                          <div className="col-span-2 mt-1">
-                            <a href="#" className="text-xs text-blue-600 hover:underline">Lihat Ringkasan Tabel Koreksi &rarr;</a>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="p-4 bg-gray-50 border border-dashed border-gray-300 rounded-lg text-center text-xs text-gray-400">
-                          Belum ada sertifikat standar dipilih
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bagian II – Detail Sesi Kalibrasi */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-                  <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100 flex items-center gap-2">
-                    <span className="bg-gray-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">3</span>
-                    Detail Sesi Kalibrasi
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Tanggal Mulai</label>
-                      <input
-                        type="datetime-local"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
-                        value={sessionDetails.start_date}
-                        onChange={e => setSessionDetails({ ...sessionDetails, start_date: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Tanggal Selesai</label>
-                      <input
-                        type="datetime-local"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
-                        value={sessionDetails.end_date}
-                        onChange={e => setSessionDetails({ ...sessionDetails, end_date: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Tempat Kalibrasi</label>
-                      <input
-                        type="text"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
-                        placeholder="Laboratorium Kalibrasi BMKG..."
-                        value={sessionDetails.place}
-                        onChange={e => setSessionDetails({ ...sessionDetails, place: e.target.value })}
-                      />
-                    </div>
-                    <div className="md:col-span-3 space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Catatan Sesi (Opsional)</label>
-                      <textarea
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
-                        placeholder="Catatan kondisi khusus..."
-                        rows={2}
-                        value={sessionDetails.notes}
-                        onChange={e => setSessionDetails({ ...sessionDetails, notes: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bagian III – Unggah Data Mentah */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-                  <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100 flex items-center gap-2">
-                    <span className="bg-gray-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">4</span>
-                    Unggah Data Mentah
+                {/* Data Mentah Upload Positioned Here (Moved from Bottom) */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-6">
+                  <h3 className="text-base font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100 flex items-center gap-2">
+                    <FileTextIcon className="w-5 h-5 text-gray-600" />
+                    Data Mentah (Multi-sheet)
                   </h3>
                   <div className="flex flex-col md:flex-row gap-4">
                     <div className="flex-1 space-y-3">
@@ -1942,12 +1676,10 @@ const CertificatesCRUD: React.FC = () => {
                           rawData.map((sheet, i) => (
                             <div key={i} className="flex items-center justify-between p-2 bg-white border border-gray-200 rounded shadow-sm">
                               <div className="flex items-center gap-2 overflow-hidden">
-                                <div className="bg-blue-100 p-1.5 rounded text-blue-600">
-                                  <SensorIcon className="w-4 h-4" />
-                                </div>
+                                <span className="text-xs font-mono font-bold bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">#{i + 1}</span>
                                 <div className="truncate">
                                   <div className="text-xs font-bold text-gray-800 truncate" title={sheet.name}>{sheet.name}</div>
-                                  <div className="text-[10px] text-gray-500">Sensor #{i + 1} • {sheet.data.length} baris</div>
+                                  <div className="text-[10px] text-gray-500">{sheet.data.length} baris</div>
                                 </div>
                               </div>
                             </div>
@@ -1970,6 +1702,281 @@ const CertificatesCRUD: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* DYNAMIC SENSOR INPUTS LOOP */}
+                {results.map((result, resultIndex) => (
+                  <div key={resultIndex} className="bg-gray-50/50 rounded-xl border border-gray-200 p-4 mb-6 relative">
+                    {/* Loop Header */}
+                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-200">
+                      <div className="flex items-center gap-2">
+                        <span className="bg-[#1e377c] text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">
+                          {resultIndex + 1}
+                        </span>
+                        <h4 className="text-sm font-bold text-gray-800">
+                          Sensor #{resultIndex + 1}
+                          {rawData[resultIndex] && <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-normal">Sheet: {rawData[resultIndex].name}</span>}
+                        </h4>
+                      </div>
+                      {results.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeResult(resultIndex)}
+                          className="text-red-600 hover:text-red-800 text-xs flex items-center gap-1 hover:bg-red-50 px-2 py-1 rounded transition-colors"
+                        >
+                          <TrashIcon className="w-3 h-3" /> Hapus Sensor
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* 1. Alat UUT */}
+                      <div className={`bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative overflow-hidden group transition-all ${!form.instrument ? 'opacity-60 pointer-events-none grayscale' : 'hover:border-[#1e377c]/30'}`}>
+                        <div className="absolute top-0 left-0 w-1 h-full bg-[#1e377c]"></div>
+                        <div className="flex items-center justify-between mb-4 pl-2">
+                          <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                            <SensorIcon className="w-5 h-5 text-[#1e377c]" />
+                            Alat UUT (Unit Under Test)
+                          </h3>
+                          {/* Only show 'Tambah Sensor' if we want to support multiple sensors per sheet? No, usually 1 UUT per sheet line item. */}
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="space-y-1">
+                            <label className="text-xs font-semibold text-gray-600">Pilih Sensor UUT *</label>
+                            <SearchableDropdown
+                              value={result.sensorId || null}
+                              onChange={(val) => {
+                                if (!val) {
+                                  applySensorToResult(resultIndex, null);
+                                  return;
+                                }
+                                applySensorToResult(resultIndex, val as number);
+                              }}
+                              // Filter sensors based on selected instrument
+                              options={sensors
+                                .filter(s => form.instrument ? s.instrument_id === form.instrument : true) // Show only sensors belonging to instrument
+                                .filter(s => !s.is_standard)
+                                .map(s => ({
+                                  id: s.id,
+                                  name: s.name || `Sensor ${s.id}`,
+                                  station_id: `${s.id}` // extra info
+                                }))}
+                              placeholder={form.instrument ? "Pilih Sensor UUT..." : "Pilih Instrument Terlebih Dahulu"}
+                              searchPlaceholder="Cari Sensor..."
+                            />
+                          </div>
+
+                          {/* Detail UUT Form (Editable) */}
+                          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                            <div className="flex justify-between items-center mb-3 border-b border-gray-200 pb-2">
+                              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Detail Sensor (Dapat Diedit)</h4>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  // Use the sensor from results[resultIndex].sensorId
+                                  const currentSensorId = result.sensorId;
+                                  const sensor = sensors.find(s => s.id === currentSensorId);
+                                  if (sensor) {
+                                    applySensorToResult(resultIndex, currentSensorId);
+                                  }
+                                }}
+                                className="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors"
+                              >
+                                Reset ke Default
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <label className="text-[10px] uppercase font-semibold text-gray-500">Pabrikan</label>
+                                <input
+                                  type="text"
+                                  value={result.sensorDetails?.manufacturer || instrumentPreview.manufacturer || ''}
+                                  onChange={e => updateResult(resultIndex, { sensorDetails: { ...result.sensorDetails, manufacturer: e.target.value } })}
+                                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] uppercase font-semibold text-gray-500">Tipe</label>
+                                <input
+                                  type="text"
+                                  value={result.sensorDetails?.type || instrumentPreview.type || ''}
+                                  onChange={e => updateResult(resultIndex, { sensorDetails: { ...result.sensorDetails, type: e.target.value } })}
+                                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] uppercase font-semibold text-gray-500">Serial Number</label>
+                                <input
+                                  type="text"
+                                  value={result.sensorDetails?.serial_number || instrumentPreview.serial || ''}
+                                  onChange={e => updateResult(resultIndex, { sensorDetails: { ...result.sensorDetails, serial_number: e.target.value } })}
+                                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] uppercase font-semibold text-gray-500">Range/Kapasitas</label>
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    placeholder="Nilai"
+                                    className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                                  />
+                                  <input
+                                    type="text"
+                                    placeholder="Unit"
+                                    className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#1e377c]"
+                                  />
+                                </div>
+                              </div>
+                              {/* ... more inputs can go here, simplified for now ... */}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 2. Alat Standar */}
+                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative overflow-hidden group hover:border-[#1e377c]/30 transition-all">
+                        <div className="absolute top-0 right-0 w-1 h-full bg-green-600"></div>
+                        <div className="flex items-center justify-between mb-4 pr-2">
+                          <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                            <CertificateIcon className="w-5 h-5 text-green-700" />
+                            Alat Standar
+                          </h3>
+                          <button type="button" className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded hover:bg-green-100 transition-colors">
+                            + Tambah Sertifikat
+                          </button>
+                        </div>
+
+                        <div className="space-y-4">
+                          {/* Standard Instrument Selection - NEW */}
+                          <div className="space-y-1">
+                            <label className="text-xs font-semibold text-gray-600">Pilih Instrument Standar *</label>
+                            <SearchableDropdown
+                              value={standardInstrumentId}
+                              onChange={(val) => {
+                                setStandardInstrumentId(val as number);
+                                setSelectedStandard(null); // Reset standard cert when instrument changes
+                              }}
+                              options={instruments
+                                .filter(i => {
+                                  const hasStandard = standardCerts.some(c => {
+                                    const sensor = sensors.find(s => s.id === c.sensor_id);
+                                    return sensor && sensor.instrument_id === i.id;
+                                  });
+                                  return hasStandard;
+                                })
+                                .map(i => ({
+                                  id: i.id,
+                                  name: `${i.name} (${i.manufacturer} s/n ${i.serial_number})`,
+                                  station_id: i.station?.name || ''
+                                }))}
+                              placeholder="Pilih Instrument Standar..."
+                              searchPlaceholder="Cari Instrument Standard..."
+                            />
+                          </div>
+
+                          <div className={`space-y-1 transition-opacity ${!standardInstrumentId ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+                            <label className="text-xs font-semibold text-gray-600">Pilih Sertifikat Standar</label>
+                            <SearchableDropdown
+                              value={selectedStandard?.id || null}
+                              onChange={(val) => {
+                                const std = standardCerts.find(c => c.id === val);
+                                setSelectedStandard(std || null);
+                              }}
+                              options={standardCerts
+                                .filter(c => {
+                                  if (!standardInstrumentId) return true;
+                                  const sensorForCert = sensors.find(s => s.id === c.sensor_id);
+                                  return sensorForCert && sensorForCert.instrument_id === standardInstrumentId;
+                                })
+                                .map(c => ({
+                                  id: c.id,
+                                  name: `${c.no_certificate} (${c.calibration_date})`,
+                                  station_id: `Drift: ${c.drift}`
+                                }))}
+                              placeholder={standardInstrumentId ? "Pilih Sertifikat Standar..." : "Pilih Instrument Standar Terlebih Dahulu"}
+                            />
+                          </div>
+
+                          {selectedStandard ? (
+                            <div className="grid grid-cols-2 gap-3 bg-green-50/50 p-3 rounded-lg border border-green-100">
+                              <div className="col-span-2 text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Detail Sertifikat</div>
+                              {[
+                                { label: 'No. Sertifikat', val: selectedStandard.no_certificate },
+                                { label: 'Tgl Kalibrasi', val: selectedStandard.calibration_date },
+                                { label: 'Drift', val: selectedStandard.drift },
+                                { label: 'U95', val: selectedStandard.u95_general },
+                              ].map((f, i) => (
+                                <div key={i}>
+                                  <label className="text-[10px] text-gray-500 block">{f.label}</label>
+                                  <div className="text-sm font-medium text-gray-800 text-ellipsis overflow-hidden">{f.val}</div>
+                                </div>
+                              ))}
+                              <div className="col-span-2 mt-1">
+                                <a href="#" className="text-xs text-blue-600 hover:underline">Lihat Ringkasan Tabel Koreksi &rarr;</a>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="p-4 bg-gray-50 border border-dashed border-gray-300 rounded-lg text-center text-xs text-gray-400">
+                              Belum ada sertifikat standar dipilih
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Bagian II – Detail Sesi Kalibrasi */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mt-6">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100 flex items-center gap-2">
+                    <span className="bg-gray-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">3</span>
+                    Detail Sesi Kalibrasi
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700">Tanggal Mulai</label>
+                      <input
+                        type="datetime-local"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                        value={sessionDetails.start_date}
+                        onChange={e => setSessionDetails({ ...sessionDetails, start_date: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700">Tanggal Selesai</label>
+                      <input
+                        type="datetime-local"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                        value={sessionDetails.end_date}
+                        onChange={e => setSessionDetails({ ...sessionDetails, end_date: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700">Tempat Kalibrasi</label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                        placeholder="Laboratorium Kalibrasi BMKG..."
+                        value={sessionDetails.place}
+                        onChange={e => setSessionDetails({ ...sessionDetails, place: e.target.value })}
+                      />
+                    </div>
+                    <div className="md:col-span-3 space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700">Catatan Sesi (Opsional)</label>
+                      <textarea
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                        placeholder="Catatan kondisi khusus..."
+                        rows={2}
+                        value={sessionDetails.notes}
+                        onChange={e => setSessionDetails({ ...sessionDetails, notes: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+
 
                 {/* Bagian V – Kondisi Lingkungan, Tabel Hasil, Catatan */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
