@@ -9,6 +9,7 @@ yarn-error.log*
 out/
 build/
 dist/
+next-env.d.ts
 
 # Environment variables
 .env
