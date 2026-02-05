@@ -30,11 +30,18 @@ const InstrumentsCRUD: React.FC = () => {
   })
   const pageSize = 10
   const [currentPage, setCurrentPage] = useState(1)
-  const [activeTab, setActiveTab] = useState<'uut' | 'standard' | 'certStandard'>('uut')
+  const [activeTab, setActiveTab] = useState<'instruments' | 'certStandard'>('instruments')
+  const [filterType, setFilterType] = useState<'all' | 'uut' | 'standard'>('all')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [stationSearch, setStationSearch] = useState('')
   const [showStationDropdown, setShowStationDropdown] = useState(false)
+
+
+  // Station Assignment Restriction
+  const [assignedStationIds, setAssignedStationIds] = useState<number[]>([])
+  const [isRestrictedUser, setIsRestrictedUser] = useState(true) // Default to restricted for safety
+  const [isAssignmentsLoading, setIsAssignmentsLoading] = useState(true)
 
   // State untuk sensor form (kondisional) - sekarang array untuk multiple sensors
   const [sensorForms, setSensorForms] = useState<Array<{
@@ -54,11 +61,14 @@ const InstrumentsCRUD: React.FC = () => {
     funnel_area: number;
     funnel_area_unit: string;
     is_standard: boolean;
+    certificates?: Array<any>;
   }>>([])
   const [isLoadingSensors, setIsLoadingSensors] = useState(false)
+  const [isStandardInstrument, setIsStandardInstrument] = useState(false)
 
   // State for Certificate Management
   const [selectedSensorForCert, setSelectedSensorForCert] = useState<string>('')
+  const [editingSensorIndex, setEditingSensorIndex] = useState<number | null>(null)
   const [certList, setCertList] = useState<any[]>([])
   const [isCertModalOpen, setIsCertModalOpen] = useState(false)
   const [editingCert, setEditingCert] = useState<any>(null)
@@ -98,9 +108,9 @@ const InstrumentsCRUD: React.FC = () => {
       q: debouncedSearch,
       page: currentPage,
       pageSize,
-      type: activeTab === 'certStandard' ? 'standard' : activeTab
+      type: activeTab === 'certStandard' ? 'standard' : (filterType === 'all' ? undefined : filterType)
     })
-  }, [debouncedSearch, currentPage, activeTab])
+  }, [debouncedSearch, currentPage, activeTab, filterType])
 
 
   useEffect(() => {
@@ -115,18 +125,103 @@ const InstrumentsCRUD: React.FC = () => {
     }
   }, [editing, stations]);
 
-  // Reset sensor forms when memiliki_lebih_satu is unchecked (but not when editing and loading sensors)
+  // Reset sensor forms when memiliki_lebih_satu is unchecked, UNLESS it is a Standard Instrument
   useEffect(() => {
     if (!form.memiliki_lebih_satu && !editing && !isLoadingSensors) {
-      console.log('Resetting sensor forms because memiliki_lebih_satu is false')
-      setSensorForms([]);
+      if (isStandardInstrument) {
+        // If Standard but Single (unchecked multi), ensure exact 1 sensor form exists
+        if (sensorForms.length === 0) {
+          addSensor(true);
+        } else if (sensorForms.length > 1) {
+          // Reduce to 1? Or just keep first. Let's keep first.
+          setSensorForms([sensorForms[0]]);
+        }
+      } else {
+        console.log('Resetting sensor forms because memiliki_lebih_satu is false and not standard')
+        setSensorForms([]);
+      }
     }
-  }, [form.memiliki_lebih_satu, editing, isLoadingSensors]);
+  }, [form.memiliki_lebih_satu, editing, isLoadingSensors, isStandardInstrument]);
 
   // Debug sensorForms changes
   useEffect(() => {
     console.log('sensorForms updated:', sensorForms)
   }, [sensorForms]);
+
+  // Fetch User Assignments
+  useEffect(() => {
+    const fetchAssignments = async () => {
+      try {
+        setIsAssignmentsLoading(true)
+        const { data: { user } } = await import('../../../lib/supabase').then(m => m.supabase.auth.getUser())
+        console.log('🔍 Fetching assignments for user:', user?.id)
+        if (!user) {
+          setIsAssignmentsLoading(false)
+          return
+        }
+
+        const res = await fetch(`/api/user-stations?user_id=${user.id}`)
+        console.log('📡 API Response status:', res.ok, res.status)
+        if (res.ok) {
+          const data = await res.json()
+          console.log('📊 Raw assignment data:', data)
+          // Ensure IDs are numbers
+          const ids = data.map((item: any) => Number(item.station_id))
+          console.log('🎯 Extracted station IDs (as numbers):', ids)
+          setAssignedStationIds(ids)
+          setIsRestrictedUser(true)
+        }
+      } catch (e) {
+        console.error("Error fetching user assignments", e)
+      } finally {
+        console.log('✅ Assignments loading complete')
+        setIsAssignmentsLoading(false)
+      }
+    }
+    fetchAssignments()
+  }, [])
+
+  const filteredStationsForDropdown = useMemo(() => {
+    // 1. If we are an Admin, we shouldn't be restricted.
+    // We check this using can('station', 'delete') which usually implies full control.
+    if (can('station', 'delete') || can('station', 'create')) { // Admin
+      return stations
+    }
+
+    // 2. If Loading, showing nothing is safer than showing all
+    if (isAssignmentsLoading) {
+      console.log('⏳ Still loading assignments...')
+      return []
+    }
+
+    // 3. If restricted, ONLY show assigned stations.
+    // Even if list is empty, we must return empty.
+    if (isRestrictedUser) {
+      console.log('🔒 Filtering for restricted user. Assigned IDs:', assignedStationIds)
+      const allowed = stations.filter(s => assignedStationIds.includes(Number(s.id)))
+      console.log('✅ Allowed stations (type-safe check):', allowed)
+      return allowed
+    }
+
+    // Fallback? If logic fails, restrict.
+    return []
+  }, [stations, assignedStationIds, isRestrictedUser, can, isAssignmentsLoading])
+
+  // Auto-select station for restricted users with single assignment
+  useEffect(() => {
+    // Only auto-select if:
+    // 1. User is restricted
+    // 2. Exact 1 station is available
+    // 3. Not editing (creating new implementation) OR editing but no station set yet (rare)
+    // 4. No station is currently selected in form
+    if (isRestrictedUser && filteredStationsForDropdown.length === 1 && !form.station_id) {
+      const station = filteredStationsForDropdown[0];
+      setForm(prev => ({ ...prev, station_id: station.id }));
+      setStationSearch(station.name);
+    }
+  }, [isRestrictedUser, filteredStationsForDropdown, form.station_id]);
+
+
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -202,15 +297,28 @@ const InstrumentsCRUD: React.FC = () => {
     setIsModalOpen(true)
   }
 
-  // Effect to set up form defaults when opening modal in Standard tab
+  // Effect to set up form defaults when opening modal
   useEffect(() => {
-    if (isModalOpen && !editing && activeTab === 'standard' && sensorForms.length === 0) {
-      // If adding in Standard tab, default to multi-sensor (needed for is_standard flag on sensor)
-      setForm(f => ({ ...f, memiliki_lebih_satu: true }))
-      // Pre-add one standard sensor
-      addSensor(true)
+    if (isModalOpen && !editing && sensorForms.length === 0) {
+      // logic for defaults
+      // We don't necessarily default to standard unless user explicitly checks it now
     }
-  }, [isModalOpen, editing, activeTab])
+  }, [isModalOpen, editing])
+
+  // Sync isStandardInstrument when editing
+  useEffect(() => {
+    if (isModalOpen && editing) {
+      // Check if ANY loaded sensor is standard to determine if instrument is "Standard Mode"
+      // or check activeTab context
+      if (sensorForms.length > 0 && sensorForms.some(s => s.is_standard)) {
+        setIsStandardInstrument(true)
+      } else {
+        // If editing standard instrument but sensors not yet loaded, we might default to activeTab if strict
+        if (activeTab === 'certStandard' || filterType === 'standard') setIsStandardInstrument(true)
+        else setIsStandardInstrument(false)
+      }
+    }
+  }, [isModalOpen, editing, sensorForms.length])
 
   const closeModal = () => {
     setIsModalOpen(false)
@@ -222,6 +330,7 @@ const InstrumentsCRUD: React.FC = () => {
 
   // Fungsi untuk menambah sensor baru
   const addSensor = (isStandardOverride?: boolean) => {
+    const isStandard = typeof isStandardOverride === 'boolean' ? isStandardOverride : isStandardInstrument;
     const newSensor = {
       id: `sensor_${Date.now()}`,
       nama_sensor: '',
@@ -238,7 +347,8 @@ const InstrumentsCRUD: React.FC = () => {
       volume_per_tip_unit: '',
       funnel_area: 0,
       funnel_area_unit: '',
-      is_standard: typeof isStandardOverride === 'boolean' ? isStandardOverride : (activeTab === 'standard')
+      is_standard: isStandard,
+      certificates: []
     }
     setSensorForms(prev => [...prev, newSensor])
   }
@@ -276,8 +386,8 @@ const InstrumentsCRUD: React.FC = () => {
         await updateInstrument(editing.id, form)
         showSuccess('Instrument updated successfully')
 
-        // Handle sensor data for multi-sensor instruments
-        if (form.memiliki_lebih_satu && editing.id) {
+        // Handle sensor data for multi-sensor or standard instruments
+        if ((form.memiliki_lebih_satu || isStandardInstrument) && editing.id) {
           // Get existing sensors
           const existingRes = await fetch(`/api/instruments/${editing.id}/sensors`)
           const existingSensors = existingRes.ok ? await existingRes.json() : []
@@ -301,17 +411,22 @@ const InstrumentsCRUD: React.FC = () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(sensorForm)
               })
+            } else {
+              // Existing sensor - update it
+              await fetch(`/api/instruments/${editing.id}/sensors`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(sensorForm)
+              })
             }
-            // Note: Existing sensors (with numeric IDs) are already in the database
-            // and don't need to be updated unless we implement update functionality
           }
         }
       } else {
         const newInstrument = await addInstrument(form)
         showSuccess('Instrument created successfully')
 
-        // Handle sensor data for new multi-sensor instruments
-        if (form.memiliki_lebih_satu && newInstrument && sensorForms.length > 0) {
+        // Handle sensor data for new multi-sensor instruments OR Single Standard instruments
+        if ((form.memiliki_lebih_satu || isStandardInstrument) && newInstrument && sensorForms.length > 0) {
           for (const sensorForm of sensorForms) {
             await fetch(`/api/instruments/${(newInstrument as any).id}/sensors`, {
               method: 'POST',
@@ -366,26 +481,15 @@ const InstrumentsCRUD: React.FC = () => {
       <div className="border-b border-gray-200">
         <nav className="-mb-px flex space-x-8" aria-label="Tabs">
           <button
-            onClick={() => { setActiveTab('uut'); setCurrentPage(1); }}
+            onClick={() => { setActiveTab('instruments'); setCurrentPage(1); }}
             className={`
               whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
-              ${activeTab === 'uut'
+              ${activeTab === 'instruments'
                 ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
             `}
           >
-            Alat UUT
-          </button>
-          <button
-            onClick={() => { setActiveTab('standard'); setCurrentPage(1); }}
-            className={`
-              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
-              ${activeTab === 'standard'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
-            `}
-          >
-            Alat Standar
+            Daftar Instrumen
           </button>
           <button
             onClick={() => { setActiveTab('certStandard'); }}
@@ -401,22 +505,47 @@ const InstrumentsCRUD: React.FC = () => {
         </nav>
       </div>
 
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">Instruments</h2>
+      <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm">
+        <div className="flex items-center gap-4">
+          {activeTab === 'instruments' && (
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-500 font-medium">Filter:</span>
+              <select
+                value={filterType}
+                onChange={(e) => { setFilterType(e.target.value as any); setCurrentPage(1); }}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="all">Semua Instrumen</option>
+                <option value="uut">Instrumen UUT</option>
+                <option value="standard">Instrumen Standar</option>
+              </select>
+            </div>
+          )}
+          <h2 className="text-xl font-bold text-gray-800 border-l border-gray-300 pl-4">
+            {activeTab === 'instruments' ? 'Daftar Instrumen' : 'Sertifikat Standar'}
+          </h2>
+        </div>
+
         <div className="flex items-center gap-3">
-          <input
-            value={search}
-            onChange={e => { setSearch(e.target.value); setCurrentPage(1) }}
-            placeholder="Search instruments..."
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          {activeTab === 'instruments' && (
+            <input
+              value={search}
+              onChange={e => { setSearch(e.target.value); setCurrentPage(1) }}
+              placeholder="Cari instrumen..."
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
+            />
+          )}
+
           {loading && <span className="text-sm text-gray-500">Loading...</span>}
-          {can('instrument', 'create') && (
+          {can('instrument', 'create') && activeTab === 'instruments' && (
             <button
               onClick={() => openModal()}
-              className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-4 py-2 rounded-lg transition-all duration-200 shadow hover:shadow-md font-medium text-sm"
+              className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-4 py-2 rounded-lg transition-all duration-200 shadow hover:shadow-md font-medium text-sm flex items-center"
             >
-              Add New
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Tambah Baru
             </button>
           )}
         </div>
@@ -445,7 +574,7 @@ const InstrumentsCRUD: React.FC = () => {
                 {/* Collect all standard sensors from loaded instruments (this is a simplification, might need separate fetch) */}
                 {instruments.flatMap(i => (i.sensor || []).filter(s => s.is_standard).map(s => (
                   <option key={`${i.id}-${s.id}`} value={s.id}>
-                    {s.name} - {s.serial_number} (Ref: {i.name})
+                    {s.name} - {s.type} ({s.serial_number}) - (Ref: {i.name})
                   </option>
                 )))}
               </select>
@@ -541,31 +670,47 @@ const InstrumentsCRUD: React.FC = () => {
                 try {
                   // Construct payload
                   const payload = {
-                    sensor_id: parseInt(selectedSensorForCert),
+                    sensor_id: editingSensorIndex !== null ? null : parseInt(selectedSensorForCert),
                     no_certificate: certForm.no_certificate,
                     calibration_date: certForm.calibration_date,
                     drift: Number(certForm.drift),
                     range: certForm.range,
                     resolution: Number(certForm.resolution),
                     u95_general: Number(certForm.u95_general),
-                    correction_std: certForm.correction_data, // Save as JSON
-                    u95_std: null // Used if storing u95 separate, but here we bundled in correction_data mostly
+                    correction_data: certForm.correction_data, // Keep as correction_data for local state consistency
+                    correction_std: certForm.correction_data, // Save as JSON for API
+                    u95_std: null
                   }
 
-                  const res = await fetch('/api/cert-standards', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                  });
-
-                  if (res.ok) {
-                    const newCert = await res.json();
-                    setCertList(p => [newCert, ...p]);
-                    setIsCertModalOpen(false);
-                    showSuccess('Sertifikat berhasil ditambahkan');
+                  if (editingSensorIndex !== null) {
+                    // Update local sensorForms
+                    setSensorForms(prev => prev.map((s, i) => {
+                      if (i === editingSensorIndex) {
+                        return {
+                          ...s,
+                          certificates: [...(s.certificates || []), payload]
+                        }
+                      }
+                      return s
+                    }))
+                    setIsCertModalOpen(false)
+                    setEditingSensorIndex(null)
                   } else {
-                    const err = await res.json();
-                    showError(err.error);
+                    const res = await fetch('/api/cert-standards', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(payload)
+                    });
+
+                    if (res.ok) {
+                      const newCert = await res.json();
+                      setCertList(p => [newCert, ...p]);
+                      setIsCertModalOpen(false);
+                      showSuccess('Sertifikat berhasil ditambahkan');
+                    } else {
+                      const err = await res.json();
+                      showError(err.error);
+                    }
                   }
                 } catch (err: any) { showError(err.message) }
               }}>
@@ -893,16 +1038,18 @@ const InstrumentsCRUD: React.FC = () => {
                               <div
                                 className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
                               >
-                                <div
-                                  className="p-3 hover:bg-gray-100 cursor-pointer border-b"
-                                  onMouseDown={() => {
-                                    setForm({ ...form, station_id: null });
-                                    setStationSearch('');
-                                  }}
-                                >
-                                  <span className="text-gray-500">No station selected</span>
-                                </div>
-                                {stations
+                                {!isRestrictedUser && (
+                                  <div
+                                    className="p-3 hover:bg-gray-100 cursor-pointer border-b"
+                                    onMouseDown={() => {
+                                      setForm({ ...form, station_id: null });
+                                      setStationSearch('');
+                                    }}
+                                  >
+                                    <span className="text-gray-500">No station selected</span>
+                                  </div>
+                                )}
+                                {filteredStationsForDropdown
                                   .filter(s => s.name.toLowerCase().includes(stationSearch.toLowerCase()))
                                   .map(s => (
                                     <div
@@ -948,8 +1095,174 @@ const InstrumentsCRUD: React.FC = () => {
                             </p>
                           </div>
                         </div>
+
+                        {/* Checkbox Instrument Standard */}
+                        <div className="lg:col-span-2 mt-2">
+                          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                            <div className="flex items-center space-x-3">
+                              <input
+                                type="checkbox"
+                                id="is_standard_instrument"
+                                checked={isStandardInstrument}
+                                onChange={(e) => {
+                                  const isChecked = e.target.checked;
+                                  setIsStandardInstrument(isChecked);
+                                  // Update ALL sensors to match this setting
+                                  setSensorForms(prev => prev.map(s => ({ ...s, is_standard: isChecked })));
+                                }}
+                                className="h-5 w-5 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                              />
+                              <label htmlFor="is_standard_instrument" className="text-sm font-medium text-gray-700">
+                                Jadikan Sebagai Alat Standar
+                              </label>
+                            </div>
+                            <p className="text-xs text-gray-600 mt-2 ml-8">
+                              Jika dicentang, semua sensor yang ditambahkan otomatis dianggap sebagai <strong>Sensor Standar</strong> (memiliki sertifikat).
+                              Jika tidak multi-sensor, sertifikat akan ditambahkan langsung ke alat ini.
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     </div>
+
+                    {/* Single Standard Sensor Form (When NOT Multi-Sensor but IS Standard) */}
+                    {!form.memiliki_lebih_satu && isStandardInstrument && sensorForms.length > 0 && (
+                      <div className="bg-white rounded-lg p-6 border border-orange-200 mt-6 shadow-sm">
+                        <div className="flex items-center mb-6">
+                          <div className="bg-orange-100 rounded-full p-2 mr-3">
+                            <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h4 className="text-lg font-semibold text-gray-900">Spesifikasi & Sertifikat Standar</h4>
+                            <p className="text-sm text-gray-500">Lengkapi data teknis dan sertifikat untuk alat standar ini.</p>
+                          </div>
+                        </div>
+
+                        {sensorForms.map((sensor, index) => (
+                          <div key={sensor.id}> {/* Should be only 1 */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                              {/* Range & Graduating */}
+                              <div className="space-y-4">
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Range Capacity</label>
+                                  <div className="flex gap-2">
+                                    <input
+                                      value={sensor.range_capacity}
+                                      onChange={(e) => updateSensor(sensor.id, 'range_capacity', e.target.value)}
+                                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                      placeholder="Ex: 0-100"
+                                    />
+                                    <input
+                                      value={sensor.range_capacity_unit}
+                                      onChange={(e) => updateSensor(sensor.id, 'range_capacity_unit', e.target.value)}
+                                      className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                                      placeholder="Unit"
+                                    />
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Graduating / Resolution</label>
+                                  <div className="flex gap-2">
+                                    <input
+                                      value={sensor.graduating}
+                                      onChange={(e) => updateSensor(sensor.id, 'graduating', e.target.value)}
+                                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                      placeholder="Ex: 0.01"
+                                    />
+                                    <input
+                                      value={sensor.graduating_unit}
+                                      onChange={(e) => updateSensor(sensor.id, 'graduating_unit', e.target.value)}
+                                      className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                                      placeholder="Unit"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Certificate Section */}
+                            <div className="mt-6 pt-6 border-t border-gray-100">
+                              <div className="flex justify-between items-center mb-4">
+                                <h6 className="text-sm font-semibold text-gray-800 flex items-center">
+                                  <svg className="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  Sertifikat Standar
+                                </h6>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCertForm({
+                                      no_certificate: '',
+                                      calibration_date: '',
+                                      drift: 0,
+                                      range: '',
+                                      resolution: 0,
+                                      u95_general: 0,
+                                      correction_data: []
+                                    });
+                                    setEditingSensorIndex(index);
+                                    setIsCertModalOpen(true);
+                                  }}
+                                  className="text-sm bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-md transition-colors shadow-sm flex items-center"
+                                >
+                                  <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                  </svg>
+                                  Tambah Sertifikat
+                                </button>
+                              </div>
+
+                              {sensor.certificates && sensor.certificates.length > 0 ? (
+                                <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                                  <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-100">
+                                      <tr>
+                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No. Sertifikat</th>
+                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tgl Kalibrasi</th>
+                                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                      {sensor.certificates.map((cert: any, certIdx: number) => (
+                                        <tr key={certIdx}>
+                                          <td className="px-4 py-2 text-sm text-gray-900">{cert.no_certificate}</td>
+                                          <td className="px-4 py-2 text-sm text-gray-900">{cert.calibration_date}</td>
+                                          <td className="px-4 py-2 text-right text-sm font-medium">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setSensorForms(prev => prev.map((s, i) => {
+                                                  if (i === index && s.certificates) {
+                                                    const newCerts = [...s.certificates];
+                                                    newCerts.splice(certIdx, 1);
+                                                    return { ...s, certificates: newCerts };
+                                                  }
+                                                  return s;
+                                                }))
+                                              }}
+                                              className="text-red-600 hover:text-red-900"
+                                            >
+                                              Hapus
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                                  <p className="text-sm text-gray-500">Belum ada sertifikat. Klik tombol Tambah Sertifikat diatas.</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Sensor Information - Conditional */}
                     {form.memiliki_lebih_satu && (
@@ -968,7 +1281,7 @@ const InstrumentsCRUD: React.FC = () => {
                           </div>
                           <button
                             type="button"
-                            onClick={() => addSensor(activeTab === 'standard')}
+                            onClick={() => addSensor(activeTab === 'certStandard' || filterType === 'standard')}
                             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center text-sm font-medium"
                           >
                             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1177,21 +1490,91 @@ const InstrumentsCRUD: React.FC = () => {
                                       placeholder="Enter unit"
                                     />
                                   </div>
-                                  <div className="lg:col-span-2">
-                                    <div className="flex items-center space-x-3">
-                                      <input
-                                        type="checkbox"
-                                        id={`is_standard_${sensor.id}`}
-                                        checked={sensor.is_standard}
-                                        onChange={(e) => updateSensor(sensor.id, 'is_standard', e.target.checked)}
-                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                      />
-                                      <label htmlFor={`is_standard_${sensor.id}`} className="text-sm font-medium text-gray-700">
-                                        Is Standard
-                                      </label>
+                                </div>
+                                <div className="mt-4 flex items-center justify-between">
+                                  <div className="flex items-center space-x-3">
+                                    <input
+                                      type="checkbox"
+                                      id={`is_standard_${sensor.id}`}
+                                      checked={sensor.is_standard}
+                                      onChange={(e) => updateSensor(sensor.id, 'is_standard', e.target.checked)}
+                                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                    />
+                                    <label htmlFor={`is_standard_${sensor.id}`} className="text-sm font-medium text-gray-700">
+                                      Is Standard
+                                    </label>
+                                  </div>
+
+                                  {sensor.is_standard && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setCertForm({
+                                          no_certificate: '',
+                                          calibration_date: '',
+                                          drift: 0,
+                                          range: '',
+                                          resolution: 0,
+                                          u95_general: 0,
+                                          correction_data: []
+                                        });
+                                        setEditingSensorIndex(index);
+                                        setIsCertModalOpen(true);
+                                      }}
+                                      className="text-sm bg-blue-50 text-blue-700 hover:bg-blue-100 px-3 py-1.5 rounded-md transition-colors font-medium flex items-center border border-blue-200"
+                                    >
+                                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                      </svg>
+                                      Tambah Sertifikat
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Nested Certificate Management for Standard Sensors */}
+                                {sensor.is_standard && sensor.certificates && sensor.certificates.length > 0 && (
+                                  <div className="mt-4 pt-4 border-t border-gray-100">
+                                    <h6 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Daftar Sertifikat</h6>
+                                    {/* List of pending certificates */}
+                                    <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                                      <table className="min-w-full divide-y divide-gray-200">
+                                        <thead className="bg-gray-100">
+                                          <tr>
+                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No. Sertifikat</th>
+                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tgl Kalibrasi</th>
+                                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-gray-200">
+                                          {sensor.certificates.map((cert: any, certIdx: number) => (
+                                            <tr key={certIdx}>
+                                              <td className="px-4 py-2 text-sm text-gray-900">{cert.no_certificate}</td>
+                                              <td className="px-4 py-2 text-sm text-gray-900">{cert.calibration_date}</td>
+                                              <td className="px-4 py-2 text-right text-sm font-medium">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setSensorForms(prev => prev.map((s, i) => {
+                                                      if (i === index && s.certificates) {
+                                                        const newCerts = [...s.certificates];
+                                                        newCerts.splice(certIdx, 1);
+                                                        return { ...s, certificates: newCerts };
+                                                      }
+                                                      return s;
+                                                    }))
+                                                  }}
+                                                  className="text-red-600 hover:text-red-900"
+                                                >
+                                                  Hapus
+                                                </button>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
                                     </div>
                                   </div>
-                                </div>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -1249,7 +1632,7 @@ const InstrumentsCRUD: React.FC = () => {
                 </div>
               </div>
             </div>
-          </div>
+          </div >
         )
       }
     </div >

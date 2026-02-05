@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     let query = supabaseAdmin
       .from('instrument')
       // Select sensor info to check standard status
-      .select('*, station(id, name), sensor!left(is_standard)', { count: 'exact' })
+      .select('*, station(id, name), sensor!left(id, name, type, serial_number, is_standard)', { count: 'exact' })
 
     // Tambahkan filter 'type' jika ada
     if (type === 'standard') {
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
       // Menggunakan !inner untuk memaksa filtering berdasarkan child
       query = supabaseAdmin
         .from('instrument')
-        .select('*, station(id, name), sensor!inner(is_standard)', { count: 'exact' })
+        .select('*, station(id, name), sensor!inner(id, name, type, serial_number, is_standard)', { count: 'exact' })
         .eq('sensor.is_standard', true)
     } else if (type === 'uut') {
       // Optional: Filter UUT only (exclude standards)

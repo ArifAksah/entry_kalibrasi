@@ -14,7 +14,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    
+
     // Get sensors associated with this instrument using instrument_id column
     const { data, error } = await supabaseAdmin
       .from('sensor')
@@ -78,7 +78,7 @@ export async function POST(
   try {
     const { id } = await params
     const body = await request.json()
-    
+
     // Create new sensor with instrument_id
     const { data: sensorData, error: sensorError } = await supabaseAdmin
       .from('sensor')
@@ -108,6 +108,29 @@ export async function POST(
       return NextResponse.json({ error: sensorError.message }, { status: 500 })
     }
 
+    // Insert nested certificates if present
+    if (body.certificates && Array.isArray(body.certificates) && body.certificates.length > 0) {
+      const certsToInsert = body.certificates.map((cert: any) => ({
+        sensor_id: sensorData.id,
+        no_certificate: cert.no_certificate,
+        calibration_date: cert.calibration_date,
+        drift: Number(cert.drift),
+        range: cert.range,
+        resolution: Number(cert.resolution),
+        u95_general: Number(cert.u95_general),
+        correction_std: cert.correction_data || cert.correction_std,
+        u95_std: null
+      }))
+
+      const { error: certError } = await supabaseAdmin
+        .from('cert_standard')
+        .insert(certsToInsert)
+
+      if (certError) {
+        console.error('Error creating nested certificates:', certError)
+      }
+    }
+
     // Transform response to match frontend format
     const responseSensor = {
       id: sensorData.id.toString(),
@@ -132,6 +155,88 @@ export async function POST(
   } catch (e) {
     console.error('Unexpected error in POST /api/instruments/[id]/sensors:', e)
     return NextResponse.json({ error: 'Failed to create instrument sensor' }, { status: 500 })
+  }
+}
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const body = await request.json()
+
+    if (!body.id) {
+      return NextResponse.json({ error: 'Sensor ID is required' }, { status: 400 })
+    }
+
+    // Update sensor
+    const { data: sensorData, error: sensorError } = await supabaseAdmin
+      .from('sensor')
+      .update({
+        manufacturer: body.merk_sensor || '',
+        type: body.tipe_sensor || '',
+        serial_number: body.serial_number_sensor || '',
+        range_capacity: body.range_capacity || '',
+        range_capacity_unit: body.range_capacity_unit || '',
+        graduating: body.graduating || '',
+        graduating_unit: body.graduating_unit || '',
+        funnel_diameter: body.funnel_diameter || 0,
+        funnel_diameter_unit: body.funnel_diameter_unit || '',
+        volume_per_tip: body.volume_per_tip || '',
+        volume_per_tip_unit: body.volume_per_tip_unit || '',
+        funnel_area: body.funnel_area || 0,
+        funnel_area_unit: body.funnel_area_unit || '',
+        name: body.nama_sensor || '',
+        is_standard: body.is_standard || false,
+        instrument_id: parseInt(id)
+      })
+      .eq('id', body.id)
+      .eq('instrument_id', id)
+      .select()
+      .single()
+
+    if (sensorError) {
+      console.error('Error updating sensor:', sensorError)
+      return NextResponse.json({ error: sensorError.message }, { status: 500 })
+    }
+
+    // Handle nested certificates for PUT (Insert new ones mainly)
+    // We assume incoming certificates without ID are new. 
+    // Updating existing certs here is complex without ID tracking in FE for certs.
+    if (body.certificates && Array.isArray(body.certificates) && body.certificates.length > 0) {
+      // Filter for certs that have no ID (new) OR we just insert all (duplicates? check unique constraint?)
+      // Usually certs are unique by no_certificate? Let's just insert "new" looking ones
+      // For now, simple logic: Insert all provided. This might cause dupes if FE sends everything back.
+      // FE should only send *new* certs in this payload, or we handle upsert.
+      // Let's assume FE sends *newly added* certs in a special way or we check existence.
+      // Better: In this specific feature request ("tambah data"), we focus on adding.
+
+      const newCerts = body.certificates.filter((c: any) => !c.id).map((cert: any) => ({
+        sensor_id: sensorData.id,
+        no_certificate: cert.no_certificate,
+        calibration_date: cert.calibration_date,
+        drift: Number(cert.drift),
+        range: cert.range,
+        resolution: Number(cert.resolution),
+        u95_general: Number(cert.u95_general),
+        correction_std: cert.correction_data || cert.correction_std,
+        u95_std: null
+      }))
+
+      if (newCerts.length > 0) {
+        const { error: certError } = await supabaseAdmin
+          .from('cert_standard')
+          .insert(newCerts)
+
+        if (certError) console.error('Error inserting new certs in PUT:', certError)
+      }
+    }
+
+    return NextResponse.json(sensorData)
+  } catch (e) {
+    console.error('Unexpected error in PUT /api/instruments/[id]/sensors:', e)
+    return NextResponse.json({ error: 'Failed to update instrument sensor' }, { status: 500 })
   }
 }
 

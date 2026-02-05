@@ -134,7 +134,8 @@ export type NoteUpdate = Partial<NoteInsert>
 export interface Station {
   id: number
   created_at: string
-  station_id: string
+  station_wmo_id?: string | null // Mapped to station_id in UI often
+  station_id?: string // Legacy or alias
   name: string
   address: string
   latitude: number
@@ -150,6 +151,21 @@ export interface Station {
 
 export type StationInsert = Omit<Station, 'id' | 'created_at'>
 export type StationUpdate = Partial<StationInsert>
+
+export interface RefStation {
+  station_id: string
+  station_wmo_id: string | null
+  station_name: string
+  current_latitude: number
+  current_longitude: number
+  current_elevation: number
+  timezone: string
+  region_description: string
+  propinsi_name: string
+  kabupaten_name: string
+  wigos_id: string | null
+  station_type_id: number | null
+}
 
 // Instrument
 export interface Instrument {

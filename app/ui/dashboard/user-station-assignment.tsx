@@ -4,13 +4,13 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
 
-type Person = { 
+type Person = {
   id: string
   name: string
   email: string
   phone?: string | null
   position?: string | null
-  nip?: string | null 
+  nip?: string | null
 }
 
 type UserStation = {
@@ -38,19 +38,58 @@ const UserStationAssignment: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [stationSearchQuery, setStationSearchQuery] = useState('')
   const [stations, setStations] = useState<Station[]>([])
-  
+
   // Client-side pagination for station display (all stations are loaded)
   const [currentPage, setCurrentPage] = useState(1)
   const stationsPerPage = 10
-  
+
   // Mapping of user_id -> array of station_ids
   const [selectedStations, setSelectedStations] = useState<Record<string, number[]>>({})
+
+  // Bulk Filters
+  const [filterRegion, setFilterRegion] = useState('')
+  const [filterProvince, setFilterProvince] = useState('')
+  const [filterRegency, setFilterRegency] = useState('')
+
+  // External Location Data
+  const [provinces, setProvinces] = useState<any[]>([])
+  const [regencies, setRegencies] = useState<any[]>([])
+  const [selectedProvId, setSelectedProvId] = useState<string>('')
+
+  // View Mode
+  const [showAssignedOnly, setShowAssignedOnly] = useState(false)
+
+  // Region options for dropdown
+  const regionOptions = [
+    "Wilayah I", "Wilayah II", "Wilayah III", "Wilayah IV", "Wilayah V",
+    "Laboratorium Kantor Pusat", "Direktorat Instrumen Kalibrasi"
+  ]
 
   useEffect(() => {
     fetchUsers()
     fetchUserStations()
     fetchAllStations()
+    fetchUserStations()
+    fetchAllStations()
+
+    // Fetch Provinces
+    fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json')
+      .then(res => res.json())
+      .then(data => setProvinces(data))
+      .catch(err => console.error('Error fetching provinces:', err))
   }, [])
+
+  // Fetch Regencies when Prov ID changes
+  useEffect(() => {
+    if (selectedProvId) {
+      fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${selectedProvId}.json`)
+        .then(res => res.json())
+        .then(data => setRegencies(data))
+        .catch(err => console.error('Error fetching regencies:', err))
+    } else {
+      setRegencies([])
+    }
+  }, [selectedProvId])
 
   const fetchAllStations = async () => {
     try {
@@ -73,9 +112,9 @@ const UserStationAssignment: React.FC = () => {
         .from('personel')
         .select('*')
         .order('name')
-      
+
       if (error) throw error
-      
+
       setUsers(personel || [])
     } catch (error) {
       console.error('Error fetching users:', error)
@@ -90,11 +129,11 @@ const UserStationAssignment: React.FC = () => {
       const { data, error } = await supabase
         .from('user_stations')
         .select('*')
-      
+
       if (error) throw error
-      
+
       setUserStations(data || [])
-      
+
       // Initialize selectedStations from existing assignments
       const stationMap: Record<string, number[]> = {}
       data?.forEach(us => {
@@ -104,7 +143,7 @@ const UserStationAssignment: React.FC = () => {
         stationMap[us.user_id].push(us.station_id)
       })
       setSelectedStations(stationMap)
-      
+
     } catch (error) {
       console.error('Error fetching user stations:', error)
       setError('Failed to fetch user stations')
@@ -116,7 +155,8 @@ const UserStationAssignment: React.FC = () => {
     setError(null)
     setSuccess(null)
     setCurrentPage(1) // Reset to first page when selecting a new user
-    
+    setShowAssignedOnly(true) // Default to showing only assigned stations per user request
+
     // Initialize if not exists
     if (!selectedStations[userId]) {
       setSelectedStations(prev => ({
@@ -128,17 +168,17 @@ const UserStationAssignment: React.FC = () => {
 
   const handleStationToggle = (stationId: number) => {
     if (!selectedUser) return
-    
+
     setSelectedStations(prev => {
       const userStations = [...(prev[selectedUser] || [])]
       const index = userStations.indexOf(stationId)
-      
+
       if (index > -1) {
         userStations.splice(index, 1) // Remove station
       } else {
         userStations.push(stationId) // Add station
       }
-      
+
       return {
         ...prev,
         [selectedUser]: userStations
@@ -146,40 +186,64 @@ const UserStationAssignment: React.FC = () => {
     })
   }
 
+  // Bulk Actions
+  const handleSelectAllFiltered = () => {
+    if (!selectedUser) return
+    const idsToAdd = filteredStations.map(s => s.id)
+
+    setSelectedStations(prev => {
+      const current = prev[selectedUser] || []
+      // Add only unique new IDs
+      const unique = Array.from(new Set([...current, ...idsToAdd]))
+      return { ...prev, [selectedUser]: unique }
+    })
+  }
+
+  const handleDeselectAllFiltered = () => {
+    if (!selectedUser) return
+    const idsToRemove = filteredStations.map(s => s.id)
+
+    setSelectedStations(prev => {
+      const current = prev[selectedUser] || []
+      const remaining = current.filter(id => !idsToRemove.includes(id))
+      return { ...prev, [selectedUser]: remaining }
+    })
+  }
+
   const saveUserStations = async () => {
     if (!selectedUser) return
-    
+
     setSaving(true)
     setError(null)
     setSuccess(null)
-    
+
     try {
       // Delete existing assignments for this user
       const { error: deleteError } = await supabase
         .from('user_stations')
         .delete()
         .eq('user_id', selectedUser)
-      
+
       if (deleteError) throw deleteError
-      
+
       // Insert new assignments
       const userStationIds = selectedStations[selectedUser] || [];
       const newAssignments = userStationIds.map(stationId => ({
         user_id: selectedUser,
         station_id: stationId
       }))
-      
+
       if (newAssignments.length > 0) {
         const { error: insertError } = await supabase
           .from('user_stations')
           .insert(newAssignments)
-        
+
         if (insertError) throw insertError
       }
-      
+
       setSuccess('Station assignments saved successfully')
       await fetchUserStations() // Refresh the list
-      
+
     } catch (error) {
       console.error('Error saving user stations:', error)
       setError('Failed to save station assignments')
@@ -188,7 +252,7 @@ const UserStationAssignment: React.FC = () => {
     }
   }
 
-  const filteredUsers = users.filter(user => 
+  const filteredUsers = users.filter(user =>
     user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (user.nip || '').toLowerCase().includes(searchQuery.toLowerCase())
@@ -199,17 +263,29 @@ const UserStationAssignment: React.FC = () => {
     const stationName = station.name ? station.name.toLowerCase() : '';
     const stationId = station.station_id ? String(station.station_id).toLowerCase() : '';
     const stationAddress = station.address ? station.address.toLowerCase() : '';
-    
-    const matches = stationName.includes(query) || 
-           stationId.includes(query) || 
-           stationAddress.includes(query);
-    
-    // Debug logging for search
-    if (stationSearchQuery && matches) {
-      console.log(`Station "${station.name}" matches search "${stationSearchQuery}"`)
-    }
-    
-    return matches;
+
+    // Apply text search
+    const matchesSearch = stationName.includes(query) ||
+      stationId.includes(query) ||
+      stationAddress.includes(query);
+
+    // Casting to any to access potentially unmapped fields if they come from API
+    // Or assume station object has these fields (need to verify if API returns them)
+    // The current Station type is limited, let's cast
+    const s = station as any;
+    const sRegion = (s.region || '').toLowerCase();
+    const sProvince = (s.province || '').toLowerCase();
+    const sRegency = (s.regency || '').toLowerCase();
+
+    const matchesRegion = !filterRegion || sRegion.includes(filterRegion.toLowerCase())
+    const matchesProvince = !filterProvince || sProvince.includes(filterProvince.toLowerCase())
+    const matchesRegency = !filterRegency || sRegency.includes(filterRegency.toLowerCase())
+
+    // Assigned Only Filter
+    const isAssigned = selectedUser && selectedStations[selectedUser]?.includes(station.id)
+    const matchesAssigned = !showAssignedOnly || isAssigned
+
+    return matchesSearch && matchesRegion && matchesProvince && matchesRegency && matchesAssigned;
   });
 
   // Get current stations for pagination
@@ -237,13 +313,13 @@ const UserStationAssignment: React.FC = () => {
             <p className="text-sm text-red-600">{error}</p>
           </div>
         )}
-        
+
         {success && (
           <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
             <p className="text-sm text-green-600">{success}</p>
           </div>
         )}
-        
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* User Selection Panel */}
           <div className="border border-gray-200 rounded-lg p-4">
@@ -259,7 +335,7 @@ const UserStationAssignment: React.FC = () => {
                 />
               </div>
             </div>
-            
+
             <div className="overflow-y-auto max-h-[calc(100vh-400px)]">
               {loading ? (
                 <div className="flex justify-center py-4">
@@ -273,11 +349,10 @@ const UserStationAssignment: React.FC = () => {
                     <li key={user.id}>
                       <button
                         onClick={() => handleUserSelect(user.id)}
-                        className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                          selectedUser === user.id
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'hover:bg-gray-100'
-                        }`}
+                        className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${selectedUser === user.id
+                          ? 'bg-blue-100 text-blue-800'
+                          : 'hover:bg-gray-100'
+                          }`}
                       >
                         <div className="font-medium">{user.name}</div>
                         <div className="text-sm text-gray-500">{user.email}</div>
@@ -291,20 +366,19 @@ const UserStationAssignment: React.FC = () => {
               )}
             </div>
           </div>
-          
+
           {/* Station Selection Panel */}
           <div className="md:col-span-2 border border-gray-200 rounded-lg overflow-hidden">
             <div className="flex justify-between items-center mb-4 p-4 pb-0">
               <h3 className="text-lg font-medium text-gray-900">Assign Stations</h3>
-              
+
               <button
                 onClick={saveUserStations}
                 disabled={!selectedUser || saving}
-                className={`px-4 py-2 rounded-lg text-white font-medium text-sm ${
-                  !selectedUser || saving
-                    ? 'bg-gray-300 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700'
-                }`}
+                className={`px-4 py-2 rounded-lg text-white font-medium text-sm ${!selectedUser || saving
+                  ? 'bg-gray-300 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700'
+                  }`}
               >
                 {saving ? (
                   <span className="flex items-center">
@@ -317,7 +391,7 @@ const UserStationAssignment: React.FC = () => {
                 ) : 'Save Assignments'}
               </button>
             </div>
-            
+
             {!selectedUser ? (
               <div className="flex flex-col items-center justify-center h-64 text-gray-500">
                 <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -334,44 +408,113 @@ const UserStationAssignment: React.FC = () => {
                   </span>
                 </p>
 
+                {/* Filters Section */}
+                <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <select
+                    value={filterRegion}
+                    onChange={(e) => setFilterRegion(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">All Regions</option>
+                    {regionOptions.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+
+                  <select
+                    value={filterProvince}
+                    onChange={(e) => {
+                      setFilterProvince(e.target.value)
+                      setFilterRegency('')
+                      const selectedOpt = e.target.selectedOptions[0]
+                      setSelectedProvId(selectedOpt.getAttribute('data-id') || '')
+                    }}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">All Provinces</option>
+                    {provinces.map(p => (
+                      <option key={p.id} value={p.name} data-id={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={filterRegency}
+                    onChange={(e) => setFilterRegency(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={!filterProvince}
+                  >
+                    <option value="">All Regencies</option>
+                    {regencies.map(r => (
+                      <option key={r.id} value={r.name}>{r.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* View Toggles */}
+                <div className="flex items-center justify-between mb-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showAssignedOnly}
+                      onChange={(e) => setShowAssignedOnly(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Show Assigned Only</span>
+                  </label>
+                  {(showAssignedOnly && filteredStations.length === 0 && selectedUser && (selectedStations[selectedUser]?.length || 0) === 0) && (
+                    <span className="text-xs text-orange-500 italic">User has no assigned stations completely. Uncheck to add.</span>
+                  )}
+                </div>
+
                 {/* Search Stations */}
                 <div className="mb-4">
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Search stations by name, ID, or address..."
-                      value={stationSearchQuery}
-                      onChange={(e) => {
-                        setStationSearchQuery(e.target.value)
-                        setCurrentPage(1) // Reset to first page when searching
-                      }}
-                      className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    {stationSearchQuery && (
-                      <button
-                        onClick={() => {
-                          setStationSearchQuery('')
-                          setCurrentPage(1)
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        placeholder="Search stations by name, ID, or address..."
+                        value={stationSearchQuery}
+                        onChange={(e) => {
+                          setStationSearchQuery(e.target.value)
+                          setCurrentPage(1) // Reset to first page when searching
                         }}
-                        className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                        title="Clear search"
-                      >
-                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    )}
+                        className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      {stationSearchQuery && (
+                        <button
+                          onClick={() => {
+                            setStationSearchQuery('')
+                            setCurrentPage(1)
+                          }}
+                          className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          title="Clear search"
+                        >
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                   </div>
                   {stationSearchQuery && (
                     <div className="mt-2 text-sm text-gray-600">
-                      Found {filteredStations.length} station{filteredStations.length !== 1 ? 's' : ''} matching "{stationSearchQuery}"
+                      Found {filteredStations.length} station{filteredStations.length !== 1 ? 's' : ''} matching filters
                       {filteredStations.length === 0 && (
                         <span className="text-red-500 ml-2">- No stations found</span>
                       )}
                     </div>
                   )}
+
+                  {/* Bulk Select Buttons */}
+                  <div className="mt-2 flex gap-2">
+                    <button onClick={handleSelectAllFiltered} className="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                      Select All {filteredStations.length} Filtered
+                    </button>
+                    <span className="text-gray-300">|</span>
+                    <button onClick={handleDeselectAllFiltered} className="text-xs text-gray-600 hover:text-gray-800 font-medium">
+                      Deselect All Filtered
+                    </button>
+                  </div>
                 </div>
-                
+
                 {/* Table Layout */}
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
@@ -400,11 +543,11 @@ const UserStationAssignment: React.FC = () => {
                         </tr>
                       ) : (
                         currentStations.map(station => {
-                          const isChecked = selectedUser && 
+                          const isChecked = selectedUser &&
                             selectedStations[selectedUser]?.includes(station.id);
-                          
+
                           return (
-                            <tr 
+                            <tr
                               key={station.id}
                               className={`hover:bg-gray-50 cursor-pointer ${isChecked ? 'bg-blue-50' : ''}`}
                               onClick={() => handleStationToggle(station.id)}
@@ -413,7 +556,7 @@ const UserStationAssignment: React.FC = () => {
                                 <input
                                   type="checkbox"
                                   checked={isChecked || false}
-                                  onChange={() => {}} // Handled by row click
+                                  onChange={() => { }} // Handled by row click
                                   className="h-4 w-4 text-blue-600 rounded"
                                 />
                               </td>
@@ -433,7 +576,7 @@ const UserStationAssignment: React.FC = () => {
                     </tbody>
                   </table>
                 </div>
-                
+
                 {/* Pagination */}
                 {filteredStations.length > 0 && (
                   <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50 px-4 py-3 sm:px-6">
@@ -442,32 +585,30 @@ const UserStationAssignment: React.FC = () => {
                       <button
                         onClick={() => paginate(Math.max(1, currentPage - 1))}
                         disabled={currentPage === 1}
-                        className={`relative inline-flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                          currentPage === 1
-                            ? 'text-gray-400 cursor-not-allowed'
-                            : 'text-gray-700 hover:bg-white hover:text-gray-900'
-                        }`}
+                        className={`relative inline-flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${currentPage === 1
+                          ? 'text-gray-400 cursor-not-allowed'
+                          : 'text-gray-700 hover:bg-white hover:text-gray-900'
+                          }`}
                       >
                         <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                         </svg>
                         Previous
                       </button>
-                      
+
                       <div className="flex items-center space-x-1">
                         <span className="text-sm text-gray-500">
                           Page {currentPage} of {totalPages}
                         </span>
                       </div>
-                      
+
                       <button
                         onClick={() => paginate(Math.min(totalPages, currentPage + 1))}
                         disabled={currentPage === totalPages}
-                        className={`relative inline-flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                          currentPage === totalPages
-                            ? 'text-gray-400 cursor-not-allowed'
-                            : 'text-gray-700 hover:bg-white hover:text-gray-900'
-                        }`}
+                        className={`relative inline-flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors ${currentPage === totalPages
+                          ? 'text-gray-400 cursor-not-allowed'
+                          : 'text-gray-700 hover:bg-white hover:text-gray-900'
+                          }`}
                       >
                         Next
                         <svg className="h-4 w-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -490,23 +631,22 @@ const UserStationAssignment: React.FC = () => {
                           <button
                             onClick={() => paginate(Math.max(1, currentPage - 1))}
                             disabled={currentPage === 1}
-                            className={`relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 transition-colors ${
-                              currentPage === 1
-                                ? 'cursor-not-allowed'
-                                : 'hover:bg-white hover:text-gray-600'
-                            }`}
+                            className={`relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 transition-colors ${currentPage === 1
+                              ? 'cursor-not-allowed'
+                              : 'hover:bg-white hover:text-gray-600'
+                              }`}
                           >
                             <span className="sr-only">Previous</span>
                             <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                               <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
                             </svg>
                           </button>
-                          
+
                           {/* Smart page numbers with ellipsis */}
                           {(() => {
                             const pages = []
                             const maxVisiblePages = 5
-                            
+
                             if (totalPages <= maxVisiblePages) {
                               // Show all pages if total is small
                               for (let i = 1; i <= totalPages; i++) {
@@ -514,11 +654,10 @@ const UserStationAssignment: React.FC = () => {
                                   <button
                                     key={i}
                                     onClick={() => paginate(i)}
-                                    className={`relative inline-flex items-center px-3 py-2 text-sm font-semibold ${
-                                      currentPage === i
-                                        ? 'z-10 bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
-                                        : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-white focus:outline-offset-0'
-                                    }`}
+                                    className={`relative inline-flex items-center px-3 py-2 text-sm font-semibold ${currentPage === i
+                                      ? 'z-10 bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
+                                      : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-white focus:outline-offset-0'
+                                      }`}
                                   >
                                     {i}
                                   </button>
@@ -528,7 +667,7 @@ const UserStationAssignment: React.FC = () => {
                               // Show smart pagination with ellipsis
                               const startPage = Math.max(1, currentPage - 2)
                               const endPage = Math.min(totalPages, currentPage + 2)
-                              
+
                               // Always show first page
                               if (startPage > 1) {
                                 pages.push(
@@ -540,7 +679,7 @@ const UserStationAssignment: React.FC = () => {
                                     1
                                   </button>
                                 )
-                                
+
                                 if (startPage > 2) {
                                   pages.push(
                                     <span key="ellipsis1" className="relative inline-flex items-center px-3 py-2 text-sm font-semibold text-gray-700">
@@ -549,24 +688,23 @@ const UserStationAssignment: React.FC = () => {
                                   )
                                 }
                               }
-                              
+
                               // Show pages around current page
                               for (let i = startPage; i <= endPage; i++) {
                                 pages.push(
                                   <button
                                     key={i}
                                     onClick={() => paginate(i)}
-                                    className={`relative inline-flex items-center px-3 py-2 text-sm font-semibold ${
-                                      currentPage === i
-                                        ? 'z-10 bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
-                                        : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-white focus:outline-offset-0'
-                                    }`}
+                                    className={`relative inline-flex items-center px-3 py-2 text-sm font-semibold ${currentPage === i
+                                      ? 'z-10 bg-blue-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
+                                      : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-white focus:outline-offset-0'
+                                      }`}
                                   >
                                     {i}
                                   </button>
                                 )
                               }
-                              
+
                               // Always show last page
                               if (endPage < totalPages) {
                                 if (endPage < totalPages - 1) {
@@ -576,7 +714,7 @@ const UserStationAssignment: React.FC = () => {
                                     </span>
                                   )
                                 }
-                                
+
                                 pages.push(
                                   <button
                                     key={totalPages}
@@ -588,19 +726,18 @@ const UserStationAssignment: React.FC = () => {
                                 )
                               }
                             }
-                            
+
                             return pages
                           })()}
-                          
+
                           {/* Next Page Button */}
                           <button
                             onClick={() => paginate(Math.min(totalPages, currentPage + 1))}
                             disabled={currentPage === totalPages}
-                            className={`relative inline-flex items-center px-2 py-2 text-gray-400 transition-colors ${
-                              currentPage === totalPages
-                                ? 'cursor-not-allowed'
-                                : 'hover:bg-white hover:text-gray-600'
-                            }`}
+                            className={`relative inline-flex items-center px-2 py-2 text-gray-400 transition-colors ${currentPage === totalPages
+                              ? 'cursor-not-allowed'
+                              : 'hover:bg-white hover:text-gray-600'
+                              }`}
                             title="Next Page"
                           >
                             <span className="sr-only">Next</span>
@@ -608,16 +745,15 @@ const UserStationAssignment: React.FC = () => {
                               <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
                             </svg>
                           </button>
-                          
+
                           {/* Last Page Button */}
                           <button
                             onClick={() => paginate(totalPages)}
                             disabled={currentPage === totalPages}
-                            className={`relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 transition-colors ${
-                              currentPage === totalPages
-                                ? 'cursor-not-allowed'
-                                : 'hover:bg-white hover:text-gray-600'
-                            }`}
+                            className={`relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 transition-colors ${currentPage === totalPages
+                              ? 'cursor-not-allowed'
+                              : 'hover:bg-white hover:text-gray-600'
+                              }`}
                             title="Last Page"
                           >
                             <span className="sr-only">Last</span>

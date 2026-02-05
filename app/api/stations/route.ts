@@ -20,16 +20,16 @@ export async function GET(request: NextRequest) {
 
     const qb = search
       ? base.or(
-          [
-            `station_id.ilike.%${search}%`,
-            `name.ilike.%${search}%`,
-            `type.ilike.%${search}%`,
-            `address.ilike.%${search}%`,
-            `region.ilike.%${search}%`,
-            `province.ilike.%${search}%`,
-            `regency.ilike.%${search}%`,
-          ].join(',')
-        )
+        [
+          `station_wmo_id.ilike.%${search}%`,
+          `name.ilike.%${search}%`,
+          `type.ilike.%${search}%`,
+          `address.ilike.%${search}%`,
+          `region.ilike.%${search}%`,
+          `province.ilike.%${search}%`,
+          `regency.ilike.%${search}%`,
+        ].join(',')
+      )
       : base
 
     const start = (page - 1) * pageSize
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
 
     // Extract token from "Bearer <token>"
     const token = authHeader.replace('Bearer ', '')
-    
+
     // Verify the token and get user
     const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
     if (authError || !user) {
@@ -77,21 +77,21 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { 
-      station_id, 
-      name, 
-      address, 
-      latitude, 
-      longitude, 
-      elevation, 
-      time_zone, 
-      region, 
-      province, 
+    const {
+      station_wmo_id,
+      name,
+      address,
+      latitude,
+      longitude,
+      elevation,
+      time_zone,
+      region,
+      province,
       regency,
       type
     } = body
 
-    if (!station_id || !name || !address || !latitude || !longitude || !elevation || !time_zone || !region || !province || !regency || !type) {
+    if (!name || !address || !latitude || !longitude || !elevation || !time_zone || !region || !province || !regency || !type) {
       return NextResponse.json({
         error: 'All fields are required',
       }, { status: 400 })
@@ -112,19 +112,19 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabaseAdmin
       .from('station')
-      .insert({ 
-        station_id, 
-        name, 
-        address, 
-        latitude: parseFloat(latitude), 
-        longitude: parseFloat(longitude), 
-        elevation: parseFloat(elevation), 
-        time_zone, 
-        region, 
-        province, 
+      .insert({
+        station_wmo_id,
+        name,
+        address,
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        elevation: parseFloat(elevation),
+        time_zone,
+        region,
+        province,
         regency,
-        type, 
-        created_by: user.id 
+        type,
+        created_by: user.id
       })
       .select()
       .single()
