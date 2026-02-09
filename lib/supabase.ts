@@ -91,7 +91,6 @@ export interface CertStandard {
   u95_general: number
   sensor_id: number
   correction_std: any
-  u95_std: any
 }
 
 export interface CalibrationSession {

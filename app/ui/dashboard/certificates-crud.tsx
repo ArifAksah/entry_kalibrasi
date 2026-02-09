@@ -190,8 +190,8 @@ const SearchableDropdown = ({
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
           <div className="absolute z-50 w-full top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-hidden">
-            <div className="flex flex-col-reverse h-60">
-              <div className="p-2 border-t border-gray-100 bg-gray-50 sticky bottom-0">
+            <div className="flex flex-col h-auto max-h-60">
+              <div className="p-3 border-b border-gray-100 bg-white sticky top-0 z-10">
                 <div className="relative">
                   <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
@@ -199,14 +199,14 @@ const SearchableDropdown = ({
                     placeholder={searchPlaceholder}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm bg-white"
+                    className="w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm bg-gray-50"
                     autoFocus
                   />
                 </div>
               </div>
               <div className="overflow-y-auto flex-1">
                 {filteredOptions.length > 0 ? (
-                  <div className="flex flex-col-reverse">
+                  <div className="flex flex-col">
                     {filteredOptions.map((option) => (
                       <button
                         key={option.id}
@@ -216,7 +216,7 @@ const SearchableDropdown = ({
                           setIsOpen(false)
                           setSearch('')
                         }}
-                        className="w-full px-3 py-2 text-left hover:bg-blue-50 border-b border-gray-100 first:border-b-0 text-sm"
+                        className="w-full px-3 py-2 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0 text-sm"
                       >
                         <div className="font-medium text-gray-900">{option.name}</div>
                         {option.station_id ? (
@@ -243,7 +243,7 @@ const CertificatesCRUD: React.FC = () => {
   const { certificates, loading, error, addCertificate, updateCertificate, deleteCertificate } = useCertificates()
   const { completeRepair, resetVerification } = useCertificateVerification()
   const { user } = useAuth()
-  const { can, canEndpoint } = usePermissions()
+  const { can, canEndpoint, role } = usePermissions()
   const { alert, showSuccess, showError, showWarning, hideAlert } = useAlert()
   const router = useRouter()
 
@@ -667,28 +667,41 @@ const CertificatesCRUD: React.FC = () => {
       try {
         // Fetch all stations across pages to ensure every certificate can resolve station name
         const fetchAllStations = async () => {
-          const first = await fetch('/api/stations?page=1&pageSize=100')
+          if (!role) return { data: [], total: 0, pageSize: 100, totalPages: 0 } // Wait for role
+
+          let baseUrl = '/api/stations?pageSize=100'
+          if (role !== 'admin' && user?.id) {
+            baseUrl += `&user_id=${user.id}`
+          }
+
+          const first = await fetch(`${baseUrl}&page=1`)
           if (!first.ok) return { data: [], total: 0, pageSize: 100, totalPages: 1 }
           const firstJson = await first.json()
           const firstData = Array.isArray(firstJson) ? firstJson : (firstJson?.data ?? [])
           const totalPages = (Array.isArray(firstJson) ? 1 : (firstJson?.totalPages ?? 1)) as number
           if (totalPages <= 1) return { data: firstData, total: (firstJson?.total ?? firstData.length) as number, pageSize: 100, totalPages }
           const restPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-          const rest = await Promise.all(restPages.map(p => fetch(`/api/stations?page=${p}&pageSize=100`).then(r => r.ok ? r.json() : { data: [] })))
+          const rest = await Promise.all(restPages.map(p => fetch(`${baseUrl}&page=${p}`).then(r => r.ok ? r.json() : { data: [] })))
           const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
           return { data: [...firstData, ...restData], total: (firstJson?.total ?? (firstData.length + restData.length)) as number, pageSize: 100, totalPages }
         }
 
         // Fetch all instruments across pages
+        // Fetch all instruments across pages
         const fetchAllInstruments = async () => {
-          const first = await fetch('/api/instruments?page=1&pageSize=100')
+          let baseUrl = '/api/instruments?pageSize=100'
+          if (role !== 'admin' && user?.id) {
+            baseUrl += `&user_id=${user.id}`
+          }
+
+          const first = await fetch(`${baseUrl}&page=1`)
           if (!first.ok) return { data: [], total: 0, pageSize: 100, totalPages: 1 }
           const firstJson = await first.json()
           const firstData = Array.isArray(firstJson) ? firstJson : (firstJson?.data ?? [])
           const totalPages = (Array.isArray(firstJson) ? 1 : (firstJson?.totalPages ?? 1)) as number
           if (totalPages <= 1) return { data: firstData, total: (firstJson?.total ?? firstData.length) as number, pageSize: 100, totalPages }
           const restPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-          const rest = await Promise.all(restPages.map(p => fetch(`/api/instruments?page=${p}&pageSize=100`).then(r => r.ok ? r.json() : { data: [] })))
+          const rest = await Promise.all(restPages.map(p => fetch(`${baseUrl}&page=${p}`).then(r => r.ok ? r.json() : { data: [] })))
           const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
           return { data: [...firstData, ...restData], total: (firstJson?.total ?? (firstData.length + restData.length)) as number, pageSize: 100, totalPages }
         }
@@ -739,7 +752,7 @@ const CertificatesCRUD: React.FC = () => {
       }
     }
     fetchData()
-  }, [])
+  }, [user, role])
 
   // State specific for Standard Instrument selection
   // const [selectedStdSensorId, setSelectedStdSensorId] = useState<number | null>(null) -> Unused
@@ -1593,6 +1606,32 @@ const CertificatesCRUD: React.FC = () => {
                     </a>
                   </div>
                   <div className="space-y-1">
+                    {/* DEBUGGER FOR MISSING INSTRUMENTS */}
+                    {form.station && (
+                      <div className="bg-yellow-50 border border-yellow-200 p-2 rounded text-[10px] font-mono mb-2 text-gray-700">
+                        <strong>DEBUG INFO (Station ID: {String(form.station)})</strong>
+                        <ul className="list-disc pl-4 mt-1">
+                          {instruments
+                            .filter(i => {
+                              // Show ALL instruments that match the Station ID OR Name (to detect ID mismatch)
+                              const sId = i.station?.id || (i as any).station_id;
+                              // Basic loose check
+                              return String(sId) === String(form.station);
+                            })
+                            .map(i => {
+                              const isStandard = i.sensor?.some((s: any) => s.is_standard === true);
+                              return (
+                                <li key={i.id} className={isStandard ? "text-red-600 font-bold" : "text-green-600"}>
+                                  {i.name} (ID: {i.id}) - {isStandard ? "HIDDEN (Standard)" : "VISIBLE (UUT)"}
+                                </li>
+                              );
+                            })}
+                        </ul>
+                        <div className="mt-1 border-t border-yellow-200 pt-1">
+                          Ref: {instruments.length} total fetched.
+                        </div>
+                      </div>
+                    )}
                     <label className="text-xs font-semibold text-gray-600">Instrument *</label>
                     <SearchableDropdown
                       value={form.instrument}
@@ -1602,11 +1641,24 @@ const CertificatesCRUD: React.FC = () => {
                         setResults(prev => prev.map((r, i) => i === 0 ? { ...r, sensorId: null, sensorDetails: undefined } : r));
                         setInstrumentPreview({});
                       }}
-                      options={instruments.map(i => ({
-                        id: i.id,
-                        name: `${i.name} (${i.manufacturer} ${i.type} SN:${i.serial_number})`,
-                        station_id: i.station?.name || ''
-                      }))}
+                      options={instruments
+                        .filter(i => {
+                          // Filter by Station
+                          if (form.station) {
+                            const stationId = i.station?.id || (i as any).station_id;
+                            if (String(stationId) !== String(form.station)) return false;
+                          }
+
+                          // Filter UUT Only (Exclude Standards)
+                          // Check if any sensor is marked as standard
+                          const isStandard = i.sensor?.some((s: any) => s.is_standard === true);
+                          return !isStandard;
+                        })
+                        .map(i => ({
+                          id: i.id,
+                          name: `${i.name} (${i.manufacturer} ${i.type} SN:${i.serial_number})`,
+                          station_id: i.station?.name || ''
+                        }))}
                       placeholder="Pilih Instrument..."
                       searchPlaceholder="Cari Instrument..."
                     />

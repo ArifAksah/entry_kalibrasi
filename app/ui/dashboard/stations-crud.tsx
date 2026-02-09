@@ -71,7 +71,8 @@ interface WilayahRegency {
 
 export default function StationsCRUD() {
   const { stations, loading, error, addStation, updateStation, deleteStation, fetchStations } = useStations()
-  const { can, canEndpoint } = usePermissions()
+
+  const { can, canEndpoint, role } = usePermissions()
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editing, setEditing] = useState<Station | null>(null)
@@ -219,15 +220,43 @@ export default function StationsCRUD() {
     }
 
     getCurrentUser()
+    // Fetch data for dropdowns
     fetchPersonel()
-    // initial server-side fetch
-    fetchStations({ page: 1, pageSize })
   }, [])
 
+  // Fetch stations once role and user are known
+  useEffect(() => {
+    const initStations = async () => {
+      // Wait for role to be determined
+      if (!role) return
+
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          setCurrentUserId(user.id)
+          setForm(prev => ({ ...prev, created_by: user.id }))
+
+          // Use userId filtering if not admin
+          const filterUserId = role === 'admin' ? undefined : user.id
+          fetchStations({ page: 1, pageSize, userId: filterUserId })
+        }
+      } catch (e) {
+        console.error('Failed to init stations page:', e)
+      }
+    }
+
+    if (role) {
+      initStations()
+    }
+  }, [role])
+
   const filteredStations = useMemo(() => {
+    let data = stations
+    // Server-side filtering handles user restriction now
+
     const q = search.trim().toLowerCase()
-    if (!q) return stations
-    return stations.filter(s => {
+    if (!q) return data
+    return data.filter(s => {
       const hay = [
         s.station_wmo_id,
         s.station_id,

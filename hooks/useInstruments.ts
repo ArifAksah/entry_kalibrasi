@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Instrument, InstrumentInsert, InstrumentUpdate } from '../lib/supabase'
 
 export const useInstruments = () => {
@@ -6,7 +6,7 @@ export const useInstruments = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchInstruments = async (opts?: { q?: string; page?: number; pageSize?: number; type?: 'standard' | 'uut' }) => {
+  const fetchInstruments = useCallback(async (opts?: { q?: string; page?: number; pageSize?: number; type?: 'standard' | 'uut'; userId?: string }) => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
@@ -14,6 +14,7 @@ export const useInstruments = () => {
       if (opts?.page) params.set('page', String(opts.page))
       if (opts?.pageSize) params.set('pageSize', String(opts.pageSize))
       if (opts?.type) params.set('type', opts.type)
+      if (opts?.userId) params.set('user_id', opts.userId)
       const qs = params.toString()
       const res = await fetch(`/api/instruments${qs ? `?${qs}` : ''}`)
       if (!res.ok) throw new Error('Failed to fetch instruments')
@@ -29,9 +30,9 @@ export const useInstruments = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const addInstrument = async (payload: InstrumentInsert) => {
+  const addInstrument = useCallback(async (payload: InstrumentInsert) => {
     try {
       const res = await fetch('/api/instruments', {
         method: 'POST',
@@ -48,9 +49,9 @@ export const useInstruments = () => {
       setError(msg)
       throw new Error(msg)
     }
-  }
+  }, [])
 
-  const updateInstrument = async (id: number, payload: InstrumentUpdate) => {
+  const updateInstrument = useCallback(async (id: number, payload: InstrumentUpdate) => {
     try {
       const res = await fetch(`/api/instruments/${id}`, {
         method: 'PUT',
@@ -67,9 +68,9 @@ export const useInstruments = () => {
       setError(msg)
       throw new Error(msg)
     }
-  }
+  }, [])
 
-  const deleteInstrument = async (id: number) => {
+  const deleteInstrument = useCallback(async (id: number) => {
     try {
       const res = await fetch(`/api/instruments/${id}`, { method: 'DELETE' })
       const data = await res.json()
@@ -81,9 +82,9 @@ export const useInstruments = () => {
       setError(msg)
       throw new Error(msg)
     }
-  }
+  }, [])
 
-  useEffect(() => { fetchInstruments({ page: 1, pageSize: 10 }) }, [])
+  // useEffect(() => { fetchInstruments({ page: 1, pageSize: 10 }) }, [])
 
   return { instruments, loading, error, addInstrument, updateInstrument, deleteInstrument, refetch: fetchInstruments, fetchInstruments }
 }

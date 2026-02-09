@@ -14,12 +14,19 @@ export async function GET(request: NextRequest) {
     const pageSize = requestedPageSize > 1000 ? requestedPageSize : Math.max(1, Math.min(1000, requestedPageSize))
     const search = (searchParams.get('q') || '').trim()
 
-    const base = supabaseAdmin
-      .from('station')
-      .select('*', { count: 'exact' })
+    const userId = searchParams.get('user_id')
 
-    const qb = search
-      ? base.or(
+    let query = supabaseAdmin
+      .from('station')
+      .select('*, user_stations!inner(user_id)', { count: 'exact' })
+
+    if (userId) {
+      // If filtering by user, use inner join on user_stations
+      query = query.eq('user_stations.user_id', userId)
+    }
+
+    if (search) {
+      query = query.or(
         [
           `station_wmo_id.ilike.%${search}%`,
           `name.ilike.%${search}%`,
@@ -30,12 +37,12 @@ export async function GET(request: NextRequest) {
           `regency.ilike.%${search}%`,
         ].join(',')
       )
-      : base
+    }
 
     const start = (page - 1) * pageSize
     const end = start + pageSize - 1
 
-    const { data, error, count } = await qb
+    const { data, error, count } = await query
       .order('created_at', { ascending: false })
       .range(start, end)
 

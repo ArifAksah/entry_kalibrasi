@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Station, StationInsert, StationUpdate } from '../lib/supabase'
 import { supabase } from '../lib/supabase'
 
@@ -7,12 +7,12 @@ export const useStations = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchStations = async (opts?: { q?: string; page?: number; pageSize?: number }) => {
+  const fetchStations = useCallback(async (opts?: { q?: string; page?: number; pageSize?: number; userId?: string }) => {
     try {
       setLoading(true)
-      
-      // If no search query, use the all endpoint to get all stations
-      if (!opts?.q) {
+
+      // If no search query and no userId, use the all endpoint
+      if (!opts?.q && !opts?.userId) {
         const res = await fetch('/api/stations/all')
         if (!res.ok) throw new Error('Failed to fetch all stations')
         const data = await res.json()
@@ -20,12 +20,13 @@ export const useStations = () => {
         setError(null)
         return { data: Array.isArray(data) ? data : [], total: Array.isArray(data) ? data.length : 0, page: 1, pageSize: Array.isArray(data) ? data.length : 0, totalPages: 1 }
       }
-      
-      // For search queries, use the regular paginated endpoint
+
+      // For search or user filter, use the regular paginated endpoint
       const params = new URLSearchParams()
       if (opts?.q) params.set('q', opts.q)
       if (opts?.page) params.set('page', String(opts.page))
       if (opts?.pageSize) params.set('pageSize', String(opts.pageSize))
+      if (opts?.userId) params.set('user_id', opts.userId)
       const qs = params.toString()
       const res = await fetch(`/api/stations${qs ? `?${qs}` : ''}`)
       if (!res.ok) throw new Error('Failed to fetch stations')
@@ -41,9 +42,9 @@ export const useStations = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const addStation = async (payload: StationInsert) => {
+  const addStation = useCallback(async (payload: StationInsert) => {
     try {
       // Get current session token
       const { data: { session } } = await supabase.auth.getSession()
@@ -53,7 +54,7 @@ export const useStations = () => {
 
       const res = await fetch('/api/stations', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
@@ -68,9 +69,9 @@ export const useStations = () => {
       setError(msg)
       throw new Error(msg)
     }
-  }
+  }, [])
 
-  const updateStation = async (id: number, payload: StationUpdate) => {
+  const updateStation = useCallback(async (id: number, payload: StationUpdate) => {
     try {
       // Get current session token
       const { data: { session } } = await supabase.auth.getSession()
@@ -80,7 +81,7 @@ export const useStations = () => {
 
       const res = await fetch(`/api/stations/${id}`, {
         method: 'PUT',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
@@ -95,9 +96,9 @@ export const useStations = () => {
       setError(msg)
       throw new Error(msg)
     }
-  }
+  }, [])
 
-  const deleteStation = async (id: number) => {
+  const deleteStation = useCallback(async (id: number) => {
     try {
       // Get current session token
       const { data: { session } } = await supabase.auth.getSession()
@@ -105,7 +106,7 @@ export const useStations = () => {
         throw new Error('Not authenticated')
       }
 
-      const res = await fetch(`/api/stations/${id}`, { 
+      const res = await fetch(`/api/stations/${id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${session.access_token}`
@@ -120,9 +121,9 @@ export const useStations = () => {
       setError(msg)
       throw new Error(msg)
     }
-  }
+  }, [])
 
-  useEffect(() => { fetchStations() }, [])
+
 
   return { stations, loading, error, addStation, updateStation, deleteStation, refetch: fetchStations, fetchStations }
 }

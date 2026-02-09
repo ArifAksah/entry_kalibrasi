@@ -35,7 +35,10 @@ export async function GET(
         funnel_area_unit,
         name,
         is_standard,
-        created_at
+        created_at,
+        certificate_standard (
+          *
+        )
       `)
       .eq('instrument_id', id)
 
@@ -61,7 +64,18 @@ export async function GET(
       volume_per_tip_unit: sensor.volume_per_tip_unit || '',
       funnel_area: sensor.funnel_area || 0,
       funnel_area_unit: sensor.funnel_area_unit || '',
-      is_standard: sensor.is_standard || false
+      is_standard: sensor.is_standard || false,
+      certificates: Array.isArray(sensor.certificate_standard) ? sensor.certificate_standard.map((c: any) => ({
+        id: c.id,
+        no_certificate: c.no_certificate,
+        calibration_date: c.calibration_date,
+        drift: c.drift,
+        range: c.range,
+        resolution: c.resolution,
+        u95_general: c.u95_general,
+        correction_data: c.correction_std, // Map from DB column to FE property
+        correction_std: c.correction_std
+      })) : []
     })) || []
 
     return NextResponse.json(sensors)
@@ -119,11 +133,10 @@ export async function POST(
         resolution: Number(cert.resolution),
         u95_general: Number(cert.u95_general),
         correction_std: cert.correction_data || cert.correction_std,
-        u95_std: null
       }))
 
       const { error: certError } = await supabaseAdmin
-        .from('cert_standard')
+        .from('certificate_standard')
         .insert(certsToInsert)
 
       if (certError) {
@@ -221,12 +234,11 @@ export async function PUT(
         resolution: Number(cert.resolution),
         u95_general: Number(cert.u95_general),
         correction_std: cert.correction_data || cert.correction_std,
-        u95_std: null
       }))
 
       if (newCerts.length > 0) {
         const { error: certError } = await supabaseAdmin
-          .from('cert_standard')
+          .from('certificate_standard')
           .insert(newCerts)
 
         if (certError) console.error('Error inserting new certs in PUT:', certError)

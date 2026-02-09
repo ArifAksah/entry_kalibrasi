@@ -12,7 +12,7 @@ export async function PUT(
         const body = await request.json()
 
         const { data, error } = await supabaseAdmin
-            .from('cert_standard')
+            .from('certificate_standard')
             .update(body)
             .eq('id', id)
             .select()
@@ -37,7 +37,7 @@ export async function DELETE(
         const { id } = await params
 
         const { error } = await supabaseAdmin
-            .from('cert_standard')
+            .from('certificate_standard')
             .delete()
             .eq('id', id)
 

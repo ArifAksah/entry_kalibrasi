@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
         const sensor_id = searchParams.get('sensor_id')
 
         let query = supabaseAdmin
-            .from('cert_standard')
+            .from('certificate_standard')
             .select('*')
             .order('calibration_date', { ascending: false })
 
@@ -25,6 +25,26 @@ export async function GET(request: NextRequest) {
         }
 
         return NextResponse.json(data || [])
+    } catch (e: any) {
+        return NextResponse.json({ error: e.message }, { status: 500 })
+    }
+}
+
+export async function POST(request: NextRequest) {
+    try {
+        const body = await request.json()
+        const { data, error } = await supabaseAdmin
+            .from('certificate_standard')
+            .insert(body)
+            .select()
+            .single()
+
+        if (error) {
+            console.error('Error creating standard cert:', error)
+            return NextResponse.json({ error: error.message }, { status: 500 })
+        }
+
+        return NextResponse.json(data)
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 })
     }

@@ -97,6 +97,7 @@ const sections: NavSection[] = [
       { name: 'Endpoint Permissions', href: '/endpoint-permissions', icon: Icon.list },
       { name: 'Manajemen Personel', href: '/personel', icon: Icon.doc },
       { name: 'Assign Stations', href: '/user-stations', icon: Icon.building },
+      { name: 'Master Satuan', href: '/units', icon: Icon.beaker },
     ],
   },
 ];

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { useInstruments } from '../../../hooks/useInstruments'
+import { useAuth } from '../../../contexts/AuthContext'
 import { Instrument, InstrumentInsert, Station } from '../../../lib/supabase'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useStations } from '../../../hooks/useStations'
@@ -10,12 +11,15 @@ import { useAlert } from '../../../hooks/useAlert'
 import Loading from '../../../components/ui/Loading'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
 import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
+import { useUnits } from '../../../hooks/useUnits'
 
 const InstrumentsCRUD: React.FC = () => {
   const { instruments, loading, error, addInstrument, updateInstrument, deleteInstrument, fetchInstruments } = useInstruments()
-  const { stations, loading: stationsLoading } = useStations()
-  const { can, canEndpoint } = usePermissions()
+  const { stations, loading: stationsLoading, fetchStations } = useStations()
+  const { user } = useAuth()
+  const { can, canEndpoint, role } = usePermissions()
   const { alert, showSuccess, showError, hideAlert } = useAlert()
+  const { units, fetchUnits: fetchUnitsList } = useUnits()
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editing, setEditing] = useState<Instrument | null>(null)
@@ -38,10 +42,7 @@ const InstrumentsCRUD: React.FC = () => {
   const [showStationDropdown, setShowStationDropdown] = useState(false)
 
 
-  // Station Assignment Restriction
-  const [assignedStationIds, setAssignedStationIds] = useState<number[]>([])
-  const [isRestrictedUser, setIsRestrictedUser] = useState(true) // Default to restricted for safety
-  const [isAssignmentsLoading, setIsAssignmentsLoading] = useState(true)
+
 
   // State untuk sensor form (kondisional) - sekarang array untuk multiple sensors
   const [sensorForms, setSensorForms] = useState<Array<{
@@ -72,6 +73,7 @@ const InstrumentsCRUD: React.FC = () => {
   const [certList, setCertList] = useState<any[]>([])
   const [isCertModalOpen, setIsCertModalOpen] = useState(false)
   const [editingCert, setEditingCert] = useState<any>(null)
+  const [editingCertIndex, setEditingCertIndex] = useState<number | null>(null) // Track index for local array updates
   const [certForm, setCertForm] = useState({
     no_certificate: '',
     calibration_date: '',
@@ -108,9 +110,10 @@ const InstrumentsCRUD: React.FC = () => {
       q: debouncedSearch,
       page: currentPage,
       pageSize,
-      type: activeTab === 'certStandard' ? 'standard' : (filterType === 'all' ? undefined : filterType)
+      type: activeTab === 'certStandard' ? 'standard' : (filterType === 'all' ? undefined : filterType),
+      userId: role !== 'admin' ? user?.id : undefined
     })
-  }, [debouncedSearch, currentPage, activeTab, filterType])
+  }, [debouncedSearch, currentPage, activeTab, filterType, role, user, fetchInstruments])
 
 
   useEffect(() => {
@@ -125,101 +128,74 @@ const InstrumentsCRUD: React.FC = () => {
     }
   }, [editing, stations]);
 
-  // Reset sensor forms when memiliki_lebih_satu is unchecked, UNLESS it is a Standard Instrument
+  // Ensure sensor form exists for Single Instrument (Standard OR Non-Standard)
   useEffect(() => {
-    if (!form.memiliki_lebih_satu && !editing && !isLoadingSensors) {
-      if (isStandardInstrument) {
-        // If Standard but Single (unchecked multi), ensure exact 1 sensor form exists
-        if (sensorForms.length === 0) {
-          addSensor(true);
-        } else if (sensorForms.length > 1) {
-          // Reduce to 1? Or just keep first. Let's keep first.
-          setSensorForms([sensorForms[0]]);
-        }
-      } else {
-        console.log('Resetting sensor forms because memiliki_lebih_satu is false and not standard')
-        setSensorForms([]);
+    if (!form.memiliki_lebih_satu && !isLoadingSensors) {
+      // If single instrument, ensure exactly 1 sensor form exists
+      if (sensorForms.length === 0) {
+        addSensor(isStandardInstrument);
+      } else if (sensorForms.length > 1) {
+        setSensorForms([sensorForms[0]]);
+      }
+
+      // Sync is_standard property
+      if (sensorForms.length > 0 && sensorForms[0].is_standard !== isStandardInstrument) {
+        // Update the single sensor's standard status
+        setSensorForms(prev => prev.map((s, i) => i === 0 ? { ...s, is_standard: isStandardInstrument } : s));
       }
     }
-  }, [form.memiliki_lebih_satu, editing, isLoadingSensors, isStandardInstrument]);
+  }, [form.memiliki_lebih_satu, isLoadingSensors, isStandardInstrument, sensorForms.length]);
 
   // Debug sensorForms changes
   useEffect(() => {
     console.log('sensorForms updated:', sensorForms)
   }, [sensorForms]);
 
-  // Fetch User Assignments
+  // Fetch stations based on role
   useEffect(() => {
-    const fetchAssignments = async () => {
-      try {
-        setIsAssignmentsLoading(true)
-        const { data: { user } } = await import('../../../lib/supabase').then(m => m.supabase.auth.getUser())
-        console.log('🔍 Fetching assignments for user:', user?.id)
-        if (!user) {
-          setIsAssignmentsLoading(false)
-          return
-        }
+    const initStations = async () => {
+      // Wait for role to be determined
+      if (!role) return
 
-        const res = await fetch(`/api/user-stations?user_id=${user.id}`)
-        console.log('📡 API Response status:', res.ok, res.status)
-        if (res.ok) {
-          const data = await res.json()
-          console.log('📊 Raw assignment data:', data)
-          // Ensure IDs are numbers
-          const ids = data.map((item: any) => Number(item.station_id))
-          console.log('🎯 Extracted station IDs (as numbers):', ids)
-          setAssignedStationIds(ids)
-          setIsRestrictedUser(true)
+      try {
+        if (role === 'admin' || can('station', 'delete')) {
+          // Admin sees all stations
+          fetchStations({ pageSize: 1000 })
+        } else {
+          // Restricted user: fetch only assigned stations
+          // We need the user object
+          const { data: { user } } = await import('../../../lib/supabase').then(m => m.supabase.auth.getUser())
+          if (user) {
+            console.log('Fetching filtered stations for user:', user.id)
+            fetchStations({ userId: user.id, pageSize: 1000 })
+          }
         }
       } catch (e) {
-        console.error("Error fetching user assignments", e)
-      } finally {
-        console.log('✅ Assignments loading complete')
-        setIsAssignmentsLoading(false)
+        console.error('Failed to init stations:', e)
       }
     }
-    fetchAssignments()
-  }, [])
 
-  const filteredStationsForDropdown = useMemo(() => {
-    // 1. If we are an Admin, we shouldn't be restricted.
-    // We check this using can('station', 'delete') which usually implies full control.
-    if (can('station', 'delete') || can('station', 'create')) { // Admin
-      return stations
+
+    if (role) {
+      initStations()
+      fetchUnitsList()
     }
-
-    // 2. If Loading, showing nothing is safer than showing all
-    if (isAssignmentsLoading) {
-      console.log('⏳ Still loading assignments...')
-      return []
-    }
-
-    // 3. If restricted, ONLY show assigned stations.
-    // Even if list is empty, we must return empty.
-    if (isRestrictedUser) {
-      console.log('🔒 Filtering for restricted user. Assigned IDs:', assignedStationIds)
-      const allowed = stations.filter(s => assignedStationIds.includes(Number(s.id)))
-      console.log('✅ Allowed stations (type-safe check):', allowed)
-      return allowed
-    }
-
-    // Fallback? If logic fails, restrict.
-    return []
-  }, [stations, assignedStationIds, isRestrictedUser, can, isAssignmentsLoading])
+  }, [role, can, fetchStations, fetchUnitsList])
 
   // Auto-select station for restricted users with single assignment
   useEffect(() => {
     // Only auto-select if:
-    // 1. User is restricted
+    // 1. User is restricted (not admin and cannot delete/create stations)
     // 2. Exact 1 station is available
     // 3. Not editing (creating new implementation) OR editing but no station set yet (rare)
     // 4. No station is currently selected in form
-    if (isRestrictedUser && filteredStationsForDropdown.length === 1 && !form.station_id) {
-      const station = filteredStationsForDropdown[0];
+    const isRestricted = role !== 'admin' && !can('station', 'delete')
+    if (isRestricted && stations.length === 1 && !form.station_id) {
+      const station = stations[0];
       setForm(prev => ({ ...prev, station_id: station.id }));
       setStationSearch(station.name);
     }
-  }, [isRestrictedUser, filteredStationsForDropdown, form.station_id]);
+  }, [role, can, stations, form.station_id]);
 
 
 
@@ -228,6 +204,15 @@ const InstrumentsCRUD: React.FC = () => {
     if (!q) return instruments
     return instruments.filter(it => `${it.manufacturer} ${it.type} ${it.serial_number} ${it.name} ${it.station?.name ?? ''}`.toLowerCase().includes(q))
   }, [instruments, search])
+
+  // Datalist for units
+  const unitOptions = (
+    <datalist id="unit-options">
+      {units.map((u: any) => (
+        <option key={u.id} value={u.unit} />
+      ))}
+    </datalist>
+  );
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(filtered.length / pageSize)), [filtered])
   const paged = useMemo(() => {
@@ -250,36 +235,33 @@ const InstrumentsCRUD: React.FC = () => {
 
       // Load existing sensors if instrument has multi sensor
       // Do this AFTER setting the form to avoid race conditions
-      if (item.memiliki_lebih_satu) {
-        setIsLoadingSensors(true)
-        try {
-          console.log('Loading sensors for instrument:', item.id)
-          const res = await fetch(`/api/instruments/${item.id}/sensors`)
-          console.log('Sensor API response status:', res.status)
-          if (res.ok) {
-            const sensors = await res.json()
-            console.log('Loaded sensors:', sensors)
-            // Ensure sensors array is not empty before setting
-            if (Array.isArray(sensors) && sensors.length > 0) {
-              console.log('Setting sensorForms with', sensors.length, 'sensors')
-              setSensorForms(sensors)
-            } else {
-              console.log('No sensors found, setting empty array')
-              setSensorForms([])
-            }
+      // Load existing sensors for ALL instruments (Single or Multi)
+      // Standard instruments (even Single) have sensors to store certificates
+      setIsLoadingSensors(true)
+      try {
+        console.log('Loading sensors for instrument:', item.id)
+        const res = await fetch(`/api/instruments/${item.id}/sensors`)
+        console.log('Sensor API response status:', res.status)
+        if (res.ok) {
+          const sensors = await res.json()
+          console.log('Loaded sensors:', sensors)
+          // Ensure sensors array is not empty before setting
+          if (Array.isArray(sensors) && sensors.length > 0) {
+            console.log('Setting sensorForms with', sensors.length, 'sensors')
+            setSensorForms(sensors)
           } else {
-            const errorText = await res.text()
-            console.error('Failed to load sensors:', res.status, res.statusText, errorText)
+            console.log('No sensors found, setting empty array')
             setSensorForms([])
           }
-        } catch (error) {
-          console.error('Error loading sensors:', error)
+        } else {
+          const errorText = await res.text()
+          console.error('Failed to load sensors:', res.status, res.statusText, errorText)
           setSensorForms([])
-        } finally {
-          setIsLoadingSensors(false)
         }
-      } else {
+      } catch (error) {
+        console.error('Error loading sensors:', error)
         setSensorForms([])
+      } finally {
         setIsLoadingSensors(false)
       }
     } else {
@@ -382,19 +364,52 @@ const InstrumentsCRUD: React.FC = () => {
     if (!form.manufacturer || !form.type || !form.serial_number || !form.name) return
     setIsSubmitting(true)
     try {
+      // PREPARE SENSORS DATA
+      // If Single Instrument -> Force Sync with Instrument Details
+      let effectiveSensors = [...sensorForms];
+
+      if (!form.memiliki_lebih_satu) {
+        // Construct Synced Sensor
+        const existingId = (editing && sensorForms.length > 0) ? sensorForms[0].id : `sensor_${Date.now()}`;
+        const defaultCalibration: any = (sensorForms.length > 0) ? sensorForms[0] : {};
+
+        const syncedSensor = {
+          id: existingId,
+          // FORCE SYNC IDENTITY
+          nama_sensor: form.name,
+          merk_sensor: form.manufacturer,
+          tipe_sensor: form.type,
+          serial_number_sensor: form.serial_number,
+          // PRESERVE CALIBRATION DATA IF STANDARD, OR DEFAULTS
+          // PRESERVE CALIBRATION DATA IF STANDARD, OR DEFAULTS
+          range_capacity: (defaultCalibration.range_capacity || ''),
+          range_capacity_unit: (defaultCalibration.range_capacity_unit || ''),
+          graduating: (defaultCalibration.graduating || ''),
+          graduating_unit: (defaultCalibration.graduating_unit || ''),
+          funnel_diameter: (isStandardInstrument ? defaultCalibration.funnel_diameter : 0) || 0,
+          funnel_diameter_unit: (isStandardInstrument ? defaultCalibration.funnel_diameter_unit : '') || '',
+          volume_per_tip: (isStandardInstrument ? defaultCalibration.volume_per_tip : '') || '',
+          volume_per_tip_unit: (isStandardInstrument ? defaultCalibration.volume_per_tip_unit : '') || '',
+          funnel_area: (isStandardInstrument ? defaultCalibration.funnel_area : 0) || 0,
+          funnel_area_unit: (isStandardInstrument ? defaultCalibration.funnel_area_unit : '') || '',
+          is_standard: isStandardInstrument,
+          certificates: defaultCalibration.certificates || []
+        };
+        effectiveSensors = [syncedSensor as any]; // Cast to any to match type signature if needed
+      }
+
       if (editing) {
         await updateInstrument(editing.id, form)
-        showSuccess('Instrument updated successfully')
 
-        // Handle sensor data for multi-sensor or standard instruments
-        if ((form.memiliki_lebih_satu || isStandardInstrument) && editing.id) {
+        // Handle sensor data submission
+        if (editing.id) {
           // Get existing sensors
           const existingRes = await fetch(`/api/instruments/${editing.id}/sensors`)
           const existingSensors = existingRes.ok ? await existingRes.json() : []
 
-          // Delete existing sensors that are not in the current form
+          // Delete existing sensors NOT in effectiveSensors
           for (const existingSensor of existingSensors) {
-            const stillExists = sensorForms.some(sf => sf.id === existingSensor.id.toString())
+            const stillExists = effectiveSensors.some(sf => sf.id === existingSensor.id.toString())
             if (!stillExists) {
               await fetch(`/api/instruments/${editing.id}/sensors?sensorId=${existingSensor.id}`, {
                 method: 'DELETE'
@@ -402,17 +417,15 @@ const InstrumentsCRUD: React.FC = () => {
             }
           }
 
-          // Add new sensors (only those with prefixed IDs are new)
-          for (const sensorForm of sensorForms) {
+          // Upsert effective sensors
+          for (const sensorForm of effectiveSensors) {
             if (sensorForm.id.startsWith('sensor_')) {
-              // New sensor - create it
               await fetch(`/api/instruments/${editing.id}/sensors`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(sensorForm)
               })
             } else {
-              // Existing sensor - update it
               await fetch(`/api/instruments/${editing.id}/sensors`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -421,13 +434,15 @@ const InstrumentsCRUD: React.FC = () => {
             }
           }
         }
+        showSuccess('Instrument updated successfully')
+
       } else {
         const newInstrument = await addInstrument(form)
         showSuccess('Instrument created successfully')
 
-        // Handle sensor data for new multi-sensor instruments OR Single Standard instruments
-        if ((form.memiliki_lebih_satu || isStandardInstrument) && newInstrument && sensorForms.length > 0) {
-          for (const sensorForm of sensorForms) {
+        // For new instruments, always create the sensor (Single or Multi)
+        if (newInstrument && effectiveSensors.length > 0) {
+          for (const sensorForm of effectiveSensors) {
             await fetch(`/api/instruments/${(newInstrument as any).id}/sensors`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -436,6 +451,15 @@ const InstrumentsCRUD: React.FC = () => {
           }
         }
       }
+      // Refresh the list after successful operation
+      fetchInstruments({
+        q: search,
+        page: currentPage,
+        pageSize,
+        type: activeTab === 'certStandard' ? 'standard' : (filterType === 'all' ? undefined : filterType),
+        userId: role !== 'admin' ? user?.id : undefined
+      })
+
       closeModal()
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to save instrument'
@@ -636,6 +660,24 @@ const InstrumentsCRUD: React.FC = () => {
                               >
                                 Hapus
                               </button>
+                              <button
+                                onClick={() => {
+                                  setCertForm({
+                                    no_certificate: cert.no_certificate,
+                                    calibration_date: cert.calibration_date,
+                                    drift: cert.drift,
+                                    range: cert.range,
+                                    resolution: cert.resolution,
+                                    u95_general: cert.u95_general,
+                                    correction_data: cert.correction_std || cert.correction_data || []
+                                  });
+                                  setEditingCert(cert); // For API updates
+                                  setIsCertModalOpen(true);
+                                }}
+                                className="text-blue-600 hover:text-blue-900 ml-4"
+                              >
+                                Detail / Edit
+                              </button>
                             </td>
                           </tr>
                         ))}
@@ -677,39 +719,65 @@ const InstrumentsCRUD: React.FC = () => {
                     range: certForm.range,
                     resolution: Number(certForm.resolution),
                     u95_general: Number(certForm.u95_general),
-                    correction_data: certForm.correction_data, // Keep as correction_data for local state consistency
-                    correction_std: certForm.correction_data, // Save as JSON for API
-                    u95_std: null
+                    correction_data: certForm.correction_data // JSONB or JSON column
                   }
 
                   if (editingSensorIndex !== null) {
-                    // Update local sensorForms
+                    // Update local sensorForms (Instrument Modal)
                     setSensorForms(prev => prev.map((s, i) => {
                       if (i === editingSensorIndex) {
-                        return {
-                          ...s,
-                          certificates: [...(s.certificates || []), payload]
+                        const currentCerts = s.certificates || [];
+                        if (editingCertIndex !== null) {
+                          // Update existing cert
+                          const updatedCerts = [...currentCerts];
+                          updatedCerts[editingCertIndex] = payload;
+                          return { ...s, certificates: updatedCerts };
+                        } else {
+                          // Add new cert
+                          return { ...s, certificates: [...currentCerts, payload] };
                         }
                       }
                       return s
                     }))
                     setIsCertModalOpen(false)
                     setEditingSensorIndex(null)
+                    setEditingCertIndex(null)
                   } else {
-                    const res = await fetch('/api/cert-standards', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(payload)
-                    });
-
-                    if (res.ok) {
-                      const newCert = await res.json();
-                      setCertList(p => [newCert, ...p]);
-                      setIsCertModalOpen(false);
-                      showSuccess('Sertifikat berhasil ditambahkan');
+                    // API Updates (Certificate Standard Tab)
+                    if (editingCert) {
+                      // Update existing API cert
+                      const res = await fetch(`/api/cert-standards/${editingCert.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                      });
+                      if (res.ok) {
+                        const updated = await res.json();
+                        setCertList(p => p.map(c => c.id === editingCert.id ? updated : c));
+                        setIsCertModalOpen(false);
+                        setEditingCert(null);
+                        showSuccess('Sertifikat berhasil diperbarui');
+                      } else {
+                        const err = await res.json();
+                        showError(err.error);
+                      }
                     } else {
-                      const err = await res.json();
-                      showError(err.error);
+                      // Create new API cert
+                      const res = await fetch('/api/cert-standards', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                      });
+
+                      if (res.ok) {
+                        const newCert = await res.json();
+                        setCertList(p => [newCert, ...p]);
+                        setIsCertModalOpen(false);
+                        showSuccess('Sertifikat berhasil ditambahkan');
+                      } else {
+                        const err = await res.json();
+                        showError(err.error);
+                      }
                     }
                   }
                 } catch (err: any) { showError(err.message) }
@@ -955,6 +1023,7 @@ const InstrumentsCRUD: React.FC = () => {
 
                 {/* Scrollable Content */}
                 <div className="flex-1 overflow-y-auto">
+                  {unitOptions}
                   <form onSubmit={handleSubmit} className="p-6 space-y-8" id="instrument-form">
                     {/* Instrument Information Section */}
                     <div className="bg-gray-50 rounded-lg p-6">
@@ -1038,7 +1107,7 @@ const InstrumentsCRUD: React.FC = () => {
                               <div
                                 className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
                               >
-                                {!isRestrictedUser && (
+                                {role === 'admin' && (
                                   <div
                                     className="p-3 hover:bg-gray-100 cursor-pointer border-b"
                                     onMouseDown={() => {
@@ -1049,7 +1118,7 @@ const InstrumentsCRUD: React.FC = () => {
                                     <span className="text-gray-500">No station selected</span>
                                   </div>
                                 )}
-                                {filteredStationsForDropdown
+                                {stations
                                   .filter(s => s.name.toLowerCase().includes(stationSearch.toLowerCase()))
                                   .map(s => (
                                     <div
@@ -1125,6 +1194,66 @@ const InstrumentsCRUD: React.FC = () => {
                       </div>
                     </div>
 
+                    {/* Single Non-Standard Sensor Form (When NOT Multi-Sensor AND NOT Standard) */}
+                    {!form.memiliki_lebih_satu && !isStandardInstrument && sensorForms.length > 0 && (
+                      <div className="bg-white rounded-lg p-6 border border-gray-200 mt-6 shadow-sm">
+                        <div className="flex items-center mb-6">
+                          <div className="bg-blue-100 rounded-full p-2 mr-3">
+                            <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h4 className="text-lg font-semibold text-gray-900">Spesifikasi Alat</h4>
+                            <p className="text-sm text-gray-500">Lengkapi data teknis (Range & Resolution) untuk alat ini.</p>
+                          </div>
+                        </div>
+
+                        {sensorForms.map((sensor) => (
+                          <div key={sensor.id}>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Range Capacity</label>
+                                <div className="flex gap-2">
+                                  <input
+                                    value={sensor.range_capacity}
+                                    onChange={(e) => updateSensor(sensor.id, 'range_capacity', e.target.value)}
+                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="Ex: 0-100"
+                                  />
+                                  <input
+                                    value={sensor.range_capacity_unit}
+                                    onChange={(e) => updateSensor(sensor.id, 'range_capacity_unit', e.target.value)}
+                                    className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                                    placeholder="Unit"
+                                    list="unit-options"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Graduating / Resolution</label>
+                                <div className="flex gap-2">
+                                  <input
+                                    value={sensor.graduating}
+                                    onChange={(e) => updateSensor(sensor.id, 'graduating', e.target.value)}
+                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="Ex: 0.01"
+                                  />
+                                  <input
+                                    value={sensor.graduating_unit}
+                                    onChange={(e) => updateSensor(sensor.id, 'graduating_unit', e.target.value)}
+                                    className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                                    placeholder="Unit"
+                                    list="unit-options"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Single Standard Sensor Form (When NOT Multi-Sensor but IS Standard) */}
                     {!form.memiliki_lebih_satu && isStandardInstrument && sensorForms.length > 0 && (
                       <div className="bg-white rounded-lg p-6 border border-orange-200 mt-6 shadow-sm">
@@ -1143,42 +1272,11 @@ const InstrumentsCRUD: React.FC = () => {
                         {sensorForms.map((sensor, index) => (
                           <div key={sensor.id}> {/* Should be only 1 */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                              {/* Range & Graduating */}
-                              <div className="space-y-4">
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Range Capacity</label>
-                                  <div className="flex gap-2">
-                                    <input
-                                      value={sensor.range_capacity}
-                                      onChange={(e) => updateSensor(sensor.id, 'range_capacity', e.target.value)}
-                                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                      placeholder="Ex: 0-100"
-                                    />
-                                    <input
-                                      value={sensor.range_capacity_unit}
-                                      onChange={(e) => updateSensor(sensor.id, 'range_capacity_unit', e.target.value)}
-                                      className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
-                                      placeholder="Unit"
-                                    />
-                                  </div>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Graduating / Resolution</label>
-                                  <div className="flex gap-2">
-                                    <input
-                                      value={sensor.graduating}
-                                      onChange={(e) => updateSensor(sensor.id, 'graduating', e.target.value)}
-                                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                      placeholder="Ex: 0.01"
-                                    />
-                                    <input
-                                      value={sensor.graduating_unit}
-                                      onChange={(e) => updateSensor(sensor.id, 'graduating_unit', e.target.value)}
-                                      className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
-                                      placeholder="Unit"
-                                    />
-                                  </div>
-                                </div>
+                              {/* Range & Graduating REMOVED for Standard Instrument - Handled in Certificate */}
+                              <div className="col-span-2">
+                                <p className="text-sm text-gray-500 italic">
+                                  Untuk alat standar, Range dan Resolusi diinputkan pada detail Sertifikat Standar dibawah ini.
+                                </p>
                               </div>
                             </div>
 
@@ -1246,6 +1344,26 @@ const InstrumentsCRUD: React.FC = () => {
                                               className="text-red-600 hover:text-red-900"
                                             >
                                               Hapus
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setCertForm({
+                                                  no_certificate: cert.no_certificate,
+                                                  calibration_date: cert.calibration_date,
+                                                  drift: cert.drift,
+                                                  range: cert.range,
+                                                  resolution: cert.resolution,
+                                                  u95_general: cert.u95_general,
+                                                  correction_data: cert.correction_std || cert.correction_data || []
+                                                });
+                                                setEditingSensorIndex(index);
+                                                setEditingCertIndex(certIdx);
+                                                setIsCertModalOpen(true);
+                                              }}
+                                              className="text-blue-600 hover:text-blue-900 ml-4"
+                                            >
+                                              Detail / Edit
                                             </button>
                                           </td>
                                         </tr>
@@ -1392,6 +1510,7 @@ const InstrumentsCRUD: React.FC = () => {
                                       onChange={(e) => updateSensor(sensor.id, 'range_capacity_unit', e.target.value)}
                                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                                       placeholder="Enter unit"
+                                      list="unit-options"
                                     />
                                   </div>
                                   <div>
@@ -1416,6 +1535,7 @@ const InstrumentsCRUD: React.FC = () => {
                                       onChange={(e) => updateSensor(sensor.id, 'graduating_unit', e.target.value)}
                                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                                       placeholder="Enter unit"
+                                      list="unit-options"
                                     />
                                   </div>
                                   <div>
@@ -1440,6 +1560,7 @@ const InstrumentsCRUD: React.FC = () => {
                                       onChange={(e) => updateSensor(sensor.id, 'funnel_diameter_unit', e.target.value)}
                                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                                       placeholder="Enter unit"
+                                      list="unit-options"
                                     />
                                   </div>
                                   <div>
@@ -1464,6 +1585,7 @@ const InstrumentsCRUD: React.FC = () => {
                                       onChange={(e) => updateSensor(sensor.id, 'volume_per_tip_unit', e.target.value)}
                                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                                       placeholder="Enter unit"
+                                      list="unit-options"
                                     />
                                   </div>
                                   <div>
@@ -1488,6 +1610,7 @@ const InstrumentsCRUD: React.FC = () => {
                                       onChange={(e) => updateSensor(sensor.id, 'funnel_area_unit', e.target.value)}
                                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                                       placeholder="Enter unit"
+                                      list="unit-options"
                                     />
                                   </div>
                                 </div>
@@ -1519,6 +1642,7 @@ const InstrumentsCRUD: React.FC = () => {
                                           correction_data: []
                                         });
                                         setEditingSensorIndex(index);
+                                        setEditingCertIndex(null); // Ensure creation mode
                                         setIsCertModalOpen(true);
                                       }}
                                       className="text-sm bg-blue-50 text-blue-700 hover:bg-blue-100 px-3 py-1.5 rounded-md transition-colors font-medium flex items-center border border-blue-200"
@@ -1566,6 +1690,26 @@ const InstrumentsCRUD: React.FC = () => {
                                                   className="text-red-600 hover:text-red-900"
                                                 >
                                                   Hapus
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setCertForm({
+                                                      no_certificate: cert.no_certificate,
+                                                      calibration_date: cert.calibration_date,
+                                                      drift: cert.drift,
+                                                      range: cert.range,
+                                                      resolution: cert.resolution,
+                                                      u95_general: cert.u95_general,
+                                                      correction_data: cert.correction_std || cert.correction_data || []
+                                                    });
+                                                    setEditingSensorIndex(index);
+                                                    setEditingCertIndex(certIdx);
+                                                    setIsCertModalOpen(true);
+                                                  }}
+                                                  className="text-blue-600 hover:text-blue-900 ml-4"
+                                                >
+                                                  Detail / Edit
                                                 </button>
                                               </td>
                                             </tr>

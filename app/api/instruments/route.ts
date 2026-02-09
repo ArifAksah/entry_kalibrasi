@@ -11,37 +11,45 @@ export async function GET(request: NextRequest) {
     const q = (searchParams.get('q') || '').trim()
     const type = searchParams.get('type') // 'standard' or 'uut'
 
+    const userId = searchParams.get('user_id')
+
+    // 1. Determine Station Join Logic
+    // If strict user filtering, use !inner join on station -> user_stations
+    let stationSelect = 'station(id, name)'
+    if (userId) {
+      stationSelect = 'station!inner(id, name, user_stations!inner(user_id))'
+    }
+
+    // 2. Determine Sensor Join Logic
+    // If filtering for standard, use !inner join to enforce standard sensor existence
+    let sensorSelect = 'sensor!left(id, name, type, serial_number, is_standard)'
+    if (type === 'standard') {
+      sensorSelect = 'sensor!inner(id, name, type, serial_number, is_standard)'
+    }
+
     // Query dasar dengan join ke tabel station dan sensor (untuk filtering)
+    // 3. Compose Query
     let query = supabaseAdmin
       .from('instrument')
-      // Select sensor info to check standard status
-      .select('*, station(id, name), sensor!left(id, name, type, serial_number, is_standard)', { count: 'exact' })
+      .select(`*, ${stationSelect}, ${sensorSelect}`, { count: 'exact' })
 
-    // Tambahkan filter 'type' jika ada
+    // 4. Apply Filters
     if (type === 'standard') {
-      // Hanya ambil instrument yang memiliki minimal satu sensor standar
-      // Menggunakan !inner untuk memaksa filtering berdasarkan child
-      query = supabaseAdmin
-        .from('instrument')
-        .select('*, station(id, name), sensor!inner(id, name, type, serial_number, is_standard)', { count: 'exact' })
-        .eq('sensor.is_standard', true)
-    } else if (type === 'uut') {
-      // Optional: Filter UUT only (exclude standards)
-      // Ini agak tricky di Supabase, tapi kita bisa client-side filter atau
-      // asumsi UUT = yang memiliki sensor dengan is_standard=false atau tidak punya sensor
-      // Untuk amannya, kita load semua dan biarkan user melihat 'semua' di tab UUT/All, 
-      // atau kita coba filter strict jika perlu. 
-      // Saat ini biarkan default (semua) atau filter sensor!inner(is_standard)=false? 
-      // Jika sensor!inner(is_standard)=false, instrument tanpa sensor tidak muncul.
-      // Jadi lebih baik tampilkan semua di UUT atau gunakan logika "not standard" jika nanti butuh.
-      // Untuk MVP: Tab "Alat Standar" filter strict, Tab "Alat UUT" tampilkan semua (atau filter client side).
+      query = query.eq('sensor.is_standard', true)
     }
+
+    // For 'uut', we simply use the default list (server-side logic is open)
+    // No specific filter needed here as per original logic.
 
     // Tambahkan filter pencarian jika ada query 'q'
     if (q) {
       query = query.or(
         `manufacturer.ilike.%${q}%,type.ilike.%${q}%,serial_number.ilike.%${q}%,name.ilike.%${q}%,others.ilike.%${q}%`
       );
+    }
+
+    if (userId) {
+      query = query.eq('station.user_stations.user_id', userId)
     }
 
     // Terapkan paginasi dan pengurutan
