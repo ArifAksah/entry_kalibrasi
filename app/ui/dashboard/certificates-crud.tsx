@@ -267,11 +267,15 @@ const CertificatesCRUD: React.FC = () => {
     place: '',
     notes: ''
   })
-  const [selectedStandard, setSelectedStandard] = useState<CertStandard | null>(null)
-  const [standardInstrumentId, setStandardInstrumentId] = useState<number | null>(null)
 
   const [uploadedRawData, setUploadedRawData] = useState<any[]>([])
+
   const [rawMap, setRawMap] = useState({ timestamp: '', standard: '', uut: '' })
+  const [viewingCorrectionStandard, setViewingCorrectionStandard] = useState<CertStandard | null>(null)
+
+  // Global Standard Instrument Selection
+  const [globalStandardInstrumentId, setGlobalStandardInstrumentId] = useState<number | null>(null)
+  const [globalStandardCertificateNumber, setGlobalStandardCertificateNumber] = useState<string | null>(null)
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -313,11 +317,18 @@ const CertificatesCRUD: React.FC = () => {
       standardInstruments: number[]
     }
     sensorDetails?: Partial<Sensor>
+    standardInstrumentId?: number | null
+    standardCertificateNumber?: string | null
+    standardCertificateId?: number | null
   }
 
   const [results, setResults] = useState<ResultItem[]>([
     {
       sensorId: null,
+      standardInstrumentId: null,
+      standardCertificateNumber: null,
+      standardCertificateId: null,
+
       startDate: '',
       endDate: '',
       place: '',
@@ -1594,74 +1605,155 @@ const CertificatesCRUD: React.FC = () => {
                 </h3>
 
                 {/* 0. Pilih Instrument (Parent) */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 relative overflow-hidden group hover:border-[#1e377c]/30 transition-all">
-                  <div className="absolute top-0 left-0 w-1 h-full bg-[#1e377c]"></div>
-                  <div className="flex items-center justify-between mb-4 pl-2">
-                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                      <InstrumentIcon className="w-5 h-5 text-[#1e377c]" />
-                      Pilih Instrument (Device)
-                    </h3>
-                    <a href="/instruments" target="_blank" className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded hover:bg-blue-100 transition-colors">
-                      + Tambah Instrument Baru
-                    </a>
-                  </div>
-                  <div className="space-y-1">
-                    {/* DEBUGGER FOR MISSING INSTRUMENTS */}
-                    {form.station && (
-                      <div className="bg-yellow-50 border border-yellow-200 p-2 rounded text-[10px] font-mono mb-2 text-gray-700">
-                        <strong>DEBUG INFO (Station ID: {String(form.station)})</strong>
-                        <ul className="list-disc pl-4 mt-1">
-                          {instruments
-                            .filter(i => {
-                              // Show ALL instruments that match the Station ID OR Name (to detect ID mismatch)
-                              const sId = i.station?.id || (i as any).station_id;
-                              // Basic loose check
-                              return String(sId) === String(form.station);
-                            })
-                            .map(i => {
-                              const isStandard = i.sensor?.some((s: any) => s.is_standard === true);
-                              return (
-                                <li key={i.id} className={isStandard ? "text-red-600 font-bold" : "text-green-600"}>
-                                  {i.name} (ID: {i.id}) - {isStandard ? "HIDDEN (Standard)" : "VISIBLE (UUT)"}
-                                </li>
-                              );
-                            })}
-                        </ul>
-                        <div className="mt-1 border-t border-yellow-200 pt-1">
-                          Ref: {instruments.length} total fetched.
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                  {/* Left Column: UUT Instrument */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative overflow-hidden group hover:border-[#1e377c]/30 transition-all">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-[#1e377c]"></div>
+                    <div className="flex items-center justify-between mb-4 pl-2">
+                      <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                        <InstrumentIcon className="w-5 h-5 text-[#1e377c]" />
+                        Pilih Instrument (Device)
+                      </h3>
+                      <a href="/instruments" target="_blank" className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded hover:bg-blue-100 transition-colors">
+                        + Tambah Instrument Baru
+                      </a>
+                    </div>
+                    <div className="space-y-1">
+                      {/* DEBUGGER FOR MISSING INSTRUMENTS */}
+                      {form.station && (
+                        <div className="bg-yellow-50 border border-yellow-200 p-2 rounded text-[10px] font-mono mb-2 text-gray-700">
+                          <strong>DEBUG INFO (Station ID: {String(form.station)})</strong>
+                          <ul className="list-disc pl-4 mt-1">
+                            {instruments
+                              .filter(i => {
+                                // Show ALL instruments that match the Station ID OR Name (to detect ID mismatch)
+                                const sId = i.station?.id || (i as any).station_id;
+                                // Basic loose check
+                                return String(sId) === String(form.station);
+                              })
+                              .map(i => {
+                                const isStandard = i.sensor?.some((s: any) => s.is_standard === true);
+                                return (
+                                  <li key={i.id} className={isStandard ? "text-red-600 font-bold" : "text-green-600"}>
+                                    {i.name} (ID: {i.id}) - {isStandard ? "HIDDEN (Standard)" : "VISIBLE (UUT)"}
+                                  </li>
+                                );
+                              })}
+                          </ul>
+                          <div className="mt-1 border-t border-yellow-200 pt-1">
+                            Ref: {instruments.length} total fetched.
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    <label className="text-xs font-semibold text-gray-600">Instrument *</label>
-                    <SearchableDropdown
-                      value={form.instrument}
-                      onChange={(val) => {
-                        setForm({ ...form, instrument: val as number });
-                        // Reset child selections when parent changes
-                        setResults(prev => prev.map((r, i) => i === 0 ? { ...r, sensorId: null, sensorDetails: undefined } : r));
-                        setInstrumentPreview({});
-                      }}
-                      options={instruments
-                        .filter(i => {
-                          // Filter by Station
-                          if (form.station) {
-                            const stationId = i.station?.id || (i as any).station_id;
-                            if (String(stationId) !== String(form.station)) return false;
-                          }
+                      )}
+                      <label className="text-xs font-semibold text-gray-600">Instrument *</label>
+                      <SearchableDropdown
+                        value={form.instrument}
+                        onChange={(val) => {
+                          setForm({ ...form, instrument: val as number });
+                          // Reset child selections when parent changes
+                          setResults(prev => prev.map((r, i) => i === 0 ? { ...r, sensorId: null, sensorDetails: undefined } : r));
+                          setInstrumentPreview({});
+                        }}
+                        options={instruments
+                          .filter(i => {
+                            // Filter by Station
+                            if (form.station) {
+                              const stationId = i.station?.id || (i as any).station_id;
+                              if (String(stationId) !== String(form.station)) return false;
+                            }
 
-                          // Filter UUT Only (Exclude Standards)
-                          // Check if any sensor is marked as standard
-                          const isStandard = i.sensor?.some((s: any) => s.is_standard === true);
-                          return !isStandard;
-                        })
-                        .map(i => ({
-                          id: i.id,
-                          name: `${i.name} (${i.manufacturer} ${i.type} SN:${i.serial_number})`,
-                          station_id: i.station?.name || ''
-                        }))}
-                      placeholder="Pilih Instrument..."
-                      searchPlaceholder="Cari Instrument..."
-                    />
+                            // Filter UUT Only (Exclude Standards)
+                            // Check if any sensor is marked as standard
+                            const isStandard = i.sensor?.some((s: any) => s.is_standard === true);
+                            return !isStandard;
+                          })
+                          .map(i => ({
+                            id: i.id,
+                            name: `${i.name} (${i.manufacturer} ${i.type} SN:${i.serial_number})`,
+                            station_id: i.station?.name || ''
+                          }))}
+                        placeholder="Pilih Instrument..."
+                        searchPlaceholder="Cari Instrument..."
+                      />
+                    </div>
+                  </div>
+
+                  {/* Right Column: Global Standard Instrument Selection */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative overflow-hidden group hover:border-green-200 transition-all">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-green-600"></div>
+                    <div className="flex items-center justify-between mb-4 pl-2">
+                      <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                        <CertificateIcon className="w-5 h-5 text-green-600" />
+                        Alat Standar
+                      </h3>
+                      <button type="button" className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded hover:bg-green-100 transition-colors">
+                        + Tambah Sertifikat
+                      </button>
+                    </div>
+
+                    <div className="space-y-4">
+                      {/* Step 1: Instrument Standar (Global) */}
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-gray-600">1. Pilih Instrument Standar *</label>
+                        <SearchableDropdown
+                          value={globalStandardInstrumentId}
+                          onChange={(val) => {
+                            setGlobalStandardInstrumentId(val as number);
+                            setGlobalStandardCertificateNumber(null);
+                            // Reset sensor selections in rows that depended on the old standard
+                            setResults(prev => prev.map(r => ({
+                              ...r,
+                              standardCertificateId: null // Reset selected sensor
+                            })));
+                          }}
+                          options={instruments
+                            .filter(i => {
+                              // Show ALL standard instruments regardless of station
+                              return i.sensor?.some((s: any) => s.is_standard === true);
+                            })
+                            .map(i => ({
+                              id: i.id,
+                              name: `${i.name} (${i.manufacturer} ${i.type})`,
+                              station_id: i.station?.name || ''
+                            }))}
+                          placeholder="Pilih Instrument Standar..."
+                          searchPlaceholder="Cari Instrument Standar..."
+                        />
+                      </div>
+
+                      {/* Step 2: Nomor Sertifikat (Global) */}
+                      <div className={`space-y-1 transition-opacity ${!globalStandardInstrumentId ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+                        <label className="text-xs font-semibold text-gray-600">2. Pilih Nomor Sertifikat *</label>
+                        <SearchableDropdown
+                          value={globalStandardCertificateNumber}
+                          onChange={(val) => {
+                            setGlobalStandardCertificateNumber(val as string);
+                            // Reset sensor selections
+                            setResults(prev => prev.map(r => ({
+                              ...r,
+                              standardCertificateId: null
+                            })));
+                          }}
+                          options={(() => {
+                            if (!globalStandardInstrumentId) return [];
+                            // Get certs for the selected instrument
+                            const certsForInst = standardCerts.filter(c => {
+                              const sensor = sensors.find(s => s.id === c.sensor_id);
+                              return sensor && sensor.instrument_id === globalStandardInstrumentId;
+                            });
+                            // Group by number (normalize by trimming)
+                            const uniqueNos = Array.from(new Set(certsForInst.map(c => c.no_certificate.trim())));
+                            return uniqueNos.map(no => ({
+                              id: no,
+                              name: no,
+                              station_id: `${certsForInst.find(c => c.no_certificate.trim() === no)?.calibration_date || ''}`
+                            }));
+                          })()}
+                          placeholder={globalStandardInstrumentId ? "Pilih Nomor Sertifikat..." : "Pilih Instrument Terlebih Dahulu"}
+                          searchPlaceholder="Cari Nomor Sertifikat..."
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -1895,85 +1987,100 @@ const CertificatesCRUD: React.FC = () => {
                             <CertificateIcon className="w-5 h-5 text-green-700" />
                             Alat Standar
                           </h3>
-                          <button type="button" className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded hover:bg-green-100 transition-colors">
-                            + Tambah Sertifikat
-                          </button>
                         </div>
 
                         <div className="space-y-4">
-                          {/* Standard Instrument Selection - NEW */}
-                          <div className="space-y-1">
-                            <label className="text-xs font-semibold text-gray-600">Pilih Instrument Standar *</label>
+                          {/* Step 3: Pilih Sensor Standar (Now the ONLY step here) */}
+                          <div className={`space-y-1 ${!globalStandardInstrumentId || !globalStandardCertificateNumber ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+                            <label className="text-xs font-semibold text-gray-600">Pilih Sensor Standar *</label>
                             <SearchableDropdown
-                              value={standardInstrumentId}
+                              value={result.standardCertificateId || null}
                               onChange={(val) => {
-                                setStandardInstrumentId(val as number);
-                                setSelectedStandard(null); // Reset standard cert when instrument changes
-                              }}
-                              options={instruments
-                                .filter(i => {
-                                  const hasStandard = standardCerts.some(c => {
-                                    const sensor = sensors.find(s => s.id === c.sensor_id);
-                                    return sensor && sensor.instrument_id === i.id;
-                                  });
-                                  return hasStandard;
-                                })
-                                .map(i => ({
-                                  id: i.id,
-                                  name: `${i.name} (${i.manufacturer} s/n ${i.serial_number})`,
-                                  station_id: i.station?.name || ''
-                                }))}
-                              placeholder="Pilih Instrument Standar..."
-                              searchPlaceholder="Cari Instrument Standard..."
-                            />
-                          </div>
+                                const certId = val as number;
+                                const selectedCert = standardCerts.find(c => c.id === certId);
+                                const sensorId = selectedCert?.sensor_id;
 
-                          <div className={`space-y-1 transition-opacity ${!standardInstrumentId ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-                            <label className="text-xs font-semibold text-gray-600">Pilih Sertifikat Standar</label>
-                            <SearchableDropdown
-                              value={selectedStandard?.id || null}
-                              onChange={(val) => {
-                                const std = standardCerts.find(c => c.id === val);
-                                setSelectedStandard(std || null);
+                                updateResult(resultIndex, {
+                                  // Sync global values into this result item ensures data integrity
+                                  standardInstrumentId: globalStandardInstrumentId,
+                                  standardCertificateNumber: globalStandardCertificateNumber,
+                                  standardCertificateId: certId,
+                                  notesForm: {
+                                    ...result.notesForm,
+                                    // Store the SENSOR ID in notesForm, as that's what backend expects for "standardInstruments"
+                                    standardInstruments: sensorId ? [sensorId] : []
+                                  }
+                                });
                               }}
                               options={standardCerts
                                 .filter(c => {
-                                  if (!standardInstrumentId) return true;
-                                  const sensorForCert = sensors.find(s => s.id === c.sensor_id);
-                                  return sensorForCert && sensorForCert.instrument_id === standardInstrumentId;
+                                  if (!globalStandardInstrumentId || !globalStandardCertificateNumber) return false;
+                                  return c.no_certificate.trim() === globalStandardCertificateNumber;
                                 })
-                                .map(c => ({
-                                  id: c.id,
-                                  name: `${c.no_certificate} (${c.calibration_date})`,
-                                  station_id: `Drift: ${c.drift}`
-                                }))}
-                              placeholder={standardInstrumentId ? "Pilih Sertifikat Standar..." : "Pilih Instrument Standar Terlebih Dahulu"}
+                                .map(c => {
+                                  const s = sensors.find(sen => sen.id === c.sensor_id);
+                                  const sensorName = s?.name || 'Sensor Unknown';
+                                  const sensorType = s?.type || '';
+                                  const sn = s?.serial_number || '-';
+
+                                  // Format: "Temperature (HMP155)"
+                                  const mainLabel = `${sensorName} ${sensorType ? `(${sensorType})` : ''}`;
+
+                                  // Subtitle: "S/N: 12345 | Range: -80 to 60 degC | Drift: 0.01"
+                                  const details = `S/N: ${sn} • Range: ${c.range || '-'} • Drift: ${c.drift ?? '-'}`;
+
+                                  return {
+                                    id: c.id,
+                                    name: mainLabel,
+                                    station_id: details
+                                  };
+                                })}
+                              placeholder={globalStandardCertificateNumber ? "Pilih Sensor dari Sertifikat ini..." : "Pilih Alat Standar & Sertifikat di Atas"}
+                              searchPlaceholder="Cari Sensor..."
                             />
+                            {(!globalStandardInstrumentId || !globalStandardCertificateNumber) && (
+                              <p className="text-[10px] text-red-500 italic mt-1">
+                                * Silakan pilih Instrument Standar & Nomor Sertifikat di bagian atas terlebih dahulu.
+                              </p>
+                            )}
                           </div>
 
-                          {selectedStandard ? (
-                            <div className="grid grid-cols-2 gap-3 bg-green-50/50 p-3 rounded-lg border border-green-100">
-                              <div className="col-span-2 text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Detail Sertifikat</div>
-                              {[
-                                { label: 'No. Sertifikat', val: selectedStandard.no_certificate },
-                                { label: 'Tgl Kalibrasi', val: selectedStandard.calibration_date },
-                                { label: 'Drift', val: selectedStandard.drift },
-                                { label: 'U95', val: selectedStandard.u95_general },
-                              ].map((f, i) => (
-                                <div key={i}>
-                                  <label className="text-[10px] text-gray-500 block">{f.label}</label>
-                                  <div className="text-sm font-medium text-gray-800 text-ellipsis overflow-hidden">{f.val}</div>
+                          {(() => {
+                            const selectedStandard = standardCerts.find(c => c.id === result.standardCertificateId);
+                            return selectedStandard ? (
+                              <div className="grid grid-cols-2 gap-3 bg-green-50/50 p-3 rounded-lg border border-green-100">
+                                <div className="col-span-2 text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Detail Sertifikat & Sensor</div>
+                                {[
+                                  { label: 'No. Sertifikat', val: selectedStandard.no_certificate },
+                                  { label: 'Tgl Kalibrasi', val: selectedStandard.calibration_date },
+                                  { label: 'Drift', val: selectedStandard.drift },
+                                  { label: 'U95', val: selectedStandard.u95_general },
+                                ].map((f, i) => (
+                                  <div key={i}>
+                                    <label className="text-[10px] text-gray-500 block">{f.label}</label>
+                                    <div className="text-sm font-medium text-gray-800 text-ellipsis overflow-hidden">{f.val}</div>
+                                  </div>
+                                ))}
+                                <div className="col-span-2 mt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setViewingCorrectionStandard(selectedStandard)}
+                                    className="text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 focus:outline-none"
+                                  >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                    Lihat Tabel Koreksi
+                                  </button>
                                 </div>
-                              ))}
-                              <div className="col-span-2 mt-1">
-                                <a href="#" className="text-xs text-blue-600 hover:underline">Lihat Ringkasan Tabel Koreksi &rarr;</a>
                               </div>
-                            </div>
-                          ) : (
-                            <div className="p-4 bg-gray-50 border border-dashed border-gray-300 rounded-lg text-center text-xs text-gray-400">
-                              Belum ada sertifikat standar dipilih
-                            </div>
-                          )}
+                            ) : (
+                              <div className="p-4 bg-gray-50 border border-dashed border-gray-300 rounded-lg text-center text-xs text-gray-400">
+                                Belum ada sensor standar dipilih
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -2430,6 +2537,12 @@ const CertificatesCRUD: React.FC = () => {
                                     // Assuming Headers: [Parameter, Unit, UUT Reading, Standard Reading, Correction, True Value]
                                     // Or searching for header names
                                     const currentHeader = (section.headers || [])[colIdx]?.toLowerCase() || '';
+
+                                    // Define selectedStandard based on tableEditIndex
+                                    const selectedStandard = tableEditIndex !== null && results[tableEditIndex]?.standardCertificateId
+                                      ? standardCerts.find(c => c.id === results[tableEditIndex].standardCertificateId)
+                                      : null;
+
                                     if ((currentHeader.includes('standard') || currentHeader.includes('standar')) && selectedStandard?.correction_std) {
                                       const stdReading = parseFloat(newVal);
                                       if (!isNaN(stdReading)) {
@@ -2961,8 +3074,68 @@ const CertificatesCRUD: React.FC = () => {
         </div>
       )}
 
+      {/* Correction Data Modal */}
+      {viewingCorrectionStandard && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="bg-[#1e377c] p-4 flex justify-between items-center">
+              <div>
+                <h3 className="text-white font-bold text-lg">Tabel Koreksi Standar</h3>
+                <p className="text-blue-200 text-xs">
+                  {viewingCorrectionStandard.no_certificate} | {viewingCorrectionStandard.calibration_date}
+                </p>
+              </div>
+              <button
+                onClick={() => setViewingCorrectionStandard(null)}
+                className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors"
+              >
+                <CloseIcon className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-0 max-h-[60vh] overflow-y-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0 z-10 shadow-sm">
+                  <tr>
+                    <th className="px-6 py-3 border-b">Setpoint</th>
+                    <th className="px-6 py-3 border-b">Correction</th>
+                    <th className="px-6 py-3 border-b">U95</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {Array.isArray(viewingCorrectionStandard.correction_std) && viewingCorrectionStandard.correction_std.length > 0 ? (
+                    viewingCorrectionStandard.correction_std.map((row: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
+                        <td className="px-6 py-3 font-medium text-gray-900">{row.setpoint}</td>
+                        <td className="px-6 py-3 text-blue-700">{row.correction}</td>
+                        <td className="px-6 py-3 text-gray-600">{row.u95}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-8 text-center text-gray-500 italic bg-gray-50/30">
+                        Tidak ada data koreksi tersedia untuk sertifikat ini.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-4 bg-gray-50 border-t border-gray-100 text-right">
+              <button
+                onClick={() => setViewingCorrectionStandard(null)}
+                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 font-medium transition-colors shadow-sm"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
 
 export default CertificatesCRUD
