@@ -12,6 +12,7 @@ import { useCertificates } from '../../hooks/useCertificates'
 import { Certificate, Station, Instrument, Personel } from '../../lib/supabase'
 import { useAlert } from '../../hooks/useAlert'
 import { supabase } from '../../lib/supabase'
+import QCDataModal from '../../components/features/QCDataModal'
 
 // Modal Kirim Naskah Component
 const KirimNaskahModal: React.FC<{
@@ -884,6 +885,7 @@ const DraftView: React.FC<{
   const [showPreview, setShowPreview] = useState(false)
   const [selectedVerifikator1, setSelectedVerifikator1] = useState(certificate.verifikator_1 || '')
   const [selectedVerifikator2, setSelectedVerifikator2] = useState(certificate.verifikator_2 || '')
+  const [showQCModal, setShowQCModal] = useState(false)
 
   const station = stations.find(s => s.id === certificate.station)
   const instrument = instruments.find(i => i.id === certificate.instrument)
@@ -969,6 +971,28 @@ const DraftView: React.FC<{
             </svg>
             {showPreview ? 'HIDE PREVIEW' : 'PREVIEW'}
           </button>
+
+          <button
+            onClick={() => {
+              // Try to find session_id from results
+              const sessionId = Array.isArray(certificate.results) && certificate.results.length > 0
+                ? (certificate.results[0] as any).session_id
+                : null;
+
+              if (sessionId) {
+                setShowQCModal(true);
+              } else {
+                alert("Data QC tidak tersedia untuk sertifikat ini. Pastikan sertifikat dibuat/diupdate dengan data mentah baru.");
+              }
+            }}
+            className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            QC CHECK
+          </button>
+
           {!isReadyToSend && (
             <button
               onClick={() => setIsEditing(true)}
@@ -1004,6 +1028,24 @@ const DraftView: React.FC<{
           </button>
         </div>
       </div>
+
+      <QCDataModal
+        isOpen={showQCModal}
+        onClose={() => setShowQCModal(false)}
+        title={certificate.no_certificate}
+        sessionId={
+          Array.isArray(certificate.results) && certificate.results.length > 0
+            ? (certificate.results[0] as any).session_id
+            : undefined
+        }
+        certificateId={String(certificate.id)}
+        certificateInstrumentId={certificate.instrument || undefined}
+        instruments={instruments}
+        sensors={
+          // Extract sensors from instruments if available
+          instruments.find(i => i.id === certificate.instrument)?.sensor || []
+        }
+      />
 
       {/* Status Message */}
       <div className="bg-gray-100 border border-gray-200 rounded-lg p-4 mb-6">

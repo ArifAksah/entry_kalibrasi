@@ -662,6 +662,37 @@ const InstrumentsCRUD: React.FC = () => {
                               </button>
                               <button
                                 onClick={() => {
+                                  // Reconstruct correction_data
+                                  let reconstructedData: any[] = [];
+                                  if (cert.setpoint && Array.isArray(cert.setpoint) &&
+                                    cert.correction_std && Array.isArray(cert.correction_std) &&
+                                    cert.u95_std && Array.isArray(cert.u95_std)) {
+                                    reconstructedData = cert.setpoint.map((s: any, idx: number) => ({
+                                      setpoint: s,
+                                      correction: cert.correction_std[idx],
+                                      u95: cert.u95_std[idx]
+                                    }));
+                                  } else if (cert.correction_data && Array.isArray(cert.correction_data)) {
+                                    // Backward compatibility for old correction_data (if it was an array of objects)
+                                    reconstructedData = cert.correction_data.filter((d: any) => d && typeof d === 'object');
+                                  } else if (cert.correction_std && Array.isArray(cert.correction_std)) {
+                                    // Check if it's array of objects
+                                    if (cert.correction_std.length > 0 && typeof cert.correction_std[0] === 'object') {
+                                      reconstructedData = cert.correction_std.filter((c: any) => c && typeof c === 'object').map((c: any) => ({
+                                        setpoint: c.setpoint ?? '',
+                                        correction: c.correction ?? '',
+                                        u95: c.u95 ?? ''
+                                      }));
+                                    } else if (cert.correction_std.length > 0 && (typeof cert.correction_std[0] === 'string' || typeof cert.correction_std[0] === 'number')) {
+                                      // It's array of primitives (just correction values)
+                                      reconstructedData = cert.correction_std.map((c: any) => ({
+                                        setpoint: '',
+                                        correction: c,
+                                        u95: ''
+                                      }));
+                                    }
+                                  }
+
                                   setCertForm({
                                     no_certificate: cert.no_certificate,
                                     calibration_date: cert.calibration_date,
@@ -669,7 +700,7 @@ const InstrumentsCRUD: React.FC = () => {
                                     range: cert.range,
                                     resolution: cert.resolution,
                                     u95_general: cert.u95_general,
-                                    correction_data: cert.correction_std || cert.correction_data || []
+                                    correction_data: reconstructedData.length > 0 ? reconstructedData : [{ setpoint: '', correction: '', u95: '' }]
                                   });
                                   setEditingCert(cert); // For API updates
                                   setIsCertModalOpen(true);
@@ -719,29 +750,74 @@ const InstrumentsCRUD: React.FC = () => {
                     range: certForm.range,
                     resolution: Number(certForm.resolution),
                     u95_general: Number(certForm.u95_general),
-                    correction_data: certForm.correction_data // JSONB or JSON column
+                    correction_data: certForm.correction_data, // JSONB or JSON column
+                    id: (editingSensorIndex !== null && editingCertIndex !== null)
+                      ? sensorForms[editingSensorIndex]?.certificates?.[editingCertIndex]?.id
+                      : undefined
                   }
 
                   if (editingSensorIndex !== null) {
                     // Update local sensorForms (Instrument Modal)
-                    setSensorForms(prev => prev.map((s, i) => {
-                      if (i === editingSensorIndex) {
-                        const currentCerts = s.certificates || [];
-                        if (editingCertIndex !== null) {
-                          // Update existing cert
-                          const updatedCerts = [...currentCerts];
-                          updatedCerts[editingCertIndex] = payload;
-                          return { ...s, certificates: updatedCerts };
-                        } else {
-                          // Add new cert
-                          return { ...s, certificates: [...currentCerts, payload] };
-                        }
+
+                    // Check if we are updating an existing certificate with an ID
+                    const existingCertId = (editingCertIndex !== null)
+                      ? sensorForms[editingSensorIndex]?.certificates?.[editingCertIndex]?.id
+                      : undefined;
+
+                    if (existingCertId) {
+                      // Immediate API Update for existing certificate
+                      const res = await fetch(`/api/cert-standards/${existingCertId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                      });
+
+                      if (res.ok) {
+                        const updated = await res.json();
+
+                        setSensorForms(prev => prev.map((s, i) => {
+                          if (i === editingSensorIndex) {
+                            const currentCerts = s.certificates || [];
+                            const updatedCerts = [...currentCerts];
+                            updatedCerts[editingCertIndex!] = {
+                              ...updated,
+                              // Use the payload's correction_data as it is already the correct array of objects
+                              // and matches what was just successfully saved.
+                              correction_data: payload.correction_data
+                            };
+                            return { ...s, certificates: updatedCerts };
+                          }
+                          return s;
+                        }));
+                        setIsCertModalOpen(false);
+                        setEditingSensorIndex(null);
+                        setEditingCertIndex(null);
+                        showSuccess('Sertifikat berhasil diperbarui');
+                      } else {
+                        const err = await res.json();
+                        showError(err.error || 'Gagal memperbarui sertifikat');
                       }
-                      return s
-                    }))
-                    setIsCertModalOpen(false)
-                    setEditingSensorIndex(null)
-                    setEditingCertIndex(null)
+                    } else {
+                      // Local update for new (unsaved) certificates
+                      setSensorForms(prev => prev.map((s, i) => {
+                        if (i === editingSensorIndex) {
+                          const currentCerts = s.certificates || [];
+                          if (editingCertIndex !== null) {
+                            // Update existing local-only cert
+                            const updatedCerts = [...currentCerts];
+                            updatedCerts[editingCertIndex] = payload;
+                            return { ...s, certificates: updatedCerts };
+                          } else {
+                            // Add new cert
+                            return { ...s, certificates: [...currentCerts, payload] };
+                          }
+                        }
+                        return s
+                      }))
+                      setIsCertModalOpen(false)
+                      setEditingSensorIndex(null)
+                      setEditingCertIndex(null)
+                    }
                   } else {
                     // API Updates (Certificate Standard Tab)
                     if (editingCert) {
@@ -830,48 +906,67 @@ const InstrumentsCRUD: React.FC = () => {
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                          {certForm.correction_data.map((row, idx) => (
-                            <tr key={idx}>
-                              <td className="px-2 py-1">
-                                <input type="text" className="w-full border-gray-300 rounded text-sm" placeholder="ex: 800"
-                                  value={row.setpoint}
-                                  onChange={e => {
-                                    const newData = [...certForm.correction_data];
-                                    newData[idx].setpoint = e.target.value;
+                          {certForm.correction_data.map((rawRow, idx) => {
+                            // Defensive check: Handle primitive strings if they sneak into state
+                            const row = (rawRow && typeof rawRow === 'object')
+                              ? rawRow
+                              : { setpoint: '', correction: String(rawRow || ''), u95: '' };
+
+                            return (
+                              <tr key={idx}>
+                                <td className="px-2 py-1">
+                                  <input type="text" className="w-full border-gray-300 rounded text-sm" placeholder="ex: 800"
+                                    value={row.setpoint}
+                                    onChange={e => {
+                                      const newData = [...certForm.correction_data];
+                                      // Ensure we are working with an object
+                                      if (typeof newData[idx] !== 'object' || newData[idx] === null) {
+                                        newData[idx] = { setpoint: '', correction: String(newData[idx] || ''), u95: '' };
+                                      }
+                                      newData[idx].setpoint = e.target.value;
+                                      setCertForm({ ...certForm, correction_data: newData });
+                                    }}
+                                  />
+                                </td>
+                                <td className="px-2 py-1">
+                                  <input type="text" className="w-full border-gray-300 rounded text-sm" placeholder="ex: 0.02"
+                                    value={row.correction}
+                                    onChange={e => {
+                                      const newData = [...certForm.correction_data];
+                                      // Ensure we are working with an object
+                                      if (typeof newData[idx] !== 'object' || newData[idx] === null) {
+                                        newData[idx] = { setpoint: '', correction: String(newData[idx] || ''), u95: '' };
+                                      }
+                                      newData[idx].correction = e.target.value;
+                                      setCertForm({ ...certForm, correction_data: newData });
+                                    }}
+                                  />
+                                </td>
+                                <td className="px-2 py-1">
+                                  <input type="text" className="w-full border-gray-300 rounded text-sm" placeholder="ex: 0.14"
+                                    value={row.u95}
+                                    onChange={e => {
+                                      const newData = [...certForm.correction_data];
+                                      // Ensure we are working with an object
+                                      if (typeof newData[idx] !== 'object' || newData[idx] === null) {
+                                        newData[idx] = { setpoint: '', correction: String(newData[idx] || ''), u95: '' };
+                                      }
+                                      newData[idx].u95 = e.target.value;
+                                      setCertForm({ ...certForm, correction_data: newData });
+                                    }}
+                                  />
+                                </td>
+                                <td className="px-2 py-1 text-center">
+                                  <button type="button" onClick={() => {
+                                    const newData = certForm.correction_data.filter((_, i) => i !== idx);
                                     setCertForm({ ...certForm, correction_data: newData });
-                                  }}
-                                />
-                              </td>
-                              <td className="px-2 py-1">
-                                <input type="text" className="w-full border-gray-300 rounded text-sm" placeholder="ex: 0.02"
-                                  value={row.correction}
-                                  onChange={e => {
-                                    const newData = [...certForm.correction_data];
-                                    newData[idx].correction = e.target.value;
-                                    setCertForm({ ...certForm, correction_data: newData });
-                                  }}
-                                />
-                              </td>
-                              <td className="px-2 py-1">
-                                <input type="text" className="w-full border-gray-300 rounded text-sm" placeholder="ex: 0.14"
-                                  value={row.u95}
-                                  onChange={e => {
-                                    const newData = [...certForm.correction_data];
-                                    newData[idx].u95 = e.target.value;
-                                    setCertForm({ ...certForm, correction_data: newData });
-                                  }}
-                                />
-                              </td>
-                              <td className="px-2 py-1 text-center">
-                                <button type="button" onClick={() => {
-                                  const newData = certForm.correction_data.filter((_, i) => i !== idx);
-                                  setCertForm({ ...certForm, correction_data: newData });
-                                }} className="text-red-500 hover:text-red-700">
-                                  &times;
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
+                                  }} className="text-red-500 hover:text-red-700">
+                                    &times;
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                       <button type="button"
@@ -1331,15 +1426,37 @@ const InstrumentsCRUD: React.FC = () => {
                                           <td className="px-4 py-2 text-right text-sm font-medium">
                                             <button
                                               type="button"
-                                              onClick={() => {
-                                                setSensorForms(prev => prev.map((s, i) => {
-                                                  if (i === index && s.certificates) {
-                                                    const newCerts = [...s.certificates];
-                                                    newCerts.splice(certIdx, 1);
-                                                    return { ...s, certificates: newCerts };
+                                              onClick={async () => {
+                                                if (!confirm('Hapus sertifikat?')) return;
+
+                                                if (cert.id) {
+                                                  try {
+                                                    const res = await fetch(`/api/cert-standards/${cert.id}`, { method: 'DELETE' });
+                                                    if (!res.ok) throw new Error('Failed to delete');
+
+                                                    setSensorForms(prev => prev.map((s, i) => {
+                                                      if (i === index && s.certificates) {
+                                                        const newCerts = [...s.certificates];
+                                                        newCerts.splice(certIdx, 1);
+                                                        return { ...s, certificates: newCerts };
+                                                      }
+                                                      return s;
+                                                    }));
+                                                    showSuccess('Sertifikat berhasil dihapus');
+                                                  } catch (e) {
+                                                    console.error(e);
+                                                    showError('Gagal menghapus sertifikat');
                                                   }
-                                                  return s;
-                                                }))
+                                                } else {
+                                                  setSensorForms(prev => prev.map((s, i) => {
+                                                    if (i === index && s.certificates) {
+                                                      const newCerts = [...s.certificates];
+                                                      newCerts.splice(certIdx, 1);
+                                                      return { ...s, certificates: newCerts };
+                                                    }
+                                                    return s;
+                                                  }));
+                                                }
                                               }}
                                               className="text-red-600 hover:text-red-900"
                                             >
@@ -1348,6 +1465,34 @@ const InstrumentsCRUD: React.FC = () => {
                                             <button
                                               type="button"
                                               onClick={() => {
+                                                // Reconstruct correction_data
+                                                let reconstructedData: any[] = [];
+                                                if (cert.setpoint && Array.isArray(cert.setpoint) &&
+                                                  cert.correction_std && Array.isArray(cert.correction_std) &&
+                                                  cert.u95_std && Array.isArray(cert.u95_std)) {
+                                                  reconstructedData = cert.setpoint.map((s: any, idx: number) => ({
+                                                    setpoint: s,
+                                                    correction: cert.correction_std[idx],
+                                                    u95: cert.u95_std[idx]
+                                                  }));
+                                                } else if (cert.correction_data && Array.isArray(cert.correction_data)) {
+                                                  reconstructedData = cert.correction_data.filter((d: any) => d && typeof d === 'object');
+                                                } else if (cert.correction_std && Array.isArray(cert.correction_std)) {
+                                                  if (cert.correction_std.length > 0 && typeof cert.correction_std[0] === 'object') {
+                                                    reconstructedData = cert.correction_std.filter((c: any) => c && typeof c === 'object').map((c: any) => ({
+                                                      setpoint: c.setpoint ?? '',
+                                                      correction: c.correction ?? '',
+                                                      u95: c.u95 ?? ''
+                                                    }));
+                                                  } else if (cert.correction_std.length > 0 && (typeof cert.correction_std[0] === 'string' || typeof cert.correction_std[0] === 'number')) {
+                                                    reconstructedData = cert.correction_std.map((c: any) => ({
+                                                      setpoint: '',
+                                                      correction: c,
+                                                      u95: ''
+                                                    }));
+                                                  }
+                                                }
+
                                                 setCertForm({
                                                   no_certificate: cert.no_certificate,
                                                   calibration_date: cert.calibration_date,
@@ -1355,7 +1500,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                   range: cert.range,
                                                   resolution: cert.resolution,
                                                   u95_general: cert.u95_general,
-                                                  correction_data: cert.correction_std || cert.correction_data || []
+                                                  correction_data: reconstructedData.length > 0 ? reconstructedData : [{ setpoint: '', correction: '', u95: '' }]
                                                 });
                                                 setEditingSensorIndex(index);
                                                 setEditingCertIndex(certIdx);
@@ -1775,7 +1920,7 @@ const InstrumentsCRUD: React.FC = () => {
                   </div>
                 </div>
               </div>
-            </div>
+            </div >
           </div >
         )
       }

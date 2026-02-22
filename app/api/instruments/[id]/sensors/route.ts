@@ -73,7 +73,13 @@ export async function GET(
         range: c.range,
         resolution: c.resolution,
         u95_general: c.u95_general,
-        correction_data: c.correction_std, // Map from DB column to FE property
+        correction_data: (Array.isArray(c.setpoint) && Array.isArray(c.correction_std) && Array.isArray(c.u95_std))
+          ? c.setpoint.map((s: any, idx: number) => ({
+            setpoint: s,
+            correction: c.correction_std[idx] ?? '',
+            u95: c.u95_std[idx] ?? ''
+          }))
+          : [], // Reconstruct object array from split columns
         correction_std: c.correction_std
       })) : []
     })) || []
@@ -124,16 +130,39 @@ export async function POST(
 
     // Insert nested certificates if present
     if (body.certificates && Array.isArray(body.certificates) && body.certificates.length > 0) {
-      const certsToInsert = body.certificates.map((cert: any) => ({
-        sensor_id: sensorData.id,
-        no_certificate: cert.no_certificate,
-        calibration_date: cert.calibration_date,
-        drift: Number(cert.drift),
-        range: cert.range,
-        resolution: Number(cert.resolution),
-        u95_general: Number(cert.u95_general),
-        correction_std: cert.correction_data || cert.correction_std,
-      }))
+      const certsToInsert = body.certificates.map((cert: any) => {
+        // Handle data splitting
+        let setpoint: any[] = [];
+        let correction: any[] = [];
+        let u95: any[] = [];
+
+        // Check for array of objects (correction_data or correction_std)
+        const sourceData = cert.correction_data || cert.correction_std;
+        if (Array.isArray(sourceData) && sourceData.length > 0 && typeof sourceData[0] === 'object') {
+          setpoint = sourceData.map((c: any) => c.setpoint ?? '');
+          correction = sourceData.map((c: any) => c.correction ?? '');
+          u95 = sourceData.map((c: any) => c.u95 ?? '');
+        } else {
+          // Fallback or passed as separate arrays already?
+          // If passed as separate arrays, use them.
+          if (Array.isArray(cert.setpoint)) setpoint = cert.setpoint;
+          if (Array.isArray(cert.correction_std)) correction = cert.correction_std;
+          if (Array.isArray(cert.u95_std)) u95 = cert.u95_std;
+        }
+
+        return {
+          sensor_id: sensorData.id,
+          no_certificate: cert.no_certificate,
+          calibration_date: cert.calibration_date,
+          drift: Number(cert.drift),
+          range: cert.range,
+          resolution: Number(cert.resolution),
+          u95_general: Number(cert.u95_general),
+          setpoint: setpoint,
+          correction_std: correction,
+          u95_std: u95
+        };
+      })
 
       const { error: certError } = await supabaseAdmin
         .from('certificate_standard')
@@ -225,23 +254,51 @@ export async function PUT(
       // Let's assume FE sends *newly added* certs in a special way or we check existence.
       // Better: In this specific feature request ("tambah data"), we focus on adding.
 
-      const newCerts = body.certificates.filter((c: any) => !c.id).map((cert: any) => ({
-        sensor_id: sensorData.id,
-        no_certificate: cert.no_certificate,
-        calibration_date: cert.calibration_date,
-        drift: Number(cert.drift),
-        range: cert.range,
-        resolution: Number(cert.resolution),
-        u95_general: Number(cert.u95_general),
-        correction_std: cert.correction_data || cert.correction_std,
-      }))
+      const certsToUpsert = body.certificates.map((cert: any) => {
+        // Handle data splitting
+        let setpoint: any[] = [];
+        let correction: any[] = [];
+        let u95: any[] = [];
 
-      if (newCerts.length > 0) {
+        // Check for array of objects (correction_data or correction_std)
+        const sourceData = cert.correction_data || cert.correction_std;
+        if (Array.isArray(sourceData) && sourceData.length > 0 && typeof sourceData[0] === 'object') {
+          setpoint = sourceData.map((c: any) => c.setpoint ?? '');
+          correction = sourceData.map((c: any) => c.correction ?? '');
+          u95 = sourceData.map((c: any) => c.u95 ?? '');
+        } else {
+          // Fallback or passed as separate arrays already?
+          if (Array.isArray(cert.setpoint)) setpoint = cert.setpoint;
+          if (Array.isArray(cert.correction_std)) correction = cert.correction_std;
+          if (Array.isArray(cert.u95_std)) u95 = cert.u95_std;
+        }
+
+        const payload: any = {
+          sensor_id: sensorData.id,
+          no_certificate: cert.no_certificate,
+          calibration_date: cert.calibration_date,
+          drift: Number(cert.drift),
+          range: cert.range,
+          resolution: Number(cert.resolution),
+          u95_general: Number(cert.u95_general),
+          setpoint: setpoint,
+          correction_std: correction,
+          u95_std: u95
+        };
+
+        if (cert.id) {
+          payload.id = cert.id;
+        }
+
+        return payload;
+      })
+
+      if (certsToUpsert.length > 0) {
         const { error: certError } = await supabaseAdmin
           .from('certificate_standard')
-          .insert(newCerts)
+          .upsert(certsToUpsert, { onConflict: 'id' })
 
-        if (certError) console.error('Error inserting new certs in PUT:', certError)
+        if (certError) console.error('Error upserting certs in PUT:', certError)
       }
     }
 

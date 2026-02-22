@@ -14,6 +14,8 @@ import { useAlert } from '../../../hooks/useAlert'
 import { useRouter } from 'next/navigation'
 import { EditIcon, DeleteIcon } from '../../../components/ui/ActionIcons'
 import { read, utils } from 'xlsx'
+import QCDataModal from '../../../components/features/QCDataModal'
+import LHKSReport from '../../../components/features/LHKSReport'
 
 // Keep TrashIcon for backward compatibility in this file
 const TrashIcon = ({ className = "" }) => (
@@ -258,6 +260,34 @@ const CertificatesCRUD: React.FC = () => {
   const [sensors, setSensors] = useState<Sensor[]>([])
   const [standardCerts, setStandardCerts] = useState<CertStandard[]>([])
   const [personel, setPersonel] = useState<Array<{ id: string; name: string; nip?: string; role?: string }>>([])
+
+  // QC Modal State
+  const [showQCModal, setShowQCModal] = useState(false)
+  const [qcModalCertificate, setQcModalCertificate] = useState<Certificate | null>(null)
+
+  // LHKS Modal State
+  const [showLHKSModal, setShowLHKSModal] = useState(false)
+  const [lhksCertificate, setLhksCertificate] = useState<Certificate | null>(null)
+  const [lhksRawData, setLhksRawData] = useState<any[]>([])
+
+  const handlePrintLHKS = async (cert: Certificate) => {
+    setLhksCertificate(cert)
+    setLhksRawData([])
+
+    if (cert.results && Array.isArray(cert.results) && cert.results.length > 0) {
+      const sessionId = (cert.results[0] as any).session_id
+      if (sessionId) {
+        try {
+          const res = await fetch(`/api/raw-data?session_id=${sessionId}`)
+          const json = await res.json()
+          setLhksRawData(json.data || [])
+        } catch (e) {
+          console.error("Failed to fetch raw data for LHKS", e)
+        }
+      }
+    }
+    setShowLHKSModal(true)
+  }
 
   // New Layout States
   const [activeTab, setActiveTab] = useState<'lingkungan' | 'hasil' | 'catatan'>('lingkungan')
@@ -572,14 +602,20 @@ const CertificatesCRUD: React.FC = () => {
         const jsonData = utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
 
         if (jsonData.length > 0) {
-          // Validation: Check headers
+          // Validation: Check headers (Flexible)
           const headers = (jsonData[0] as any[]).map(h => String(h).toLowerCase().trim())
-          const required = ['timestamp', 'standar', 'uut']
-          const missing = required.filter(r => !headers.includes(r))
 
-          if (missing.length === 0) {
+          const hasTimestamp = headers.some(h => h.includes('timestamp') || h.includes('waktu') || h.includes('time') || h.includes('tanggal'))
+          const hasStandard = headers.some(h => h.includes('standar') || h.includes('ref') || h.includes('master') || h.includes('std'))
+          const hasUUT = headers.some(h => h.includes('uut') || h.includes('bacaan') || h.includes('reading') || h.includes('alat'))
+
+          if (hasTimestamp && hasStandard && hasUUT) {
             sheetsData.push({ name, data: jsonData })
           } else {
+            const missing = []
+            if (!hasTimestamp) missing.push('Timestamp/Waktu')
+            if (!hasStandard) missing.push('Standard/Ref')
+            if (!hasUUT) missing.push('UUT/Reading')
             invalidSheets.push(`${name} (Missing: ${missing.join(', ')})`)
           }
         }
@@ -592,42 +628,93 @@ const CertificatesCRUD: React.FC = () => {
         showError(`Beberapa sheet ditolak karena format header tidak sesuai: \n${invalidSheets.join('\n')}`)
       }
 
-      // NEW: Automatically generate ResultItems based on sheets
-      if (sheetsData.length > 0) {
-        let shouldProceed = false;
+      // Check if we should ask for confirmation (only if user has already selected sensors)
+      const isDirty = results.length > 1 || results[0].sensorId !== null;
+      let shouldProceed = true;
 
-        if (sheetsData.length === 1) {
-          // If only 1 sheet, use alert/notification and auto-proceed (as requested: "versi alert" for 1 valid sheet)
-          // CHANGED: Using showSuccess instead of blocking alert based on feedback
-          // showSuccess(`Terdeteksi 1 sheet valid: ${sheetsData[0].name}. Input sensor akan disiapkan otomatis.`) - will be called at end of function anyway
-          shouldProceed = true;
-        } else {
-          // If multiple sheets, ask for confirmation
-          shouldProceed = confirm(`Terdeteksi ${sheetsData.length} sheet valid. Apakah Anda ingin membuat ${sheetsData.length} input sensor berdasarkan sheet ini? (Data yang sudah diisi manual akan direset)`)
+      if (sheetsData.length > 0) {
+        if (isDirty) {
+          shouldProceed = confirm(`Terdeteksi ${sheetsData.length} sheet valid. Apakah Anda ingin mereset input sensor dan menyesuaikan dengan jumlah sheet?`)
         }
 
         if (shouldProceed) {
-          const newResults: ResultItem[] = sheetsData.map(() => ({
-            sensorId: null,
-            startDate: sessionDetails.start_date || '', // Inherit session date if set
-            endDate: sessionDetails.end_date || '',
-            place: sessionDetails.place || '',
-            environment: [], // Could potentially parse env from sheet if formatted standardized
-            table: [], // Will be populated when mapping columns
-            images: [],
-            notesForm: {
-              traceable_to_si_through: '',
-              reference_document: '',
-              calibration_methode: '',
-              others: '',
-              standardInstruments: []
+          // ... proceed
+
+          const newResults: ResultItem[] = sheetsData.map((sheet) => {
+            // Helper to clean and parse float
+            const parseVal = (val: any) => {
+              if (typeof val === 'number') return val
+              if (typeof val === 'string') return parseFloat(val.replace(',', '.'))
+              return NaN
             }
-          }))
+
+            // AUTO-CALCULATE ENVIRONMENT CONDITIONS
+            // Look for 'Suhu' and 'Kelembaban' columns in the sheet
+            const headers = (sheet.data[0] as any[]).map(h => String(h).toLowerCase().trim())
+            const tempIdx = headers.findIndex(h => h.includes('suhu') || h.includes('temp'))
+            const humidIdx = headers.findIndex(h => h.includes('kelembaban') || h.includes('humidity') || h.includes('rh'))
+
+            const envConditions: { key: string, value: string }[] = []
+
+            if (tempIdx !== -1) {
+              const values = sheet.data.slice(1).map(row => parseVal(row[tempIdx])).filter(v => !isNaN(v))
+              if (values.length > 0) {
+                const max = Math.max(...values)
+                const min = Math.min(...values)
+                // Formula: Mean ± (Max-Min)/2
+                // Mean = (Max + Min) / 2
+                // Uncertainty/HalfRange = (Max - Min) / 2
+                const mean = (max + min) / 2
+                const halfRange = (max - min) / 2
+
+                // Format: "25.5 ± 0.5 °C" (Replace dot with comma for Indo format if needed, but keeping standard for now)
+                // limit decimals to 1 or 2
+                const valStr = `${mean.toLocaleString('id-ID', { maximumFractionDigits: 1 })} ± ${halfRange.toLocaleString('id-ID', { maximumFractionDigits: 1 })} °C`
+                envConditions.push({ key: 'Suhu', value: valStr })
+              }
+            }
+
+            if (humidIdx !== -1) {
+              const values = sheet.data.slice(1).map(row => parseVal(row[humidIdx])).filter(v => !isNaN(v))
+              if (values.length > 0) {
+                const max = Math.max(...values)
+                const min = Math.min(...values)
+                const mean = (max + min) / 2
+                const halfRange = (max - min) / 2
+
+                const valStr = `${mean.toLocaleString('id-ID', { maximumFractionDigits: 1 })} ± ${halfRange.toLocaleString('id-ID', { maximumFractionDigits: 1 })} %RH`
+                envConditions.push({ key: 'Kelembaban', value: valStr })
+              }
+            }
+
+            // If no env columns found, populate with defaults
+            if (envConditions.length === 0) {
+              envConditions.push({ key: 'Suhu', value: '' })
+              envConditions.push({ key: 'Kelembaban', value: '' })
+            }
+
+
+            return {
+              sensorId: null,
+              startDate: sessionDetails.start_date || '',
+              endDate: sessionDetails.end_date || '',
+              place: sessionDetails.place || '',
+              environment: envConditions,
+              table: [],
+              images: [],
+              notesForm: {
+                traceable_to_si_through: '',
+                reference_document: '',
+                calibration_methode: '',
+                others: '',
+                standardInstruments: []
+              }
+            }
+          })
           setResults(newResults)
-          showSuccess(`Dibuat ${sheetsData.length} slot sensor berdasarkan sheet valid.`)
+          showSuccess(`Dibuat ${sheetsData.length} slot sensor berdasarkan sheet valid. Kondisi lingkungan ${sheetsData[0].data[0].some((h: any) => String(h).toLowerCase().includes('suhu')) ? 'dihitung otomatis' : 'disiapkan'}.`)
         }
       } else if (invalidSheets.length > 0) {
-        // If no valid sheets but some invalid ones
         showError('Tidak ada sheet yang valid untuk diproses.')
       } else {
         showSuccess(`Berhasil load ${sheetsData.length} sheet dari ${file.name}.`)
@@ -882,6 +969,70 @@ const CertificatesCRUD: React.FC = () => {
           standardInstruments: []
         }
       }])
+
+      // Fetch Raw Data if session_id is available (via the first result item usually, or we need to find it)
+      // Actually, certificate doesn't have session_id directly on it in this interface, 
+      // but we link via session_id in the DB. 
+      // Wait, where is the session_id stored in the frontend object? 
+      // It seems it's not directly in `Certificate` type here?
+      // Let's check `Link Certificate to CalibrationSession` task.
+      // We updated `saveSessionAndRawData` to return `sessionData.id`. 
+      // But when fetching certificates, do we get `session_id`?
+      // If `results` has it? No, results is jsonb.
+
+      // We need to fetch raw data based on ... ?
+      // If the certificate is linked to a session, the certificates table might have `session_id`.
+      // Let's assume (item as any).session_id existence or try to fetch by certificate_id if backend supports it.
+      // For now, let's try to see if (item as any).session_id exists or if we can fetch by certificate ID.
+
+      // Actually, looking at previous code, `saveSessionAndRawData` saves session, then links it?
+      // The `certificate` table has `session_id` column?
+      // The `task.md` said: "- [ ] Add `session_id` column to `certificate` table." -> It was checked!
+      // So `item.session_id` should exist.
+
+      const sessionId = (item as any).session_id;
+      if (sessionId) {
+        fetch(`/api/raw-data?session_id=${sessionId}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.data && Array.isArray(data.data)) {
+              // Group flat raw_data rows back into sheets structure
+              // raw_data keys: session_id, timestamp, standard_data, uut_data, sensor_id_uut, sensor_id_std
+              // We need to reconstruct: { name: string, data: any[][] }[]
+              // Since we don't store sheet names in raw_data, we might have to genericize or guess.
+              // Or, we just show "Loaded Data" as one sheet if we can't distinguish.
+              // BUT, the raw_data table usually has `sensor_id_uut`. 
+              // We can group by `sensor_id_uut`.
+
+              const grouped: Record<number, any[]> = {};
+              data.data.forEach((row: any) => {
+                const key = row.sensor_id_uut || 'unknown';
+                if (!grouped[key]) grouped[key] = [['Timestamp', 'Standard', 'UUT']]; // Headers
+                grouped[key].push([
+                  row.timestamp,
+                  row.standard_data,
+                  row.uut_data
+                ]);
+              });
+
+              const reconstructedSheets = Object.keys(grouped).map((key, idx) => ({
+                name: `Sensor ${key === 'unknown' ? 'Unknown' : key}`,
+                data: grouped[key] as any[],
+                sensor_id_uut: key === 'unknown' ? null : Number(key),
+                sensor_id_std: data.data.find((d: any) => (d.sensor_id_uut == key))?.sensor_id_std
+              }));
+
+              if (reconstructedSheets.length > 0) {
+                setRawData(reconstructedSheets);
+                setRawDataFilename(`Session ${sessionId} Data`);
+              }
+            }
+          })
+          .catch(err => console.error("Failed to load raw data", err));
+      } else {
+        setRawData([]);
+        setRawDataFilename(null);
+      }
     } else {
       setEditing(null)
       setForm({
@@ -991,22 +1142,14 @@ const CertificatesCRUD: React.FC = () => {
         }
       }
 
-      if (editing) {
-        await updateCertificate(editing.id, payload as any)
-        showSuccess('Certificate berhasil diperbarui!')
 
-        // If edit came from certificate verification, redirect back there
-        if (isEditFromVerification()) {
-          closeModal()
-          router.push('/certificate-verification')
-          return
-        }
-      } else {
-        // Create Calibration Session first (New Logic)
+      // Helper to save session and raw data (reused for create and update)
+      const saveSessionAndRawData = async () => {
         try {
           const sessionPayload = {
             station_id: form.station,
-            start_date: sessionDetails.start_date,
+            instrument_id: form.instrument, // Pass instrument ID for uut_instrument_id
+            start_date: sessionDetails.start_date || new Date().toISOString(), // Ensure start_date (mapped to tgl_kalibrasi)
             end_date: sessionDetails.end_date,
             place: sessionDetails.place,
             notes: sessionDetails.notes,
@@ -1021,28 +1164,129 @@ const CertificatesCRUD: React.FC = () => {
 
           if (sessionRes.ok) {
             const sessionData = await sessionRes.json()
-            console.log('Session Created:', sessionData)
+            console.log('Session Created/Found:', sessionData)
 
             // If Raw Data exists, save it linked to Session
             if (rawData.length > 0) {
-              await fetch('/api/raw-data', {
+              // Validate: Ensure all sheets have a selected UUT Sensor
+              const missingUUT = rawData.some((_, idx) => !results[idx]?.sensorId);
+              if (missingUUT) {
+                showError("Mohon pilih Sensor UUT untuk setiap sheet data mentah sebelum menyimpan.");
+                return null;
+              }
+
+              const rawDataPayload = {
+                session_id: sessionData.session_id, // Found correct PK is session_id
+                data: rawData.map((sheet, idx) => {
+                  // Resolve sensor_id_std (Sensor ID)
+                  // standardInstrumentId and globalStandardInstrumentId are Instrument IDs (References to 'instrument' table)
+                  // We need to find the 'sensor' (is_standard=true) ID belonging to that instrument.
+
+                  let targetInstrumentId = results[idx]?.standardInstrumentId ?? globalStandardInstrumentId ?? null;
+                  let stdSensorId: number | null = null;
+
+                  if (targetInstrumentId) {
+                    // 1. Try to get it from the selected Certificate (most accurate)
+                    // Only valid if using global standard and verified certificate
+                    if (globalStandardInstrumentId && targetInstrumentId === globalStandardInstrumentId && globalStandardCertificateNumber) {
+                      const cert = standardCerts.find(c => c.no_certificate === globalStandardCertificateNumber);
+                      if (cert) stdSensorId = cert.sensor_id;
+                    }
+
+                    // 2. Fallback: Find a sensor marked as standard in the selected instrument
+                    if (!stdSensorId) {
+                      const inst = instruments.find(i => i.id === targetInstrumentId);
+                      // Ensure we are looking at the instrument object, it should have a 'sensor' array from the API
+                      const stdSensor = inst?.sensor?.find((s: any) => s.is_standard);
+                      if (stdSensor) {
+                        stdSensorId = stdSensor.id;
+                      } else {
+                        // Fallback 3: If no sensor is marked standard (legacy data?), try to use the first sensor?
+                        // Or log warning. For now, let's try just taking the first one if only 1 exists
+                        if (inst?.sensor?.length === 1) {
+                          stdSensorId = inst.sensor[0].id;
+                        }
+                      }
+                    }
+                  }
+
+                  return {
+                    name: sheet.name,
+                    data: sheet.data,
+                    sensor_id_uut: results[idx]?.sensorId ?? null,
+                    sensor_id_std: stdSensorId,
+                  }
+                })
+              };
+
+              console.log('DEBUG: Sending Raw Data Payload:', JSON.stringify(rawDataPayload, null, 2));
+
+              const rawRes = await fetch('/api/raw-data', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  session_id: sessionData.id,
-                  data: rawData, // Saving entire array as JSONB
-                  filename: 'import.xlsx', // TODO: Capture real filename
+                  ...rawDataPayload,
+                  filename: 'import.xlsx',
                   uploaded_by: user?.id
                 })
               })
+
+              if (!rawRes.ok) {
+                const errData = await rawRes.json().catch(() => ({}));
+                console.error('Raw Data Validation Error:', errData);
+                const errMsg = errData.error || errData.message || rawRes.statusText || 'Unknown Server Error';
+                throw new Error(`Gagal menyimpan data mentah: ${errMsg} (Status: ${rawRes.status})`);
+              }
+
+              const rawResData = await rawRes.json();
+              console.log('Raw Data saved linked to session:', sessionData.session_id, rawResData)
             }
+            return sessionData.session_id
           }
         } catch (sessionErr) {
           console.error('Failed to save session/raw data', sessionErr)
-          // Non-blocking: continue to save certificate for backward compatibility
+        }
+        return null
+      }
+
+      if (editing) {
+        let sessionId: string | null = null;
+
+        // Save Session & Raw Data if present
+        if (rawData.length > 0) {
+          sessionId = await saveSessionAndRawData()
         }
 
-        await addCertificate(payload as any)
+        // Inject session_id into results if we have a new session, or keep existing results
+        // If sessionId is null, we use existing results (which might already have session_id or not)
+        // If rawData was uploaded, we want to update the session_id
+        const finalResults = sessionId
+          ? results.map(r => ({ ...r, session_id: sessionId }))
+          : results;
+
+        // Update Certificate
+        await updateCertificate(editing.id, { ...payload, results: finalResults } as any)
+
+        showSuccess('Certificate berhasil diperbarui!')
+
+        // If edit came from certificate verification, redirect back there
+        if (isEditFromVerification()) {
+          closeModal()
+          router.push('/certificate-verification')
+          return
+        }
+      } else {
+        // Create Certificate
+
+        // Create Calibration Session & Save Raw Data first
+        const sessionId = await saveSessionAndRawData()
+
+        // Inject session_id into results
+        const finalResults = sessionId
+          ? results.map(r => ({ ...r, session_id: sessionId }))
+          : results;
+
+        await addCertificate({ ...payload, results: finalResults } as any)
         showSuccess('Certificate & Session berhasil dibuat!')
       }
       closeModal()
@@ -1276,6 +1520,15 @@ const CertificatesCRUD: React.FC = () => {
                       </a>
                     )}
 
+                    {/* Print LHKS Button */}
+                    <button
+                      onClick={() => handlePrintLHKS(item)}
+                      className="inline-flex items-center p-1.5 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-all duration-200 border border-transparent hover:border-purple-200"
+                      title="Print LHKS (Laporan Hasil Kalibrasi Sementara)"
+                    >
+                      <PrinterIcon className="w-4 h-4" />
+                    </button>
+
                     {/* Download PDF Button - generate on-demand or download saved PDF */}
                     <button
                       onClick={async () => {
@@ -1343,6 +1596,28 @@ const CertificatesCRUD: React.FC = () => {
                     >
                       <PrinterIcon className="w-4 h-4" />
                     </a>
+
+                    {/* QC Check Button */}
+                    <button
+                      onClick={() => {
+                        const sessionId = Array.isArray(item.results) && item.results.length > 0
+                          ? (item.results[0] as any).session_id
+                          : null;
+
+                        if (sessionId) {
+                          setQcModalCertificate(item);
+                          setShowQCModal(true);
+                        } else {
+                          showError("Data QC tidak tersedia. Pastikan sertifikat ini memiliki data mentah yang tersimpan (session_id).");
+                        }
+                      }}
+                      className="inline-flex items-center p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-all duration-200 border border-transparent hover:border-indigo-200"
+                      title="QC Check (Raw Data)"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </button>
 
                     {/* Edit Button - only show for draft status */}
                     {item.status === 'draft' && can('certificate', 'update') && (
@@ -1598,21 +1873,59 @@ const CertificatesCRUD: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Bagian II – Unggah Data Mentah & Identitas Alat */}
+                {/* Bagian II – Detail Sesi Kalibrasi (Global Session Info) */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-6">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100 flex items-center gap-2">
+                    <span className="bg-gray-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span>
+                    Detail Sesi Kalibrasi (Global)
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700">Tanggal Mulai</label>
+                      <input
+                        type="datetime-local"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                        value={sessionDetails.start_date}
+                        onChange={e => setSessionDetails({ ...sessionDetails, start_date: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700">Tanggal Selesai</label>
+                      <input
+                        type="datetime-local"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                        value={sessionDetails.end_date}
+                        onChange={e => setSessionDetails({ ...sessionDetails, end_date: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700">Tempat Kalibrasi</label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                        placeholder="Laboratorium Kalibrasi BMKG..."
+                        value={sessionDetails.place}
+                        onChange={e => setSessionDetails({ ...sessionDetails, place: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bagian III – Unggah Data Mentah & Identitas Alat */}
                 <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2 px-1">
-                  <span className="bg-gray-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span>
+                  <span className="bg-gray-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">3</span>
                   Data Mentah & Identitas Alat
                 </h3>
 
                 {/* 0. Pilih Instrument (Parent) */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                   {/* Left Column: UUT Instrument */}
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative overflow-hidden group hover:border-[#1e377c]/30 transition-all">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-[#1e377c]"></div>
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative group hover:border-[#1e377c]/30 transition-all">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-[#1e377c] rounded-l-xl"></div>
                     <div className="flex items-center justify-between mb-4 pl-2">
                       <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                         <InstrumentIcon className="w-5 h-5 text-[#1e377c]" />
-                        Pilih Instrument (Device)
+                        Pilih Instrument (UUT)
                       </h3>
                       <a href="/instruments" target="_blank" className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded hover:bg-blue-100 transition-colors">
                         + Tambah Instrument Baru
@@ -1679,8 +1992,8 @@ const CertificatesCRUD: React.FC = () => {
                   </div>
 
                   {/* Right Column: Global Standard Instrument Selection */}
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative overflow-hidden group hover:border-green-200 transition-all">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-green-600"></div>
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative group hover:border-green-200 transition-all">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-green-600 rounded-l-xl"></div>
                     <div className="flex items-center justify-between mb-4 pl-2">
                       <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                         <CertificateIcon className="w-5 h-5 text-green-600" />
@@ -2084,93 +2397,179 @@ const CertificatesCRUD: React.FC = () => {
                         </div>
                       </div>
                     </div>
+                    {/* 3. Kondisi Lingkungan & Catatan (Per Sensor) */}
+                    <div className="mt-6 border-t border-gray-200 pt-6 col-span-1 lg:col-span-2">
+                      <h4 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+                        <FileTextIcon className="w-5 h-5 text-gray-600" />
+                        Kondisi Lingkungan & Catatan
+                      </h4>
+
+                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                        {/* Environment Conditions */}
+                        <div className="mb-6">
+                          <h5 className="text-xs font-bold text-gray-700 mb-2 uppercase tracking-wide">Kondisi Lingkungan</h5>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {result.environment.length > 0 ? (
+                              result.environment.map((env, envIdx) => (
+                                <div key={envIdx} className="space-y-1">
+                                  <label className="block text-xs font-semibold text-gray-600">{env.key}</label>
+                                  <input
+                                    value={env.value}
+                                    onChange={e => {
+                                      const newEnv = [...result.environment];
+                                      newEnv[envIdx] = { ...newEnv[envIdx], value: e.target.value };
+                                      updateResult(resultIndex, { environment: newEnv });
+                                    }}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                                  />
+                                </div>
+                              ))
+                            ) : (
+                              <div className="col-span-2 text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                                <p className="text-xs text-gray-500 italic">Belum ada data kondisi lingkungan. Upload Data Mentah untuk auto-generate atau tambah manual.</p>
+                                <button
+                                  type="button"
+                                  onClick={() => updateResult(resultIndex, { environment: [{ key: 'Suhu', value: '' }, { key: 'Kelembaban', value: '' }] })}
+                                  className="mt-2 text-xs text-blue-600 hover:underline"
+                                >
+                                  + Tambah Manual Default (Suhu/Kelembaban)
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Notes & References */}
+                        <div className="space-y-4">
+                          <h5 className="text-xs font-bold text-gray-700 border-b pb-2 uppercase tracking-wide">Catatan & Referensi</h5>
+
+                          {/* Standard Calibration Info - Auto Populated */}
+                          <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                            <h5 className="text-[10px] font-bold text-blue-800 mb-2 uppercase">Standar Kalibrasi (Auto)</h5>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                              <div>
+                                <span className="block text-gray-500 text-[10px]">Nama</span>
+                                <span className="font-semibold text-gray-700">
+                                  {(() => {
+                                    const stdId = result.standardInstrumentId ?? globalStandardInstrumentId;
+                                    if (!stdId) return '-';
+                                    const inst = instruments.find(i => i.id === stdId);
+                                    const sensor = inst?.sensor?.find((s: any) => s.is_standard);
+                                    return sensor?.name || inst?.name || '-';
+                                  })()}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="block text-gray-500 text-[10px]">Merk/Manufaktur</span>
+                                <span className="font-semibold text-gray-700">
+                                  {(() => {
+                                    const stdId = result.standardInstrumentId ?? globalStandardInstrumentId;
+                                    const inst = instruments.find(i => i.id === stdId);
+                                    const sensor = inst?.sensor?.find((s: any) => s.is_standard);
+                                    return sensor?.manufacturer || (inst as any)?.manufacturer || '-';
+                                  })()}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="block text-gray-500 text-[10px]">Tipe</span>
+                                <span className="font-semibold text-gray-700">
+                                  {(() => {
+                                    const stdId = result.standardInstrumentId ?? globalStandardInstrumentId;
+                                    const inst = instruments.find(i => i.id === stdId);
+                                    const sensor = inst?.sensor?.find((s: any) => s.is_standard);
+                                    return sensor?.type || (inst as any)?.type || '-';
+                                  })()}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="block text-gray-500 text-[10px]">No. Seri</span>
+                                <span className="font-semibold text-gray-700">
+                                  {(() => {
+                                    const stdId = result.standardInstrumentId ?? globalStandardInstrumentId;
+                                    const inst = instruments.find(i => i.id === stdId);
+                                    const sensor = inst?.sensor?.find((s: any) => s.is_standard);
+                                    return sensor?.serial_number || (inst as any)?.serial_number || '-';
+                                  })()}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <label className="block text-xs font-semibold text-gray-700">Tertelusur Ke SI melalui</label>
+                              <input
+                                list={`traceability-options-${resultIndex}`}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                                value={result.notesForm?.traceable_to_si_through || ''}
+                                onChange={e => updateResult(resultIndex, { notesForm: { ...result.notesForm, traceable_to_si_through: e.target.value } })}
+                                placeholder="Pilih atau ketik referensi..."
+                              />
+                              <datalist id={`traceability-options-${resultIndex}`}>
+                                <option value="LK-01-M" />
+                                <option value="SNSU-BSN" />
+                              </datalist>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-xs font-semibold text-gray-700">Metode Kalibrasi</label>
+                              <input
+                                list={`method-options-${resultIndex}`}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                                value={result.notesForm?.calibration_methode || ''}
+                                onChange={e => updateResult(resultIndex, { notesForm: { ...result.notesForm, calibration_methode: e.target.value } })}
+                                placeholder="Pilih atau ketik metode..."
+                              />
+                              <datalist id={`method-options-${resultIndex}`}>
+                                <option value="Perbandingan Langsung" />
+                              </datalist>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-xs font-semibold text-gray-700">Dokumen Acuan</label>
+                              <input
+                                list={`ref-doc-options-${resultIndex}`}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                                value={result.notesForm?.reference_document || ''}
+                                onChange={e => updateResult(resultIndex, { notesForm: { ...result.notesForm, reference_document: e.target.value } })}
+                                placeholder="Pilih atau ketik dokumen..."
+                              />
+                              <datalist id={`ref-doc-options-${resultIndex}`}>
+                                <option value="JCGM 100:2008" />
+                                <option value="ISO/IEC 17025:2017" />
+                              </datalist>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-xs font-semibold text-gray-700">Lainnya</label>
+                              <input
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                                value={result.notesForm?.others || ''}
+                                onChange={e => updateResult(resultIndex, { notesForm: { ...result.notesForm, others: e.target.value } })}
+                                placeholder="Keterangan tambahan..."
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 ))}
 
-                {/* Bagian II – Detail Sesi Kalibrasi */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mt-6">
-                  <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100 flex items-center gap-2">
-                    <span className="bg-gray-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">3</span>
-                    Detail Sesi Kalibrasi
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Tanggal Mulai</label>
-                      <input
-                        type="datetime-local"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
-                        value={sessionDetails.start_date}
-                        onChange={e => setSessionDetails({ ...sessionDetails, start_date: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Tanggal Selesai</label>
-                      <input
-                        type="datetime-local"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
-                        value={sessionDetails.end_date}
-                        onChange={e => setSessionDetails({ ...sessionDetails, end_date: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Tempat Kalibrasi</label>
-                      <input
-                        type="text"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
-                        placeholder="Laboratorium Kalibrasi BMKG..."
-                        value={sessionDetails.place}
-                        onChange={e => setSessionDetails({ ...sessionDetails, place: e.target.value })}
-                      />
-                    </div>
-                    <div className="md:col-span-3 space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Catatan Sesi (Opsional)</label>
-                      <textarea
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
-                        placeholder="Catatan kondisi khusus..."
-                        rows={2}
-                        value={sessionDetails.notes}
-                        onChange={e => setSessionDetails({ ...sessionDetails, notes: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                </div>
 
 
 
-                {/* Bagian V – Kondisi Lingkungan, Tabel Hasil, Catatan */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+
+                {/* Bagian V – Tabel Hasil (Only Table Result Left Here) */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mt-6">
                   <div className="bg-gray-100 border-b border-gray-200 flex px-2 overflow-x-auto">
-                    {(['lingkungan', 'hasil', 'catatan'] as const).map((tab) => (
-                      <button
-                        key={tab}
-                        type="button"
-                        onClick={() => setActiveTab(tab)}
-                        className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${activeTab === tab
-                          ? 'border-[#1e377c] text-[#1e377c] bg-white'
-                          : 'border-transparent text-gray-500 hover:text-gray-700'
-                          }`}
-                      >
-                        {tab === 'lingkungan' ? 'Kondisi Lingkungan' : tab === 'hasil' ? 'Tabel Hasil' : 'Catatan'}
-                      </button>
-                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('hasil')}
+                      className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap border-[#1e377c] text-[#1e377c] bg-white`}
+                    >
+                      Tabel Hasil (Preview Generik)
+                    </button>
                   </div>
 
-                  <div className="p-5 min-h-[200px]">
-                    {activeTab === 'lingkungan' && (
-                      <div className="space-y-4">
-                        {/* Reuse existing env logic for simplicity, just tailored to layout */}
-                        {results[0]?.environment.map((env, i) => (
-                          <div key={i} className="flex gap-2 mb-2">
-                            <input readOnly value={env.key} className="flex-1 bg-gray-50 border border-gray-200 rounded px-3 py-2 text-sm" />
-                            <input readOnly value={env.value} className="flex-1 bg-gray-50 border border-gray-200 rounded px-3 py-2 text-sm" />
-                          </div>
-                        ))}
-                        <button type="button" onClick={() => setEnvEditIndex(0)} className="text-[#1e377c] text-sm font-semibold hover:underline flex items-center gap-1">
-                          <EditIcon className="w-4 h-4" /> Edit Kondisi Lingkungan
-                        </button>
-                      </div>
-                    )}
-
+                  <div className="p-5 min-h-[100px]">
                     {activeTab === 'hasil' && (
                       <div className="space-y-4">
                         <div className="text-center text-gray-500 py-8">
@@ -2182,18 +2581,9 @@ const CertificatesCRUD: React.FC = () => {
                         </div>
                       </div>
                     )}
-
-                    {activeTab === 'catatan' && (
-                      <div>
-                        <textarea
-                          className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-1 focus:ring-[#1e377c]"
-                          rows={5}
-                          placeholder="Tambahkan catatan, observasi, atau komentar tambahan..."
-                        ></textarea>
-                      </div>
-                    )}
                   </div>
                 </div>
+
 
                 {/* Footer Action Buttons */}
                 <div className="sticky bottom-0 bg-white/90 backdrop-blur-sm border-t border-gray-200 p-4 -mx-4 -mb-4 flex justify-between items-center z-10">
@@ -2219,921 +2609,982 @@ const CertificatesCRUD: React.FC = () => {
 
               </form>
             </div>
-          </div>
-        </div>
+          </div >
+        </div >
       )}
 
       {/* Environment Modal dengan tema seragam */}
-      {envEditIndex !== null && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 backdrop-blur-sm">
-          <div className="w-full max-w-2xl bg-white rounded-xl shadow-xl overflow-hidden border border-[#1e377c] relative">
-            {/* Header Modal */}
-            <div className="relative bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] p-4 overflow-hidden">
-              <ModalBatikHeader />
-              <div className="relative z-10 flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <div className="p-2 bg-white/10 rounded-lg">
-                    <SettingsIcon className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-white">Kondisi Lingkungan</h2>
-                    <p className="text-blue-100 text-xs mt-0.5">
-                      Isi kondisi lingkungan untuk Sensor #{envEditIndex + 1}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setEnvEditIndex(null)}
-                  className="text-white hover:text-blue-200 transition-colors p-1 rounded-lg hover:bg-white/10 relative z-20"
-                >
-                  <CloseIcon className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Content */}
-            <div className="max-h-[60vh] overflow-y-auto p-4 bg-gradient-to-br from-white to-gray-50/30">
-              <div className="space-y-3">
-                {envDraft.map((row, i) => (
-                  <div key={i} className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 border border-gray-200 rounded-lg bg-white">
-                    <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Key</label>
-                      <input
-                        value={row.key}
-                        onChange={e => {
-                          const v = [...envDraft];
-                          v[i] = { ...v[i], key: e.target.value };
-                          setEnvDraft(v)
-                        }}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
-                        placeholder="Contoh: Suhu"
-                      />
+      {
+        envEditIndex !== null && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 backdrop-blur-sm">
+            <div className="w-full max-w-2xl bg-white rounded-xl shadow-xl overflow-hidden border border-[#1e377c] relative">
+              {/* Header Modal */}
+              <div className="relative bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] p-4 overflow-hidden">
+                <ModalBatikHeader />
+                <div className="relative z-10 flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <div className="p-2 bg-white/10 rounded-lg">
+                      <SettingsIcon className="w-5 h-5 text-white" />
                     </div>
-                    <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Value</label>
-                      <input
-                        value={row.value}
-                        onChange={e => {
-                          const v = [...envDraft];
-                          v[i] = { ...v[i], value: e.target.value };
-                          setEnvDraft(v)
-                        }}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
-                        placeholder="Contoh: 25°C"
-                      />
+                    <div>
+                      <h2 className="text-lg font-bold text-white">Kondisi Lingkungan</h2>
+                      <p className="text-blue-100 text-xs mt-0.5">
+                        Isi kondisi lingkungan untuk Sensor #{envEditIndex + 1}
+                      </p>
                     </div>
                   </div>
-                ))}
-
-                <button
-                  onClick={() => setEnvDraft(prev => [...prev, { key: '', value: '' }])}
-                  className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg hover:border-[#1e377c] hover:bg-blue-50 transition-all duration-200 text-sm text-gray-600 hover:text-[#1e377c]"
-                >
-                  <PlusIcon className="w-4 h-4" />
-                  Tambah Baris Kondisi Lingkungan
-                </button>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex justify-end space-x-2 p-4 border-t border-gray-200 bg-gray-50/50">
-              <button
-                onClick={() => setEnvEditIndex(null)}
-                className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all duration-200 border border-gray-300"
-              >
-                Batal
-              </button>
-              <button
-                id="btn-save-env-conditions"
-                onClick={() => {
-                  if (envEditIndex === null) return;
-                  updateResult(envEditIndex, { environment: envDraft.filter(r => r.key || r.value) });
-                  setEnvEditIndex(null)
-                }}
-                className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c] rounded-lg transition-all duration-200 shadow hover:shadow-lg"
-              >
-                Simpan Kondisi Lingkungan
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Table Result Modal dengan tema seragam */}
-      {tableEditIndex !== null && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 backdrop-blur-sm">
-          <div className="w-full max-w-4xl bg-white rounded-xl shadow-xl overflow-hidden border border-[#1e377c] relative">
-            {/* Header Modal */}
-            <div className="relative bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] p-4 overflow-hidden">
-              <ModalBatikHeader />
-              <div className="relative z-10 flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <div className="p-2 bg-white/10 rounded-lg">
-                    <FileTextIcon className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-white">Tabel Hasil Kalibrasi</h2>
-                    <p className="text-blue-100 text-xs mt-0.5">
-                      Isi tabel hasil untuk Sensor #{tableEditIndex + 1}
-                    </p>
-                  </div>
+                  <button
+                    onClick={() => setEnvEditIndex(null)}
+                    className="text-white hover:text-blue-200 transition-colors p-1 rounded-lg hover:bg-white/10 relative z-20"
+                  >
+                    <CloseIcon className="w-5 h-5" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => setTableEditIndex(null)}
-                  className="text-white hover:text-blue-200 transition-colors p-1 rounded-lg hover:bg-white/10 relative z-20"
-                >
-                  <CloseIcon className="w-5 h-5" />
-                </button>
               </div>
-            </div>
 
-            {/* Content */}
-            <div className="max-h-[60vh] overflow-y-auto p-4 bg-gradient-to-br from-white to-gray-50/30">
-              <div className="space-y-4">
-                {tableDraft.map((section, si) => (
-                  <div key={si} className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm relative">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex-1 space-y-1">
-                        <label className="block text-xs font-semibold text-gray-700">Judul Bagian</label>
+              {/* Content */}
+              <div className="max-h-[60vh] overflow-y-auto p-4 bg-gradient-to-br from-white to-gray-50/30">
+                <div className="space-y-3">
+                  {envDraft.map((row, i) => (
+                    <div key={i} className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 border border-gray-200 rounded-lg bg-white">
+                      <div className="space-y-1">
+                        <label className="block text-xs font-semibold text-gray-700">Key</label>
                         <input
-                          value={section.title}
+                          value={row.key}
                           onChange={e => {
-                            const v = [...tableDraft];
-                            v[si] = { ...v[si], title: e.target.value };
-                            setTableDraft(v)
+                            const v = [...envDraft];
+                            v[i] = { ...v[i], key: e.target.value };
+                            setEnvDraft(v)
                           }}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
-                          placeholder="Contoh: Hasil Pengukuran"
+                          placeholder="Contoh: Suhu"
                         />
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const v = [...tableDraft];
-                          v.splice(si, 1);
-                          setTableDraft(v.length > 0 ? v : [{ title: '', rows: [{ key: '', unit: '', value: '', extraValues: [] }] }]);
-                        }}
-                        className="ml-3 inline-flex items-center p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200 border border-transparent hover:border-red-200"
-                        title="Hapus Bagian Tabel"
-                      >
-                        <TrashIcon className="w-4 h-4" />
-                      </button>
-
-                      {/* Import Excel Button */}
-                      <div className="ml-2 relative">
+                      <div className="space-y-1">
+                        <label className="block text-xs font-semibold text-gray-700">Value</label>
                         <input
-                          type="file"
-                          accept=".xlsx, .xls"
-                          onChange={(e) => handleExcelUpload(e, si)}
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                          title="Import dari Excel"
+                          value={row.value}
+                          onChange={e => {
+                            const v = [...envDraft];
+                            v[i] = { ...v[i], value: e.target.value };
+                            setEnvDraft(v)
+                          }}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
+                          placeholder="Contoh: 25°C"
                         />
-                        <button
-                          type="button"
-                          disabled={isImporting}
-                          className={`inline-flex items-center p-2 rounded-lg transition-all duration-200 border border-transparent ${isImporting
-                            ? 'bg-gray-100 text-gray-400 cursor-wait'
-                            : 'text-green-600 hover:text-green-800 hover:bg-green-50 hover:border-green-200'}`}
-                          title="Import dari Excel"
-                        >
-                          {isImporting ? (
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400" />
-                          ) : (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                          )}
-                        </button>
                       </div>
                     </div>
+                  ))}
 
-                    <div className="space-y-2">
-                      {/* Headers Editor - Dynamic */}
-                      <div className={`grid grid-cols-1 md:grid-cols-${(section.headers || ['Parameter', 'Unit', 'Nilai']).length + 1} gap-2 p-2 border-b border-gray-100 bg-gray-100/50 rounded-t-lg`}>
-                        {(section.headers || ['Parameter', 'Unit', 'Nilai']).map((header, hi) => (
-                          <div key={hi} className="relative group">
-                            <input
-                              value={header}
-                              onChange={e => {
-                                const v = [...tableDraft];
-                                const currentHeaders = [...(v[si].headers || ['Parameter', 'Unit', 'Nilai'])];
-                                currentHeaders[hi] = e.target.value;
-                                v[si].headers = currentHeaders;
-                                setTableDraft(v);
-                              }}
-                              className="w-full px-2 py-1 text-xs font-bold text-gray-700 bg-transparent border border-transparent hover:border-gray-300 focus:border-[#1e377c] rounded focus:outline-none"
-                              placeholder={`Header ${hi + 1}`}
-                            />
-                            {/* Allow removing ANY column */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const v = [...tableDraft];
-                                const currentHeaders = [...(v[si].headers || ['Parameter', 'Unit', 'Nilai'])];
+                  <button
+                    onClick={() => setEnvDraft(prev => [...prev, { key: '', value: '' }])}
+                    className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg hover:border-[#1e377c] hover:bg-blue-50 transition-all duration-200 text-sm text-gray-600 hover:text-[#1e377c]"
+                  >
+                    <PlusIcon className="w-4 h-4" />
+                    Tambah Baris Kondisi Lingkungan
+                  </button>
+                </div>
+              </div>
 
-                                // Remove header
-                                currentHeaders.splice(hi, 1);
-                                v[si].headers = currentHeaders;
+              {/* Footer */}
+              <div className="flex justify-end space-x-2 p-4 border-t border-gray-200 bg-gray-50/50">
+                <button
+                  onClick={() => setEnvEditIndex(null)}
+                  className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all duration-200 border border-gray-300"
+                >
+                  Batal
+                </button>
+                <button
+                  id="btn-save-env-conditions"
+                  onClick={() => {
+                    if (envEditIndex === null) return;
+                    updateResult(envEditIndex, { environment: envDraft.filter(r => r.key || r.value) });
+                    setEnvEditIndex(null)
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c] rounded-lg transition-all duration-200 shadow hover:shadow-lg"
+                >
+                  Simpan Kondisi Lingkungan
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
 
-                                // Helper to convert row object to array based on schema
-                                // Schema: [key, unit, value, ...extraValues]
-                                const rowToArray = (r: TableRow) => [r.key || '', r.unit || '', r.value || '', ...(r.extraValues || [])];
+      {/* Table Result Modal dengan tema seragam */}
+      {
+        tableEditIndex !== null && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 backdrop-blur-sm">
+            <div className="w-full max-w-4xl bg-white rounded-xl shadow-xl overflow-hidden border border-[#1e377c] relative">
+              {/* Header Modal */}
+              <div className="relative bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] p-4 overflow-hidden">
+                <ModalBatikHeader />
+                <div className="relative z-10 flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <div className="p-2 bg-white/10 rounded-lg">
+                      <FileTextIcon className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-white">Tabel Hasil Kalibrasi</h2>
+                      <p className="text-blue-100 text-xs mt-0.5">
+                        Isi tabel hasil untuk Sensor #{tableEditIndex + 1}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setTableEditIndex(null)}
+                    className="text-white hover:text-blue-200 transition-colors p-1 rounded-lg hover:bg-white/10 relative z-20"
+                  >
+                    <CloseIcon className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
 
-                                // Helper to convert array back to row object
-                                const arrayToRow = (arr: string[]): TableRow => ({
-                                  key: arr[0] || '',
-                                  unit: arr[1] || '',
-                                  value: arr[2] || '',
-                                  extraValues: arr.slice(3)
-                                });
-
-                                // Update all rows: convert to array, splice, convert back
-                                v[si].rows = v[si].rows.map(row => {
-                                  const arr = rowToArray(row);
-                                  arr.splice(hi, 1); // Remove the column data
-                                  return arrayToRow(arr);
-                                });
-
-                                setTableDraft(v);
-                              }}
-                              className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                              title="Hapus Kolom"
-                            >
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                            </button>
-                          </div>
-                        ))}
+              {/* Content */}
+              <div className="max-h-[60vh] overflow-y-auto p-4 bg-gradient-to-br from-white to-gray-50/30">
+                <div className="space-y-4">
+                  {tableDraft.map((section, si) => (
+                    <div key={si} className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm relative">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex-1 space-y-1">
+                          <label className="block text-xs font-semibold text-gray-700">Judul Bagian</label>
+                          <input
+                            value={section.title}
+                            onChange={e => {
+                              const v = [...tableDraft];
+                              v[si] = { ...v[si], title: e.target.value };
+                              setTableDraft(v)
+                            }}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
+                            placeholder="Contoh: Hasil Pengukuran"
+                          />
+                        </div>
                         <button
                           type="button"
                           onClick={() => {
                             const v = [...tableDraft];
-                            const currentHeaders = [...(v[si].headers || ['Parameter', 'Unit', 'Nilai'])];
-                            v[si].headers = [...currentHeaders, 'New Column'];
-                            setTableDraft(v);
+                            v.splice(si, 1);
+                            setTableDraft(v.length > 0 ? v : [{ title: '', rows: [{ key: '', unit: '', value: '', extraValues: [] }] }]);
                           }}
-                          className="flex items-center justify-center p-1 text-blue-600 hover:bg-blue-50 rounded"
-                          title="Tambah Kolom"
+                          className="ml-3 inline-flex items-center p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200 border border-transparent hover:border-red-200"
+                          title="Hapus Bagian Tabel"
                         >
-                          <PlusIcon className="w-4 h-4" />
+                          <TrashIcon className="w-4 h-4" />
                         </button>
+
+                        {/* Import Excel Button */}
+                        <div className="ml-2 relative">
+                          <input
+                            type="file"
+                            accept=".xlsx, .xls"
+                            onChange={(e) => handleExcelUpload(e, si)}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            title="Import dari Excel"
+                          />
+                          <button
+                            type="button"
+                            disabled={isImporting}
+                            className={`inline-flex items-center p-2 rounded-lg transition-all duration-200 border border-transparent ${isImporting
+                              ? 'bg-gray-100 text-gray-400 cursor-wait'
+                              : 'text-green-600 hover:text-green-800 hover:bg-green-50 hover:border-green-200'}`}
+                            title="Import dari Excel"
+                          >
+                            {isImporting ? (
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400" />
+                            ) : (
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            )}
+                          </button>
+                        </div>
                       </div>
 
-                      {section.rows.map((row, ri) => {
-                        // Helper to access data by index dynamically
-                        const rowData = [row.key || '', row.unit || '', row.value || '', ...(row.extraValues || [])];
-
-                        return (
-                          <div key={ri} className={`grid grid-cols-1 md:grid-cols-${(section.headers || ['Parameter', 'Unit', 'Nilai']).length + 1} gap-2 p-2 border border-gray-100 rounded bg-gray-50 relative`}>
-
-                            {(section.headers || ['Parameter', 'Unit', 'Nilai']).map((header, colIdx) => (
-                              <div key={colIdx} className="space-y-1">
-                                <input
-                                  placeholder={header}
-                                  value={rowData[colIdx] || ''}
-                                  onChange={e => {
-                                    const v = [...tableDraft];
-                                    const newVal = e.target.value;
-
-                                    // Update specific field based on index
-                                    const r = { ...v[si].rows[ri] };
-
-                                    // Helper function for interpolation
-                                    const interpolateCorrection = (val: number, table: any[]) => {
-                                      if (!table || table.length === 0) return 0;
-                                      // Sort table by setpoint
-                                      const sorted = [...table].sort((a, b) => parseFloat(a.setpoint) - parseFloat(b.setpoint));
-
-                                      // Find range
-                                      for (let i = 0; i < sorted.length - 1; i++) {
-                                        const p1 = parseFloat(sorted[i].setpoint);
-                                        const p2 = parseFloat(sorted[i + 1].setpoint);
-                                        const c1 = parseFloat(sorted[i].correction);
-                                        const c2 = parseFloat(sorted[i + 1].correction);
-
-                                        if (val >= p1 && val <= p2) {
-                                          // Linear interpolation
-                                          return c1 + (val - p1) * (c2 - c1) / (p2 - p1);
-                                        }
-                                      }
-
-                                      // Extrapolation or edge cases - clamp to nearest? or linear extend?
-                                      // For now simple clamp to ends
-                                      if (val < parseFloat(sorted[0].setpoint)) return parseFloat(sorted[0].correction);
-                                      if (val > parseFloat(sorted[sorted.length - 1].setpoint)) return parseFloat(sorted[sorted.length - 1].correction);
-                                      return 0;
-                                    };
-
-                                    if (colIdx === 0) r.key = newVal;
-                                    else if (colIdx === 1) r.unit = newVal;
-                                    else if (colIdx === 2) r.value = newVal;
-                                    else {
-                                      const extras = [...(r.extraValues || [])];
-                                      while (extras.length < colIdx - 3) extras.push('');
-                                      extras[colIdx - 3] = newVal;
-                                      r.extraValues = extras;
-                                    }
-
-                                    // Auto-calculate Correction if this is "Standard Reading" column (heuristic)
-                                    // Assuming Headers: [Parameter, Unit, UUT Reading, Standard Reading, Correction, True Value]
-                                    // Or searching for header names
-                                    const currentHeader = (section.headers || [])[colIdx]?.toLowerCase() || '';
-
-                                    // Define selectedStandard based on tableEditIndex
-                                    const selectedStandard = tableEditIndex !== null && results[tableEditIndex]?.standardCertificateId
-                                      ? standardCerts.find(c => c.id === results[tableEditIndex].standardCertificateId)
-                                      : null;
-
-                                    if ((currentHeader.includes('standard') || currentHeader.includes('standar')) && selectedStandard?.correction_std) {
-                                      const stdReading = parseFloat(newVal);
-                                      if (!isNaN(stdReading)) {
-                                        const correction = interpolateCorrection(stdReading, selectedStandard.correction_std);
-                                        const trueValue = stdReading + correction;
-
-                                        // Find "Correction" / "Koreksi" column index
-                                        const headers = (section.headers || []).map(h => h.toLowerCase());
-                                        const corrIdx = headers.findIndex(h => h.includes('correction') || h.includes('koreksi'));
-                                        const trueIdx = headers.findIndex(h => h.includes('true') || h.includes('benar') || h.includes('sebenarnya'));
-
-                                        if (corrIdx >= 0) {
-                                          if (corrIdx === 0) r.key = correction.toFixed(4); // Unlikely
-                                          else if (corrIdx === 1) r.unit = correction.toFixed(4); // Unlikely
-                                          else if (corrIdx === 2) r.value = correction.toFixed(4);
-                                          else {
-                                            const extras = [...(r.extraValues || [])];
-                                            while (extras.length < corrIdx - 3) extras.push('');
-                                            extras[corrIdx - 3] = correction.toFixed(4);
-                                            r.extraValues = extras;
-                                          }
-                                        }
-
-                                        if (trueIdx >= 0) {
-                                          const resVal = trueValue.toFixed(4);
-                                          if (trueIdx === 0) r.key = resVal;
-                                          else if (trueIdx === 1) r.unit = resVal;
-                                          else if (trueIdx === 2) r.value = resVal;
-                                          else {
-                                            const extras = [...(r.extraValues || [])];
-                                            while (extras.length < trueIdx - 3) extras.push('');
-                                            extras[trueIdx - 3] = resVal;
-                                            r.extraValues = extras;
-                                          }
-                                        }
-                                      }
-                                    }
-
-                                    v[si].rows[ri] = r;
-                                    setTableDraft(v);
-                                  }}
-                                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                                />
-                              </div>
-                            ))}
-
-                            <div className="flex items-center justify-end w-8">
-                              {section.rows.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const v = [...tableDraft];
-                                    v[si].rows = v[si].rows.filter((_, index) => index !== ri);
-                                    setTableDraft(v);
-                                  }}
-                                  className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-all duration-200"
-                                  title="Hapus Baris"
-                                >
-                                  <TrashIcon className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                      <button
-                        onClick={() => {
-                          const v = [...tableDraft];
-                          const newRow: TableRow = { key: '', unit: '', value: '', extraValues: [] };
-                          // Pre-fill extraValues to match header count if needed (optional, logic handles undefined)
-                          v[si].rows = [...v[si].rows, newRow];
-                          setTableDraft(v)
-                        }}
-                        className="flex items-center gap-1 px-2 py-1 text-xs border border-dashed border-gray-300 rounded hover:border-[#1e377c] hover:bg-blue-50 text-gray-600 hover:text-[#1e377c] transition-all duration-200"
-                      >
-                        <PlusIcon className="w-3 h-3" />
-                        Tambah Baris Data
-                      </button>
-                    </div>
-                  </div>
-                ))}
-
-                {/* Conditional content based on station type */}
-                {/* Show Images only for geofisika. If type selected and not geofisika, show add table button. If no station selected, show nothing. */}
-                {getSelectedStationType() === 'geofisika' ? (
-                  <div className="space-y-3">
-                    <div className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-sm font-semibold text-gray-900">Gambar dan Caption</h4>
-                        <button
-                          type="button"
-                          onClick={() => addImage(tableEditIndex)}
-                          className="flex items-center gap-1 px-2 py-1 bg-[#1e377c] text-white rounded-lg hover:bg-[#2a4a9d] transition-all duration-200 text-xs font-semibold"
-                        >
-                          <ImageIcon className="w-3 h-3" />
-                          <span>Tambah Gambar</span>
-                        </button>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(results[tableEditIndex]?.images || []).map((image, imgIdx) => (
-                          <div key={imgIdx} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                            <div className="flex items-center justify-between mb-2">
-                              <h5 className="text-xs font-semibold text-gray-700">Gambar #{imgIdx + 1}</h5>
+                      <div className="space-y-2">
+                        {/* Headers Editor - Dynamic */}
+                        <div className={`grid grid-cols-1 md:grid-cols-${(section.headers || ['Parameter', 'Unit', 'Nilai']).length + 1} gap-2 p-2 border-b border-gray-100 bg-gray-100/50 rounded-t-lg`}>
+                          {(section.headers || ['Parameter', 'Unit', 'Nilai']).map((header, hi) => (
+                            <div key={hi} className="relative group">
+                              <input
+                                value={header}
+                                onChange={e => {
+                                  const v = [...tableDraft];
+                                  const currentHeaders = [...(v[si].headers || ['Parameter', 'Unit', 'Nilai'])];
+                                  currentHeaders[hi] = e.target.value;
+                                  v[si].headers = currentHeaders;
+                                  setTableDraft(v);
+                                }}
+                                className="w-full px-2 py-1 text-xs font-bold text-gray-700 bg-transparent border border-transparent hover:border-gray-300 focus:border-[#1e377c] rounded focus:outline-none"
+                                placeholder={`Header ${hi + 1}`}
+                              />
+                              {/* Allow removing ANY column */}
                               <button
                                 type="button"
-                                onClick={() => removeImage(tableEditIndex, imgIdx)}
-                                className="inline-flex items-center p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-all duration-200"
-                                title="Hapus Gambar"
+                                onClick={() => {
+                                  const v = [...tableDraft];
+                                  const currentHeaders = [...(v[si].headers || ['Parameter', 'Unit', 'Nilai'])];
+
+                                  // Remove header
+                                  currentHeaders.splice(hi, 1);
+                                  v[si].headers = currentHeaders;
+
+                                  // Helper to convert row object to array based on schema
+                                  // Schema: [key, unit, value, ...extraValues]
+                                  const rowToArray = (r: TableRow) => [r.key || '', r.unit || '', r.value || '', ...(r.extraValues || [])];
+
+                                  // Helper to convert array back to row object
+                                  const arrayToRow = (arr: string[]): TableRow => ({
+                                    key: arr[0] || '',
+                                    unit: arr[1] || '',
+                                    value: arr[2] || '',
+                                    extraValues: arr.slice(3)
+                                  });
+
+                                  // Update all rows: convert to array, splice, convert back
+                                  v[si].rows = v[si].rows.map(row => {
+                                    const arr = rowToArray(row);
+                                    arr.splice(hi, 1); // Remove the column data
+                                    return arrayToRow(arr);
+                                  });
+
+                                  setTableDraft(v);
+                                }}
+                                className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Hapus Kolom"
                               >
-                                <TrashIcon className="w-3 h-3" />
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                               </button>
                             </div>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const v = [...tableDraft];
+                              const currentHeaders = [...(v[si].headers || ['Parameter', 'Unit', 'Nilai'])];
+                              v[si].headers = [...currentHeaders, 'New Column'];
+                              setTableDraft(v);
+                            }}
+                            className="flex items-center justify-center p-1 text-blue-600 hover:bg-blue-50 rounded"
+                            title="Tambah Kolom"
+                          >
+                            <PlusIcon className="w-4 h-4" />
+                          </button>
+                        </div>
 
-                            <div className="space-y-2">
-                              <div className="space-y-1">
-                                <label className="block text-xs font-medium text-gray-600">Upload Gambar</label>
-                                <div className="flex items-center gap-2">
+                        {section.rows.map((row, ri) => {
+                          // Helper to access data by index dynamically
+                          const rowData = [row.key || '', row.unit || '', row.value || '', ...(row.extraValues || [])];
+
+                          return (
+                            <div key={ri} className={`grid grid-cols-1 md:grid-cols-${(section.headers || ['Parameter', 'Unit', 'Nilai']).length + 1} gap-2 p-2 border border-gray-100 rounded bg-gray-50 relative`}>
+
+                              {(section.headers || ['Parameter', 'Unit', 'Nilai']).map((header, colIdx) => (
+                                <div key={colIdx} className="space-y-1">
                                   <input
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={async (e) => {
-                                      if (!e.target.files || e.target.files.length === 0) return
-                                      const file = e.target.files[0]
-                                      setIsImageUploading(true)
-                                      try {
-                                        const formData = new FormData()
-                                        formData.append('file', file)
-                                        formData.append('folder', `certificate-${editing ? editing.id : 'new'}`)
-                                        const res = await fetch('/api/uploads/certificates', { method: 'POST', body: formData })
-                                        const data = await res.json()
-                                        if (!res.ok) {
-                                          showError(data?.error || 'Gagal mengupload gambar')
-                                        } else {
-                                          updateImage(tableEditIndex, imgIdx, 'url', data.url)
-                                          showSuccess('Gambar berhasil diupload')
+                                    placeholder={header}
+                                    value={rowData[colIdx] || ''}
+                                    onChange={e => {
+                                      const v = [...tableDraft];
+                                      const newVal = e.target.value;
+
+                                      // Update specific field based on index
+                                      const r = { ...v[si].rows[ri] };
+
+                                      // Helper function for interpolation
+                                      const interpolateCorrection = (val: number, table: any[]) => {
+                                        if (!table || table.length === 0) return 0;
+                                        // Sort table by setpoint
+                                        const sorted = [...table].sort((a, b) => parseFloat(a.setpoint) - parseFloat(b.setpoint));
+
+                                        // Find range
+                                        for (let i = 0; i < sorted.length - 1; i++) {
+                                          const p1 = parseFloat(sorted[i].setpoint);
+                                          const p2 = parseFloat(sorted[i + 1].setpoint);
+                                          const c1 = parseFloat(sorted[i].correction);
+                                          const c2 = parseFloat(sorted[i + 1].correction);
+
+                                          if (val >= p1 && val <= p2) {
+                                            // Linear interpolation
+                                            return c1 + (val - p1) * (c2 - c1) / (p2 - p1);
+                                          }
                                         }
-                                      } catch (err) {
-                                        showError('Gagal mengupload gambar')
-                                      } finally {
-                                        setIsImageUploading(false)
+
+                                        // Extrapolation or edge cases - clamp to nearest? or linear extend?
+                                        // For now simple clamp to ends
+                                        if (val < parseFloat(sorted[0].setpoint)) return parseFloat(sorted[0].correction);
+                                        if (val > parseFloat(sorted[sorted.length - 1].setpoint)) return parseFloat(sorted[sorted.length - 1].correction);
+                                        return 0;
+                                      };
+
+                                      if (colIdx === 0) r.key = newVal;
+                                      else if (colIdx === 1) r.unit = newVal;
+                                      else if (colIdx === 2) r.value = newVal;
+                                      else {
+                                        const extras = [...(r.extraValues || [])];
+                                        while (extras.length < colIdx - 3) extras.push('');
+                                        extras[colIdx - 3] = newVal;
+                                        r.extraValues = extras;
                                       }
+
+                                      // Auto-calculate Correction if this is "Standard Reading" column (heuristic)
+                                      // Assuming Headers: [Parameter, Unit, UUT Reading, Standard Reading, Correction, True Value]
+                                      // Or searching for header names
+                                      const currentHeader = (section.headers || [])[colIdx]?.toLowerCase() || '';
+
+                                      // Define selectedStandard based on tableEditIndex
+                                      const selectedStandard = tableEditIndex !== null && results[tableEditIndex]?.standardCertificateId
+                                        ? standardCerts.find(c => c.id === results[tableEditIndex].standardCertificateId)
+                                        : null;
+
+                                      if ((currentHeader.includes('standard') || currentHeader.includes('standar')) && selectedStandard?.correction_std) {
+                                        const stdReading = parseFloat(newVal);
+                                        if (!isNaN(stdReading)) {
+                                          const correction = interpolateCorrection(stdReading, selectedStandard.correction_std);
+                                          const trueValue = stdReading + correction;
+
+                                          // Find "Correction" / "Koreksi" column index
+                                          const headers = (section.headers || []).map(h => h.toLowerCase());
+                                          const corrIdx = headers.findIndex(h => h.includes('correction') || h.includes('koreksi'));
+                                          const trueIdx = headers.findIndex(h => h.includes('true') || h.includes('benar') || h.includes('sebenarnya'));
+
+                                          if (corrIdx >= 0) {
+                                            if (corrIdx === 0) r.key = correction.toFixed(4); // Unlikely
+                                            else if (corrIdx === 1) r.unit = correction.toFixed(4); // Unlikely
+                                            else if (corrIdx === 2) r.value = correction.toFixed(4);
+                                            else {
+                                              const extras = [...(r.extraValues || [])];
+                                              while (extras.length < corrIdx - 3) extras.push('');
+                                              extras[corrIdx - 3] = correction.toFixed(4);
+                                              r.extraValues = extras;
+                                            }
+                                          }
+
+                                          if (trueIdx >= 0) {
+                                            const resVal = trueValue.toFixed(4);
+                                            if (trueIdx === 0) r.key = resVal;
+                                            else if (trueIdx === 1) r.unit = resVal;
+                                            else if (trueIdx === 2) r.value = resVal;
+                                            else {
+                                              const extras = [...(r.extraValues || [])];
+                                              while (extras.length < trueIdx - 3) extras.push('');
+                                              extras[trueIdx - 3] = resVal;
+                                              r.extraValues = extras;
+                                            }
+                                          }
+                                        }
+                                      }
+
+                                      v[si].rows[ri] = r;
+                                      setTableDraft(v);
                                     }}
-                                    className="block w-full text-xs text-gray-700 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#1e377c] file:text-white hover:file:bg-[#2a4a9d]"
+                                    className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
                                   />
-                                  {isImageUploading && (
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#1e377c]"></div>
+                                </div>
+                              ))}
+
+                              <div className="flex items-center justify-end w-8">
+                                {section.rows.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const v = [...tableDraft];
+                                      v[si].rows = v[si].rows.filter((_, index) => index !== ri);
+                                      setTableDraft(v);
+                                    }}
+                                    className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-all duration-200"
+                                    title="Hapus Baris"
+                                  >
+                                    <TrashIcon className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        <button
+                          onClick={() => {
+                            const v = [...tableDraft];
+                            const newRow: TableRow = { key: '', unit: '', value: '', extraValues: [] };
+                            // Pre-fill extraValues to match header count if needed (optional, logic handles undefined)
+                            v[si].rows = [...v[si].rows, newRow];
+                            setTableDraft(v)
+                          }}
+                          className="flex items-center gap-1 px-2 py-1 text-xs border border-dashed border-gray-300 rounded hover:border-[#1e377c] hover:bg-blue-50 text-gray-600 hover:text-[#1e377c] transition-all duration-200"
+                        >
+                          <PlusIcon className="w-3 h-3" />
+                          Tambah Baris Data
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Conditional content based on station type */}
+                  {/* Show Images only for geofisika. If type selected and not geofisika, show add table button. If no station selected, show nothing. */}
+                  {getSelectedStationType() === 'geofisika' ? (
+                    <div className="space-y-3">
+                      <div className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-sm font-semibold text-gray-900">Gambar dan Caption</h4>
+                          <button
+                            type="button"
+                            onClick={() => addImage(tableEditIndex)}
+                            className="flex items-center gap-1 px-2 py-1 bg-[#1e377c] text-white rounded-lg hover:bg-[#2a4a9d] transition-all duration-200 text-xs font-semibold"
+                          >
+                            <ImageIcon className="w-3 h-3" />
+                            <span>Tambah Gambar</span>
+                          </button>
+                        </div>
+
+                        <div className="space-y-3">
+                          {(results[tableEditIndex]?.images || []).map((image, imgIdx) => (
+                            <div key={imgIdx} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                              <div className="flex items-center justify-between mb-2">
+                                <h5 className="text-xs font-semibold text-gray-700">Gambar #{imgIdx + 1}</h5>
+                                <button
+                                  type="button"
+                                  onClick={() => removeImage(tableEditIndex, imgIdx)}
+                                  className="inline-flex items-center p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-all duration-200"
+                                  title="Hapus Gambar"
+                                >
+                                  <TrashIcon className="w-3 h-3" />
+                                </button>
+                              </div>
+
+                              <div className="space-y-2">
+                                <div className="space-y-1">
+                                  <label className="block text-xs font-medium text-gray-600">Upload Gambar</label>
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      onChange={async (e) => {
+                                        if (!e.target.files || e.target.files.length === 0) return
+                                        const file = e.target.files[0]
+                                        setIsImageUploading(true)
+                                        try {
+                                          const formData = new FormData()
+                                          formData.append('file', file)
+                                          formData.append('folder', `certificate-${editing ? editing.id : 'new'}`)
+                                          const res = await fetch('/api/uploads/certificates', { method: 'POST', body: formData })
+                                          const data = await res.json()
+                                          if (!res.ok) {
+                                            showError(data?.error || 'Gagal mengupload gambar')
+                                          } else {
+                                            updateImage(tableEditIndex, imgIdx, 'url', data.url)
+                                            showSuccess('Gambar berhasil diupload')
+                                          }
+                                        } catch (err) {
+                                          showError('Gagal mengupload gambar')
+                                        } finally {
+                                          setIsImageUploading(false)
+                                        }
+                                      }}
+                                      className="block w-full text-xs text-gray-700 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#1e377c] file:text-white hover:file:bg-[#2a4a9d]"
+                                    />
+                                    {isImageUploading && (
+                                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#1e377c]"></div>
+                                    )}
+                                  </div>
+
+                                  {image.url && (
+                                    <div className="mt-2">
+                                      <img src={image.url} alt={`preview-${imgIdx}`} className="max-h-32 rounded border border-gray-200" />
+                                    </div>
                                   )}
                                 </div>
 
-                                {image.url && (
-                                  <div className="mt-2">
-                                    <img src={image.url} alt={`preview-${imgIdx}`} className="max-h-32 rounded border border-gray-200" />
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="space-y-1">
-                                <label className="block text-xs font-medium text-gray-600">Caption</label>
-                                <textarea
-                                  placeholder="Deskripsi gambar..."
-                                  value={image.caption}
-                                  onChange={(e) => updateImage(tableEditIndex, imgIdx, 'caption', e.target.value)}
-                                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
-                                  rows={2}
-                                />
+                                <div className="space-y-1">
+                                  <label className="block text-xs font-medium text-gray-600">Caption</label>
+                                  <textarea
+                                    placeholder="Deskripsi gambar..."
+                                    value={image.caption}
+                                    onChange={(e) => updateImage(tableEditIndex, imgIdx, 'caption', e.target.value)}
+                                    className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#1e377c] bg-white"
+                                    rows={2}
+                                  />
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          ))}
 
-                        {(!results[tableEditIndex]?.images || (results[tableEditIndex]?.images || []).length === 0) && (
-                          <div className="text-center py-4 text-gray-500 text-sm">
-                            Belum ada gambar yang ditambahkan
-                          </div>
-                        )}
+                          {(!results[tableEditIndex]?.images || (results[tableEditIndex]?.images || []).length === 0) && (
+                            <div className="text-center py-4 text-gray-500 text-sm">
+                              Belum ada gambar yang ditambahkan
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ) : getSelectedStationType() ? (
-                  <button
-                    onClick={() => setTableDraft(prev => [...prev, { title: '', rows: [{ key: '', unit: '', value: '', extraValues: [] }] }])}
-                    className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg hover:border-[#1e377c] hover:bg-blue-50 transition-all duration-200 text-sm text-gray-600 hover:text-[#1e377c] w-full justify-center"
-                  >
-                    <PlusIcon className="w-4 h-4" />
-                    Tambah Bagian Tabel Baru
-                  </button>
-                ) : null}
+                  ) : getSelectedStationType() ? (
+                    <button
+                      onClick={() => setTableDraft(prev => [...prev, { title: '', rows: [{ key: '', unit: '', value: '', extraValues: [] }] }])}
+                      className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg hover:border-[#1e377c] hover:bg-blue-50 transition-all duration-200 text-sm text-gray-600 hover:text-[#1e377c] w-full justify-center"
+                    >
+                      <PlusIcon className="w-4 h-4" />
+                      Tambah Bagian Tabel Baru
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex justify-end space-x-2 p-4 border-t border-gray-200 bg-gray-50/50">
+                <button
+                  onClick={() => setTableEditIndex(null)}
+                  className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all duration-200 border border-gray-300"
+                >
+                  Batal
+                </button>
+                <button
+                  id="btn-save-result-table"
+                  onClick={() => {
+                    if (tableEditIndex === null) return;
+                    const cleaned = tableDraft.map(sec => ({
+                      ...sec,
+                      ...sec,
+                      rows: sec.rows.filter(r => r.key || r.unit || r.value || (r.extraValues && r.extraValues.some(v => v)))
+                    })).filter(sec => sec.title || sec.rows.length);
+                    updateResult(tableEditIndex, { table: cleaned });
+                    setTableEditIndex(null)
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c] rounded-lg transition-all duration-200 shadow hover:shadow-lg"
+                >
+                  Simpan Tabel Hasil
+                </button>
               </div>
             </div>
-
-            {/* Footer */}
-            <div className="flex justify-end space-x-2 p-4 border-t border-gray-200 bg-gray-50/50">
-              <button
-                onClick={() => setTableEditIndex(null)}
-                className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all duration-200 border border-gray-300"
-              >
-                Batal
-              </button>
-              <button
-                id="btn-save-result-table"
-                onClick={() => {
-                  if (tableEditIndex === null) return;
-                  const cleaned = tableDraft.map(sec => ({
-                    ...sec,
-                    ...sec,
-                    rows: sec.rows.filter(r => r.key || r.unit || r.value || (r.extraValues && r.extraValues.some(v => v)))
-                  })).filter(sec => sec.title || sec.rows.length);
-                  updateResult(tableEditIndex, { table: cleaned });
-                  setTableEditIndex(null)
-                }}
-                className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c] rounded-lg transition-all duration-200 shadow hover:shadow-lg"
-              >
-                Simpan Tabel Hasil
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Notes Modal dengan tema seragam */}
-      {noteEditIndex !== null && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 backdrop-blur-sm">
-          <div className="w-full max-w-2xl bg-white rounded-xl shadow-xl overflow-hidden border border-[#1e377c] relative">
-            {/* Header Modal */}
-            <div className="relative bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] p-4 overflow-hidden">
-              <ModalBatikHeader />
-              <div className="relative z-10 flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <div className="p-2 bg-white/10 rounded-lg">
-                    <CertificateIcon className="w-5 h-5 text-white" />
+      {
+        noteEditIndex !== null && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 backdrop-blur-sm">
+            <div className="w-full max-w-2xl bg-white rounded-xl shadow-xl overflow-hidden border border-[#1e377c] relative">
+              {/* Header Modal */}
+              <div className="relative bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] p-4 overflow-hidden">
+                <ModalBatikHeader />
+                <div className="relative z-10 flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <div className="p-2 bg-white/10 rounded-lg">
+                      <CertificateIcon className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-white">Catatan Kalibrasi</h2>
+                      <p className="text-blue-100 text-xs mt-0.5">
+                        Isi catatan untuk Sensor #{noteEditIndex + 1}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-white">Catatan Kalibrasi</h2>
-                    <p className="text-blue-100 text-xs mt-0.5">
-                      Isi catatan untuk Sensor #{noteEditIndex + 1}
-                    </p>
+                  <button
+                    onClick={() => setNoteEditIndex(null)}
+                    className="text-white hover:text-blue-200 transition-colors p-1 rounded-lg hover:bg-white/10 relative z-20"
+                  >
+                    <CloseIcon className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="max-h-[60vh] overflow-y-auto p-4 bg-gradient-to-br from-white to-gray-50/30">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-gray-700">Traceable to SI Through</label>
+                    <input
+                      value={noteDraft.traceable_to_si_through}
+                      onChange={e => setNoteDraft(prev => ({ ...prev, traceable_to_si_through: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
+                      placeholder="Traceable to SI through..."
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-gray-700">Reference Document</label>
+                    <input
+                      value={noteDraft.reference_document}
+                      onChange={e => setNoteDraft(prev => ({ ...prev, reference_document: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
+                      placeholder="Reference document..."
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-gray-700">Calibration Method</label>
+                    <input
+                      value={noteDraft.calibration_methode}
+                      onChange={e => setNoteDraft(prev => ({ ...prev, calibration_methode: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
+                      placeholder="Calibration method..."
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-gray-700">Others</label>
+                    <textarea
+                      rows={2}
+                      value={noteDraft.others}
+                      onChange={e => setNoteDraft(prev => ({ ...prev, others: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
+                      placeholder="Other notes..."
+                    />
+                  </div>
+
+                  <div className="md:col-span-2 border-t border-gray-200 pt-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-semibold text-gray-900">Instrumen Standar</h4>
+                      <button
+                        type="button"
+                        onClick={() => setNoteDraft(prev => ({
+                          ...prev,
+                          standardInstruments: [...(prev.standardInstruments || []), 0]
+                        }))}
+                        className="flex items-center gap-1 px-2 py-1 text-xs border border-[#1e377c] text-[#1e377c] rounded hover:bg-[#1e377c] hover:text-white transition-all duration-200"
+                      >
+                        <PlusIcon className="w-3 h-3" />
+                        Tambah Instrumen Standar
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {(noteDraft.standardInstruments || []).map((sid, i) => {
+                        const s = sensors.find(ss => ss.id === sid) as any
+                        return (
+                          <div key={i} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-blue-50">
+                            <div className="text-sm">
+                              <div className="font-medium text-gray-900">Standar #{i + 1}</div>
+                              <div className="text-gray-600 text-xs mt-0.5">
+                                {s ? (
+                                  `${s.name || s.type || 'Sensor'}${s.serial_number ? ` — SN ${s.serial_number}` : ''}`
+                                ) : (
+                                  'Belum ada sensor dipilih'
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setStandardPickerIndex(i)}
+                                className="px-2 py-1 text-xs border border-[#1e377c] text-[#1e377c] rounded hover:bg-[#1e377c] hover:text-white transition-all duration-200"
+                              >
+                                Pilih Sensor
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setNoteDraft(prev => ({
+                                  ...prev,
+                                  standardInstruments: prev.standardInstruments.filter((_, idx) => idx !== i)
+                                }))}
+                                className="px-2 py-1 text-xs border border-red-300 text-red-600 rounded hover:bg-red-600 hover:text-white transition-all duration-200"
+                              >
+                                Hapus
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex justify-end space-x-2 p-4 border-t border-gray-200 bg-gray-50/50">
                 <button
                   onClick={() => setNoteEditIndex(null)}
-                  className="text-white hover:text-blue-200 transition-colors p-1 rounded-lg hover:bg-white/10 relative z-20"
+                  className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all duration-200 border border-gray-300"
+                >
+                  Batal
+                </button>
+                <button
+                  id="btn-save-notes"
+                  onClick={() => {
+                    if (noteEditIndex === null) return;
+                    updateResult(noteEditIndex, { notesForm: { ...noteDraft } });
+                    setNoteEditIndex(null)
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c] rounded-lg transition-all duration-200 shadow hover:shadow-lg"
+                >
+                  Simpan Catatan
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Raw Data Preview Modal */}
+      {
+        showRawDataModal && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 backdrop-blur-sm">
+            <div className="w-full max-w-5xl bg-white rounded-xl shadow-xl overflow-hidden border border-[#1e377c] max-h-[90vh] flex flex-col">
+              {/* Header */}
+              <div className="relative bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] p-4 flex justify-between items-center shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white/10 rounded-lg"><EyeIcon className="w-5 h-5 text-white" /></div>
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Preview Raw Data</h2>
+                    <p className="text-blue-100 text-xs">{rawDataFilename || 'Data Import'} • {rawData.length} Sheets</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowRawDataModal(false)} className="text-white hover:bg-white/10 p-1 rounded-lg"><CloseIcon className="w-6 h-6" /></button>
+              </div>
+
+              {/* Tabs */}
+              {rawData.length > 0 && (
+                <div className="bg-gray-100 border-b border-gray-200 flex px-2 overflow-x-auto shrink-0">
+                  {rawData.map((sheet, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setRawPreviewSheetIndex(idx)}
+                      className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${rawPreviewSheetIndex === idx
+                        ? 'border-[#1e377c] text-[#1e377c] bg-white'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <SensorIcon className="w-4 h-4" />
+                        {sheet.name}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Content */}
+              <div className="flex-1 overflow-auto p-4 bg-white font-mono text-xs">
+                {rawData[rawPreviewSheetIndex] ? (
+                  <table className="w-full border-collapse border border-gray-200">
+                    <tbody>
+                      {(rawData[rawPreviewSheetIndex].data as any[][]).slice(0, 100).map((row, ri) => (
+                        <tr key={ri} className="hover:bg-gray-50 border-b border-gray-100">
+                          <td className="p-2 text-gray-400 select-none w-10 text-right border-r border-gray-100 bg-gray-50">{ri + 1}</td>
+                          {row.map((cell, ci) => (
+                            <td key={ci} className="p-2 border-r border-gray-100 last:border-r-0 whitespace-nowrap">
+                              {cell !== null && cell !== undefined ? String(cell) : ''}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                      {(rawData[rawPreviewSheetIndex].data as any[][]).length > 100 && (
+                        <tr>
+                          <td colSpan={20} className="p-4 text-center text-gray-500 italic">
+                            ... {(rawData[rawPreviewSheetIndex].data as any[][]).length - 100} more rows ...
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="text-center text-gray-400 py-10">No data selected</div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="p-3 bg-gray-50 border-t border-gray-200 text-right">
+                <button onClick={() => setShowRawDataModal(false)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-xs font-bold">Tutup Preview</button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Standard Sensor Picker Modal dengan tema seragam */}
+      {
+        standardPickerIndex !== null && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 backdrop-blur-sm">
+            <div className="w-full max-w-2xl bg-white rounded-xl shadow-xl overflow-hidden border border-[#1e377c] relative">
+              {/* Header Modal */}
+              <div className="relative bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] p-4 overflow-hidden">
+                <ModalBatikHeader />
+                <div className="relative z-10 flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <div className="p-2 bg-white/10 rounded-lg">
+                      <SensorIcon className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-white">Pilih Instrumen Standar</h2>
+                      <p className="text-blue-100 text-xs mt-0.5">
+                        Pilih sensor standar untuk kalibrasi
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setStandardPickerIndex(null)}
+                    className="text-white hover:text-blue-200 transition-colors p-1 rounded-lg hover:bg-white/10 relative z-20"
+                  >
+                    <CloseIcon className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-4 bg-gradient-to-br from-white to-gray-50/30">
+                <div className="space-y-3">
+                  <div className="relative">
+                    <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      value={standardSearch}
+                      onChange={e => setStandardSearch(e.target.value)}
+                      placeholder="Cari standar (nama / pabrikan / tipe / serial)"
+                      className="w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
+                    />
+                  </div>
+
+                  <div className="h-64 overflow-y-auto border border-gray-200 rounded-lg">
+                    {sensors
+                      .filter(s => (s as any).is_standard)
+                      .filter(s => {
+                        const q = standardSearch.toLowerCase()
+                        return !q || `${(s as any).name || ''} ${(s as any).manufacturer || ''} ${(s as any).type || ''} ${(s as any).serial_number || ''}`.toLowerCase().includes(q)
+                      })
+                      .map(s => (
+                        <button
+                          key={s.id}
+                          onClick={() => {
+                            if (standardPickerIndex === null) return;
+                            setNoteDraft(prev => {
+                              const arr = [...(prev.standardInstruments || [])]
+                              arr[standardPickerIndex] = s.id as any
+                              return { ...prev, standardInstruments: arr }
+                            })
+                            setStandardPickerIndex(null)
+                          }}
+                          className="w-full text-left px-3 py-3 hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors duration-200"
+                        >
+                          <div className="font-medium text-gray-900 text-sm">
+                            {(s as any).name || (s as any).type || 'Sensor'} — {(s as any).type || ''}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {(s as any).manufacturer || ''} • SN {(s as any).serial_number || '-'}
+                          </div>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex justify-end space-x-2 p-4 border-t border-gray-200 bg-gray-50/50">
+                <button
+                  onClick={() => setStandardPickerIndex(null)}
+                  className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all duration-200 border border-gray-300"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Correction Data Modal */}
+      {
+        viewingCorrectionStandard && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+              <div className="bg-[#1e377c] p-4 flex justify-between items-center">
+                <div>
+                  <h3 className="text-white font-bold text-lg">Tabel Koreksi Standar</h3>
+                  <p className="text-blue-200 text-xs">
+                    {viewingCorrectionStandard.no_certificate} | {viewingCorrectionStandard.calibration_date}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setViewingCorrectionStandard(null)}
+                  className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors"
                 >
                   <CloseIcon className="w-5 h-5" />
                 </button>
               </div>
-            </div>
 
-            {/* Content */}
-            <div className="max-h-[60vh] overflow-y-auto p-4 bg-gradient-to-br from-white to-gray-50/30">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-gray-700">Traceable to SI Through</label>
-                  <input
-                    value={noteDraft.traceable_to_si_through}
-                    onChange={e => setNoteDraft(prev => ({ ...prev, traceable_to_si_through: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
-                    placeholder="Traceable to SI through..."
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-gray-700">Reference Document</label>
-                  <input
-                    value={noteDraft.reference_document}
-                    onChange={e => setNoteDraft(prev => ({ ...prev, reference_document: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
-                    placeholder="Reference document..."
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-gray-700">Calibration Method</label>
-                  <input
-                    value={noteDraft.calibration_methode}
-                    onChange={e => setNoteDraft(prev => ({ ...prev, calibration_methode: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
-                    placeholder="Calibration method..."
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-gray-700">Others</label>
-                  <textarea
-                    rows={2}
-                    value={noteDraft.others}
-                    onChange={e => setNoteDraft(prev => ({ ...prev, others: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
-                    placeholder="Other notes..."
-                  />
-                </div>
-
-                <div className="md:col-span-2 border-t border-gray-200 pt-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-semibold text-gray-900">Instrumen Standar</h4>
-                    <button
-                      type="button"
-                      onClick={() => setNoteDraft(prev => ({
-                        ...prev,
-                        standardInstruments: [...(prev.standardInstruments || []), 0]
-                      }))}
-                      className="flex items-center gap-1 px-2 py-1 text-xs border border-[#1e377c] text-[#1e377c] rounded hover:bg-[#1e377c] hover:text-white transition-all duration-200"
-                    >
-                      <PlusIcon className="w-3 h-3" />
-                      Tambah Instrumen Standar
-                    </button>
-                  </div>
-                  <div className="space-y-2">
-                    {(noteDraft.standardInstruments || []).map((sid, i) => {
-                      const s = sensors.find(ss => ss.id === sid) as any
-                      return (
-                        <div key={i} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-blue-50">
-                          <div className="text-sm">
-                            <div className="font-medium text-gray-900">Standar #{i + 1}</div>
-                            <div className="text-gray-600 text-xs mt-0.5">
-                              {s ? (
-                                `${s.name || s.type || 'Sensor'}${s.serial_number ? ` — SN ${s.serial_number}` : ''}`
-                              ) : (
-                                'Belum ada sensor dipilih'
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => setStandardPickerIndex(i)}
-                              className="px-2 py-1 text-xs border border-[#1e377c] text-[#1e377c] rounded hover:bg-[#1e377c] hover:text-white transition-all duration-200"
-                            >
-                              Pilih Sensor
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setNoteDraft(prev => ({
-                                ...prev,
-                                standardInstruments: prev.standardInstruments.filter((_, idx) => idx !== i)
-                              }))}
-                              className="px-2 py-1 text-xs border border-red-300 text-red-600 rounded hover:bg-red-600 hover:text-white transition-all duration-200"
-                            >
-                              Hapus
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex justify-end space-x-2 p-4 border-t border-gray-200 bg-gray-50/50">
-              <button
-                onClick={() => setNoteEditIndex(null)}
-                className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all duration-200 border border-gray-300"
-              >
-                Batal
-              </button>
-              <button
-                id="btn-save-notes"
-                onClick={() => {
-                  if (noteEditIndex === null) return;
-                  updateResult(noteEditIndex, { notesForm: { ...noteDraft } });
-                  setNoteEditIndex(null)
-                }}
-                className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c] rounded-lg transition-all duration-200 shadow hover:shadow-lg"
-              >
-                Simpan Catatan
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Raw Data Preview Modal */}
-      {showRawDataModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 backdrop-blur-sm">
-          <div className="w-full max-w-5xl bg-white rounded-xl shadow-xl overflow-hidden border border-[#1e377c] max-h-[90vh] flex flex-col">
-            {/* Header */}
-            <div className="relative bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] p-4 flex justify-between items-center shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-white/10 rounded-lg"><EyeIcon className="w-5 h-5 text-white" /></div>
-                <div>
-                  <h2 className="text-lg font-bold text-white">Preview Raw Data</h2>
-                  <p className="text-blue-100 text-xs">{rawDataFilename || 'Data Import'} • {rawData.length} Sheets</p>
-                </div>
-              </div>
-              <button onClick={() => setShowRawDataModal(false)} className="text-white hover:bg-white/10 p-1 rounded-lg"><CloseIcon className="w-6 h-6" /></button>
-            </div>
-
-            {/* Tabs */}
-            {rawData.length > 0 && (
-              <div className="bg-gray-100 border-b border-gray-200 flex px-2 overflow-x-auto shrink-0">
-                {rawData.map((sheet, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setRawPreviewSheetIndex(idx)}
-                    className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${rawPreviewSheetIndex === idx
-                      ? 'border-[#1e377c] text-[#1e377c] bg-white'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <SensorIcon className="w-4 h-4" />
-                      {sheet.name}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Content */}
-            <div className="flex-1 overflow-auto p-4 bg-white font-mono text-xs">
-              {rawData[rawPreviewSheetIndex] ? (
-                <table className="w-full border-collapse border border-gray-200">
-                  <tbody>
-                    {(rawData[rawPreviewSheetIndex].data as any[][]).slice(0, 100).map((row, ri) => (
-                      <tr key={ri} className="hover:bg-gray-50 border-b border-gray-100">
-                        <td className="p-2 text-gray-400 select-none w-10 text-right border-r border-gray-100 bg-gray-50">{ri + 1}</td>
-                        {row.map((cell, ci) => (
-                          <td key={ci} className="p-2 border-r border-gray-100 last:border-r-0 whitespace-nowrap">
-                            {cell !== null && cell !== undefined ? String(cell) : ''}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                    {(rawData[rawPreviewSheetIndex].data as any[][]).length > 100 && (
+              <div className="p-0 max-h-[60vh] overflow-y-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0 z-10 shadow-sm">
+                    <tr>
+                      <th className="px-6 py-3 border-b">Setpoint</th>
+                      <th className="px-6 py-3 border-b">Correction</th>
+                      <th className="px-6 py-3 border-b">U95</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {Array.isArray(viewingCorrectionStandard.correction_std) && viewingCorrectionStandard.correction_std.length > 0 ? (
+                      viewingCorrectionStandard.correction_std.map((row: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
+                          <td className="px-6 py-3 font-medium text-gray-900">{row.setpoint}</td>
+                          <td className="px-6 py-3 text-blue-700">{row.correction}</td>
+                          <td className="px-6 py-3 text-gray-600">{row.u95}</td>
+                        </tr>
+                      ))
+                    ) : (
                       <tr>
-                        <td colSpan={20} className="p-4 text-center text-gray-500 italic">
-                          ... {(rawData[rawPreviewSheetIndex].data as any[][]).length - 100} more rows ...
+                        <td colSpan={3} className="px-6 py-8 text-center text-gray-500 italic bg-gray-50/30">
+                          Tidak ada data koreksi tersedia untuk sertifikat ini.
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
-              ) : (
-                <div className="text-center text-gray-400 py-10">No data selected</div>
-              )}
-            </div>
+              </div>
 
-            {/* Footer */}
-            <div className="p-3 bg-gray-50 border-t border-gray-200 text-right">
-              <button onClick={() => setShowRawDataModal(false)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-xs font-bold">Tutup Preview</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Standard Sensor Picker Modal dengan tema seragam */}
-      {standardPickerIndex !== null && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 backdrop-blur-sm">
-          <div className="w-full max-w-2xl bg-white rounded-xl shadow-xl overflow-hidden border border-[#1e377c] relative">
-            {/* Header Modal */}
-            <div className="relative bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] p-4 overflow-hidden">
-              <ModalBatikHeader />
-              <div className="relative z-10 flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <div className="p-2 bg-white/10 rounded-lg">
-                    <SensorIcon className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-white">Pilih Instrumen Standar</h2>
-                    <p className="text-blue-100 text-xs mt-0.5">
-                      Pilih sensor standar untuk kalibrasi
-                    </p>
-                  </div>
-                </div>
+              <div className="p-4 bg-gray-50 border-t border-gray-100 text-right">
                 <button
-                  onClick={() => setStandardPickerIndex(null)}
-                  className="text-white hover:text-blue-200 transition-colors p-1 rounded-lg hover:bg-white/10 relative z-20"
+                  onClick={() => setViewingCorrectionStandard(null)}
+                  className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 font-medium transition-colors shadow-sm"
                 >
-                  <CloseIcon className="w-5 h-5" />
+                  Tutup
                 </button>
               </div>
             </div>
-
-            {/* Content */}
-            <div className="p-4 bg-gradient-to-br from-white to-gray-50/30">
-              <div className="space-y-3">
-                <div className="relative">
-                  <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    value={standardSearch}
-                    onChange={e => setStandardSearch(e.target.value)}
-                    placeholder="Cari standar (nama / pabrikan / tipe / serial)"
-                    className="w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
-                  />
-                </div>
-
-                <div className="h-64 overflow-y-auto border border-gray-200 rounded-lg">
-                  {sensors
-                    .filter(s => (s as any).is_standard)
-                    .filter(s => {
-                      const q = standardSearch.toLowerCase()
-                      return !q || `${(s as any).name || ''} ${(s as any).manufacturer || ''} ${(s as any).type || ''} ${(s as any).serial_number || ''}`.toLowerCase().includes(q)
-                    })
-                    .map(s => (
-                      <button
-                        key={s.id}
-                        onClick={() => {
-                          if (standardPickerIndex === null) return;
-                          setNoteDraft(prev => {
-                            const arr = [...(prev.standardInstruments || [])]
-                            arr[standardPickerIndex] = s.id as any
-                            return { ...prev, standardInstruments: arr }
-                          })
-                          setStandardPickerIndex(null)
-                        }}
-                        className="w-full text-left px-3 py-3 hover:bg-blue-50 border-b border-gray-100 last:border-b-0 transition-colors duration-200"
-                      >
-                        <div className="font-medium text-gray-900 text-sm">
-                          {(s as any).name || (s as any).type || 'Sensor'} — {(s as any).type || ''}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-0.5">
-                          {(s as any).manufacturer || ''} • SN {(s as any).serial_number || '-'}
-                        </div>
-                      </button>
-                    ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex justify-end space-x-2 p-4 border-t border-gray-200 bg-gray-50/50">
-              <button
-                onClick={() => setStandardPickerIndex(null)}
-                className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all duration-200 border border-gray-300"
-              >
-                Tutup
-              </button>
-            </div>
           </div>
-        </div>
+        )
+      }
+      {/* QC Modal */}
+      {qcModalCertificate && (
+        <QCDataModal
+          isOpen={showQCModal}
+          onClose={() => {
+            setShowQCModal(false);
+            setQcModalCertificate(null);
+          }}
+          title={qcModalCertificate.no_certificate}
+          sessionId={
+            Array.isArray(qcModalCertificate.results) && qcModalCertificate.results.length > 0
+              ? (qcModalCertificate.results[0] as any).session_id
+              : undefined
+          }
+          certificateId={String(qcModalCertificate.id)}
+          certificateInstrumentId={qcModalCertificate.instrument || undefined}
+          instruments={instruments}
+          sensors={
+            instruments.find(i => i.id === qcModalCertificate.instrument)?.sensor || []
+          }
+        />
       )}
 
-      {/* Correction Data Modal */}
-      {viewingCorrectionStandard && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="bg-[#1e377c] p-4 flex justify-between items-center">
-              <div>
-                <h3 className="text-white font-bold text-lg">Tabel Koreksi Standar</h3>
-                <p className="text-blue-200 text-xs">
-                  {viewingCorrectionStandard.no_certificate} | {viewingCorrectionStandard.calibration_date}
-                </p>
-              </div>
-              <button
-                onClick={() => setViewingCorrectionStandard(null)}
-                className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors"
-              >
-                <CloseIcon className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-0 max-h-[60vh] overflow-y-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0 z-10 shadow-sm">
-                  <tr>
-                    <th className="px-6 py-3 border-b">Setpoint</th>
-                    <th className="px-6 py-3 border-b">Correction</th>
-                    <th className="px-6 py-3 border-b">U95</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {Array.isArray(viewingCorrectionStandard.correction_std) && viewingCorrectionStandard.correction_std.length > 0 ? (
-                    viewingCorrectionStandard.correction_std.map((row: any, idx: number) => (
-                      <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
-                        <td className="px-6 py-3 font-medium text-gray-900">{row.setpoint}</td>
-                        <td className="px-6 py-3 text-blue-700">{row.correction}</td>
-                        <td className="px-6 py-3 text-gray-600">{row.u95}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={3} className="px-6 py-8 text-center text-gray-500 italic bg-gray-50/30">
-                        Tidak ada data koreksi tersedia untuk sertifikat ini.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="p-4 bg-gray-50 border-t border-gray-100 text-right">
-              <button
-                onClick={() => setViewingCorrectionStandard(null)}
-                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 font-medium transition-colors shadow-sm"
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* LHKS Modal */}
+      {lhksCertificate && (
+        <LHKSReport
+          isOpen={showLHKSModal}
+          onClose={() => {
+            setShowLHKSModal(false)
+            setLhksCertificate(null)
+          }}
+          certificate={lhksCertificate}
+          owner={stations.find(s => s.id === lhksCertificate.station) || null}
+          instrument={instruments.find(i => i.id === lhksCertificate.instrument) || null}
+          sensors={
+            instruments.find(i => i.id === lhksCertificate.instrument)?.sensor || []
+          }
+          rawData={lhksRawData}
+          standardCerts={standardCerts}
+          calibrationDate={(lhksCertificate.results as any)?.[0]?.startDate || lhksCertificate.issue_date}
+          calibrationLocation={(lhksCertificate.results as any)?.[0]?.place || ''}
+          environmentConditions={(() => {
+            const envs = (lhksCertificate.results as any)?.[0]?.environment || [];
+            const temp = envs.find((e: any) => e.key.toLowerCase().includes('suhu') || e.key.toLowerCase().includes('temp'))?.value;
+            const hum = envs.find((e: any) => e.key.toLowerCase().includes('kelembapan') || e.key.toLowerCase().includes('humidity') || e.key.toLowerCase().includes('rh'))?.value;
+            return { temperature: temp || '-', humidity: hum || '-' };
+          })()}
+        />
       )}
-    </div>
+    </div >
   )
 }
 
