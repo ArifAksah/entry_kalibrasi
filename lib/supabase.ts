@@ -175,6 +175,7 @@ export interface Instrument {
   serial_number: string
   others?: string | null
   name: string
+  instrument_names_id?: number | null // FK to instrument_names table
   station_id?: number | null // Foreign key column
   station?: Station | null // Relasi data (opsional)
   memiliki_lebih_satu?: boolean // Field untuk mengontrol tampilan sensor

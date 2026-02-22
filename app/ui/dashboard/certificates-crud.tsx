@@ -1004,7 +1004,7 @@ const CertificatesCRUD: React.FC = () => {
               // BUT, the raw_data table usually has `sensor_id_uut`. 
               // We can group by `sensor_id_uut`.
 
-              const grouped: Record<number, any[]> = {};
+              const grouped: Record<string, any[]> = {};
               data.data.forEach((row: any) => {
                 const key = row.sensor_id_uut || 'unknown';
                 if (!grouped[key]) grouped[key] = [['Timestamp', 'Standard', 'UUT']]; // Headers

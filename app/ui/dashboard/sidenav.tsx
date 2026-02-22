@@ -60,6 +60,13 @@ const Icon = {
       <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
+  database: (
+    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M4 7c0-1.657 3.582-3 8-3s8 1.343 8 3v2c0 1.657-3.582 3-8 3S4 10.657 4 9V7z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 9v5c0 1.657 3.582 3 8 3s8-1.343 8-3V9" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 14v5c0 1.657 3.582 3 8 3s8-1.343 8-3v-5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
 };
 
 // Sections configuration
@@ -100,6 +107,12 @@ const sections: NavSection[] = [
       { name: 'Master Satuan', href: '/units', icon: Icon.beaker },
     ],
   },
+  {
+    title: 'Master Data',
+    items: [
+      { name: 'Master Nama', href: '/master-names', icon: Icon.database },
+    ],
+  },
 ];
 
 const SideNav: React.FC = () => {
@@ -123,6 +136,14 @@ const SideNav: React.FC = () => {
       if (section.title === 'Administration') {
         // Only admin can see administration section
         if (role === 'admin') {
+          return section;
+        }
+        return { ...section, items: [] };
+      }
+
+      if (section.title === 'Master Data') {
+        // Admin and calibrator can see Master Data
+        if (role === 'admin' || role === 'calibrator') {
           return section;
         }
         return { ...section, items: [] };

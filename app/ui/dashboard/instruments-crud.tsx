@@ -31,7 +31,12 @@ const InstrumentsCRUD: React.FC = () => {
     name: '',
     station_id: null,
     memiliki_lebih_satu: false,
+    instrument_names_id: null,
   })
+
+  // Lookup tables for dropdowns
+  const [instrumentNames, setInstrumentNames] = useState<Array<{ id: number; name: string }>>([])
+  const [sensorNames, setSensorNames] = useState<Array<{ id: number; name: string }>>([])
   const pageSize = 10
   const [currentPage, setCurrentPage] = useState(1)
   const [activeTab, setActiveTab] = useState<'instruments' | 'certStandard'>('instruments')
@@ -179,6 +184,13 @@ const InstrumentsCRUD: React.FC = () => {
     if (role) {
       initStations()
       fetchUnitsList()
+      // Fetch instrument_names and sensor_names for dropdowns
+      fetch('/api/instrument-names').then(r => r.json()).then(data => {
+        if (Array.isArray(data)) setInstrumentNames(data)
+      }).catch(() => { })
+      fetch('/api/sensor-names').then(r => r.json()).then(data => {
+        if (data?.data && Array.isArray(data.data)) setSensorNames(data.data)
+      }).catch(() => { })
     }
   }, [role, can, fetchStations, fetchUnitsList])
 
@@ -230,6 +242,7 @@ const InstrumentsCRUD: React.FC = () => {
         name: item.name,
         station_id: item.station_id,
         memiliki_lebih_satu: item.memiliki_lebih_satu || false,
+        instrument_names_id: (item as any).instrument_names_id || null,
       }
       setForm(formData)
 
@@ -273,6 +286,7 @@ const InstrumentsCRUD: React.FC = () => {
         name: '',
         station_id: null,
         memiliki_lebih_satu: false,
+        instrument_names_id: null,
       })
       setSensorForms([])
     }
@@ -1133,13 +1147,31 @@ const InstrumentsCRUD: React.FC = () => {
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             Instrument Name *
                           </label>
-                          <input
-                            value={form.name}
-                            onChange={e => setForm({ ...form, name: e.target.value })}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                            placeholder="Enter instrument name"
-                            required
-                          />
+                          <div className="relative">
+                            <select
+                              value={form.instrument_names_id ?? ''}
+                              onChange={e => {
+                                const selected = instrumentNames.find(n => n.id === Number(e.target.value))
+                                setForm({
+                                  ...form,
+                                  instrument_names_id: selected ? selected.id : null,
+                                  name: selected ? selected.name : ''
+                                })
+                              }}
+                              className="w-full appearance-none bg-white pl-4 pr-10 py-3 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 cursor-pointer shadow-sm"
+                              required
+                            >
+                              <option value="">-- Pilih Nama Instrumen --</option>
+                              {instrumentNames.map(n => (
+                                <option key={n.id} value={n.id}>{n.name}</option>
+                              ))}
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                              <svg className="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                          </div>
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1589,13 +1621,23 @@ const InstrumentsCRUD: React.FC = () => {
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
                                       Nama Sensor
                                     </label>
-                                    <input
-                                      type="text"
-                                      value={sensor.nama_sensor}
-                                      onChange={(e) => updateSensor(sensor.id, 'nama_sensor', e.target.value)}
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                      placeholder="Enter sensor name"
-                                    />
+                                    <div className="relative">
+                                      <select
+                                        value={sensor.nama_sensor || ''}
+                                        onChange={(e) => updateSensor(sensor.id, 'nama_sensor', e.target.value)}
+                                        className="w-full appearance-none bg-white pl-4 pr-10 py-3 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 cursor-pointer shadow-sm"
+                                      >
+                                        <option value="">-- Pilih Nama Sensor --</option>
+                                        {sensorNames.map(n => (
+                                          <option key={n.id} value={n.name}>{n.name}</option>
+                                        ))}
+                                      </select>
+                                      <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                                        <svg className="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                        </svg>
+                                      </div>
+                                    </div>
                                   </div>
                                   <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
