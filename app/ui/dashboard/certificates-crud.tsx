@@ -16,8 +16,46 @@ import { EditIcon, DeleteIcon } from '../../../components/ui/ActionIcons'
 import { read, utils } from 'xlsx'
 import QCDataModal from '../../../components/features/QCDataModal'
 import LHKSReport from '../../../components/features/LHKSReport'
+import DateRangePicker from '../../../components/ui/DateRangePicker'
 
 // Keep TrashIcon for backward compatibility in this file
+
+/**
+ * Parses correction data from any historical DB format into a uniform array of
+ * { setpoint, correction, u95 } objects.
+ */
+function parseCorrectionData(cert: any): Array<{ setpoint: string; correction: string; u95: string }> {
+  // Priority 1: correction_data already built as objects
+  if (Array.isArray(cert.correction_data) && cert.correction_data.length > 0 && typeof cert.correction_data[0] === 'object') {
+    return cert.correction_data.map((d: any) => ({ setpoint: String(d.setpoint ?? ''), correction: String(d.correction ?? ''), u95: String(d.u95 ?? '') }));
+  }
+  // Priority 2: New schema — separate setpoint[] + correction_std[] columns
+  if (Array.isArray(cert.setpoint) && cert.setpoint.length > 0 && Array.isArray(cert.correction_std)) {
+    return cert.setpoint.map((s: any, idx: number) => ({
+      setpoint: String(s ?? ''),
+      correction: String((cert.correction_std as any[])[idx] ?? ''),
+      u95: String((Array.isArray(cert.u95_std) ? (cert.u95_std as any[])[idx] : '') ?? '')
+    }));
+  }
+  // Priority 3: correction_std exists, try to parse
+  if (cert.correction_std) {
+    const cs = cert.correction_std;
+    if (Array.isArray(cs) && cs.length > 0 && typeof cs[0] === 'object' && cs[0] !== null) {
+      return cs.map((d: any) => ({ setpoint: String(d.setpoint ?? ''), correction: String(d.correction ?? d.koreksi ?? ''), u95: String(d.u95 ?? d.u95_std ?? '') }));
+    }
+    if (!Array.isArray(cs) && typeof cs === 'object' && cs !== null) {
+      const koreksiArr: any[] = cs.koreksi ?? cs.correction ?? [];
+      const setpointArr: any[] = cs.setpoint ?? [];
+      const u95Arr: any[] = cs.u95 ?? cs.u95_std ?? [];
+      if (koreksiArr.length > 0) return koreksiArr.map((k: any, idx: number) => ({ setpoint: String(setpointArr[idx] ?? ''), correction: String(k ?? ''), u95: String(u95Arr[idx] ?? '') }));
+    }
+    if (Array.isArray(cs) && cs.length > 0) {
+      return cs.map((c: any) => ({ setpoint: '', correction: String(c ?? ''), u95: '' }));
+    }
+  }
+  return [];
+}
+
 const TrashIcon = ({ className = "" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -297,6 +335,9 @@ const CertificatesCRUD: React.FC = () => {
     place: '',
     notes: ''
   })
+
+  // Toggle: false = tanggal tunggal, true = rentang (start + end)
+  // (replaced by DateRangePicker component)
 
   const [uploadedRawData, setUploadedRawData] = useState<any[]>([])
 
@@ -952,8 +993,21 @@ const CertificatesCRUD: React.FC = () => {
         instrument: item.instrument,
         station_address: (item as any).station_address ?? (item.station ? stations.find(s => s.id === item.station)?.address ?? null : null),
       })
-      const savedResults = (item as any).results || []
-      setResults(savedResults.length > 0 ? savedResults : [{
+      // Parse results - can be JSON string or array from DB
+      let parsedResults: any[] = []
+      try {
+        const raw = (item as any).results
+        if (Array.isArray(raw)) {
+          parsedResults = raw
+        } else if (typeof raw === 'string' && raw.trim()) {
+          parsedResults = JSON.parse(raw)
+        }
+      } catch (e) {
+        console.warn('Failed to parse results JSON:', e)
+        parsedResults = []
+      }
+
+      const savedResults = Array.isArray(parsedResults) && parsedResults.length > 0 ? parsedResults : [{
         sensorId: null,
         startDate: '',
         endDate: '',
@@ -968,45 +1022,45 @@ const CertificatesCRUD: React.FC = () => {
           others: '',
           standardInstruments: []
         }
-      }])
+      }]
+      setResults(savedResults)
 
-      // Fetch Raw Data if session_id is available (via the first result item usually, or we need to find it)
-      // Actually, certificate doesn't have session_id directly on it in this interface, 
-      // but we link via session_id in the DB. 
-      // Wait, where is the session_id stored in the frontend object? 
-      // It seems it's not directly in `Certificate` type here?
-      // Let's check `Link Certificate to CalibrationSession` task.
-      // We updated `saveSessionAndRawData` to return `sessionData.id`. 
-      // But when fetching certificates, do we get `session_id`?
-      // If `results` has it? No, results is jsonb.
+      // Restore global standard instrument from first result (if available)
+      const firstResult = savedResults[0] as any
+      if (firstResult?.standardInstrumentId) {
+        setGlobalStandardInstrumentId(firstResult.standardInstrumentId)
+      }
+      if (firstResult?.standardCertificateNumber) {
+        setGlobalStandardCertificateNumber(firstResult.standardCertificateNumber)
+      }
 
-      // We need to fetch raw data based on ... ?
-      // If the certificate is linked to a session, the certificates table might have `session_id`.
-      // Let's assume (item as any).session_id existence or try to fetch by certificate_id if backend supports it.
-      // For now, let's try to see if (item as any).session_id exists or if we can fetch by certificate ID.
+      // Restore sessionDetails from first result
+      if (firstResult?.startDate || firstResult?.endDate || firstResult?.place) {
+        setSessionDetails({
+          start_date: firstResult.startDate || '',
+          end_date: firstResult.endDate || '',
+          place: firstResult.place || '',
+          notes: ''
+        })
+      }
 
-      // Actually, looking at previous code, `saveSessionAndRawData` saves session, then links it?
-      // The `certificate` table has `session_id` column?
-      // The `task.md` said: "- [ ] Add `session_id` column to `certificate` table." -> It was checked!
-      // So `item.session_id` should exist.
 
-      const sessionId = (item as any).session_id;
+      // Fetch Raw Data: session_id is stored inside each result item (results[i].session_id, a JSON field)
+      // NOT as a top-level certificate column. Search all results for the first available session_id.
+      const sessionId = savedResults
+        .map((r: any) => r.session_id)
+        .find((sid: any) => !!sid) ?? (item as any).session_id ?? null;
+
       if (sessionId) {
+        setRawDataFilename(`Memuat data session ${sessionId}...`)
         fetch(`/api/raw-data?session_id=${sessionId}`)
           .then(res => res.json())
           .then(data => {
-            if (data.data && Array.isArray(data.data)) {
-              // Group flat raw_data rows back into sheets structure
-              // raw_data keys: session_id, timestamp, standard_data, uut_data, sensor_id_uut, sensor_id_std
-              // We need to reconstruct: { name: string, data: any[][] }[]
-              // Since we don't store sheet names in raw_data, we might have to genericize or guess.
-              // Or, we just show "Loaded Data" as one sheet if we can't distinguish.
-              // BUT, the raw_data table usually has `sensor_id_uut`. 
-              // We can group by `sensor_id_uut`.
-
+            if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+              // Group flat raw_data rows back into sheets by sensor_id_uut
               const grouped: Record<string, any[]> = {};
               data.data.forEach((row: any) => {
-                const key = row.sensor_id_uut || 'unknown';
+                const key = String(row.sensor_id_uut ?? 'unknown');
                 if (!grouped[key]) grouped[key] = [['Timestamp', 'Standard', 'UUT']]; // Headers
                 grouped[key].push([
                   row.timestamp,
@@ -1015,20 +1069,33 @@ const CertificatesCRUD: React.FC = () => {
                 ]);
               });
 
-              const reconstructedSheets = Object.keys(grouped).map((key, idx) => ({
-                name: `Sensor ${key === 'unknown' ? 'Unknown' : key}`,
-                data: grouped[key] as any[],
-                sensor_id_uut: key === 'unknown' ? null : Number(key),
-                sensor_id_std: data.data.find((d: any) => (d.sensor_id_uut == key))?.sensor_id_std
-              }));
+              const reconstructedSheets = Object.keys(grouped).map((key) => {
+                const sensorId = key === 'unknown' ? null : Number(key);
+                const matchedSensor = sensorId ? sensors.find((s: any) => s.id === sensorId) : null;
+                const sensorLabel = matchedSensor
+                  ? (matchedSensor.name || matchedSensor.type || `Sensor ${sensorId}`)
+                  : (key === 'unknown' ? 'Unknown' : `Sensor ${key}`);
+                return {
+                  name: sensorLabel,
+                  data: grouped[key] as any[],
+                  sensor_id_uut: sensorId,
+                  sensor_id_std: data.data.find((d: any) => String(d.sensor_id_uut) === key)?.sensor_id_std
+                };
+              });
 
-              if (reconstructedSheets.length > 0) {
-                setRawData(reconstructedSheets);
-                setRawDataFilename(`Session ${sessionId} Data`);
-              }
+              setRawData(reconstructedSheets);
+              setRawDataFilename(`Data Session ${sessionId} (${reconstructedSheets.length} sensor)`);
+            } else {
+              setRawData([]);
+              setRawDataFilename(null);
             }
           })
-          .catch(err => console.error("Failed to load raw data", err));
+          .catch(err => {
+            console.error("Failed to load raw data", err)
+            setRawData([]);
+            setRawDataFilename(null);
+          });
+
       } else {
         setRawData([]);
         setRawDataFilename(null);
@@ -1070,6 +1137,9 @@ const CertificatesCRUD: React.FC = () => {
   const closeModal = () => {
     setIsModalOpen(false)
     setEditing(null)
+    setRawData([])
+    setRawDataFilename(null)
+
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1879,23 +1949,21 @@ const CertificatesCRUD: React.FC = () => {
                     <span className="bg-gray-800 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span>
                     Detail Sesi Kalibrasi (Global)
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Tanggal Mulai</label>
-                      <input
-                        type="datetime-local"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
-                        value={sessionDetails.start_date}
-                        onChange={e => setSessionDetails({ ...sessionDetails, start_date: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Tanggal Selesai</label>
-                      <input
-                        type="datetime-local"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
-                        value={sessionDetails.end_date}
-                        onChange={e => setSessionDetails({ ...sessionDetails, end_date: e.target.value })}
+                      <label className="block text-xs font-semibold text-gray-700">Tanggal Kalibrasi</label>
+                      <DateRangePicker
+                        startDate={sessionDetails.start_date ? sessionDetails.start_date.split('T')[0] : ''}
+                        endDate={sessionDetails.end_date ? sessionDetails.end_date.split('T')[0] : ''}
+                        onChange={(start, end) => {
+                          setSessionDetails(s => ({
+                            ...s,
+                            // Store as datetime: start of day for start, end of day for end
+                            start_date: start ? `${start}T00:00` : '',
+                            end_date: end ? `${end}T23:59` : (start ? `${start}T23:59` : '')
+                          }))
+                        }}
+                        placeholder="Pilih rentang tanggal kalibrasi"
                       />
                     </div>
                     <div className="space-y-1">
@@ -1910,6 +1978,8 @@ const CertificatesCRUD: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+
 
                 {/* Bagian III – Unggah Data Mentah & Identitas Alat */}
                 <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2 px-1">
@@ -2608,7 +2678,7 @@ const CertificatesCRUD: React.FC = () => {
                 </div>
 
               </form>
-            </div>
+            </div >
           </div >
         </div >
       )}
@@ -3504,21 +3574,24 @@ const CertificatesCRUD: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {Array.isArray(viewingCorrectionStandard.correction_std) && viewingCorrectionStandard.correction_std.length > 0 ? (
-                      viewingCorrectionStandard.correction_std.map((row: any, idx: number) => (
-                        <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
-                          <td className="px-6 py-3 font-medium text-gray-900">{row.setpoint}</td>
-                          <td className="px-6 py-3 text-blue-700">{row.correction}</td>
-                          <td className="px-6 py-3 text-gray-600">{row.u95}</td>
+                    {(() => {
+                      const rows = parseCorrectionData(viewingCorrectionStandard);
+                      return rows.length > 0 ? (
+                        rows.map((row, idx) => (
+                          <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
+                            <td className="px-6 py-3 font-medium text-gray-900">{row.setpoint || '-'}</td>
+                            <td className="px-6 py-3 text-blue-700">{row.correction}</td>
+                            <td className="px-6 py-3 text-gray-600">{row.u95 || '-'}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={3} className="px-6 py-8 text-center text-gray-500 italic bg-gray-50/30">
+                            Tidak ada data koreksi tersedia untuk sertifikat ini.
+                          </td>
                         </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={3} className="px-6 py-8 text-center text-gray-500 italic bg-gray-50/30">
-                          Tidak ada data koreksi tersedia untuk sertifikat ini.
-                        </td>
-                      </tr>
-                    )}
+                      );
+                    })()}
                   </tbody>
                 </table>
               </div>
@@ -3536,54 +3609,58 @@ const CertificatesCRUD: React.FC = () => {
         )
       }
       {/* QC Modal */}
-      {qcModalCertificate && (
-        <QCDataModal
-          isOpen={showQCModal}
-          onClose={() => {
-            setShowQCModal(false);
-            setQcModalCertificate(null);
-          }}
-          title={qcModalCertificate.no_certificate}
-          sessionId={
-            Array.isArray(qcModalCertificate.results) && qcModalCertificate.results.length > 0
-              ? (qcModalCertificate.results[0] as any).session_id
-              : undefined
-          }
-          certificateId={String(qcModalCertificate.id)}
-          certificateInstrumentId={qcModalCertificate.instrument || undefined}
-          instruments={instruments}
-          sensors={
-            instruments.find(i => i.id === qcModalCertificate.instrument)?.sensor || []
-          }
-        />
-      )}
+      {
+        qcModalCertificate && (
+          <QCDataModal
+            isOpen={showQCModal}
+            onClose={() => {
+              setShowQCModal(false);
+              setQcModalCertificate(null);
+            }}
+            title={qcModalCertificate.no_certificate}
+            sessionId={
+              Array.isArray(qcModalCertificate.results) && qcModalCertificate.results.length > 0
+                ? (qcModalCertificate.results[0] as any).session_id
+                : undefined
+            }
+            certificateId={String(qcModalCertificate.id)}
+            certificateInstrumentId={qcModalCertificate.instrument || undefined}
+            instruments={instruments}
+            sensors={
+              instruments.find(i => i.id === qcModalCertificate.instrument)?.sensor || []
+            }
+          />
+        )
+      }
 
       {/* LHKS Modal */}
-      {lhksCertificate && (
-        <LHKSReport
-          isOpen={showLHKSModal}
-          onClose={() => {
-            setShowLHKSModal(false)
-            setLhksCertificate(null)
-          }}
-          certificate={lhksCertificate}
-          owner={stations.find(s => s.id === lhksCertificate.station) || null}
-          instrument={instruments.find(i => i.id === lhksCertificate.instrument) || null}
-          sensors={
-            instruments.find(i => i.id === lhksCertificate.instrument)?.sensor || []
-          }
-          rawData={lhksRawData}
-          standardCerts={standardCerts}
-          calibrationDate={(lhksCertificate.results as any)?.[0]?.startDate || lhksCertificate.issue_date}
-          calibrationLocation={(lhksCertificate.results as any)?.[0]?.place || ''}
-          environmentConditions={(() => {
-            const envs = (lhksCertificate.results as any)?.[0]?.environment || [];
-            const temp = envs.find((e: any) => e.key.toLowerCase().includes('suhu') || e.key.toLowerCase().includes('temp'))?.value;
-            const hum = envs.find((e: any) => e.key.toLowerCase().includes('kelembapan') || e.key.toLowerCase().includes('humidity') || e.key.toLowerCase().includes('rh'))?.value;
-            return { temperature: temp || '-', humidity: hum || '-' };
-          })()}
-        />
-      )}
+      {
+        lhksCertificate && (
+          <LHKSReport
+            isOpen={showLHKSModal}
+            onClose={() => {
+              setShowLHKSModal(false)
+              setLhksCertificate(null)
+            }}
+            certificate={lhksCertificate}
+            owner={stations.find(s => s.id === lhksCertificate.station) || null}
+            instrument={instruments.find(i => i.id === lhksCertificate.instrument) || null}
+            sensors={
+              instruments.find(i => i.id === lhksCertificate.instrument)?.sensor || []
+            }
+            rawData={lhksRawData}
+            standardCerts={standardCerts}
+            calibrationDate={(lhksCertificate.results as any)?.[0]?.startDate || lhksCertificate.issue_date}
+            calibrationLocation={(lhksCertificate.results as any)?.[0]?.place || ''}
+            environmentConditions={(() => {
+              const envs = (lhksCertificate.results as any)?.[0]?.environment || [];
+              const temp = envs.find((e: any) => e.key.toLowerCase().includes('suhu') || e.key.toLowerCase().includes('temp'))?.value;
+              const hum = envs.find((e: any) => e.key.toLowerCase().includes('kelembapan') || e.key.toLowerCase().includes('humidity') || e.key.toLowerCase().includes('rh'))?.value;
+              return { temperature: temp || '-', humidity: hum || '-' };
+            })()}
+          />
+        )
+      }
     </div >
   )
 }

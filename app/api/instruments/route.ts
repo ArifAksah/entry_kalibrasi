@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { manufacturer, type, serial_number, others, name, instrument_names_id, station_id, memiliki_lebih_satu } = body
+    const { manufacturer, type, serial_number, others, name, instrument_names_id, station_id, memiliki_lebih_satu, instrument_type_id } = body
 
     if (!manufacturer || !type || !serial_number || !name) {
       return NextResponse.json({
@@ -135,6 +135,7 @@ export async function POST(request: NextRequest) {
         others: others || null,
         name,
         instrument_names_id: instrument_names_id ? parseInt(instrument_names_id as any) : null,
+        instrument_type_id: instrument_type_id ? parseInt(instrument_type_id as any) : null,
         station_id: station_id ? parseInt(station_id as any) : null,
         memiliki_lebih_satu: memiliki_lebih_satu || false
       })

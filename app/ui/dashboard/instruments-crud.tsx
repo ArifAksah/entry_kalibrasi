@@ -10,8 +10,80 @@ import Alert from '../../../components/ui/Alert'
 import { useAlert } from '../../../hooks/useAlert'
 import Loading from '../../../components/ui/Loading'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
+import CustomSelect from '../../../components/ui/CustomSelect'
 import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
 import { useUnits } from '../../../hooks/useUnits'
+
+/**
+ * Parses correction data from any historical DB format into a uniform array of
+ * { setpoint: string, correction: string, u95: string } objects.
+ *
+ * Handles all formats:
+ * 1. New schema: separate columns setpoint[], correction_std[], u95_std[]
+ * 2. Old format: correction_std = [{setpoint, correction, u95}] (array of objects)
+ * 3. Old format: correction_std = {koreksi: [...]} (object with "koreksi" key, no setpoint)
+ * 4. Old format: correction_std = ["0.01", "0.02", ...] (primitive array, no setpoint)
+ * 5. Sensor API: pre-built correction_data = [{setpoint, correction, u95}]
+ */
+function parseCorrectionData(cert: any): Array<{ setpoint: string; correction: string; u95: string }> {
+  // Priority 1: correction_data already built as objects (from sensors API)
+  if (Array.isArray(cert.correction_data) && cert.correction_data.length > 0 && typeof cert.correction_data[0] === 'object') {
+    return cert.correction_data.map((d: any) => ({
+      setpoint: String(d.setpoint ?? ''),
+      correction: String(d.correction ?? ''),
+      u95: String(d.u95 ?? '')
+    }));
+  }
+
+  // Priority 2: New schema — separate setpoint[] + correction_std[] columns
+  if (Array.isArray(cert.setpoint) && cert.setpoint.length > 0 && Array.isArray(cert.correction_std)) {
+    return cert.setpoint.map((s: any, idx: number) => ({
+      setpoint: String(s ?? ''),
+      correction: String((cert.correction_std as any[])[idx] ?? ''),
+      u95: String((Array.isArray(cert.u95_std) ? (cert.u95_std as any[])[idx] : '') ?? '')
+    }));
+  }
+
+  // Priority 3: correction_std exists, try to parse it
+  if (cert.correction_std) {
+    const cs = cert.correction_std;
+
+    // 3a: array of objects with known keys
+    if (Array.isArray(cs) && cs.length > 0 && typeof cs[0] === 'object' && cs[0] !== null) {
+      return cs.map((d: any) => ({
+        setpoint: String(d.setpoint ?? ''),
+        correction: String(d.correction ?? d.koreksi ?? ''),
+        u95: String(d.u95 ?? d.u95_std ?? '')
+      }));
+    }
+
+    // 3b: object (non-array) — e.g. {koreksi: [...], setpoint: [...]}
+    if (!Array.isArray(cs) && typeof cs === 'object' && cs !== null) {
+      const koreksiArr: any[] = cs.koreksi ?? cs.correction ?? cs.correction_std ?? [];
+      const setpointArr: any[] = cs.setpoint ?? [];
+      const u95Arr: any[] = cs.u95 ?? cs.u95_std ?? [];
+      if (koreksiArr.length > 0) {
+        return koreksiArr.map((k: any, idx: number) => ({
+          setpoint: String(setpointArr[idx] ?? ''),
+          correction: String(k ?? ''),
+          u95: String(u95Arr[idx] ?? '')
+        }));
+      }
+    }
+
+    // 3c: primitive array — just correction values, no setpoint
+    if (Array.isArray(cs) && cs.length > 0) {
+      return cs.map((c: any) => ({
+        setpoint: '',
+        correction: String(c ?? ''),
+        u95: ''
+      }));
+    }
+  }
+
+  return [];
+}
+
 
 const InstrumentsCRUD: React.FC = () => {
   const { instruments, loading, error, addInstrument, updateInstrument, deleteInstrument, fetchInstruments } = useInstruments()
@@ -24,7 +96,7 @@ const InstrumentsCRUD: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editing, setEditing] = useState<Instrument | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [form, setForm] = useState<InstrumentInsert>({
+  const [form, setForm] = useState<InstrumentInsert & { instrument_type_id?: number | null }>({
     manufacturer: '',
     type: '',
     serial_number: '',
@@ -32,11 +104,12 @@ const InstrumentsCRUD: React.FC = () => {
     station_id: null,
     memiliki_lebih_satu: false,
     instrument_names_id: null,
+    instrument_type_id: null,
   })
 
   // Lookup tables for dropdowns
   const [instrumentNames, setInstrumentNames] = useState<Array<{ id: number; name: string }>>([])
-  const [sensorNames, setSensorNames] = useState<Array<{ id: number; name: string }>>([])
+  const [instrumentTypes, setInstrumentTypes] = useState<Array<{ id: number; name: string }>>([])
   const pageSize = 10
   const [currentPage, setCurrentPage] = useState(1)
   const [activeTab, setActiveTab] = useState<'instruments' | 'certStandard'>('instruments')
@@ -52,6 +125,7 @@ const InstrumentsCRUD: React.FC = () => {
   // State untuk sensor form (kondisional) - sekarang array untuk multiple sensors
   const [sensorForms, setSensorForms] = useState<Array<{
     id: string;
+    sensor_name_id: number | null;
     nama_sensor: string;
     merk_sensor: string;
     tipe_sensor: string;
@@ -184,12 +258,14 @@ const InstrumentsCRUD: React.FC = () => {
     if (role) {
       initStations()
       fetchUnitsList()
-      // Fetch instrument_names and sensor_names for dropdowns
+      // Fetch instrument_names for dropdown
       fetch('/api/instrument-names').then(r => r.json()).then(data => {
         if (Array.isArray(data)) setInstrumentNames(data)
       }).catch(() => { })
-      fetch('/api/sensor-names').then(r => r.json()).then(data => {
-        if (data?.data && Array.isArray(data.data)) setSensorNames(data.data)
+      // Fetch instrument_types (Analog/Digital) for dropdown
+      fetch('/api/instrument-types').then(r => r.json()).then(data => {
+        const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []
+        setInstrumentTypes(list)
       }).catch(() => { })
     }
   }, [role, can, fetchStations, fetchUnitsList])
@@ -243,6 +319,7 @@ const InstrumentsCRUD: React.FC = () => {
         station_id: item.station_id,
         memiliki_lebih_satu: item.memiliki_lebih_satu || false,
         instrument_names_id: (item as any).instrument_names_id || null,
+        instrument_type_id: (item as any).instrument_type_id || null,
       }
       setForm(formData)
 
@@ -287,6 +364,7 @@ const InstrumentsCRUD: React.FC = () => {
         station_id: null,
         memiliki_lebih_satu: false,
         instrument_names_id: null,
+        instrument_type_id: null,
       })
       setSensorForms([])
     }
@@ -329,6 +407,7 @@ const InstrumentsCRUD: React.FC = () => {
     const isStandard = typeof isStandardOverride === 'boolean' ? isStandardOverride : isStandardInstrument;
     const newSensor = {
       id: `sensor_${Date.now()}`,
+      sensor_name_id: null,
       nama_sensor: '',
       merk_sensor: '',
       tipe_sensor: '',
@@ -676,36 +755,7 @@ const InstrumentsCRUD: React.FC = () => {
                               </button>
                               <button
                                 onClick={() => {
-                                  // Reconstruct correction_data
-                                  let reconstructedData: any[] = [];
-                                  if (cert.setpoint && Array.isArray(cert.setpoint) &&
-                                    cert.correction_std && Array.isArray(cert.correction_std) &&
-                                    cert.u95_std && Array.isArray(cert.u95_std)) {
-                                    reconstructedData = cert.setpoint.map((s: any, idx: number) => ({
-                                      setpoint: s,
-                                      correction: cert.correction_std[idx],
-                                      u95: cert.u95_std[idx]
-                                    }));
-                                  } else if (cert.correction_data && Array.isArray(cert.correction_data)) {
-                                    // Backward compatibility for old correction_data (if it was an array of objects)
-                                    reconstructedData = cert.correction_data.filter((d: any) => d && typeof d === 'object');
-                                  } else if (cert.correction_std && Array.isArray(cert.correction_std)) {
-                                    // Check if it's array of objects
-                                    if (cert.correction_std.length > 0 && typeof cert.correction_std[0] === 'object') {
-                                      reconstructedData = cert.correction_std.filter((c: any) => c && typeof c === 'object').map((c: any) => ({
-                                        setpoint: c.setpoint ?? '',
-                                        correction: c.correction ?? '',
-                                        u95: c.u95 ?? ''
-                                      }));
-                                    } else if (cert.correction_std.length > 0 && (typeof cert.correction_std[0] === 'string' || typeof cert.correction_std[0] === 'number')) {
-                                      // It's array of primitives (just correction values)
-                                      reconstructedData = cert.correction_std.map((c: any) => ({
-                                        setpoint: '',
-                                        correction: c,
-                                        u95: ''
-                                      }));
-                                    }
-                                  }
+                                  const reconstructedData = parseCorrectionData(cert);
 
                                   setCertForm({
                                     no_certificate: cert.no_certificate,
@@ -755,9 +805,20 @@ const InstrumentsCRUD: React.FC = () => {
               <form onSubmit={async (e) => {
                 e.preventDefault();
                 try {
-                  // Construct payload
+                  // Get sensor_id from context:
+                  // - If editing from Instrument Modal: use actual DB sensor ID from sensorForms
+                  // - If editing from Certificate Standard Tab: use selectedSensorForCert
+                  const activeSensorId = editingSensorIndex !== null
+                    ? (() => {
+                      const sf = sensorForms[editingSensorIndex];
+                      // sf.id may be a temp string like 'sensor_123' or a real DB id
+                      const parsed = parseInt(sf?.id);
+                      return isNaN(parsed) ? null : parsed;
+                    })()
+                    : parseInt(selectedSensorForCert);
+
                   const payload = {
-                    sensor_id: editingSensorIndex !== null ? null : parseInt(selectedSensorForCert),
+                    sensor_id: activeSensorId,
                     no_certificate: certForm.no_certificate,
                     calibration_date: certForm.calibration_date,
                     drift: Number(certForm.drift),
@@ -769,6 +830,7 @@ const InstrumentsCRUD: React.FC = () => {
                       ? sensorForms[editingSensorIndex]?.certificates?.[editingCertIndex]?.id
                       : undefined
                   }
+
 
                   if (editingSensorIndex !== null) {
                     // Update local sensorForms (Instrument Modal)
@@ -1147,31 +1209,75 @@ const InstrumentsCRUD: React.FC = () => {
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             Instrument Name *
                           </label>
-                          <div className="relative">
-                            <select
-                              value={form.instrument_names_id ?? ''}
-                              onChange={e => {
-                                const selected = instrumentNames.find(n => n.id === Number(e.target.value))
-                                setForm({
-                                  ...form,
-                                  instrument_names_id: selected ? selected.id : null,
-                                  name: selected ? selected.name : ''
-                                })
-                              }}
-                              className="w-full appearance-none bg-white pl-4 pr-10 py-3 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 cursor-pointer shadow-sm"
-                              required
-                            >
-                              <option value="">-- Pilih Nama Instrumen --</option>
-                              {instrumentNames.map(n => (
-                                <option key={n.id} value={n.id}>{n.name}</option>
-                              ))}
-                            </select>
-                            <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
-                              <svg className="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                              </svg>
-                            </div>
+                          <CustomSelect
+                            options={instrumentNames.map(n => ({ value: n.id, label: n.name }))}
+                            value={form.instrument_names_id}
+                            onChange={(val) => setForm({ ...form, instrument_names_id: val ? Number(val) : null })}
+                            placeholder="-- Pilih Nama Instrumen --"
+                            clearable={false}
+                          />
+                        </div>
+                        {/* Instrument Type */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Tipe Instrumen <span className="text-gray-400 font-normal text-xs">(opsional)</span>
+                          </label>
+                          <div className="flex gap-3">
+                            {/* Tidak dipilih */}
+                            <label className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 cursor-pointer transition-all duration-150 ${!(form as any).instrument_type_id
+                              ? 'border-gray-400 bg-gray-100'
+                              : 'border-gray-200 bg-white hover:border-gray-300'
+                              }`}>
+                              <input
+                                type="radio"
+                                name="instrument_type_id"
+                                value=""
+                                checked={!(form as any).instrument_type_id}
+                                onChange={() => setForm({ ...form, instrument_type_id: null } as any)}
+                                className="sr-only"
+                              />
+                              <span className="text-sm font-medium text-gray-500">Tidak dipilih</span>
+                            </label>
+                            {/* Render dari instrumentTypes */}
+                            {instrumentTypes.map(t => (
+                              <label key={t.id} className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 cursor-pointer transition-all duration-150 ${(form as any).instrument_type_id === t.id
+                                ? t.name === 'Digital'
+                                  ? 'border-green-500 bg-green-50 text-green-700'
+                                  : 'border-orange-500 bg-orange-50 text-orange-700'
+                                : 'border-gray-200 bg-white hover:border-gray-300 text-gray-600'
+                                }`}>
+                                <input
+                                  type="radio"
+                                  name="instrument_type_id"
+                                  value={t.id}
+                                  checked={(form as any).instrument_type_id === t.id}
+                                  onChange={() => setForm({ ...form, instrument_type_id: t.id } as any)}
+                                  className="sr-only"
+                                />
+                                <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${(form as any).instrument_type_id === t.id
+                                  ? t.name === 'Digital' ? 'bg-green-500' : 'bg-orange-500'
+                                  : 'bg-gray-300'
+                                  }`} />
+                                <span className="text-sm font-semibold">{t.name}</span>
+                              </label>
+                            ))}
                           </div>
+                        </div>
+
+                        {/* Alias - disimpan ke kolom name */}
+                        <div className="lg:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Alias <span className="text-gray-400 font-normal text-xs">(nama khusus alat, wajib)</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={form.name}
+                            onChange={e => setForm({ ...form, name: e.target.value })}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                            placeholder="Contoh: AWS Lapangan 3, Termometer Ruang Server..."
+                            required
+                          />
+                          <p className="text-xs text-gray-400 mt-1">Nama unik untuk membedakan alat ini dari alat sejenis</p>
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1497,33 +1603,7 @@ const InstrumentsCRUD: React.FC = () => {
                                             <button
                                               type="button"
                                               onClick={() => {
-                                                // Reconstruct correction_data
-                                                let reconstructedData: any[] = [];
-                                                if (cert.setpoint && Array.isArray(cert.setpoint) &&
-                                                  cert.correction_std && Array.isArray(cert.correction_std) &&
-                                                  cert.u95_std && Array.isArray(cert.u95_std)) {
-                                                  reconstructedData = cert.setpoint.map((s: any, idx: number) => ({
-                                                    setpoint: s,
-                                                    correction: cert.correction_std[idx],
-                                                    u95: cert.u95_std[idx]
-                                                  }));
-                                                } else if (cert.correction_data && Array.isArray(cert.correction_data)) {
-                                                  reconstructedData = cert.correction_data.filter((d: any) => d && typeof d === 'object');
-                                                } else if (cert.correction_std && Array.isArray(cert.correction_std)) {
-                                                  if (cert.correction_std.length > 0 && typeof cert.correction_std[0] === 'object') {
-                                                    reconstructedData = cert.correction_std.filter((c: any) => c && typeof c === 'object').map((c: any) => ({
-                                                      setpoint: c.setpoint ?? '',
-                                                      correction: c.correction ?? '',
-                                                      u95: c.u95 ?? ''
-                                                    }));
-                                                  } else if (cert.correction_std.length > 0 && (typeof cert.correction_std[0] === 'string' || typeof cert.correction_std[0] === 'number')) {
-                                                    reconstructedData = cert.correction_std.map((c: any) => ({
-                                                      setpoint: '',
-                                                      correction: c,
-                                                      u95: ''
-                                                    }));
-                                                  }
-                                                }
+                                                const reconstructedData = parseCorrectionData(cert);
 
                                                 setCertForm({
                                                   no_certificate: cert.no_certificate,
@@ -1617,28 +1697,33 @@ const InstrumentsCRUD: React.FC = () => {
                                 </div>
 
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                  {/* Nama Sensor dropdown → simpan sensor_name_id */}
                                   <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
                                       Nama Sensor
                                     </label>
-                                    <div className="relative">
-                                      <select
-                                        value={sensor.nama_sensor || ''}
-                                        onChange={(e) => updateSensor(sensor.id, 'nama_sensor', e.target.value)}
-                                        className="w-full appearance-none bg-white pl-4 pr-10 py-3 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 cursor-pointer shadow-sm"
-                                      >
-                                        <option value="">-- Pilih Nama Sensor --</option>
-                                        {sensorNames.map(n => (
-                                          <option key={n.id} value={n.name}>{n.name}</option>
-                                        ))}
-                                      </select>
-                                      <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
-                                        <svg className="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-                                          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                                        </svg>
-                                      </div>
-                                    </div>
+                                    <CustomSelect
+                                      options={instrumentNames.map(n => ({ value: n.id, label: n.name }))}
+                                      value={sensor.sensor_name_id}
+                                      onChange={(val) => updateSensor(sensor.id, 'sensor_name_id', val ? Number(val) : null)}
+                                      placeholder="-- Pilih Nama Sensor --"
+                                      clearLabel="— Tidak dipilih"
+                                    />
                                   </div>
+                                  {/* Alias Sensor → simpan ke kolom name */}
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Alias Sensor <span className="text-gray-400 font-normal text-xs">(nama khusus sensor)</span>
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={sensor.nama_sensor}
+                                      onChange={(e) => updateSensor(sensor.id, 'nama_sensor', e.target.value)}
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                      placeholder="Contoh: Sensor Suhu Ruang A..."
+                                    />
+                                  </div>
+                                  {/* Merk Sensor */}
                                   <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
                                       Merk Sensor
@@ -1881,6 +1966,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                 <button
                                                   type="button"
                                                   onClick={() => {
+                                                    const reconstructedData = parseCorrectionData(cert);
                                                     setCertForm({
                                                       no_certificate: cert.no_certificate,
                                                       calibration_date: cert.calibration_date,
@@ -1888,7 +1974,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                       range: cert.range,
                                                       resolution: cert.resolution,
                                                       u95_general: cert.u95_general,
-                                                      correction_data: cert.correction_std || cert.correction_data || []
+                                                      correction_data: reconstructedData.length > 0 ? reconstructedData : [{ setpoint: '', correction: '', u95: '' }]
                                                     });
                                                     setEditingSensorIndex(index);
                                                     setEditingCertIndex(certIdx);

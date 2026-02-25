@@ -34,6 +34,7 @@ export async function GET(
         funnel_area,
         funnel_area_unit,
         name,
+        sensor_name_id,
         is_standard,
         created_at,
         certificate_standard (
@@ -50,6 +51,7 @@ export async function GET(
     // Transform the data to match the expected format
     const sensors = data?.map(sensor => ({
       id: sensor.id.toString(),
+      sensor_name_id: (sensor as any).sensor_name_id || null,
       nama_sensor: sensor.name || '',
       merk_sensor: sensor.manufacturer || '',
       tipe_sensor: sensor.type || '',
@@ -73,14 +75,51 @@ export async function GET(
         range: c.range,
         resolution: c.resolution,
         u95_general: c.u95_general,
-        correction_data: (Array.isArray(c.setpoint) && Array.isArray(c.correction_std) && Array.isArray(c.u95_std))
-          ? c.setpoint.map((s: any, idx: number) => ({
-            setpoint: s,
-            correction: c.correction_std[idx] ?? '',
-            u95: c.u95_std[idx] ?? ''
-          }))
-          : [], // Reconstruct object array from split columns
-        correction_std: c.correction_std
+        // Build correction_data from all possible historical formats
+        correction_data: (() => {
+          // Priority 1: New schema — separate setpoint[] + correction_std[] columns (both arrays)
+          if (Array.isArray(c.setpoint) && c.setpoint.length > 0 && Array.isArray(c.correction_std)) {
+            return c.setpoint.map((s: any, idx: number) => ({
+              setpoint: s ?? '',
+              correction: c.correction_std[idx] ?? '',
+              u95: (Array.isArray(c.u95_std) ? c.u95_std[idx] : '') ?? ''
+            }));
+          }
+          // Priority 2: correction_std is array of objects (old format with setpoint/correction/u95 keys)
+          if (Array.isArray(c.correction_std) && c.correction_std.length > 0 && typeof c.correction_std[0] === 'object' && c.correction_std[0] !== null) {
+            return c.correction_std.map((d: any) => ({
+              setpoint: String(d.setpoint ?? ''),
+              correction: String(d.correction ?? d.koreksi ?? ''),
+              u95: String(d.u95 ?? d.u95_std ?? '')
+            }));
+          }
+          // Priority 3: correction_std is a plain object (e.g. {koreksi: [...], setpoint: [...]})
+          if (c.correction_std && !Array.isArray(c.correction_std) && typeof c.correction_std === 'object') {
+            const cs = c.correction_std as any;
+            const koreksiArr: any[] = cs.koreksi ?? cs.correction ?? [];
+            const setpointArr: any[] = cs.setpoint ?? (Array.isArray(c.setpoint) ? c.setpoint : []);
+            const u95Arr: any[] = cs.u95 ?? cs.u95_std ?? (Array.isArray(c.u95_std) ? c.u95_std : []);
+            if (koreksiArr.length > 0) {
+              return koreksiArr.map((k: any, idx: number) => ({
+                setpoint: String(setpointArr[idx] ?? ''),
+                correction: String(k ?? ''),
+                u95: String(u95Arr[idx] ?? '')
+              }));
+            }
+          }
+          // Priority 4: correction_std is a primitive array (just correction values, no setpoint)
+          if (Array.isArray(c.correction_std) && c.correction_std.length > 0) {
+            return c.correction_std.map((k: any) => ({
+              setpoint: '',
+              correction: String(k ?? ''),
+              u95: ''
+            }));
+          }
+          return [];
+        })(),
+        correction_std: c.correction_std,
+        setpoint: c.setpoint,
+        u95_std: c.u95_std
       })) : []
     })) || []
 
@@ -117,6 +156,7 @@ export async function POST(
         funnel_area: body.funnel_area || 0,
         funnel_area_unit: body.funnel_area_unit || '',
         name: body.nama_sensor || '',
+        sensor_name_id: body.sensor_name_id ? parseInt(body.sensor_name_id) : null,
         is_standard: body.is_standard || false,
         instrument_id: parseInt(id)
       })
@@ -230,6 +270,7 @@ export async function PUT(
         funnel_area: body.funnel_area || 0,
         funnel_area_unit: body.funnel_area_unit || '',
         name: body.nama_sensor || '',
+        sensor_name_id: body.sensor_name_id ? parseInt(body.sensor_name_id) : null,
         is_standard: body.is_standard || false,
         instrument_id: parseInt(id)
       })

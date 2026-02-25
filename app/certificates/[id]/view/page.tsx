@@ -132,7 +132,7 @@ const ViewCertificatePage: React.FC = () => {
           fetch(`/api/certificates/${id}`),
           fetch('/api/instruments?page=1&pageSize=100'),
           fetch('/api/personel'),
-          fetch('/api/sensors'),
+          fetch('/api/sensors?page=1&pageSize=100'),
         ])
 
         const c = await cRes.json()
@@ -141,7 +141,20 @@ const ViewCertificatePage: React.FC = () => {
 
         if (sRes.ok) {
           const sData = await sRes.json()
-          setSensors(Array.isArray(sData) ? sData : (sData?.data ?? []))
+          const firstBatch = Array.isArray(sData) ? sData : (sData?.data ?? [])
+          const totalPages = sData?.totalPages ?? 1
+          if (totalPages <= 1) {
+            setSensors(firstBatch)
+          } else {
+            // Fetch remaining pages to get all sensors
+            const rest = await Promise.all(
+              Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(pg =>
+                fetch(`/api/sensors?page=${pg}&pageSize=100`).then(r => r.ok ? r.json() : { data: [] })
+              )
+            )
+            const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
+            setSensors([...firstBatch, ...restData])
+          }
         }
 
         console.log('Certificate data:', c)
@@ -813,8 +826,8 @@ const ViewCertificatePage: React.FC = () => {
                                       if (nf.others) parts.push(nf.others)
 
                                       if (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0) {
-                                        const standards = nf.standardInstruments.map((sid: number) => {
-                                          const s = sensors.find((sensor: any) => sensor.id === sid)
+                                        const standards = nf.standardInstruments.map((sid: any) => {
+                                          const s = sensors.find((sensor: any) => Number(sensor.id) === Number(sid))
                                           if (!s) return null
                                           // Format: Name - SN (if available)
                                           const name = s.name || s.type || 'Sensor'
