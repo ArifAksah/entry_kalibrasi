@@ -14,9 +14,11 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
+    "@types/katex": "^0.16.8",
     "@types/nodemailer": "^7.0.2",
     "driver.js": "^1.4.0",
     "jsencrypt": "^3.5.4",
+    "katex": "^0.16.33",
     "next": "latest",
     "nodemailer": "^7.0.9",
     "playwright": "^1.56.1",

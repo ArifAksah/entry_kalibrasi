@@ -1,7 +1,7 @@
 
-import React, { useRef } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Certificate, Instrument, Sensor, Station, CertStandard } from '../../lib/supabase';
-import { normalizeSensorType } from '../../lib/wmo-limits';
+import { fetchQCLimitForSensor, checkQCResult, QCLimit } from '../../lib/qc-utils';
 import bmkgLogo from '../../app/bmkg.png';
 
 // Define RawDataRow interface locally if not exported, or match what's used in QCDataModal
@@ -48,6 +48,28 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
 }) => {
     const printRef = useRef<HTMLDivElement>(null);
 
+    // Fetch QC limits for all unique sensor IDs present in rawData
+    const [qcLimits, setQcLimits] = useState<Record<string, QCLimit | null>>({});
+
+    useEffect(() => {
+        if (!isOpen || rawData.length === 0) return;
+
+        const uniqueSensorIds = Array.from(
+            new Set(rawData.map(r => r.sensor_id_uut).filter((id): id is number => !!id))
+        );
+
+        Promise.all(
+            uniqueSensorIds.map(async id => {
+                const limit = await fetchQCLimitForSensor(id);
+                return [String(id), limit] as [string, QCLimit | null];
+            })
+        ).then(results => {
+            const map: Record<string, QCLimit | null> = {};
+            results.forEach(([key, limit]) => { map[key] = limit; });
+            setQcLimits(map);
+        });
+    }, [isOpen, rawData]);
+
     if (!isOpen) return null;
 
     const handlePrint = () => {
@@ -75,16 +97,6 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
         return [...rows.slice(0, 15), ...rows.slice(-15)];
     };
 
-    // Helper: Find Standard info used for a sensor
-    // This logic might need refinement based on how standards are linked.
-    // For now, listing all available standards or trying to match by sensor type/ID.
-    const getStandardInfo = (sensorId?: number) => {
-        // Logic to find specific standard used for this sensor
-        // If generic, return all relevant standards
-        return standardCerts;
-    };
-
-
     return (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[70] backdrop-blur-sm">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden">
@@ -102,16 +114,33 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                     </div>
                 </div>
 
+                {/* Legend */}
+                <div className="px-4 py-2 border-b border-gray-100 bg-white flex items-center gap-4 text-xs text-gray-600 flex-wrap">
+                    <span className="font-semibold">Keterangan warna baris:</span>
+                    <span className="flex items-center gap-1.5">
+                        <span className="inline-block w-4 h-4 rounded bg-white border border-gray-300"></span>
+                        Nilai koreksi ≤ batas keberterimaan WMO (OK)
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                        <span className="inline-block w-4 h-4 rounded bg-pink-200 border border-pink-300"></span>
+                        Nilai koreksi melebihi batas WMO (perlu perhatian)
+                    </span>
+                    {Object.keys(qcLimits).length === 0 && rawData.length > 0 && (
+                        <span className="text-yellow-600">⚠ Memuat batas QC dari Master QC...</span>
+                    )}
+                </div>
+
                 {/* Preview Content (Scrollable) */}
                 <div className="flex-1 overflow-auto p-8 bg-gray-100">
                     <div ref={printRef} className="bg-white p-[10mm] shadow-lg max-w-[210mm] mx-auto min-h-[297mm] text-black font-serif text-[10pt] leading-tight">
                         <style>{`
                             @media print {
                                 @page { size: A4; margin: 10mm; }
-                                body { background: white; -webkit-print-color-adjust: exact; }
+                                body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                                 .page-break { page-break-before: always; }
                                 table { border-collapse: collapse; width: 100%; }
                                 th, td { border: 1px solid black; padding: 4px; text-align: center; }
+                                .row-exceed { background-color: #fce7f3 !important; }
                             }
                         `}</style>
 
@@ -120,7 +149,6 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                             {/* Header */}
                             <div className="flex items-center border-b-2 border-black pb-4 mb-6">
                                 <div className="w-20 h-20 relative mr-4">
-                                    {/* Logo Placeholder - assuming next/image not working easily in print raw HTML replacement */}
                                     <img src={bmkgLogo.src} alt="BMKG" className="w-full h-full object-contain" />
                                 </div>
                                 <div className="text-center flex-1">
@@ -164,7 +192,6 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                         <tr>
                                             <td className="border-none w-48 align-top">Resolusi / <span className="italic">Resolution</span></td>
                                             <td className="border-none align-top">
-                                                {/* Group Resolutions */}
                                                 <table className="border-none w-full">
                                                     <tbody>
                                                         {sensors.map(s => (
@@ -267,7 +294,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                             <div className="mb-6">
                                 <h4 className="font-bold underline mb-2">KETELUSURAN / <span className="italic font-normal">Traceability</span></h4>
                                 <div className="ml-4">
-                                    <p>Tertulusur ke Satuan Internasional (SI) melalui:</p>
+                                    <p>Tertelusur ke Satuan Internasional (SI) melalui:</p>
                                     <ul className="list-disc pl-5 mt-1">
                                         <li>Laboratorium Kalibrasi BMKG (LK-095-IDN)</li>
                                         <li>Lainnya...</li>
@@ -286,9 +313,22 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                             const sensor = sensors.find(s => String(s.id) === sensorKey);
                             const sensorName = sensor ? (sensor.name || sensor.type || `Sensor #${sensor.id}`) : `Sensor #${sensorKey}`;
 
+                            // Get the QC limit for this sensor from master_qc
+                            const qcLimit = sensorKey !== 'unknown' ? (qcLimits[sensorKey] ?? null) : null;
+
                             return (
                                 <div key={sensorKey} className="mb-8 break-inside-avoid">
-                                    <h4 className="font-bold mb-2">Data Pengukuran: {sensorName}</h4>
+                                    <h4 className="font-bold mb-1">Data Pengukuran: {sensorName}</h4>
+                                    {qcLimit ? (
+                                        <p className="text-xs text-gray-500 mb-2">
+                                            Batas keberterimaan WMO (Master QC): <b>± {qcLimit.rawLimit} {qcLimit.unit}</b>
+                                            {' '}— <span className="text-pink-600">Baris merah muda = melebihi batas</span>
+                                        </p>
+                                    ) : (
+                                        <p className="text-xs text-yellow-600 mb-2">
+                                            ⚠ Batas QC tidak ditemukan di Master QC untuk sensor ini.
+                                        </p>
+                                    )}
                                     <table className="w-full text-xs">
                                         <thead>
                                             <tr>
@@ -296,23 +336,40 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                 <th>Timestamp</th>
                                                 <th>Reading Std</th>
                                                 <th>Reading UUT</th>
-                                                <th>Correction</th>
-                                                {/* Add Uncertainty column if data implies it, else skip */}
+                                                <th>Correction (Std - UUT)</th>
+                                                <th>Batas WMO</th>
+                                                <th>Status</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {sampled.map((row, idx) => (
-                                                <tr key={row.id}>
-                                                    <td>{idx + 1}</td>
-                                                    <td>{new Date(row.timestamp).toLocaleString('id-ID')}</td>
-                                                    <td>{row.standard_data}</td>
-                                                    <td>{row.uut_data}</td>
-                                                    <td>{row.uut_correction?.toFixed(4) ?? (row.standard_data - row.uut_data).toFixed(4)}</td>
-                                                </tr>
-                                            ))}
+                                            {sampled.map((row, idx) => {
+                                                const rawCorrection = row.uut_correction ?? (row.standard_data - row.uut_data);
+                                                const qcResult = checkQCResult(rawCorrection, qcLimit);
+                                                const isFail = !qcResult.passed;
+
+                                                return (
+                                                    <tr
+                                                        key={row.id}
+                                                        className={isFail ? 'row-exceed bg-pink-100' : ''}
+                                                        style={isFail ? { backgroundColor: '#fce7f3' } : {}}
+                                                    >
+                                                        <td>{idx + 1}</td>
+                                                        <td>{new Date(row.timestamp).toLocaleString('id-ID')}</td>
+                                                        <td>{row.standard_data}</td>
+                                                        <td>{row.uut_data}</td>
+                                                        <td style={{ fontWeight: isFail ? 'bold' : 'normal', color: isFail ? '#dc2626' : 'inherit' }}>
+                                                            {qcResult.correction > 0 ? '+' : ''}{qcResult.correction}
+                                                        </td>
+                                                        <td>{qcResult.limitStr}</td>
+                                                        <td style={{ fontWeight: 'bold', color: isFail ? '#dc2626' : '#16a34a' }}>
+                                                            {isFail ? 'MELEBIHI' : 'OK'}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                             {data.length > 30 && (
                                                 <tr>
-                                                    <td colSpan={5} className="bg-gray-100 text-center italic py-1">
+                                                    <td colSpan={7} className="bg-gray-100 text-center italic py-1">
                                                         ... {data.length - 30} data points hidden ...
                                                     </td>
                                                 </tr>

@@ -2119,12 +2119,17 @@ const CertificatesCRUD: React.FC = () => {
                           }}
                           options={(() => {
                             if (!globalStandardInstrumentId) return [];
-                            // Get certs for the selected instrument
-                            const certsForInst = standardCerts.filter(c => {
-                              const sensor = sensors.find(s => s.id === c.sensor_id);
-                              return sensor && sensor.instrument_id === globalStandardInstrumentId;
-                            });
-                            // Group by number (normalize by trimming)
+                            // Get sensor IDs that belong to the selected standard instrument
+                            // Use the instrument's embedded sensor[] array (reliable, includes instrument_id relationship)
+                            const selectedInstrument = instruments.find(i => i.id === globalStandardInstrumentId);
+                            const sensorIdsForInstrument = new Set(
+                              (selectedInstrument?.sensor ?? []).map((s: any) => s.id)
+                            );
+                            // Filter certs whose sensor_id belongs to the selected instrument
+                            const certsForInst = standardCerts.filter(c =>
+                              sensorIdsForInstrument.has(c.sensor_id)
+                            );
+                            // Group by certificate number (normalize by trimming)
                             const uniqueNos = Array.from(new Set(certsForInst.map(c => c.no_certificate.trim())));
                             return uniqueNos.map(no => ({
                               id: no,
@@ -2395,29 +2400,33 @@ const CertificatesCRUD: React.FC = () => {
                                   }
                                 });
                               }}
-                              options={standardCerts
-                                .filter(c => {
-                                  if (!globalStandardInstrumentId || !globalStandardCertificateNumber) return false;
-                                  return c.no_certificate.trim() === globalStandardCertificateNumber;
-                                })
-                                .map(c => {
+                              options={(() => {
+                                if (!globalStandardInstrumentId || !globalStandardCertificateNumber) return [];
+
+                                // Filter to only certs matching the selected certificate number
+                                const certsForThisCert = standardCerts.filter(c =>
+                                  c.no_certificate.trim() === globalStandardCertificateNumber
+                                );
+
+                                // Deduplicate by sensor_id — one option per unique sensor
+                                // (A cert can have multiple rows per sensor for different calibration points)
+                                const seenSensorIds = new Set<number>();
+                                const uniqueCerts = certsForThisCert.filter(c => {
+                                  if (!c.sensor_id || seenSensorIds.has(c.sensor_id)) return false;
+                                  seenSensorIds.add(c.sensor_id);
+                                  return true;
+                                });
+
+                                return uniqueCerts.map(c => {
                                   const s = sensors.find(sen => sen.id === c.sensor_id);
                                   const sensorName = s?.name || 'Sensor Unknown';
                                   const sensorType = s?.type || '';
                                   const sn = s?.serial_number || '-';
-
-                                  // Format: "Temperature (HMP155)"
-                                  const mainLabel = `${sensorName} ${sensorType ? `(${sensorType})` : ''}`;
-
-                                  // Subtitle: "S/N: 12345 | Range: -80 to 60 degC | Drift: 0.01"
+                                  const mainLabel = `${sensorName}${sensorType ? ` (${sensorType})` : ''}`;
                                   const details = `S/N: ${sn} • Range: ${c.range || '-'} • Drift: ${c.drift ?? '-'}`;
-
-                                  return {
-                                    id: c.id,
-                                    name: mainLabel,
-                                    station_id: details
-                                  };
-                                })}
+                                  return { id: c.id, name: mainLabel, station_id: details };
+                                });
+                              })()}
                               placeholder={globalStandardCertificateNumber ? "Pilih Sensor dari Sertifikat ini..." : "Pilih Alat Standar & Sertifikat di Atas"}
                               searchPlaceholder="Cari Sensor..."
                             />
@@ -2607,13 +2616,14 @@ const CertificatesCRUD: React.FC = () => {
                                 <option value="ISO/IEC 17025:2017" />
                               </datalist>
                             </div>
-                            <div className="space-y-1">
-                              <label className="block text-xs font-semibold text-gray-700">Lainnya</label>
-                              <input
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                            <div className="space-y-1 md:col-span-2">
+                              <label className="block text-xs font-semibold text-gray-700">Lainnya / Komentar</label>
+                              <textarea
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] resize-y min-h-[80px]"
                                 value={result.notesForm?.others || ''}
                                 onChange={e => updateResult(resultIndex, { notesForm: { ...result.notesForm, others: e.target.value } })}
-                                placeholder="Keterangan tambahan..."
+                                placeholder="Keterangan tambahan, catatan khusus, atau komentar lainnya..."
+                                rows={3}
                               />
                             </div>
                           </div>
