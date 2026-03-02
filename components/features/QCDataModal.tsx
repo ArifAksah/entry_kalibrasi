@@ -1,7 +1,11 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Instrument, Sensor } from '../../lib/supabase';
-import { fetchQCLimitForSensor, checkQCResult, QCLimit } from '../../lib/qc-utils';
+import {
+    fetchQCLimitForSensor, checkQCResult, QCLimit,
+    hitungKoreksiBatch
+} from '../../lib/qc-utils';
+
 
 interface RawDataRow {
     id: number;
@@ -19,33 +23,33 @@ interface QCDataModalProps {
     onClose: () => void;
     title: string;
     sessionId?: string;
-    certificateId: string; // Passed for context
-    sensorName?: string; // Optional context
+    certificateId: string;
+    sensorName?: string;
     instruments?: Instrument[];
     sensors?: Sensor[];
-    certificateInstrumentId?: number; // Main UUT Instrument
+    certificateInstrumentId?: number;
 }
 
 const QCDataModal: React.FC<QCDataModalProps> = ({
-    isOpen,
-    onClose,
-    title,
-    sessionId,
-    certificateId,
-    instruments = [],
-    sensors = [],
-    certificateInstrumentId
+    isOpen, onClose, title, sessionId, instruments = [], sensors = [], certificateInstrumentId
 }) => {
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<RawDataRow[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<number | 'unknown'>(0);
 
-    // Per-sensor QC limits fetched from master_qc table
+    // Per UUT sensor: QC limits from master_qc
     const [qcLimits, setQcLimits] = useState<Record<string, QCLimit | null>>({});
     const [qcLimitsLoading, setQcLimitsLoading] = useState(false);
 
-    // Group Data by Sensor ID UUT
+    /**
+     * Batch map of `${sensor_id_std}:${standard_data}` → correction value
+     * Populated by calling hitungKoreksiBatch → DB function hitung_koreksi()
+     */
+    const [correctionMap, setCorrectionMap] = useState<Map<string, number>>(new Map());
+    const [correctionLoading, setCorrectionLoading] = useState(false);
+
+    // Group data by UUT sensor ID
     const groupedData = React.useMemo(() => {
         const groups: Record<string, RawDataRow[]> = {};
         data.forEach(row => {
@@ -58,7 +62,6 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
     const sensorKeys = Object.keys(groupedData);
 
-    // Initial Tab Selection
     useEffect(() => {
         if (sensorKeys.length > 0 && activeTab === 0) {
             setActiveTab(sensorKeys[0] === 'unknown' ? 'unknown' : Number(sensorKeys[0]));
@@ -66,35 +69,49 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
     }, [sensorKeys, activeTab]);
 
     useEffect(() => {
-        if (isOpen && sessionId) {
-            fetchData(sessionId);
-        }
+        if (isOpen && sessionId) fetchRawData(sessionId);
     }, [isOpen, sessionId]);
 
-    // Fetch QC limits from master_qc for all detected sensors
+    // Fetch QC limits per UUT sensor
     useEffect(() => {
-        const sensorIds = sensorKeys
+        const uutSensorIds = sensorKeys
             .filter(k => k !== 'unknown')
-            .map(k => Number(k))
+            .map(Number)
             .filter(id => !isNaN(id));
-
-        if (sensorIds.length === 0) return;
+        if (uutSensorIds.length === 0) return;
 
         setQcLimitsLoading(true);
         Promise.all(
-            sensorIds.map(async id => {
-                const limit = await fetchQCLimitForSensor(id);
-                return [String(id), limit] as [string, QCLimit | null];
-            })
+            uutSensorIds.map(async id => [String(id), await fetchQCLimitForSensor(id)] as [string, QCLimit | null])
         ).then(results => {
             const map: Record<string, QCLimit | null> = {};
-            results.forEach(([key, limit]) => { map[key] = limit; });
+            results.forEach(([k, v]) => { map[k] = v; });
             setQcLimits(map);
         }).finally(() => setQcLimitsLoading(false));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sensorKeys.join(',')]);
 
-    const fetchData = async (sId: string) => {
+    /**
+     * After raw data loads, call hitungKoreksiBatch which calls the DB function
+     * hitung_koreksi(reading, sensor_std_id) for each unique (standard_data, sensor_id_std) pair.
+     */
+    useEffect(() => {
+        if (data.length === 0) return;
+
+        // Collect unique pairs that have both standard_data and sensor_id_std
+        const pairs = data
+            .filter(r => r.sensor_id_std != null)
+            .map(r => ({ reading: r.standard_data, sensorStdId: r.sensor_id_std! }));
+
+        if (pairs.length === 0) return;
+
+        setCorrectionLoading(true);
+        hitungKoreksiBatch(pairs)
+            .then(map => setCorrectionMap(map))
+            .finally(() => setCorrectionLoading(false));
+    }, [data]);
+
+    const fetchRawData = async (sId: string) => {
         setLoading(true);
         setError(null);
         try {
@@ -109,12 +126,10 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
         }
     };
 
-    // Get QC limit for the active sensor tab
     const activeSensorLimit = activeTab !== 'unknown' && activeTab !== 0
         ? qcLimits[String(activeTab)] ?? null
         : null;
 
-    // Active sensor display info
     const activeSensorName = React.useMemo(() => {
         if (activeTab === 'unknown' || activeTab === 0) {
             const inst = instruments.find(i => i.id === certificateInstrumentId);
@@ -128,9 +143,36 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
     const currentData = groupedData[String(activeTab)] || [];
 
+    /**
+     * Get the correction from the DB-computed correctionMap for a row.
+     * Key: `${sensor_id_std}:${standard_data}`
+     */
+    const getStdCorrection = (row: RawDataRow): { value: number; hasData: boolean } => {
+        if (!row.sensor_id_std) return { value: 0, hasData: false };
+        const key = `${row.sensor_id_std}:${row.standard_data}`;
+        const hasData = correctionMap.has(key);
+        return { value: correctionMap.get(key) ?? 0, hasData };
+    };
+
+    const computeRowQC = (row: RawDataRow) => {
+        const { value: stdCorrection, hasData: hasCertData } = getStdCorrection(row);
+        const stdCorrected = row.standard_data + stdCorrection;
+        const uutCorrection = stdCorrected - row.uut_data;
+        return {
+            stdCorrection: Number(stdCorrection.toFixed(4)),
+            stdCorrected: Number(stdCorrected.toFixed(4)),
+            uutCorrection: Number(uutCorrection.toFixed(4)),
+            hasCertData,
+            qc: checkQCResult(uutCorrection, activeSensorLimit),
+        };
+    };
+
+    const failCount = currentData.filter(row => !computeRowQC(row).qc.passed).length;
+    const stdSensorId = currentData.length > 0 ? currentData[0].sensor_id_std : null;
+
     return (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] backdrop-blur-sm">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-7xl h-[90vh] flex flex-col overflow-hidden">
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gray-50">
                     <div>
@@ -138,16 +180,13 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                             <svg className="w-6 h-6 text-[#1e377c]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            QC Check - Raw Data Analysis
+                            QC Check — Raw Data Analysis
                         </h3>
                         <p className="text-sm text-gray-500 mt-1">
                             Certificate: <span className="font-mono font-medium">{title}</span>
                         </p>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="text-gray-400 hover:text-gray-600 transition-colors p-2 hover:bg-gray-200 rounded-full"
-                    >
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-200 rounded-full">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
@@ -159,20 +198,15 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                     {loading ? (
                         <div className="flex flex-col items-center justify-center h-full space-y-4">
                             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1e377c]"></div>
-                            <p className="text-gray-500 font-medium">Fetching 2000+ data points...</p>
+                            <p className="text-gray-500 font-medium">Memuat data...</p>
                         </div>
                     ) : error ? (
                         <div className="text-center p-8 m-6 bg-red-50 rounded-xl border border-red-200">
-                            <svg className="w-12 h-12 text-red-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <h4 className="text-lg font-bold text-red-800 mb-2">Error Loading Data</h4>
-                            <p className="text-red-600">{error}</p>
+                            <p className="text-red-600 font-medium">{error}</p>
                         </div>
                     ) : data.length === 0 ? (
                         <div className="text-center p-12 m-6 bg-white rounded-xl border border-dashed border-gray-300">
-                            <p className="text-gray-500 text-lg">No raw data found for this session.</p>
-                            <p className="text-sm text-gray-400 mt-2">Make sure you have uploaded raw data files during creation.</p>
+                            <p className="text-gray-500">Tidak ada data untuk sesi ini.</p>
                         </div>
                     ) : (
                         <>
@@ -182,38 +216,25 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                     {sensorKeys.map((key) => {
                                         const sensorId = key === 'unknown' ? 'unknown' : Number(key);
                                         const isActive = activeTab === sensorId;
-
                                         let tabLabel = 'Unknown Sensor';
                                         if (key !== 'unknown') {
                                             const s = sensors.find(sen => sen.id === Number(key));
-                                            if (s) tabLabel = s.name || s.type || `Sensor #${key}`;
-                                            else tabLabel = `Sensor #${key}`;
+                                            tabLabel = s ? (s.name || s.type || `Sensor #${key}`) : `Sensor #${key}`;
                                         }
-
-                                        // Show whether QC limit is loaded for this tab
-                                        const hasLimit = key !== 'unknown' && qcLimits[key] !== undefined;
-                                        const limitLoaded = qcLimits[key] != null;
-
+                                        const limit = key !== 'unknown' ? qcLimits[key] : null;
                                         return (
                                             <button
                                                 key={key}
                                                 onClick={() => setActiveTab(sensorId)}
-                                                className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${isActive
-                                                    ? 'border-[#1e377c] text-[#1e377c] bg-blue-50/50'
-                                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                                                    }`}
+                                                className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${isActive ? 'border-[#1e377c] text-[#1e377c] bg-blue-50/50' : 'border-transparent text-gray-500 hover:bg-gray-50'}`}
                                             >
-                                                <svg className={`w-4 h-4 ${isActive ? 'text-[#1e377c]' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-                                                </svg>
                                                 {tabLabel}
-                                                <span className={`ml-2 text-xs py-0.5 px-1.5 rounded-full ${isActive ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}>
+                                                <span className={`text-xs px-1.5 py-0.5 rounded-full ${isActive ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}>
                                                     {groupedData[key].length}
                                                 </span>
-                                                {/* QC limit badge */}
-                                                {hasLimit && (
-                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${limitLoaded ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                                                        {limitLoaded ? `±${qcLimits[key]!.rawLimit}` : 'No QC'}
+                                                {key !== 'unknown' && qcLimits[key] !== undefined && (
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${limit ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                                        {limit ? `±${limit.rawLimit}` : 'No QC'}
                                                     </span>
                                                 )}
                                             </button>
@@ -222,116 +243,106 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                 </div>
                             )}
 
-                            {/* Active Tab Content */}
                             <div className="flex-1 overflow-hidden flex flex-col p-6">
                                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">
-                                    {/* Stats Summary */}
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 border-b border-gray-100 bg-white shadow-sm shrink-0">
+                                    {/* Stats row */}
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 border-b border-gray-100 shrink-0">
                                         <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100">
-                                            <div className="text-xs text-indigo-600 font-semibold uppercase">Sensor</div>
+                                            <div className="text-[10px] text-indigo-600 font-semibold uppercase">Sensor UUT</div>
                                             <div className="text-sm font-bold text-indigo-900 truncate" title={activeSensorName}>{activeSensorName}</div>
                                         </div>
                                         <div className={`p-3 rounded-lg border ${activeSensorLimit ? 'bg-green-50 border-green-100' : 'bg-yellow-50 border-yellow-100'}`}>
-                                            <div className={`text-xs font-semibold uppercase ${activeSensorLimit ? 'text-green-600' : 'text-yellow-600'}`}>
-                                                Batas Koreksi (Master QC)
-                                            </div>
+                                            <div className={`text-[10px] font-semibold uppercase ${activeSensorLimit ? 'text-green-600' : 'text-yellow-600'}`}>Batas WMO (Master QC)</div>
                                             <div className={`text-sm font-bold ${activeSensorLimit ? 'text-green-900' : 'text-yellow-800'}`}>
-                                                {qcLimitsLoading ? (
-                                                    <span className="text-xs italic">Memuat...</span>
-                                                ) : activeSensorLimit ? (
-                                                    `± ${activeSensorLimit.rawLimit} ${activeSensorLimit.unit}`
-                                                ) : (
-                                                    <span className="text-xs italic text-yellow-700">Tidak ada di Master QC</span>
-                                                )}
+                                                {qcLimitsLoading ? <span className="text-xs italic">Memuat...</span>
+                                                    : activeSensorLimit ? `± ${activeSensorLimit.rawLimit} ${activeSensorLimit.unit}`
+                                                        : <span className="text-xs italic text-yellow-700">Tidak ada di Master QC</span>}
                                             </div>
-                                            {activeSensorLimit && (
-                                                <div className="text-[10px] text-green-600 mt-0.5">{activeSensorLimit.instrumentName}</div>
-                                            )}
+                                        </div>
+                                        <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                                            <div className="text-[10px] text-blue-600 font-semibold uppercase">Koreksi Std (DB)</div>
+                                            <div className="text-sm font-bold text-blue-900">
+                                                {correctionLoading
+                                                    ? <span className="text-xs italic animate-pulse">Menghitung...</span>
+                                                    : stdSensorId
+                                                        ? <span className="text-green-700 text-xs">hitung_koreksi() ✓</span>
+                                                        : <span className="text-gray-400 text-xs">–</span>}
+                                            </div>
                                         </div>
                                         <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                                            <div className="text-xs text-gray-600 font-semibold uppercase">Data Points</div>
+                                            <div className="text-[10px] text-gray-600 font-semibold uppercase">Data Points</div>
                                             <div className="text-xl font-bold text-gray-900">{currentData.length}</div>
                                         </div>
-                                        {/* Count of failing rows */}
                                         {activeSensorLimit && (
                                             <div className="bg-red-50 p-3 rounded-lg border border-red-100">
-                                                <div className="text-xs text-red-600 font-semibold uppercase">Melebihi Batas</div>
-                                                <div className="text-xl font-bold text-red-900">
-                                                    {currentData.filter(row => {
-                                                        const correction = row.standard_data - row.uut_data;
-                                                        const result = checkQCResult(correction, activeSensorLimit);
-                                                        return !result.passed;
-                                                    }).length}
-                                                </div>
+                                                <div className="text-[10px] text-red-600 font-semibold uppercase">Melebihi Batas</div>
+                                                <div className="text-xl font-bold text-red-900">{failCount}</div>
                                             </div>
                                         )}
                                     </div>
 
+                                    {/* Table */}
                                     <div className="flex-1 overflow-auto">
                                         <table className="min-w-full divide-y divide-gray-200 relative">
-                                            <thead className="bg-[#1e377c] text-white sticky top-0 z-10 shadow-sm">
+                                            <thead className="bg-[#1e377c] text-white sticky top-0 z-10">
                                                 <tr>
-                                                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider w-16">No</th>
-                                                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider">Timestamp</th>
-                                                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider">Reading Std</th>
-                                                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider">Reading UUT</th>
-                                                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider bg-blue-900/30">
-                                                        Correction <span className="text-[10px] normal-case opacity-70 block">(Std - UUT)</span>
+                                                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase w-10">No</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Timestamp</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Std Reading</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase bg-blue-900/30">
+                                                        Koreksi Std
+                                                        <span className="text-[9px] block opacity-70 font-normal normal-case">hitung_koreksi()</span>
                                                     </th>
-                                                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider">
-                                                        Batas WMO
-                                                        {activeSensorLimit && (
-                                                            <span className="text-[10px] normal-case font-normal opacity-80 block">dari Master QC</span>
-                                                        )}
+                                                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase bg-blue-900/20">
+                                                        Std Terkoreksi
+                                                        <span className="text-[9px] block opacity-70 font-normal normal-case">std + koreksi</span>
                                                     </th>
-                                                    <th scope="col" className="px-6 py-3 text-center text-xs font-semibold uppercase tracking-wider w-24">Status</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase">UUT Reading</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase">
+                                                        Koreksi UUT
+                                                        <span className="text-[9px] block opacity-70 font-normal normal-case">std_kor − uut</span>
+                                                    </th>
+                                                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Batas WMO</th>
+                                                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase w-20">Status</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="bg-white divide-y divide-gray-200">
-                                                {currentData.length > 0 ? (
-                                                    currentData.map((row, index) => {
-                                                        const rawCorrection = row.standard_data - row.uut_data;
-                                                        const qc = checkQCResult(rawCorrection, activeSensorLimit);
-                                                        const isFail = !qc.passed;
-
-                                                        return (
-                                                            <tr key={row.id} className={`${isFail ? 'bg-pink-50 hover:bg-pink-100' : 'hover:bg-gray-50'} transition-colors border-b border-gray-50`}>
-                                                                <td className="px-6 py-3 whitespace-nowrap text-xs text-gray-500 font-mono">
-                                                                    {index + 1}
-                                                                </td>
-                                                                <td className="px-6 py-3 whitespace-nowrap text-xs text-gray-600">
-                                                                    {new Date(row.timestamp).toLocaleString('id-ID')}
-                                                                </td>
-                                                                <td className="px-6 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                                    {row.standard_data}
-                                                                </td>
-                                                                <td className="px-6 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                                    {row.uut_data}
-                                                                </td>
-                                                                <td className={`px-6 py-3 whitespace-nowrap text-sm font-bold ${isFail ? 'text-red-600' : 'text-green-600'} bg-gray-50/50`}>
-                                                                    {qc.correction > 0 ? '+' : ''}{qc.correction}
-                                                                </td>
-                                                                <td className="px-6 py-3 whitespace-nowrap text-xs text-gray-500">
-                                                                    {qc.limitStr}
-                                                                </td>
-                                                                <td className="px-6 py-3 whitespace-nowrap text-center">
-                                                                    {isFail ? (
-                                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200">
-                                                                            FAIL
-                                                                        </span>
-                                                                    ) : (
-                                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
-                                                                            PASS
-                                                                        </span>
-                                                                    )}
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })
-                                                ) : (
+                                                {currentData.length > 0 ? currentData.map((row, index) => {
+                                                    const { stdCorrection, stdCorrected, uutCorrection, hasCertData, qc } = computeRowQC(row);
+                                                    const isFail = !qc.passed;
+                                                    return (
+                                                        <tr key={row.id} className={`${isFail ? 'bg-pink-50 hover:bg-pink-100' : 'hover:bg-gray-50'} transition-colors`}>
+                                                            <td className="px-4 py-2 text-xs text-gray-500 font-mono">{index + 1}</td>
+                                                            <td className="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">
+                                                                {new Date(row.timestamp).toLocaleString('id-ID')}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-sm font-medium text-gray-700">{row.standard_data}</td>
+                                                            <td className="px-4 py-2 text-sm font-medium bg-blue-50/50">
+                                                                {correctionLoading
+                                                                    ? <span className="text-gray-300 text-xs">...</span>
+                                                                    : hasCertData
+                                                                        ? <span className="text-blue-700">{stdCorrection > 0 ? '+' : ''}{stdCorrection}</span>
+                                                                        : <span className="text-gray-400 text-[10px] italic">tidak ada</span>}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-sm font-bold text-blue-900 bg-blue-50/30">
+                                                                {hasCertData ? stdCorrected : <span className="text-gray-400 text-xs">= {row.standard_data}</span>}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-sm font-medium text-gray-700">{row.uut_data}</td>
+                                                            <td className={`px-4 py-2 text-sm font-bold ${isFail ? 'text-red-600' : 'text-green-600'}`}>
+                                                                {uutCorrection > 0 ? '+' : ''}{uutCorrection}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-xs text-gray-500">{qc.limitStr}</td>
+                                                            <td className="px-4 py-2 text-center">
+                                                                {isFail
+                                                                    ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">FAIL</span>
+                                                                    : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">PASS</span>}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                }) : (
                                                     <tr>
-                                                        <td colSpan={7} className="px-6 py-10 text-center text-gray-400 italic">
-                                                            No data available for this sensor.
+                                                        <td colSpan={9} className="px-6 py-10 text-center text-gray-400 italic">
+                                                            Tidak ada data untuk sensor ini.
                                                         </td>
                                                     </tr>
                                                 )}
@@ -345,19 +356,17 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                 </div>
 
                 {/* Footer */}
-                <div className="bg-white border-t border-gray-200 p-4 flex justify-between items-center shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-                    <div className="text-xs text-gray-500 max-w-xl">
-                        <span className="font-semibold text-gray-700">Note:</span> Batas koreksi diambil dari tabel <b>Master QC</b> berdasarkan jenis sensor (instrument_name).
-                        Baris merah muda = nilai koreksi melebihi batas keberterimaan WMO.
+                <div className="bg-white border-t border-gray-200 p-4 flex justify-between items-center shrink-0">
+                    <div className="text-xs text-gray-500 max-w-2xl">
+                        <span className="font-semibold text-gray-700">Alur:</span>{' '}
+                        Std Reading → <code className="bg-gray-100 px-1 rounded">hitung_koreksi()</code> (interpolasi DB) → Std Terkoreksi → Koreksi UUT = Std Terkoreksi − UUT Reading.
+                        Batas dari <b>Master QC</b> berdasarkan jenis sensor.
                         {!activeSensorLimit && (
-                            <span className="ml-1 text-yellow-600">⚠ Sensor aktif belum memiliki entri di Master QC.</span>
+                            <span className="ml-1 text-yellow-600">⚠ Sensor belum ada di Master QC.</span>
                         )}
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="px-6 py-2 bg-gradient-to-r from-gray-700 to-gray-800 text-white text-sm font-medium rounded-lg hover:from-gray-800 hover:to-gray-900 transition-all shadow-md hover:shadow-lg active:scale-95"
-                    >
-                        Close View
+                    <button onClick={onClose} className="px-6 py-2 bg-gray-800 text-white text-sm font-medium rounded-lg hover:bg-gray-900 transition-all">
+                        Tutup
                     </button>
                 </div>
             </div>

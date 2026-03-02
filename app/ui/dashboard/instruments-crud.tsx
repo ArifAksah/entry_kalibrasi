@@ -11,8 +11,10 @@ import { useAlert } from '../../../hooks/useAlert'
 import Loading from '../../../components/ui/Loading'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
 import CustomSelect from '../../../components/ui/CustomSelect'
+import UnitSelect from '../../../components/ui/UnitSelect'
 import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
 import { useUnits } from '../../../hooks/useUnits'
+
 
 /**
  * Parses correction data from any historical DB format into a uniform array of
@@ -1279,42 +1281,46 @@ const InstrumentsCRUD: React.FC = () => {
                           />
                           <p className="text-xs text-gray-400 mt-1">Nama unik untuk membedakan alat ini dari alat sejenis</p>
                         </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Manufacturer *
-                          </label>
-                          <input
-                            value={form.manufacturer}
-                            onChange={e => setForm({ ...form, manufacturer: e.target.value })}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                            placeholder="Enter manufacturer name"
-                            required
-                          />
+                        {/* Manufacturer | Type | Serial Number — satu baris */}
+                        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Manufacturer *
+                            </label>
+                            <input
+                              value={form.manufacturer}
+                              onChange={e => setForm({ ...form, manufacturer: e.target.value })}
+                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                              placeholder="Enter manufacturer name"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Type *
+                            </label>
+                            <input
+                              value={form.type}
+                              onChange={e => setForm({ ...form, type: e.target.value })}
+                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                              placeholder="Enter instrument type"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Serial Number *
+                            </label>
+                            <input
+                              value={form.serial_number}
+                              onChange={e => setForm({ ...form, serial_number: e.target.value })}
+                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                              placeholder="Enter serial number"
+                              required
+                            />
+                          </div>
                         </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Type *
-                          </label>
-                          <input
-                            value={form.type}
-                            onChange={e => setForm({ ...form, type: e.target.value })}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                            placeholder="Enter instrument type"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Serial Number *
-                          </label>
-                          <input
-                            value={form.serial_number}
-                            onChange={e => setForm({ ...form, serial_number: e.target.value })}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                            placeholder="Enter serial number"
-                            required
-                          />
-                        </div>
+
                         <div className="lg:col-span-2">
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             Station
@@ -1454,13 +1460,14 @@ const InstrumentsCRUD: React.FC = () => {
                                     className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                                     placeholder="Ex: 0-100"
                                   />
-                                  <input
-                                    value={sensor.range_capacity_unit}
-                                    onChange={(e) => updateSensor(sensor.id, 'range_capacity_unit', e.target.value)}
-                                    className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
-                                    placeholder="Unit"
-                                    list="unit-options"
-                                  />
+                                  <div className="w-28">
+                                    <UnitSelect
+                                      units={units}
+                                      value={sensor.range_capacity_unit}
+                                      onChange={(val) => updateSensor(sensor.id, 'range_capacity_unit', val)}
+                                      placeholder="Unit"
+                                    />
+                                  </div>
                                 </div>
                               </div>
                               <div>
@@ -1472,18 +1479,20 @@ const InstrumentsCRUD: React.FC = () => {
                                     className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                                     placeholder="Ex: 0.01"
                                   />
-                                  <input
-                                    value={sensor.graduating_unit}
-                                    onChange={(e) => updateSensor(sensor.id, 'graduating_unit', e.target.value)}
-                                    className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
-                                    placeholder="Unit"
-                                    list="unit-options"
-                                  />
+                                  <div className="w-28">
+                                    <UnitSelect
+                                      units={units}
+                                      value={sensor.graduating_unit}
+                                      onChange={(val) => updateSensor(sensor.id, 'graduating_unit', val)}
+                                      placeholder="Unit"
+                                    />
+                                  </div>
                                 </div>
                               </div>
                             </div>
                           </div>
                         ))}
+
                       </div>
                     )}
 
@@ -1696,12 +1705,10 @@ const InstrumentsCRUD: React.FC = () => {
                                   </button>
                                 </div>
 
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                  {/* Nama Sensor dropdown → simpan sensor_name_id */}
+                                <div className="space-y-4">
+                                  {/* Row 1: Nama Sensor (full width) */}
                                   <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                      Nama Sensor
-                                    </label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Nama Sensor</label>
                                     <CustomSelect
                                       options={instrumentNames.map(n => ({ value: n.id, label: n.name }))}
                                       value={sensor.sensor_name_id}
@@ -1710,7 +1717,8 @@ const InstrumentsCRUD: React.FC = () => {
                                       clearLabel="— Tidak dipilih"
                                     />
                                   </div>
-                                  {/* Alias Sensor → simpan ke kolom name */}
+
+                                  {/* Row 2: Alias Sensor (full width, sendiri) */}
                                   <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
                                       Alias Sensor <span className="text-gray-400 font-normal text-xs">(nama khusus sensor)</span>
@@ -1723,169 +1731,151 @@ const InstrumentsCRUD: React.FC = () => {
                                       placeholder="Contoh: Sensor Suhu Ruang A..."
                                     />
                                   </div>
-                                  {/* Merk Sensor */}
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                      Merk Sensor
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={sensor.merk_sensor}
-                                      onChange={(e) => updateSensor(sensor.id, 'merk_sensor', e.target.value)}
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                      placeholder="Enter sensor manufacturer"
-                                    />
+
+                                  {/* Row 3: Merk | Tipe | Serial Number — satu baris 3 kolom */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Merk Sensor</label>
+                                      <input
+                                        type="text"
+                                        value={sensor.merk_sensor}
+                                        onChange={(e) => updateSensor(sensor.id, 'merk_sensor', e.target.value)}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                        placeholder="Enter sensor manufacturer"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Tipe Sensor</label>
+                                      <input
+                                        type="text"
+                                        value={sensor.tipe_sensor}
+                                        onChange={(e) => updateSensor(sensor.id, 'tipe_sensor', e.target.value)}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                        placeholder="Enter sensor type"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Serial Number Sensor</label>
+                                      <input
+                                        type="text"
+                                        value={sensor.serial_number_sensor}
+                                        onChange={(e) => updateSensor(sensor.id, 'serial_number_sensor', e.target.value)}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                        placeholder="Enter sensor serial number"
+                                      />
+                                    </div>
                                   </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                      Tipe Sensor
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={sensor.tipe_sensor}
-                                      onChange={(e) => updateSensor(sensor.id, 'tipe_sensor', e.target.value)}
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                      placeholder="Enter sensor type"
-                                    />
+
+                                  {/* Row 4: Range Capacity + Unit | Graduating + Unit */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Range Capacity</label>
+                                      <div className="flex gap-2">
+                                        <input
+                                          type="text"
+                                          value={sensor.range_capacity}
+                                          onChange={(e) => updateSensor(sensor.id, 'range_capacity', e.target.value)}
+                                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                          placeholder="Ex: 0-100"
+                                        />
+                                        <div className="w-28">
+                                          <UnitSelect
+                                            units={units}
+                                            value={sensor.range_capacity_unit}
+                                            onChange={(val) => updateSensor(sensor.id, 'range_capacity_unit', val)}
+                                            placeholder="Unit"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Graduating / Resolution</label>
+                                      <div className="flex gap-2">
+                                        <input
+                                          type="text"
+                                          value={sensor.graduating}
+                                          onChange={(e) => updateSensor(sensor.id, 'graduating', e.target.value)}
+                                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                          placeholder="Ex: 0.01"
+                                        />
+                                        <div className="w-28">
+                                          <UnitSelect
+                                            units={units}
+                                            value={sensor.graduating_unit}
+                                            onChange={(val) => updateSensor(sensor.id, 'graduating_unit', val)}
+                                            placeholder="Unit"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                      Serial Number Sensor
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={sensor.serial_number_sensor}
-                                      onChange={(e) => updateSensor(sensor.id, 'serial_number_sensor', e.target.value)}
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                      placeholder="Enter sensor serial number"
-                                    />
+
+                                  {/* Row 5: Funnel Diameter + Unit | Volume Per Tip + Unit | Funnel Area + Unit */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Funnel Diameter</label>
+                                      <div className="flex gap-2">
+                                        <input
+                                          type="number"
+                                          value={sensor.funnel_diameter}
+                                          onChange={(e) => updateSensor(sensor.id, 'funnel_diameter', parseFloat(e.target.value) || 0)}
+                                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                          placeholder="0"
+                                        />
+                                        <div className="w-24">
+                                          <UnitSelect
+                                            units={units}
+                                            value={sensor.funnel_diameter_unit}
+                                            onChange={(val) => updateSensor(sensor.id, 'funnel_diameter_unit', val)}
+                                            placeholder="Unit"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Volume Per Tip</label>
+                                      <div className="flex gap-2">
+                                        <input
+                                          type="text"
+                                          value={sensor.volume_per_tip}
+                                          onChange={(e) => updateSensor(sensor.id, 'volume_per_tip', e.target.value)}
+                                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                          placeholder="Enter volume"
+                                        />
+                                        <div className="w-24">
+                                          <UnitSelect
+                                            units={units}
+                                            value={sensor.volume_per_tip_unit}
+                                            onChange={(val) => updateSensor(sensor.id, 'volume_per_tip_unit', val)}
+                                            placeholder="Unit"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Funnel Area</label>
+                                      <div className="flex gap-2">
+                                        <input
+                                          type="number"
+                                          value={sensor.funnel_area}
+                                          onChange={(e) => updateSensor(sensor.id, 'funnel_area', parseFloat(e.target.value) || 0)}
+                                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                          placeholder="0"
+                                        />
+                                        <div className="w-24">
+                                          <UnitSelect
+                                            units={units}
+                                            value={sensor.funnel_area_unit}
+                                            onChange={(val) => updateSensor(sensor.id, 'funnel_area_unit', val)}
+                                            placeholder="Unit"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                      Range Capacity
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={sensor.range_capacity}
-                                      onChange={(e) => updateSensor(sensor.id, 'range_capacity', e.target.value)}
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                      placeholder="Enter range capacity"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                      Range Capacity Unit
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={sensor.range_capacity_unit}
-                                      onChange={(e) => updateSensor(sensor.id, 'range_capacity_unit', e.target.value)}
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                      placeholder="Enter unit"
-                                      list="unit-options"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                      Graduating
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={sensor.graduating}
-                                      onChange={(e) => updateSensor(sensor.id, 'graduating', e.target.value)}
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                      placeholder="Enter graduating value"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                      Graduating Unit
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={sensor.graduating_unit}
-                                      onChange={(e) => updateSensor(sensor.id, 'graduating_unit', e.target.value)}
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                      placeholder="Enter unit"
-                                      list="unit-options"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                      Funnel Diameter
-                                    </label>
-                                    <input
-                                      type="number"
-                                      value={sensor.funnel_diameter}
-                                      onChange={(e) => updateSensor(sensor.id, 'funnel_diameter', parseFloat(e.target.value) || 0)}
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                      placeholder="Enter diameter"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                      Funnel Diameter Unit
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={sensor.funnel_diameter_unit}
-                                      onChange={(e) => updateSensor(sensor.id, 'funnel_diameter_unit', e.target.value)}
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                      placeholder="Enter unit"
-                                      list="unit-options"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                      Volume Per Tip
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={sensor.volume_per_tip}
-                                      onChange={(e) => updateSensor(sensor.id, 'volume_per_tip', e.target.value)}
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                      placeholder="Enter volume per tip"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                      Volume Per Tip Unit
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={sensor.volume_per_tip_unit}
-                                      onChange={(e) => updateSensor(sensor.id, 'volume_per_tip_unit', e.target.value)}
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                      placeholder="Enter unit"
-                                      list="unit-options"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                      Funnel Area
-                                    </label>
-                                    <input
-                                      type="number"
-                                      value={sensor.funnel_area}
-                                      onChange={(e) => updateSensor(sensor.id, 'funnel_area', parseFloat(e.target.value) || 0)}
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                      placeholder="Enter area"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                      Funnel Area Unit
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={sensor.funnel_area_unit}
-                                      onChange={(e) => updateSensor(sensor.id, 'funnel_area_unit', e.target.value)}
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                      placeholder="Enter unit"
-                                      list="unit-options"
-                                    />
-                                  </div>
+
                                 </div>
+
                                 <div className="mt-4 flex items-center justify-between">
                                   <div className="flex items-center space-x-3">
                                     <input
