@@ -2408,12 +2408,26 @@ const CertificatesCRUD: React.FC = () => {
                                   c.no_certificate.trim() === globalStandardCertificateNumber
                                 );
 
-                                // Deduplicate by sensor_id — one option per unique sensor
-                                // (A cert can have multiple rows per sensor for different calibration points)
-                                const seenSensorIds = new Set<number>();
-                                const uniqueCerts = certsForThisCert.filter(c => {
-                                  if (!c.sensor_id || seenSensorIds.has(c.sensor_id)) return false;
-                                  seenSensorIds.add(c.sensor_id);
+                                // Helper: does a cert row have real (non-empty) calibration data?
+                                const hasRealData = (c: typeof certsForThisCert[0]) =>
+                                  c.range && c.range !== '-' && c.range !== '' && c.drift != null && c.drift !== 0;
+
+                                // Sort so rows WITH real data come first
+                                // (ensures we pick the "data" row over the empty "header" row when deduplicating)
+                                const sorted = [...certsForThisCert].sort((a, b) =>
+                                  (hasRealData(b) ? 1 : 0) - (hasRealData(a) ? 1 : 0)
+                                );
+
+                                // Deduplicate by sensor fingerprint: name + type + serial_number
+                                // This handles the DB data quality issue where two sensor_id values
+                                // point to the same physical sensor (same name/type/SN, one empty record)
+                                const seenFingerprints = new Set<string>();
+                                const uniqueCerts = sorted.filter(c => {
+                                  if (!c.sensor_id) return false; // skip rows without a sensor
+                                  const s = sensors.find(sen => sen.id === c.sensor_id);
+                                  const fingerprint = `${s?.name || ''}|${s?.type || ''}|${s?.serial_number || ''}`;
+                                  if (seenFingerprints.has(fingerprint)) return false;
+                                  seenFingerprints.add(fingerprint);
                                   return true;
                                 });
 
@@ -2423,10 +2437,13 @@ const CertificatesCRUD: React.FC = () => {
                                   const sensorType = s?.type || '';
                                   const sn = s?.serial_number || '-';
                                   const mainLabel = `${sensorName}${sensorType ? ` (${sensorType})` : ''}`;
-                                  const details = `S/N: ${sn} • Range: ${c.range || '-'} • Drift: ${c.drift ?? '-'}`;
+                                  const rangeStr = c.range && c.range !== '-' ? c.range : '-';
+                                  const driftStr = c.drift != null && c.drift !== 0 ? String(c.drift) : '-';
+                                  const details = `S/N: ${sn} • Range: ${rangeStr} • Drift: ${driftStr}`;
                                   return { id: c.id, name: mainLabel, station_id: details };
                                 });
                               })()}
+
                               placeholder={globalStandardCertificateNumber ? "Pilih Sensor dari Sertifikat ini..." : "Pilih Alat Standar & Sertifikat di Atas"}
                               searchPlaceholder="Cari Sensor..."
                             />
