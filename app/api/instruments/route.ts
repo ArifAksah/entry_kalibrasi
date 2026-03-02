@@ -22,9 +22,9 @@ export async function GET(request: NextRequest) {
 
     // 2. Determine Sensor Join Logic
     // If filtering for standard, use !inner join to enforce standard sensor existence
-    let sensorSelect = 'sensor!left(id, name, type, serial_number, is_standard)'
+    let sensorSelect = 'sensor!left(id, name, type, serial_number, is_standard, sensor_name_id)'
     if (type === 'standard') {
-      sensorSelect = 'sensor!inner(id, name, type, serial_number, is_standard)'
+      sensorSelect = 'sensor!inner(id, name, type, serial_number, is_standard, sensor_name_id)'
     }
 
     // Query dasar dengan join ke tabel station dan sensor (untuk filtering)

@@ -16,6 +16,7 @@ interface RawDataRow {
     session_id: string;
     sensor_id_uut?: number;
     sensor_id_std?: number;
+    sheet_name?: string | null;
 }
 
 interface QCDataModalProps {
@@ -24,23 +25,40 @@ interface QCDataModalProps {
     title: string;
     sessionId?: string;
     certificateId: string;
-    sensorName?: string;
-    instruments?: Instrument[];
-    sensors?: Sensor[];
     certificateInstrumentId?: number;
+    instruments: Instrument[];
+    sensors: any[];
+    instrumentNames: Array<{ id: number; name: string }>;
 }
 
 const QCDataModal: React.FC<QCDataModalProps> = ({
-    isOpen, onClose, title, sessionId, instruments = [], sensors = [], certificateInstrumentId
+    isOpen, onClose, title, sessionId, instruments, sensors, certificateInstrumentId, instrumentNames
 }) => {
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<RawDataRow[]>([]);
     const [error, setError] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<number | 'unknown'>(0);
+    const [activeTab, setActiveTab] = useState<number | 'unknown'>('unknown');
 
     // Per UUT sensor: QC limits from master_qc
     const [qcLimits, setQcLimits] = useState<Record<string, QCLimit | null>>({});
     const [qcLimitsLoading, setQcLimitsLoading] = useState(false);
+
+    /** Resolve sensor display name: instrument_names → alias → type → fallback */
+    const resolveSensorName = (s: any): string => {
+        if (!s) return 'Unknown Sensor';
+        // 1. Prioritas: lookup dari instrument_names via sensor_name_id
+        const fromLookup = s.sensor_name_id
+            ? instrumentNames.find((n: any) => n.id === s.sensor_name_id)?.name
+            : undefined;
+        if (fromLookup) return fromLookup;
+        // 2. Gunakan s.name hanya jika bukan angka murni (hindari "123", "456", dll.)
+        if (s.name && !/^\d+$/.test(String(s.name).trim())) return s.name;
+        // 3. Gunakan type
+        if (s.type) return s.type;
+        // 4. Fallback
+        return `Sensor #${s.id}`;
+    };
+
 
     /**
      * Batch map of `${sensor_id_std}:${standard_data}` → correction value
@@ -63,7 +81,9 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
     const sensorKeys = Object.keys(groupedData);
 
     useEffect(() => {
-        if (sensorKeys.length > 0 && activeTab === 0) {
+        // Jika activeTab masih 'unknown' atau 0, dan kita punya data sensor yang jelas (bukan unknown),
+        // otomatis pindah ke tab pertama.
+        if (sensorKeys.length > 0 && (activeTab === 0 || (activeTab === 'unknown' && !sensorKeys.includes('unknown')))) {
             setActiveTab(sensorKeys[0] === 'unknown' ? 'unknown' : Number(sensorKeys[0]));
         }
     }, [sensorKeys, activeTab]);
@@ -135,9 +155,17 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
             const inst = instruments.find(i => i.id === certificateInstrumentId);
             return inst?.name || 'Unknown Sensor';
         }
+        // 1. Gunakan sheet_name asli dari baris data (prioritas utama)
+        const rowsForTab = groupedData[String(activeTab)] || [];
+        const storedSheetName = rowsForTab[0]?.sheet_name;
+        if (storedSheetName && !/^\d+$/.test(storedSheetName.trim())) {
+            return storedSheetName;
+        }
+        // 2. Fallback: resolve dari sensor object
         const sensor = sensors.find(s => s.id === activeTab);
-        return sensor ? (sensor.name || sensor.type || `Sensor #${sensor.id}`) : `Sensor #${activeTab}`;
-    }, [activeTab, sensors, instruments, certificateInstrumentId]);
+        return resolveSensorName(sensor);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, sensors, instruments, certificateInstrumentId, instrumentNames, groupedData]);
 
     if (!isOpen) return null;
 
@@ -156,14 +184,20 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
     const computeRowQC = (row: RawDataRow) => {
         const { value: stdCorrection, hasData: hasCertData } = getStdCorrection(row);
-        const stdCorrected = row.standard_data + stdCorrection;
-        const uutCorrection = stdCorrected - row.uut_data;
+
+        // Exact floating point math before rounding
+        const rawStdCorrected = row.standard_data + stdCorrection;
+        const rawUutCorrection = rawStdCorrected - row.uut_data;
+
+        // Round to 3 decimal places (standard for calibration) to match Excel formulas
+        const round3 = (num: number) => Math.round((num + Number.EPSILON) * 1000) / 1000;
+
         return {
-            stdCorrection: Number(stdCorrection.toFixed(4)),
-            stdCorrected: Number(stdCorrected.toFixed(4)),
-            uutCorrection: Number(uutCorrection.toFixed(4)),
+            stdCorrection: round3(stdCorrection),
+            stdCorrected: round3(rawStdCorrected),
+            uutCorrection: round3(rawUutCorrection),
             hasCertData,
-            qc: checkQCResult(uutCorrection, activeSensorLimit),
+            qc: checkQCResult(rawUutCorrection, activeSensorLimit),
         };
     };
 
@@ -218,8 +252,16 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                         const isActive = activeTab === sensorId;
                                         let tabLabel = 'Unknown Sensor';
                                         if (key !== 'unknown') {
-                                            const s = sensors.find(sen => sen.id === Number(key));
-                                            tabLabel = s ? (s.name || s.type || `Sensor #${key}`) : `Sensor #${key}`;
+                                            // 1. Gunakan sheet_name asli dari Excel (disimpan di DB)
+                                            const rowsForKey = groupedData[key] || [];
+                                            const storedSheetName = rowsForKey[0]?.sheet_name;
+                                            if (storedSheetName && !/^\d+$/.test(storedSheetName.trim())) {
+                                                tabLabel = storedSheetName;
+                                            } else {
+                                                // 2. Fallback: resolve dari sensor object
+                                                const s = sensors.find(sen => sen.id === Number(key));
+                                                tabLabel = resolveSensorName(s);
+                                            }
                                         }
                                         const limit = key !== 'unknown' ? qcLimits[key] : null;
                                         return (

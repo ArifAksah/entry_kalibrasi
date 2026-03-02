@@ -166,6 +166,28 @@ export function parseNilaiBatasKoreksi(raw: string): number {
     return isNaN(num) ? Infinity : Math.abs(num)
 }
 
+/**
+ * Format LaTeX unit strings from the database (e.g., ^\circ C) into readable Unicode strings.
+ */
+export function formatLatexUnit(raw: string): string {
+    if (!raw) return '';
+    return raw
+        // Handle degree Celsius
+        .replace(/\^\\circ C/g, '°C')
+        .replace(/\\circ C/g, '°C')
+        .replace(/\^\\circ/g, '°')
+        .replace(/\\circ/g, '°')
+        // General text formatting replacements
+        .replace(/\\mathrm\{([^}]+)\}/g, '$1')
+        .replace(/\\text\{([^}]+)\}/g, '$1')
+        .replace(/\\mu/g, 'µ')
+        .replace(/\\Omega/g, 'Ω')
+        .replace(/\\%\s?RH/g, '%RH')
+        // Clean up any stray curly braces
+        .replace(/[{}]/g, '')
+        .trim();
+}
+
 /** In-memory cache: sensor_id → QCLimit (null = no entry in DB) */
 const cache = new Map<number, QCLimit | null>()
 
@@ -191,11 +213,12 @@ export async function fetchQCLimitForSensor(sensorId: number): Promise<QCLimit |
 
         const row = json.data
         const limitValue = parseNilaiBatasKoreksi(row.nilai_batas_koreksi)
+        const parsedUnit = formatLatexUnit(row.ref_unit?.unit ?? '')
         const result: QCLimit = {
             instrumentName: row.instrument_names?.name ?? 'Unknown',
             rawLimit: row.nilai_batas_koreksi,
             limitValue,
-            unit: row.ref_unit?.unit ?? '',
+            unit: parsedUnit,
             masterQcId: row.id,
         }
         cache.set(sensorId, result)

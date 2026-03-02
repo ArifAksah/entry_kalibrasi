@@ -873,11 +873,12 @@ const DraftView: React.FC<{
   certificate: Certificate
   stations: Station[]
   instruments: Instrument[]
+  instrumentNames: any[]
   personel: Personel[]
   onSendToVerifiers: (certificateId: number) => Promise<void>
   onBack?: () => void
   onUpdateCertificate?: (certificateId: number, updates: Partial<Certificate>) => Promise<void>
-}> = ({ certificate, stations, instruments, personel, onSendToVerifiers, onBack, onUpdateCertificate }) => {
+}> = ({ certificate, stations, instruments, instrumentNames, personel, onSendToVerifiers, onBack, onUpdateCertificate }) => {
   const [showModal, setShowModal] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [hasSent, setHasSent] = useState(false)
@@ -1045,6 +1046,7 @@ const DraftView: React.FC<{
           // Extract sensors from instruments if available
           instruments.find(i => i.id === certificate.instrument)?.sensor || []
         }
+        instrumentNames={instrumentNames}
       />
 
       {/* Status Message */}
@@ -1204,6 +1206,7 @@ const DraftViewPage: React.FC = () => {
   const { showAlert } = useAlert()
   const [stations, setStations] = useState<Station[]>([])
   const [instruments, setInstruments] = useState<Instrument[]>([])
+  const [instrumentNames, setInstrumentNames] = useState<any[]>([])
   const [personel, setPersonel] = useState<Personel[]>([])
   const [selectedCertificateId, setSelectedCertificateId] = useState<number | null>(null)
 
@@ -1220,19 +1223,22 @@ const DraftViewPage: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [stationsRes, instrumentsRes, personelRes] = await Promise.all([
+        const [stationsRes, instrumentsRes, personelRes, instrNamesRes] = await Promise.all([
           fetch('/api/stations?page=1&pageSize=100'),
           fetch('/api/instruments?page=1&pageSize=100'),
-          fetch('/api/personel')
+          fetch('/api/personel'),
+          fetch('/api/instrument-names')
         ])
 
         const stationsData = await stationsRes.json()
         const instrumentsData = await instrumentsRes.json()
         const personelData = await personelRes.json()
+        const instrNamesData = await instrNamesRes.json()
 
         setStations(Array.isArray(stationsData) ? stationsData : (stationsData?.data ?? []))
         setInstruments(Array.isArray(instrumentsData) ? instrumentsData : (instrumentsData?.data ?? []))
         setPersonel(Array.isArray(personelData) ? personelData : [])
+        setInstrumentNames(Array.isArray(instrNamesData) ? instrNamesData : (instrNamesData?.data ?? []))
       } catch (error) {
         console.error('Error loading data:', error)
       }
@@ -1397,6 +1403,7 @@ const DraftViewPage: React.FC = () => {
                     certificate={certificate}
                     stations={stations}
                     instruments={instruments}
+                    instrumentNames={instrumentNames}
                     personel={personel}
                     onSendToVerifiers={handleSendToVerifiers}
                     onBack={handleBack}

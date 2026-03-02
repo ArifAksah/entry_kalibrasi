@@ -296,6 +296,7 @@ const CertificatesCRUD: React.FC = () => {
   const [stations, setStations] = useState<Station[]>([])
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [sensors, setSensors] = useState<Sensor[]>([])
+  const [instrumentNames, setInstrumentNames] = useState<Array<{ id: number; name: string }>>([])
   const [standardCerts, setStandardCerts] = useState<CertStandard[]>([])
   const [personel, setPersonel] = useState<Array<{ id: string; name: string; nip?: string; role?: string }>>([])
 
@@ -640,7 +641,7 @@ const CertificatesCRUD: React.FC = () => {
 
       workbook.SheetNames.forEach(name => {
         const worksheet = workbook.Sheets[name]
-        const jsonData = utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
+        const jsonData = utils.sheet_to_json(worksheet, { header: 1, raw: true }) as any[][]
 
         if (jsonData.length > 0) {
           // Validation: Check headers (Flexible)
@@ -859,17 +860,22 @@ const CertificatesCRUD: React.FC = () => {
           return { data: [...firstData, ...restData], total: (firstJson?.total ?? (firstData.length + restData.length)) as number, pageSize: 100, totalPages }
         }
 
-        const [stationsAll, instrumentsAll, sensorsAll, personelRes, certStandardsRes] = await Promise.all([
+        const [stationsAll, instrumentsAll, sensorsAll, personelRes, certStandardsRes, instrNamesRes] = await Promise.all([
           fetchAllStations(),
           fetchAllInstruments(),
           fetchAllSensors(),
           fetch('/api/personel'),
           fetch('/api/cert-standards'),
+          fetch('/api/instrument-names'),
         ])
 
         setStations(Array.isArray(stationsAll) ? stationsAll : (stationsAll as any)?.data ?? [])
         setInstruments(Array.isArray(instrumentsAll) ? instrumentsAll : (instrumentsAll as any)?.data ?? [])
         setSensors(Array.isArray(sensorsAll) ? sensorsAll : (sensorsAll as any)?.data ?? [])
+        if ((instrNamesRes as Response).ok) {
+          const inNames = await (instrNamesRes as Response).json()
+          setInstrumentNames(Array.isArray(inNames) ? inNames : (inNames?.data ?? []))
+        }
 
         if (personelRes.ok) {
           const p = await personelRes.json()
@@ -1072,9 +1078,30 @@ const CertificatesCRUD: React.FC = () => {
               const reconstructedSheets = Object.keys(grouped).map((key) => {
                 const sensorId = key === 'unknown' ? null : Number(key);
                 const matchedSensor = sensorId ? sensors.find((s: any) => s.id === sensorId) : null;
-                const sensorLabel = matchedSensor
-                  ? (matchedSensor.name || matchedSensor.type || `Sensor ${sensorId}`)
-                  : (key === 'unknown' ? 'Unknown' : `Sensor ${key}`);
+                // Get the actual sheet_name stored in DB from the first row of this group
+                const storedSheetName = data.data.find((d: any) => String(d.sensor_id_uut) === key)?.sheet_name;
+
+                // Resolve label: prioritize stored sheet_name, then lookup, skip numeric-only names
+                let sensorLabel: string;
+
+                if (storedSheetName && !/^\d+$/.test(String(storedSheetName).trim())) {
+                  sensorLabel = storedSheetName;
+                } else if (!matchedSensor) {
+                  sensorLabel = key === 'unknown' ? 'Unknown' : `Sensor ${key}`;
+                } else {
+                  const fromLookup = matchedSensor.sensor_name_id
+                    ? instrumentNames.find((n: any) => n.id === matchedSensor.sensor_name_id)?.name
+                    : undefined;
+                  if (fromLookup) {
+                    sensorLabel = fromLookup;
+                  } else if (matchedSensor.name && !/^\d+$/.test(String(matchedSensor.name).trim())) {
+                    sensorLabel = matchedSensor.name;
+                  } else if (matchedSensor.type) {
+                    sensorLabel = matchedSensor.type;
+                  } else {
+                    sensorLabel = `Sensor ${sensorId}`;
+                  }
+                }
                 return {
                   name: sensorLabel,
                   data: grouped[key] as any[],
@@ -1246,37 +1273,39 @@ const CertificatesCRUD: React.FC = () => {
               }
 
               const rawDataPayload = {
-                session_id: sessionData.session_id, // Found correct PK is session_id
+                session_id: sessionData.session_id,
                 data: rawData.map((sheet, idx) => {
-                  // Resolve sensor_id_std (Sensor ID)
-                  // standardInstrumentId and globalStandardInstrumentId are Instrument IDs (References to 'instrument' table)
-                  // We need to find the 'sensor' (is_standard=true) ID belonging to that instrument.
+                  // Resolve sensor_id_std for this sheet.
+                  // PRIMARY: Use cert.sensor_id — this is explicitly chosen by user and guaranteed correct.
+                  // FALLBACK: is_standard sensor from the instrument.
 
                   let targetInstrumentId = results[idx]?.standardInstrumentId ?? globalStandardInstrumentId ?? null;
                   let stdSensorId: number | null = null;
 
-                  if (targetInstrumentId) {
-                    // 1. Try to get it from the selected Certificate (most accurate)
-                    // Only valid if using global standard and verified certificate
+                  // This is the EXACT ID selected by the user from the "Pilih Sensor Standar" dropdown on this sheet
+                  const sheetCertId = results[idx]?.standardCertificateId;
+
+                  if (sheetCertId) {
+                    const selectedCert = standardCerts.find(c => c.id === sheetCertId);
+                    if (selectedCert?.sensor_id) {
+                      stdSensorId = selectedCert.sensor_id;
+                    }
+                  }
+
+                  if (targetInstrumentId && !stdSensorId) {
+                    // Fallback 1: Use first cert from the global certificate number if no specific selection was made
                     if (globalStandardInstrumentId && targetInstrumentId === globalStandardInstrumentId && globalStandardCertificateNumber) {
                       const cert = standardCerts.find(c => c.no_certificate === globalStandardCertificateNumber);
                       if (cert) stdSensorId = cert.sensor_id;
                     }
 
-                    // 2. Fallback: Find a sensor marked as standard in the selected instrument
+                    // Fallback 2: is_standard sensor from the instrument
                     if (!stdSensorId) {
-                      const inst = instruments.find(i => i.id === targetInstrumentId);
-                      // Ensure we are looking at the instrument object, it should have a 'sensor' array from the API
-                      const stdSensor = inst?.sensor?.find((s: any) => s.is_standard);
-                      if (stdSensor) {
-                        stdSensorId = stdSensor.id;
-                      } else {
-                        // Fallback 3: If no sensor is marked standard (legacy data?), try to use the first sensor?
-                        // Or log warning. For now, let's try just taking the first one if only 1 exists
-                        if (inst?.sensor?.length === 1) {
-                          stdSensorId = inst.sensor[0].id;
-                        }
-                      }
+                      const inst = instruments.find((i: any) => i.id === targetInstrumentId);
+                      const instSensors: any[] = inst?.sensor ?? [];
+                      const stdSensor = instSensors.find((s: any) => s.is_standard);
+                      if (stdSensor) stdSensorId = stdSensor.id;
+                      else if (instSensors.length === 1) stdSensorId = instSensors[0].id;
                     }
                   }
 
@@ -2286,13 +2315,26 @@ const CertificatesCRUD: React.FC = () => {
                               }}
                               // Filter sensors based on selected instrument
                               options={sensors
-                                .filter(s => form.instrument ? s.instrument_id === form.instrument : true) // Show only sensors belonging to instrument
+                                .filter(s => form.instrument ? s.instrument_id === form.instrument : true)
                                 .filter(s => !s.is_standard)
-                                .map(s => ({
-                                  id: s.id,
-                                  name: s.name || `Sensor ${s.id}`,
-                                  station_id: `${s.id}` // extra info
-                                }))}
+                                .map(s => {
+                                  // Prioritas label utama:
+                                  // 1. Nama dari tabel instrument_names via sensor_name_id
+                                  // 2. Alias sensor (s.name)
+                                  // 3. Fallback ke merk + type
+                                  const resolvedName = s.sensor_name_id
+                                    ? instrumentNames.find(n => n.id === s.sensor_name_id)?.name
+                                    : undefined
+                                  const sensorLabel = resolvedName || s.name || [s.manufacturer, s.type].filter(Boolean).join(' ') || `Sensor #${s.id}`
+                                  // Subtitle: nama instrumen
+                                  const instr = instruments.find(i => i.id === s.instrument_id)
+                                  return {
+                                    id: s.id,
+                                    name: sensorLabel,
+                                    station_id: instr?.name  // nama instrumen sebagai subtitle
+                                  }
+                                })}
+
                               placeholder={form.instrument ? "Pilih Sensor UUT..." : "Pilih Instrument Terlebih Dahulu"}
                               searchPlaceholder="Cari Sensor..."
                             />
@@ -2433,7 +2475,11 @@ const CertificatesCRUD: React.FC = () => {
 
                                 return uniqueCerts.map(c => {
                                   const s = sensors.find(sen => sen.id === c.sensor_id);
-                                  const sensorName = s?.name || 'Sensor Unknown';
+                                  // Prioritas nama: instrument_names via sensor_name_id → alias → 'Sensor Unknown'
+                                  const resolvedName = s?.sensor_name_id
+                                    ? instrumentNames.find(n => n.id === s.sensor_name_id)?.name
+                                    : undefined
+                                  const sensorName = resolvedName || s?.name || 'Sensor Unknown';
                                   const sensorType = s?.type || '';
                                   const sn = s?.serial_number || '-';
                                   const mainLabel = `${sensorName}${sensorType ? ` (${sensorType})` : ''}`;
@@ -2442,6 +2488,7 @@ const CertificatesCRUD: React.FC = () => {
                                   const details = `S/N: ${sn} • Range: ${rangeStr} • Drift: ${driftStr}`;
                                   return { id: c.id, name: mainLabel, station_id: details };
                                 });
+
                               })()}
 
                               placeholder={globalStandardCertificateNumber ? "Pilih Sensor dari Sertifikat ini..." : "Pilih Alat Standar & Sertifikat di Atas"}
@@ -3656,6 +3703,7 @@ const CertificatesCRUD: React.FC = () => {
             sensors={
               instruments.find(i => i.id === qcModalCertificate.instrument)?.sensor || []
             }
+            instrumentNames={instrumentNames}
           />
         )
       }

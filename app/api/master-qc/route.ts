@@ -10,28 +10,36 @@ export async function GET(request: NextRequest) {
         const sensor_id = searchParams.get('sensor_id')
 
         // === LOOKUP BY SENSOR ID ===
-        // Resolves the chain: sensor.instrument_id → instrument.instrument_names_id → master_qc
+        // Resolves the chain: sensor.sensor_name_id OR sensor.instrument_id → instrument.instrument_names_id → master_qc
         if (sensor_id) {
-            // Step 1: get sensor to find instrument_id
+            // Step 1: get sensor
             const { data: sensor, error: sErr } = await supabaseAdmin
                 .from('sensor')
-                .select('id, instrument_id')
+                .select('id, instrument_id, sensor_name_id')
                 .eq('id', Number(sensor_id))
                 .maybeSingle()
 
-            if (sErr || !sensor?.instrument_id) {
+            if (sErr || (!sensor?.instrument_id && !sensor?.sensor_name_id)) {
                 return NextResponse.json({ data: null, message: 'Sensor or instrument not found' }, { status: 200 })
             }
 
-            // Step 2: get instrument to find instrument_names_id
-            const { data: instrument, error: iErr } = await supabaseAdmin
-                .from('instrument')
-                .select('id, instrument_names_id')
-                .eq('id', sensor.instrument_id)
-                .maybeSingle()
+            let targetNameId = sensor.sensor_name_id;
 
-            if (iErr || !instrument?.instrument_names_id) {
-                return NextResponse.json({ data: null, message: 'Instrument name not found' }, { status: 200 })
+            // Step 2: if sensor_name_id not available, fallback to instrument to find instrument_names_id
+            if (!targetNameId && sensor.instrument_id) {
+                const { data: instrument, error: iErr } = await supabaseAdmin
+                    .from('instrument')
+                    .select('id, instrument_names_id')
+                    .eq('id', sensor.instrument_id)
+                    .maybeSingle()
+
+                if (!iErr && instrument?.instrument_names_id) {
+                    targetNameId = instrument.instrument_names_id;
+                }
+            }
+
+            if (!targetNameId) {
+                return NextResponse.json({ data: null, message: 'Sensor/Instrument name not found' }, { status: 200 })
             }
 
             // Step 3: find matching master_qc row
@@ -44,7 +52,7 @@ export async function GET(request: NextRequest) {
                     instrument_names ( id, name ),
                     ref_unit ( id, unit )
                 `)
-                .eq('instrument_name_id', instrument.instrument_names_id)
+                .eq('instrument_name_id', targetNameId)
                 .maybeSingle()
 
             if (qcErr) {

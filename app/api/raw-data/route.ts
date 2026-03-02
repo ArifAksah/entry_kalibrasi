@@ -96,6 +96,7 @@ export async function POST(req: NextRequest) {
                         created_at: new Date().toISOString(),
                         sensor_id_uut: sensorIdUut || null,
                         sensor_id_std: sensorIdStd || null,
+                        sheet_name: sheetName || null,
                     })
                 }
             }

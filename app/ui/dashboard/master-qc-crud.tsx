@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useAlert } from '../../../hooks/useAlert'
 import Alert from '../../../components/ui/Alert'
+import { formatLatexUnit } from '../../../lib/qc-utils'
 
 interface InstrumentName {
     id: number
@@ -242,7 +243,7 @@ const MasterQCCRUD: React.FC = () => {
                                         </td>
                                         <td className="px-4 py-3 whitespace-nowrap">
                                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                                {item.ref_unit?.unit ?? '-'}
+                                                {formatLatexUnit(item.ref_unit?.unit ?? '-')}
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 whitespace-nowrap">
@@ -328,7 +329,7 @@ const MasterQCCRUD: React.FC = () => {
                                 >
                                     <option value="">-- Pilih Satuan --</option>
                                     {units.map(u => (
-                                        <option key={u.id} value={u.id}>{u.unit}</option>
+                                        <option key={u.id} value={u.id}>{formatLatexUnit(u.unit)}</option>
                                     ))}
                                 </select>
                             </div>
