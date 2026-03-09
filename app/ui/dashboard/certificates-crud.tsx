@@ -392,6 +392,8 @@ const CertificatesCRUD: React.FC = () => {
     standardInstrumentId?: number | null
     standardCertificateNumber?: string | null
     standardCertificateId?: number | null
+    unitUut?: string | null   // unit override for UUT data on this sheet
+    unitStd?: string | null   // unit override for STD data on this sheet
   }
 
   const [results, setResults] = useState<ResultItem[]>([
@@ -413,7 +415,9 @@ const CertificatesCRUD: React.FC = () => {
         calibration_methode: '',
         others: '',
         standardInstruments: []
-      }
+      },
+      unitUut: null,
+      unitStd: null
     },
   ])
 
@@ -431,7 +435,9 @@ const CertificatesCRUD: React.FC = () => {
       calibration_methode: '',
       others: '',
       standardInstruments: []
-    }
+    },
+    unitUut: null,
+    unitStd: null
   }])
 
   const removeResult = (idx: number) => {
@@ -476,8 +482,33 @@ const CertificatesCRUD: React.FC = () => {
     ))
   }
 
-  const updateResult = (idx: number, patch: Partial<ResultItem>) =>
-    setResults(prev => prev.map((r, i) => i === idx ? { ...r, ...patch } : r))
+  const updateResult = (idx: number, patch: Partial<ResultItem>) => {
+    setResults(prev => {
+      const arr = [...prev]
+      while (arr.length <= idx) {
+        arr.push({
+          sensorId: null,
+          startDate: '',
+          endDate: '',
+          place: '',
+          environment: [],
+          table: [],
+          images: [],
+          notesForm: {
+            traceable_to_si_through: '',
+            reference_document: '',
+            calibration_methode: '',
+            others: '',
+            standardInstruments: []
+          },
+          unitUut: null,
+          unitStd: null
+        })
+      }
+      arr[idx] = { ...arr[idx], ...patch }
+      return arr
+    })
+  }
 
   // Helper function to get selected station type (normalized)
   // Returns lowercased, trimmed string; empty string when not set
@@ -509,6 +540,8 @@ const CertificatesCRUD: React.FC = () => {
         name: sensor.name,
         created_at: sensor.created_at,
       } : undefined,
+      // Auto-fill unit from sensor's graduating_unit or range_capacity_unit (user can override via dropdown)
+      unitUut: sensor?.graduating_unit || sensor?.range_capacity_unit || null,
       // Auto-fill calibration place based on sensor location or default
       place: sensor ? `Laboratorium Kalibrasi BMKG - ${sensor.name || sensor.type || 'Sensor'}` : '',
     })
@@ -641,7 +674,37 @@ const CertificatesCRUD: React.FC = () => {
 
       workbook.SheetNames.forEach(name => {
         const worksheet = workbook.Sheets[name]
-        const jsonData = utils.sheet_to_json(worksheet, { header: 1, raw: true }) as any[][]
+
+        // Manual Extraction to bypass `sheet_to_json` format coercion and get pure `.v` (raw value)
+        const jsonData: any[][] = [];
+        const ref = worksheet['!ref'];
+        if (ref) {
+          const range = utils.decode_range(ref);
+          for (let R = range.s.r; R <= range.e.r; ++R) {
+            const row: any[] = [];
+            for (let C = range.s.c; C <= range.e.c; ++C) {
+              const cellAddress = { c: C, r: R };
+              const cellRef = utils.encode_cell(cellAddress);
+              const cell = worksheet[cellRef];
+
+              if (!cell) {
+                row.push(undefined);
+              } else if (cell.t === 'n') {
+                row.push(cell.v); // Ensure we grab the raw floating point numeric value!
+              } else if (cell.t === 'd') {
+                row.push(cell.v);
+              } else if (cell.w !== undefined) {
+                row.push(cell.w); // String display text for headers
+              } else {
+                row.push(cell.v);
+              }
+            }
+            // Only push if row has at least one value
+            if (row.some(val => val !== undefined && val !== null && val !== '')) {
+              jsonData.push(row);
+            }
+          }
+        }
 
         if (jsonData.length > 0) {
           // Validation: Check headers (Flexible)
@@ -750,7 +813,9 @@ const CertificatesCRUD: React.FC = () => {
                 calibration_methode: '',
                 others: '',
                 standardInstruments: []
-              }
+              },
+              unitUut: null,
+              unitStd: null
             }
           })
           setResults(newResults)
@@ -1027,7 +1092,9 @@ const CertificatesCRUD: React.FC = () => {
           calibration_methode: '',
           others: '',
           standardInstruments: []
-        }
+        },
+        unitUut: null,
+        unitStd: null
       }]
       setResults(savedResults)
 
@@ -1309,11 +1376,29 @@ const CertificatesCRUD: React.FC = () => {
                     }
                   }
 
+                  // Resolve unit: PRIORITY = user-selected per-sheet override (results[idx].unitUut/unitStd)
+                  // FALLBACK = sensor metadata (graduating_unit or range_capacity_unit)
+                  const uutSensorId = results[idx]?.sensorId;
+                  const uutSensor = uutSensorId ? sensors.find((s: any) => s.id === uutSensorId) : null;
+                  const uutUnit = results[idx]?.unitUut
+                    || uutSensor?.graduating_unit
+                    || uutSensor?.range_capacity_unit
+                    || null;
+
+                  let stdUnit: string | null = results[idx]?.unitStd || null;
+                  if (!stdUnit && stdSensorId) {
+                    const allSensorsFlat = instruments.flatMap((i: any) => i.sensor ?? []);
+                    const stdSensorObj = allSensorsFlat.find((s: any) => s.id === stdSensorId);
+                    stdUnit = stdSensorObj?.graduating_unit || stdSensorObj?.range_capacity_unit || null;
+                  }
+
                   return {
                     name: sheet.name,
                     data: sheet.data,
                     sensor_id_uut: results[idx]?.sensorId ?? null,
                     sensor_id_std: stdSensorId,
+                    unit_uut: uutUnit,
+                    unit_std: stdUnit,
                   }
                 })
               };
@@ -2031,32 +2116,6 @@ const CertificatesCRUD: React.FC = () => {
                       </a>
                     </div>
                     <div className="space-y-1">
-                      {/* DEBUGGER FOR MISSING INSTRUMENTS */}
-                      {form.station && (
-                        <div className="bg-yellow-50 border border-yellow-200 p-2 rounded text-[10px] font-mono mb-2 text-gray-700">
-                          <strong>DEBUG INFO (Station ID: {String(form.station)})</strong>
-                          <ul className="list-disc pl-4 mt-1">
-                            {instruments
-                              .filter(i => {
-                                // Show ALL instruments that match the Station ID OR Name (to detect ID mismatch)
-                                const sId = i.station?.id || (i as any).station_id;
-                                // Basic loose check
-                                return String(sId) === String(form.station);
-                              })
-                              .map(i => {
-                                const isStandard = i.sensor?.some((s: any) => s.is_standard === true);
-                                return (
-                                  <li key={i.id} className={isStandard ? "text-red-600 font-bold" : "text-green-600"}>
-                                    {i.name} (ID: {i.id}) - {isStandard ? "HIDDEN (Standard)" : "VISIBLE (UUT)"}
-                                  </li>
-                                );
-                              })}
-                          </ul>
-                          <div className="mt-1 border-t border-yellow-200 pt-1">
-                            Ref: {instruments.length} total fetched.
-                          </div>
-                        </div>
-                      )}
                       <label className="text-xs font-semibold text-gray-600">Instrument *</label>
                       <SearchableDropdown
                         value={form.instrument}
@@ -2230,21 +2289,75 @@ const CertificatesCRUD: React.FC = () => {
                         <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full">{rawData.length}</span>
                       </h4>
 
-                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
                         {rawData.length === 0 ? (
                           <div className="text-xs text-center text-gray-400 py-4 italic">Belum ada data diupload</div>
                         ) : (
-                          rawData.map((sheet, i) => (
-                            <div key={i} className="flex items-center justify-between p-2 bg-white border border-gray-200 rounded shadow-sm">
-                              <div className="flex items-center gap-2 overflow-hidden">
-                                <span className="text-xs font-mono font-bold bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">#{i + 1}</span>
-                                <div className="truncate">
-                                  <div className="text-xs font-bold text-gray-800 truncate" title={sheet.name}>{sheet.name}</div>
-                                  <div className="text-[10px] text-gray-500">{sheet.data.length} baris</div>
+                          rawData.map((sheet, i) => {
+                            const unitOptions = [
+                              { id: 1, unit: 'hPa' }, { id: 2, unit: 'inHg' }, { id: 3, unit: 'mbar' },
+                              { id: 4, unit: 'mmHg' }, { id: 5, unit: 'm/s' }, { id: 6, unit: 'knot' },
+                              { id: 7, unit: 'fpm' }, { id: 8, unit: '°C' }, { id: 9, unit: '°F' },
+                              { id: 10, unit: '%RH' }, { id: 11, unit: 'mm' }, { id: 12, unit: 'W/m²' },
+                            ];
+                            return (
+                              <div key={i} className="p-2 bg-white border border-gray-200 rounded shadow-sm space-y-2">
+                                {/* Sheet header row */}
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-mono font-bold bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">#{i + 1}</span>
+                                  <div className="truncate flex-1">
+                                    <div className="text-xs font-bold text-gray-800 truncate" title={sheet.name}>{sheet.name}</div>
+                                    <div className="text-[10px] text-gray-500">{sheet.data.length} baris</div>
+                                  </div>
+                                </div>
+                                {/* Dual unit selector: user assigns both UUT and STD units explicitly */}
+                                <div className="pt-1 border-t border-gray-100 space-y-1.5">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                                        Unit kolom UUT
+                                      </label>
+                                      <select
+                                        value={results[i]?.unitUut || ''}
+                                        onChange={e => updateResult(i, { unitUut: e.target.value || null })}
+                                        className="w-full mt-0.5 px-2 py-1 text-xs border border-gray-300 rounded bg-white focus:ring-1 focus:ring-[#1e377c] focus:outline-none"
+                                      >
+                                        <option value="">— pilih unit —</option>
+                                        {unitOptions.map(u => (
+                                          <option key={u.id} value={u.unit}>{u.unit}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                                        Unit kolom STD
+                                      </label>
+                                      <select
+                                        value={results[i]?.unitStd || ''}
+                                        onChange={e => updateResult(i, { unitStd: e.target.value || null })}
+                                        className="w-full mt-0.5 px-2 py-1 text-xs border border-gray-300 rounded bg-white focus:ring-1 focus:ring-[#1e377c] focus:outline-none"
+                                      >
+                                        <option value="">— pilih unit —</option>
+                                        {unitOptions.map(u => (
+                                          <option key={u.id} value={u.unit}>{u.unit}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  </div>
+                                  {results[i]?.unitUut && results[i]?.unitStd && results[i]?.unitUut !== results[i]?.unitStd && (
+                                    <div className="text-[10px] text-orange-600 bg-orange-50 rounded px-1.5 py-0.5">
+                                      ⚠️ Unit berbeda — STD ({results[i]?.unitStd}) akan dikonversi ke UUT ({results[i]?.unitUut}) sebelum hitung koreksi
+                                    </div>
+                                  )}
+                                  {results[i]?.unitUut && results[i]?.unitStd && results[i]?.unitUut === results[i]?.unitStd && (
+                                    <div className="text-[10px] text-green-600 bg-green-50 rounded px-1.5 py-0.5">
+                                      ✓ Unit sama — tidak perlu konversi
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-                            </div>
-                          ))
+                            );
+                          })
                         )}
                       </div>
 
@@ -2265,8 +2378,15 @@ const CertificatesCRUD: React.FC = () => {
                 </div>
 
                 {/* DYNAMIC SENSOR INPUTS LOOP */}
-                {results.map((result, resultIndex) => (
-                  <div key={resultIndex} className="bg-gray-50/50 rounded-xl border border-gray-200 p-4 mb-6 relative">
+                {results.map((result, resultIndex) => {
+                  // Inline unitOptions for closure access inside map
+                  const unitOptions: { id: number; unit: string }[] = [
+                    { id: 1, unit: 'hPa' }, { id: 2, unit: 'inHg' }, { id: 3, unit: 'mbar' },
+                    { id: 4, unit: 'mmHg' }, { id: 5, unit: 'm/s' }, { id: 6, unit: 'knot' },
+                    { id: 7, unit: 'fpm' }, { id: 8, unit: '°C' }, { id: 9, unit: '°F' },
+                    { id: 10, unit: '%RH' }, { id: 11, unit: 'mm' }, { id: 12, unit: 'W/m²' },
+                  ];
+                  return (<div key={resultIndex} className="bg-gray-50/50 rounded-xl border border-gray-200 p-4 mb-6 relative">
                     {/* Loop Header */}
                     <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-200">
                       <div className="flex items-center gap-2">
@@ -2340,8 +2460,10 @@ const CertificatesCRUD: React.FC = () => {
                             />
                           </div>
 
+                          {/* Unit Selector per Sheet */}
+
                           {/* Detail UUT Form (Editable) */}
-                          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mt-2">
                             <div className="flex justify-between items-center mb-3 border-b border-gray-200 pb-2">
                               <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Detail Sensor (Dapat Diedit)</h4>
                               <button
@@ -2695,7 +2817,8 @@ const CertificatesCRUD: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
 
 
 
@@ -3733,6 +3856,10 @@ const CertificatesCRUD: React.FC = () => {
               const hum = envs.find((e: any) => e.key.toLowerCase().includes('kelembapan') || e.key.toLowerCase().includes('humidity') || e.key.toLowerCase().includes('rh'))?.value;
               return { temperature: temp || '-', humidity: hum || '-' };
             })()}
+            sessionResults={(lhksCertificate.results as any) || []}
+            allInstruments={instruments}
+            allSensors={sensors}
+            instrumentNames={instrumentNames}
           />
         )
       }

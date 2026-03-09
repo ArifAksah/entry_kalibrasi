@@ -5,6 +5,7 @@ import {
     fetchQCLimitForSensor, checkQCResult, QCLimit,
     hitungKoreksiBatch
 } from '../../lib/qc-utils';
+import { convertUnit, needsConversion } from '../../lib/unitConversion';
 
 
 interface RawDataRow {
@@ -17,6 +18,8 @@ interface RawDataRow {
     sensor_id_uut?: number;
     sensor_id_std?: number;
     sheet_name?: string | null;
+    unit_uut?: string | null;   // UUT data unit (reference)
+    unit_std?: string | null;   // STD data unit (may need conversion to UUT unit)
 }
 
 interface QCDataModalProps {
@@ -169,7 +172,9 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
     if (!isOpen) return null;
 
-    const currentData = groupedData[String(activeTab)] || [];
+    const currentData = (groupedData[String(activeTab)] || []).sort((a, b) => {
+        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+    });
 
     /**
      * Get the correction from the DB-computed correctionMap for a row.
@@ -187,16 +192,33 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
         // Exact floating point math before rounding
         const rawStdCorrected = row.standard_data + stdCorrection;
-        const rawUutCorrection = rawStdCorrected - row.uut_data;
+
+        // Convert std_corrected to UUT unit when units differ
+        // e.g. STD in hPa, UUT in inHg → convert hPa→inHg before subtraction
+        const unitStd = row.unit_std || '';
+        // Fallback: if unit_uut is null in DB, resolve from UUT sensor's graduating_unit
+        let unitUut = row.unit_uut || '';
+        if (!unitUut && row.sensor_id_uut) {
+            const uutSensor = sensors.find((s: any) => s.id === row.sensor_id_uut);
+            unitUut = uutSensor?.graduating_unit || uutSensor?.range_capacity_unit || '';
+        }
+        const hasConversion = unitStd && unitUut && needsConversion(unitStd, unitUut);
+        const stdCorrectedInUutUnit = hasConversion
+            ? convertUnit(rawStdCorrected, unitStd, unitUut)
+            : rawStdCorrected;
+
+        const rawUutCorrection = stdCorrectedInUutUnit - row.uut_data;
 
         // Round to 3 decimal places (standard for calibration) to match Excel formulas
         const round3 = (num: number) => Math.round((num + Number.EPSILON) * 1000) / 1000;
 
         return {
             stdCorrection: round3(stdCorrection),
-            stdCorrected: round3(rawStdCorrected),
+            stdCorrected: round3(stdCorrectedInUutUnit),  // displayed in UUT unit
+            stdCorrectedRaw: round3(rawStdCorrected),     // original STD unit (for reference)
             uutCorrection: round3(rawUutCorrection),
             hasCertData,
+            hasConversion,
             qc: checkQCResult(rawUutCorrection, activeSensorLimit),
         };
     };
@@ -219,6 +241,23 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                         <p className="text-sm text-gray-500 mt-1">
                             Certificate: <span className="font-mono font-medium">{title}</span>
                         </p>
+                        {/* DEBUG: Unit values from DB */}
+                        {currentData.length > 0 && (() => {
+                            const r0 = currentData[0];
+                            const r0UutSensor = r0.sensor_id_uut ? sensors.find((s: any) => s.id === r0.sensor_id_uut) : null;
+                            const resolvedUut = r0.unit_uut || r0UutSensor?.graduating_unit || r0UutSensor?.range_capacity_unit || 'EMPTY';
+                            return (
+                                <div className="mt-2 bg-yellow-50 border border-yellow-300 rounded px-3 py-1.5 text-[10px] font-mono text-gray-700">
+                                    <strong>🐛 DEBUG (row[0]):</strong>{' '}
+                                    unit_uut_db=<strong>{JSON.stringify(r0.unit_uut)}</strong>{' | '}
+                                    unit_std_db=<strong>{JSON.stringify(r0.unit_std)}</strong>{' | '}
+                                    sensor_id_uut=<strong>{r0.sensor_id_uut ?? 'null'}</strong>{' | '}
+                                    sensor.grad_unit=<strong>{r0UutSensor?.graduating_unit ?? 'null'}</strong>{' | '}
+                                    resolvedUut=<strong>{resolvedUut}</strong>{' | '}
+                                    needsConv={String(r0.unit_std && resolvedUut !== 'EMPTY' ? needsConversion(r0.unit_std!, resolvedUut) : false)}
+                                </div>
+                            );
+                        })()}
                     </div>
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-200 rounded-full">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

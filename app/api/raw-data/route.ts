@@ -10,7 +10,6 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey)
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json()
-        console.log('DEBUG: Backend Received Body:', JSON.stringify(body, null, 2))
         const { session_id, data, filename, uploaded_by } = body
 
         if (!session_id || !data) {
@@ -30,6 +29,8 @@ export async function POST(req: NextRequest) {
                 const sheetData = sheet.data // Array of arrays
                 const sensorIdUut = sheet.sensor_id_uut
                 const sensorIdStd = sheet.sensor_id_std
+                const unitStd = sheet.unit_std || null
+                const unitUut = sheet.unit_uut || null
 
                 if (!Array.isArray(sheetData) || sheetData.length < 2) continue
 
@@ -97,12 +98,14 @@ export async function POST(req: NextRequest) {
                         sensor_id_uut: sensorIdUut || null,
                         sensor_id_std: sensorIdStd || null,
                         sheet_name: sheetName || null,
+                        unit_std: unitStd,
+                        unit_uut: unitUut,
                     })
                 }
             }
         }
 
-        console.log('DEBUG: Rows to Insert:', JSON.stringify(rowsToInsert.slice(0, 3), null, 2)); // Log first 3 rows
+
 
         if (rowsToInsert.length === 0) {
             return NextResponse.json({ message: 'No valid data rows found to insert' }, { status: 200 })
