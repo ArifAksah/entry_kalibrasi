@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation'
 import { EditIcon, DeleteIcon } from '../../../components/ui/ActionIcons'
 import { read, utils } from 'xlsx'
 import QCDataModal from '../../../components/features/QCDataModal'
+import UncertaintyModal from '../../../components/features/UncertaintyModal'
 import LHKSReport from '../../../components/features/LHKSReport'
 import DateRangePicker from '../../../components/ui/DateRangePicker'
 
@@ -146,6 +147,12 @@ const EyeIcon = ({ className = "" }) => (
 const SearchIcon = ({ className = "" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+  </svg>
+)
+
+const ChevronDownIcon = ({ className = "" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
   </svg>
 )
 
@@ -288,6 +295,19 @@ const CertificatesCRUD: React.FC = () => {
   const router = useRouter()
 
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [actionDropdownOpenId, setActionDropdownOpenId] = useState<number | null>(null)
+
+  // Menutup dropdown action saat klik di luar
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!(event.target as Element).closest('[data-action-menu="true"]')) {
+        setActionDropdownOpenId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const [editing, setEditing] = useState<Certificate | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState<number | null>(null)
@@ -303,6 +323,11 @@ const CertificatesCRUD: React.FC = () => {
   // QC Modal State
   const [showQCModal, setShowQCModal] = useState(false)
   const [qcModalCertificate, setQcModalCertificate] = useState<Certificate | null>(null)
+
+  // Uncertainty Modal State
+  const [showUncertaintyModal, setShowUncertaintyModal] = useState(false)
+  const [uncertaintyModalCertificate, setUncertaintyModalCertificate] = useState<Certificate | null>(null)
+  const [uncertaintyRawData, setUncertaintyRawData] = useState<any[]>([])
 
   // LHKS Modal State
   const [showLHKSModal, setShowLHKSModal] = useState(false)
@@ -1663,202 +1688,251 @@ const CertificatesCRUD: React.FC = () => {
                       {item.status || 'draft'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm font-medium space-x-1">
-                    {/* Draft View Button - only show for draft status */}
-                    {item.status === 'draft' && (
-                      <a
-                        href={`/draft-view?certificate=${item.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center p-1.5 text-yellow-600 hover:text-yellow-800 hover:bg-yellow-50 rounded-lg transition-all duration-200 border border-transparent hover:border-yellow-200"
-                        title="View Draft"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </a>
-                    )}
-
-                    <a
-                      href={`/certificates/${item.id}/view`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all duration-200 border border-transparent hover:border-blue-200"
-                      title="View Certificate"
-                    >
-                      <ViewIcon className="w-4 h-4" />
-                    </a>
-
-                    {/* View PDF Button - show if PDF is already generated (level 3 approved) */}
-                    {item.pdf_path && (
-                      <a
-                        href={`/api/certificates/${item.id}/pdf`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200 border border-transparent hover:border-green-200"
-                        title="View Saved PDF (Generated when Level 3 approved)"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </a>
-                    )}
-
-                    {/* Print LHKS Button */}
-                    <button
-                      onClick={() => handlePrintLHKS(item)}
-                      className="inline-flex items-center p-1.5 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-all duration-200 border border-transparent hover:border-purple-200"
-                      title="Print LHKS (Laporan Hasil Kalibrasi Sementara)"
-                    >
-                      <PrinterIcon className="w-4 h-4" />
-                    </button>
-
-                    {/* Download PDF Button - generate on-demand or download saved PDF */}
-                    <button
-                      onClick={async () => {
-                        try {
-                          // Use saved PDF endpoint if available, otherwise generate on-demand
-                          const pdfEndpoint = item.pdf_path
-                            ? `/api/certificates/${item.id}/pdf`
-                            : `/api/certificates/${item.id}/download-pdf`
-
-                          const response = await fetch(pdfEndpoint)
-                          if (!response.ok) {
-                            throw new Error('Failed to get PDF')
-                          }
-
-                          // Get filename from Content-Disposition header or use default
-                          const contentDisposition = response.headers.get('Content-Disposition')
-                          let filename = `Certificate_${item.no_certificate || item.id}.pdf`
-                          if (contentDisposition) {
-                            // Try to extract filename from Content-Disposition header
-                            const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i)
-                            if (filenameMatch && filenameMatch[1]) {
-                              filename = filenameMatch[1].replace(/['"]/g, '')
-                              // Decode URI if needed
-                              if (filename.includes('%')) {
-                                filename = decodeURIComponent(filename)
-                              }
-                            }
-                          }
-
-                          // Ensure filename ends with .pdf
-                          if (!filename.toLowerCase().endsWith('.pdf')) {
-                            filename = `${filename}.pdf`
-                          }
-
-                          // Create blob with correct MIME type and download
-                          const blob = await response.blob()
-                          const url = window.URL.createObjectURL(blob)
-                          const a = document.createElement('a')
-                          a.href = url
-                          a.download = filename
-                          a.type = 'application/pdf'
-                          document.body.appendChild(a)
-                          a.click()
-                          window.URL.revokeObjectURL(url)
-                          document.body.removeChild(a)
-                        } catch (err) {
-                          console.error('Error downloading PDF:', err)
-                          showError('Failed to download PDF. Please try again.')
-                        }
-                      }}
-                      className="inline-flex items-center p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200 border border-transparent hover:border-green-200"
-                      title={item.pdf_path ? "Download Saved PDF" : "Generate and Download PDF"}
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </button>
-
-                    <a
-                      href={`/certificates/${item.id}/print`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-lg transition-all duration-200 border border-transparent hover:border-gray-200"
-                      title="Print Certificate"
-                    >
-                      <PrinterIcon className="w-4 h-4" />
-                    </a>
-
-                    {/* QC Check Button */}
-                    <button
-                      onClick={() => {
-                        const sessionId = Array.isArray(item.results) && item.results.length > 0
-                          ? (item.results[0] as any).session_id
-                          : null;
-
-                        if (sessionId) {
-                          setQcModalCertificate(item);
-                          setShowQCModal(true);
-                        } else {
-                          showError("Data QC tidak tersedia. Pastikan sertifikat ini memiliki data mentah yang tersimpan (session_id).");
-                        }
-                      }}
-                      className="inline-flex items-center p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-all duration-200 border border-transparent hover:border-indigo-200"
-                      title="QC Check (Raw Data)"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </button>
-
-                    {/* Edit Button - only show for draft status */}
-                    {item.status === 'draft' && can('certificate', 'update') && (
+                  <td className="px-4 py-3 text-sm font-medium">
+                    <div className="relative inline-block text-left" data-action-menu="true">
                       <button
-                        onClick={() => openModal(item)}
-                        className="inline-flex items-center p-1.5 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-all duration-200 border border-transparent hover:border-purple-200"
-                        title="Edit Certificate"
-                      >
-                        <EditIcon className="w-4 h-4" />
-                      </button>
-                    )}
-
-                    {can('certificate', 'delete') && canEndpoint('DELETE', `/api/certificates/${item.id}`) && (
-                      <button
-                        onClick={() => handleDelete(item.id)}
-                        disabled={isDeleting === item.id}
-                        className={`inline-flex items-center p-1.5 rounded-lg transition-all duration-200 border border-transparent ${isDeleting === item.id
-                          ? 'text-gray-400 cursor-not-allowed bg-gray-50'
-                          : 'text-red-600 hover:text-red-800 hover:bg-red-50 hover:border-red-200'
+                        onClick={() => setActionDropdownOpenId(actionDropdownOpenId === item.id ? null : item.id)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-200 ${actionDropdownOpenId === item.id
+                          ? 'bg-[#1e377c] text-white border-[#1e377c] shadow-inner'
+                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400 shadow-sm'
                           }`}
-                        title={isDeleting === item.id ? "Deleting..." : "Delete Certificate"}
                       >
-                        {isDeleting === item.id ? (
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
-                        ) : (
-                          <DeleteIcon className="w-4 h-4" />
-                        )}
+                        Aksi
+                        <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform duration-200 ${actionDropdownOpenId === item.id ? 'rotate-180' : ''}`} />
                       </button>
-                    )}
 
-                    {(item as any).repair_status === 'none' && ((item as any).verifikator_1_status === 'rejected' || (item as any).verifikator_2_status === 'rejected') && (
-                      <button
-                        onClick={() => openModal(item)}
-                        className="inline-flex items-center p-1.5 text-orange-600 hover:text-orange-800 hover:bg-orange-50 rounded-lg transition-all duration-200 border border-transparent hover:border-orange-200"
-                        title="Request Repair"
-                      >
-                        <SettingsIcon className="w-4 h-4" />
-                      </button>
-                    )}
-                    {(item as any).repair_status === 'pending' && (
-                      <button
-                        onClick={() => handleCompleteRepair(item)}
-                        className="inline-flex items-center p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200 border border-transparent hover:border-green-200"
-                        title="Complete Repair"
-                      >
-                        <CheckCircleIcon className="w-4 h-4" />
-                      </button>
-                    )}
-                    {(item as any).repair_status === 'completed' && (
-                      <button
-                        onClick={() => handleResetVerification(item)}
-                        className="inline-flex items-center p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all duration-200 border border-transparent hover:border-blue-200"
-                        title="Reset Verification"
-                      >
-                        <RefreshIcon className="w-4 h-4" />
-                      </button>
-                    )}
+                      {/* Dropdown Menu */}
+                      {actionDropdownOpenId === item.id && (
+                        <div className="absolute right-0 mt-2 w-48 rounded-xl shadow-xl bg-white ring-1 ring-black ring-opacity-5 z-[50] py-1 animate-in fade-in slide-in-from-top-2 duration-200 border border-gray-100 divide-y divide-gray-50">
+                          {/* VIEW GROUP */}
+                          <div className="py-1">
+                            {item.status === 'draft' && (
+                              <a
+                                href={`/draft-view?certificate=${item.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-yellow-50 hover:text-yellow-700 transition-colors"
+                              >
+                                <svg className="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                View Draft
+                              </a>
+                            )}
+                            <a
+                              href={`/certificates/${item.id}/view`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                            >
+                              <ViewIcon className="w-4 h-4 text-blue-600" />
+                              View Certificate
+                            </a>
+                            {item.pdf_path && (
+                              <a
+                                href={`/api/certificates/${item.id}/pdf`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
+                              >
+                                <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                View Saved PDF
+                              </a>
+                            )}
+                          </div>
+
+                          {/* DOWNLOADS / PRINT GROUP */}
+                          <div className="py-1">
+                            <button
+                              onClick={() => handlePrintLHKS(item)}
+                              className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors"
+                            >
+                              <PrinterIcon className="w-4 h-4 text-purple-600" />
+                              Print LHKS
+                            </button>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const pdfEndpoint = item.pdf_path
+                                    ? `/api/certificates/${item.id}/pdf`
+                                    : `/api/certificates/${item.id}/download-pdf`
+
+                                  const response = await fetch(pdfEndpoint)
+                                  if (!response.ok) throw new Error('Failed to get PDF')
+
+                                  const contentDisposition = response.headers.get('Content-Disposition')
+                                  let filename = `Certificate_${item.no_certificate || item.id}.pdf`
+                                  if (contentDisposition) {
+                                    const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i)
+                                    if (filenameMatch && filenameMatch[1]) {
+                                      filename = filenameMatch[1].replace(/['"]/g, '')
+                                      if (filename.includes('%')) filename = decodeURIComponent(filename)
+                                    }
+                                  }
+
+                                  if (!filename.toLowerCase().endsWith('.pdf')) filename = `${filename}.pdf`
+
+                                  const blob = await response.blob()
+                                  const url = window.URL.createObjectURL(blob)
+                                  const a = document.createElement('a')
+                                  a.href = url
+                                  a.download = filename
+                                  a.type = 'application/pdf'
+                                  document.body.appendChild(a)
+                                  a.click()
+                                  window.URL.revokeObjectURL(url)
+                                  document.body.removeChild(a)
+                                } catch (err) {
+                                  console.error('Error downloading PDF:', err)
+                                  showError('Failed to download PDF. Please try again.')
+                                }
+                              }}
+                              className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
+                            >
+                              <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                              {item.pdf_path ? "Download Signed PDF" : "Download PDF"}
+                            </button>
+                            <a
+                              href={`/certificates/${item.id}/print`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                            >
+                              <PrinterIcon className="w-4 h-4 text-gray-600" />
+                              Print Certificate
+                            </a>
+                            <button
+                              onClick={() => {
+                                const sessionId = Array.isArray(item.results) && item.results.length > 0
+                                  ? (item.results[0] as any).session_id
+                                  : null;
+
+                                if (sessionId) {
+                                  setQcModalCertificate(item);
+                                  setShowQCModal(true);
+                                  setActionDropdownOpenId(null);
+                                } else {
+                                  showError("Data QC tidak tersedia. Pastikan sertifikat ini memiliki data mentah yang tersimpan (session_id).");
+                                }
+                              }}
+                              className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                            >
+                              <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              QC Check Data
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const sessionId = Array.isArray(item.results) && item.results.length > 0
+                                  ? (item.results[0] as any).session_id
+                                  : null;
+
+                                if (sessionId) {
+                                  setUncertaintyModalCertificate(item);
+                                  setUncertaintyRawData([]);
+                                  try {
+                                    const res = await fetch(`/api/raw-data?session_id=${sessionId}`);
+                                    const json = await res.json();
+                                    setUncertaintyRawData(json.data || []);
+                                    setShowUncertaintyModal(true);
+                                    setActionDropdownOpenId(null);
+                                  } catch (e) {
+                                    console.error("Failed to fetch raw data for Uncertainty", e);
+                                    showError("Gagal mengambil data mentah untuk perhitungan ketidakpastian");
+                                  }
+                                } else {
+                                  showError("Data QC tidak tersedia. Pastikan sertifikat ini memiliki data mentah yang tersimpan (session_id).");
+                                }
+                              }}
+                              className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-orange-50 hover:text-orange-700 transition-colors"
+                            >
+                              <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                              </svg>
+                              Uncertainty Budget
+                            </button>
+                          </div>
+
+                          {/* ACTION / MODIFY GROUP */}
+                          <div className="py-1">
+                            {item.status === 'draft' && can('certificate', 'update') && (
+                              <button
+                                onClick={() => {
+                                  openModal(item);
+                                  setActionDropdownOpenId(null);
+                                }}
+                                className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors"
+                              >
+                                <EditIcon className="w-4 h-4 text-purple-600" />
+                                Edit Certificate
+                              </button>
+                            )}
+
+                            {((item as any).repair_status === 'none' && ((item as any).verifikator_1_status === 'rejected' || (item as any).verifikator_2_status === 'rejected')) && (
+                              <button
+                                onClick={() => {
+                                  openModal(item);
+                                  setActionDropdownOpenId(null);
+                                }}
+                                className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-orange-50 hover:text-orange-700 transition-colors"
+                              >
+                                <SettingsIcon className="w-4 h-4 text-orange-600" />
+                                Request Repair
+                              </button>
+                            )}
+
+                            {(item as any).repair_status === 'pending' && (
+                              <button
+                                onClick={() => {
+                                  handleCompleteRepair(item);
+                                  setActionDropdownOpenId(null);
+                                }}
+                                className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
+                              >
+                                <CheckCircleIcon className="w-4 h-4 text-green-600" />
+                                Complete Repair
+                              </button>
+                            )}
+
+                            {(item as any).repair_status === 'completed' && (
+                              <button
+                                onClick={() => {
+                                  handleResetVerification(item);
+                                  setActionDropdownOpenId(null);
+                                }}
+                                className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                              >
+                                <RefreshIcon className="w-4 h-4 text-blue-600" />
+                                Reset Verification
+                              </button>
+                            )}
+
+                            {can('certificate', 'delete') && canEndpoint('DELETE', `/api/certificates/${item.id}`) && (
+                              <button
+                                onClick={() => {
+                                  handleDelete(item.id);
+                                  setActionDropdownOpenId(null);
+                                }}
+                                disabled={isDeleting === item.id}
+                                className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 hover:text-red-800 transition-colors disabled:opacity-50"
+                              >
+                                {isDeleting === item.id ? (
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                                ) : (
+                                  <DeleteIcon className="w-4 h-4" />
+                                )}
+                                {isDeleting === item.id ? "Deleting..." : "Delete Certificate"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -2867,9 +2941,16 @@ const CertificatesCRUD: React.FC = () => {
                     </button>
                     <button
                       type="submit"
-                      className="px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c] rounded-lg shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5"
+                      disabled={isSubmitting || submitDisabled}
+                      className="px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c] rounded-lg shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
-                      Simpan Sesi Kalibrasi
+                      {isSubmitting && (
+                        <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      )}
+                      {isSubmitting ? 'Menyimpan...' : 'Simpan Sesi Kalibrasi'}
                     </button>
                   </div>
                 </div>
@@ -3859,6 +3940,25 @@ const CertificatesCRUD: React.FC = () => {
             sessionResults={(lhksCertificate.results as any) || []}
             allInstruments={instruments}
             allSensors={sensors}
+            instrumentNames={instrumentNames}
+          />
+        )
+      }
+
+      {/* Uncertainty Modal */}
+      {
+        uncertaintyModalCertificate && (
+          <UncertaintyModal
+            isOpen={showUncertaintyModal}
+            onClose={() => {
+              setShowUncertaintyModal(false)
+              setUncertaintyModalCertificate(null)
+            }}
+            certificate={uncertaintyModalCertificate}
+            instruments={instruments}
+            sensors={sensors}
+            standardCerts={standardCerts}
+            rawData={uncertaintyRawData}
             instrumentNames={instrumentNames}
           />
         )

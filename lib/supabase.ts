@@ -180,6 +180,7 @@ export interface Instrument {
   station?: Station | null // Relasi data (opsional)
   memiliki_lebih_satu?: boolean // Field untuk mengontrol tampilan sensor
   sensor?: Sensor[]
+  instrument_type_id?: number | null // 1=Digital, 2=Analog
 }
 
 export type InstrumentInsert = Omit<Instrument, 'id' | 'created_at' | 'station'>
