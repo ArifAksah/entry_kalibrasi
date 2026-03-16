@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { Certificate, Instrument, Sensor } from '../../lib/supabase';
-import { calculateUncertaintyBudget, UncertaintyResult } from '../../lib/uncertainty-utils';
+import { calculateUncertaintyBudget, UncertaintyResult, interpolateU95FromPoints } from '../../lib/uncertainty-utils';
 import { parseCertCorrectionPoints, interpolateCorrectionFromPoints } from '../../lib/qc-utils';
+import { convertUnit } from '../../lib/unitConversion';
 // RawDataRow defined locally to avoid circular imports
 interface RawDataRow {
     id: any;
@@ -201,7 +202,12 @@ function UncertaintyContent({
     // 1. Preparation
     const uutSensor = activeTab !== 'unknown' ? sensors.find(s => s.id === activeTab) : null;
     const stdSensorId = currentData.length > 0 ? currentData[0].sensor_id_std : null;
-    const certMatches = certificate.results?.filter((r: any) => r.sensor_id_std === stdSensorId || r.standardInstrumentId);
+    const certMatches = certificate.results?.filter((r: any) => {
+        // Strictly match the current UUT sensor or the standard sensor used in the data
+        // Do NOT use `|| r.standardInstrumentId` generically as it will match the first cert (e.g. Pressure) for all tabs
+        return (r.sensor_id_uut === activeTab) || (stdSensorId && r.sensor_id_std === stdSensorId);
+    });
+
 
     let standardCertRecord = null;
     if (currentData.length > 0 && certMatches && certMatches.length > 0) {
@@ -220,8 +226,13 @@ function UncertaintyContent({
         }
     }
 
-    const rawResolusiUut = parseFloat(uutSensor?.graduating ?? '0');
+    // resolusiUut: ambil dari field 'resolution' sensor (kolom baru di DB).
+    // Fallback ke 'graduating' jika resolution belum diisi (backwards compatibility).
+    const rawResolusiUut = uutSensor?.resolution != null
+        ? uutSensor.resolution
+        : parseFloat(uutSensor?.graduating ?? '0');
     const resolusiUut = isNaN(rawResolusiUut) ? 0 : rawResolusiUut;
+
 
     // Advanced unit resolution: Row -> Sensor -> Instrument (Certificate)
     let unitUut = currentData[0]?.unit_uut;
@@ -274,9 +285,11 @@ function UncertaintyContent({
         return currentData.reduce((sum, row) => sum + (row.uut_data || 0), 0) / currentData.length;
     }, [currentData]);
 
-    // Repeat must use std dev of UUT correction values (std_corrected - uut_data),
-    // NOT raw UUT readings. This matches the "Standar Deviasi" column shown in LHKS.
-    // For each row: uut_correction = (standard_data + correction_from_cert) - uut_data
+    // Repeat must use std dev of UUT correction values:
+    // koreksi_uut = std_terkoreksi_dalam_unit_UUT - uut_data
+    // CRITICAL: convert standard_data from its unit (unit_std, e.g. hPa) to uut unit (unit_uut, e.g. inHg)
+    // before subtraction. Without this, hPa(~1007) - inHg(~29.7) = ~977 → wrong huge std dev.
+    const unitStd = currentData[0]?.unit_std || '';
     const uutReadings = React.useMemo(() => {
         if (stdCorrectionPoints.length === 0) {
             // No cert correction data: fallback to raw UUT readings
@@ -284,12 +297,18 @@ function UncertaintyContent({
         }
         return currentData.map(row => {
             const stdData = row.standard_data || 0;
+            const unitStdRow = row.unit_std || unitStd || '';
+            const unitUutRow = row.unit_uut || unitUut || '';
+            // Step 1: add cert correction (in std native unit)
             const correction = interpolateCorrectionFromPoints(stdCorrectionPoints, stdData);
             const stdCorrected = stdData + correction;
-            // koreksi UUT = std_terkoreksi - uut_data (matches LHKS Koreksi column)
-            return stdCorrected - (row.uut_data || 0);
+            // Step 2: convert corrected standard to UUT unit, then subtract uut_data
+            const stdCorrectedInUutUnit = unitStdRow && unitUutRow && unitStdRow.toLowerCase() !== unitUutRow.toLowerCase()
+                ? convertUnit(stdCorrected, unitStdRow, unitUutRow)
+                : stdCorrected;
+            return stdCorrectedInUutUnit - (row.uut_data || 0);
         });
-    }, [currentData, stdCorrectionPoints]);
+    }, [currentData, stdCorrectionPoints, unitStd, unitUut]);
 
 
     // Formatters
@@ -326,28 +345,18 @@ function UncertaintyContent({
     }
 
 
+    // Interpolasi Linier U95 dari sertifikat standar
+    // x = globalStdCorrected (rata-rata pembacaan terkoreksi alat standar, dalam unit native sertifikat, e.g. hPa)
+    // Menggunakan fungsi interpolateU95FromPoints dari uncertainty-utils (forecast linear)
     let interpolatedU95 = 0;
-    if (standardCertRecord && standardCertRecord.setpoint && standardCertRecord.u95_std) {
-        const pts = (standardCertRecord.setpoint as any[]).map((sp, idx) => ({
-            setpoint: parseFloat(String(sp).replace(',', '.')),
-            correction: 0,
-            u95: parseFloat(String((standardCertRecord.u95_std as any[])[idx]).replace(',', '.'))
-        })).filter(p => !isNaN(p.setpoint) && !isNaN(p.u95));
-
-        if (pts.length > 0) {
-            pts.sort((a, b) => a.setpoint - b.setpoint);
-            if (globalStdCorrected <= pts[0].setpoint) interpolatedU95 = pts[0].u95;
-            else if (globalStdCorrected >= pts[pts.length - 1].setpoint) interpolatedU95 = pts[pts.length - 1].u95;
-            else {
-                for (let i = 0; i < pts.length - 1; i++) {
-                    if (globalStdCorrected >= pts[i].setpoint && globalStdCorrected <= pts[i + 1].setpoint) {
-                        const t = (globalStdCorrected - pts[i].setpoint) / (pts[i + 1].setpoint - pts[i].setpoint);
-                        interpolatedU95 = pts[i].u95 + t * (pts[i + 1].u95 - pts[i].u95);
-                        break;
-                    }
-                }
-            }
-        }
+    if (stdCorrectionPoints.length > 0) {
+        // stdCorrectionPoints sudah mengandung u95 per setpoint (dari parseCertCorrectionPoints)
+        interpolatedU95 = interpolateU95FromPoints(stdCorrectionPoints, globalStdCorrected);
+    } else if (standardCertRecord?.u95_general) {
+        // Fallback: ambil u95_general jika tidak ada tabel setpoint
+        interpolatedU95 = typeof standardCertRecord.u95_general === 'number'
+            ? standardCertRecord.u95_general
+            : parseFloat(standardCertRecord.u95_general) || 0;
     }
 
     const result: UncertaintyResult = calculateUncertaintyBudget({
@@ -438,12 +447,12 @@ function UncertaintyContent({
                                 <td className="border border-black px-1 py-0.5">{renderSymbol(c.symbol)}</td>
                                 <td className="border border-black px-2 py-0.5">{formatDec(c.u_a, 4)}</td>
                                 <td className="border border-black px-2 py-0.5">{formatDec(c.cov_factor, 3)}</td>
-                                <td className="border border-black px-2 py-0.5">{c.deg_freedom > 1000 ? '1064' : c.deg_freedom}</td>
+                                <td className="border border-black px-2 py-0.5">{c.deg_freedom}</td>
                                 <td className="border border-black px-2 py-0.5">{formatSci(c.std_uncertainty)}</td>
                                 <td className="border border-black px-2 py-0.5">{c.sens_coeff}</td>
                                 <td className="border border-black px-2 py-0.5">{formatSci(c.ci_ui)}</td>
                                 <td className="border border-black px-2 py-0.5">{formatSci(c.ci_ui_sq)}</td>
-                                <td className="border border-black px-2 py-0.5">{c.deg_freedom > 1000 ? formatSci(Math.pow(c.ci_ui, 4) / 1064) : formatSci(c.ci_ui_quad_vi)}</td>
+                                <td className="border border-black px-2 py-0.5">{formatSci(c.ci_ui_quad_vi)}</td>
                             </tr>
                         ))}
 

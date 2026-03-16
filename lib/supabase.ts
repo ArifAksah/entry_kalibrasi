@@ -66,6 +66,7 @@ export interface Sensor {
   range_capacity_unit: string
   graduating: string
   graduating_unit: string
+  resolution?: number | null  // resolution dari kolom sensor (field baru, float8)
   funnel_diameter: number
   funnel_diameter_unit: string
   volume_per_tip: string

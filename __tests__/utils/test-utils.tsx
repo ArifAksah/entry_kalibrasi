@@ -1,5 +1,6 @@
 import { render, RenderOptions } from '@testing-library/react'
 import { ReactElement } from 'react'
+import '@testing-library/jest-dom'
 
 // Mock AuthContext
 const mockAuthContext = {
@@ -185,7 +186,7 @@ export const createMockSensor = (overrides: Partial<typeof mockSensor> = {}) => 
 })
 
 // Mock API responses
-export const mockApiResponse = <T>(data: T, success = true) => ({
+export const mockApiResponse = <T,>(data: T, success = true) => ({
   data,
   error: success ? null : { message: 'Test error' },
   success
@@ -204,7 +205,7 @@ export const mockFetch = (response: any, status = 200) => {
 }
 
 // Mock Supabase response
-export const mockSupabaseResponse = <T>(data: T | null, error: any = null) => ({
+export const mockSupabaseResponse = <T,>(data: T | null, error: any = null) => ({
   data,
   error,
   status: error ? 400 : 200,

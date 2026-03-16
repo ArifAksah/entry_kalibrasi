@@ -136,6 +136,7 @@ const InstrumentsCRUD: React.FC = () => {
     range_capacity_unit: string;
     graduating: string;
     graduating_unit: string;
+    resolution?: number | null;
     funnel_diameter: number;
     funnel_diameter_unit: string;
     volume_per_tip: string;
@@ -1471,7 +1472,7 @@ const InstrumentsCRUD: React.FC = () => {
                                 </div>
                               </div>
                               <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Graduating / Resolution</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Graduating</label>
                                 <div className="flex gap-2">
                                   <input
                                     value={sensor.graduating}
@@ -1489,7 +1490,19 @@ const InstrumentsCRUD: React.FC = () => {
                                   </div>
                                 </div>
                               </div>
+                              <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Resolution <span className="text-gray-400 text-xs font-normal">(untuk perhitungan U95)</span></label>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={sensor.resolution ?? ''}
+                                  onChange={(e) => updateSensor(sensor.id, 'resolution', e.target.value === '' ? null : parseFloat(e.target.value))}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                  placeholder="Ex: 0.01"
+                                />
+                              </div>
                             </div>
+
                           </div>
                         ))}
 
@@ -1766,7 +1779,6 @@ const InstrumentsCRUD: React.FC = () => {
                                     </div>
                                   </div>
 
-                                  {/* Row 4: Range Capacity + Unit | Graduating + Unit */}
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
                                       <label className="block text-sm font-medium text-gray-700 mb-2">Range Capacity</label>
@@ -1789,7 +1801,7 @@ const InstrumentsCRUD: React.FC = () => {
                                       </div>
                                     </div>
                                     <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-2">Graduating / Resolution</label>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Graduating</label>
                                       <div className="flex gap-2">
                                         <input
                                           type="text"
@@ -1807,6 +1819,17 @@ const InstrumentsCRUD: React.FC = () => {
                                           />
                                         </div>
                                       </div>
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Resolution <span className="text-gray-400 text-xs font-normal">(untuk perhitungan U95)</span></label>
+                                      <input
+                                        type="number"
+                                        step="any"
+                                        value={sensor.resolution ?? ''}
+                                        onChange={(e) => updateSensor(sensor.id, 'resolution', e.target.value === '' ? null : parseFloat(e.target.value))}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                        placeholder="Ex: 0.01"
+                                      />
                                     </div>
                                   </div>
 

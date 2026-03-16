@@ -27,6 +27,7 @@ export async function GET(
         range_capacity_unit,
         graduating,
         graduating_unit,
+        resolution,
         funnel_diameter,
         funnel_diameter_unit,
         volume_per_tip,
@@ -60,6 +61,7 @@ export async function GET(
       range_capacity_unit: sensor.range_capacity_unit || '',
       graduating: sensor.graduating || '',
       graduating_unit: sensor.graduating_unit || '',
+      resolution: (sensor as any).resolution ?? null,   // ← field baru
       funnel_diameter: sensor.funnel_diameter || 0,
       funnel_diameter_unit: sensor.funnel_diameter_unit || '',
       volume_per_tip: sensor.volume_per_tip || '',
@@ -149,6 +151,7 @@ export async function POST(
         range_capacity_unit: body.range_capacity_unit || '',
         graduating: body.graduating || '',
         graduating_unit: body.graduating_unit || '',
+        resolution: body.resolution != null ? Number(body.resolution) : null,
         funnel_diameter: body.funnel_diameter || 0,
         funnel_diameter_unit: body.funnel_diameter_unit || '',
         volume_per_tip: body.volume_per_tip || '',
@@ -263,6 +266,7 @@ export async function PUT(
         range_capacity_unit: body.range_capacity_unit || '',
         graduating: body.graduating || '',
         graduating_unit: body.graduating_unit || '',
+        resolution: body.resolution != null ? Number(body.resolution) : null,
         funnel_diameter: body.funnel_diameter || 0,
         funnel_diameter_unit: body.funnel_diameter_unit || '',
         volume_per_tip: body.volume_per_tip || '',
@@ -335,11 +339,24 @@ export async function PUT(
       })
 
       if (certsToUpsert.length > 0) {
-        const { error: certError } = await supabaseAdmin
-          .from('certificate_standard')
-          .upsert(certsToUpsert, { onConflict: 'id' })
+        const certsWithId = certsToUpsert.filter((c: any) => c.id !== undefined);
+        const certsWithoutId = certsToUpsert.filter((c: any) => c.id === undefined);
 
-        if (certError) console.error('Error upserting certs in PUT:', certError)
+        if (certsWithId.length > 0) {
+          const { error: certError } = await supabaseAdmin
+            .from('certificate_standard')
+            .upsert(certsWithId, { onConflict: 'id' })
+
+          if (certError) console.error('Error upserting existing certs in PUT:', certError)
+        }
+
+        if (certsWithoutId.length > 0) {
+          const { error: certError } = await supabaseAdmin
+            .from('certificate_standard')
+            .insert(certsWithoutId)
+
+          if (certError) console.error('Error inserting new certs in PUT:', certError)
+        }
       }
     }
 
