@@ -10,6 +10,8 @@
  */
 
 import { CertCorrectionPoint } from './qc-utils';
+import { convertUnit } from './unitConversion';
+import { parseCertCorrectionPoints, interpolateCorrectionFromPoints } from './qc-utils';
 
 export interface UncertaintyComponent {
     name: string;
@@ -236,5 +238,104 @@ export function calculateUncertaintyBudget(params: {
         cov_factor_95,
         expanded_uncert_u95,
         unit
+    };
+}
+
+/**
+ * calculateCalibrationResult
+ * Wrapper untuk menghitung Rata-rata UUT, Rata-rata Koreksi, dan U95 Ketidakpastian
+ * menggunakan data mentah (QC Data) yang sama seperti di UncertaintyModal.
+ */
+export function calculateCalibrationResult(params: {
+    currentData: any[];
+    uutSensor: any;
+    standardCertRecord: any;
+    isAnalog?: boolean;
+    unitUut?: string;
+}) {
+    const { currentData, uutSensor, standardCertRecord, isAnalog } = params;
+    
+    if (!currentData || currentData.length === 0) {
+        return { uutAvg: 0, correction: 0, uncertainty: 0 };
+    }
+
+    const rawResolusiUut = uutSensor?.resolution != null
+        ? uutSensor.resolution
+        : parseFloat(uutSensor?.graduating ?? '0');
+    const resolusiUut = isNaN(rawResolusiUut) ? 0 : rawResolusiUut;
+
+    let unitUut = params.unitUut || currentData[0]?.unit_uut || uutSensor?.graduating_unit || uutSensor?.range_capacity_unit || 'Unit';
+
+    const driftStd = typeof standardCertRecord?.drift === 'number' 
+        ? standardCertRecord.drift 
+        : parseFloat(standardCertRecord?.drift) || 0;
+    const resolusiStd = typeof standardCertRecord?.resolution === 'number' 
+        ? standardCertRecord.resolution 
+        : parseFloat(standardCertRecord?.resolution) || 0;
+
+    const stdCorrectionPoints = standardCertRecord ? parseCertCorrectionPoints(standardCertRecord) : [];
+
+    let totalStdCorrected = 0;
+    let totalUut = 0;
+
+    currentData.forEach((row) => {
+        const stdData = row.standard_data || 0;
+        const correction = stdCorrectionPoints.length > 0
+            ? interpolateCorrectionFromPoints(stdCorrectionPoints, stdData)
+            : 0;
+        totalStdCorrected += (stdData + correction);
+        totalUut += (row.uut_data || 0);
+    });
+
+    const globalStdCorrected = totalStdCorrected / currentData.length;
+    const globalUutAvg = totalUut / currentData.length;
+
+    const unitStd = currentData[0]?.unit_std || '';
+    const uutReadings = currentData.map(row => {
+        if (stdCorrectionPoints.length === 0) return row.uut_data || 0;
+        
+        const stdData = row.standard_data || 0;
+        const unitStdRow = row.unit_std || unitStd || '';
+        const unitUutRow = row.unit_uut || unitUut || '';
+        
+        const correction = interpolateCorrectionFromPoints(stdCorrectionPoints, stdData);
+        const stdCorrected = stdData + correction;
+        
+        const stdCorrectedInUutUnit = unitStdRow && unitUutRow && unitStdRow.toLowerCase() !== unitUutRow.toLowerCase()
+            ? convertUnit(stdCorrected, unitStdRow, unitUutRow)
+            : stdCorrected;
+            
+        return stdCorrectedInUutUnit - (row.uut_data || 0);
+    });
+
+    let interpolatedU95 = 0;
+    if (stdCorrectionPoints.length > 0) {
+        interpolatedU95 = interpolateU95FromPoints(stdCorrectionPoints, globalStdCorrected);
+    } else if (standardCertRecord?.u95_general) {
+        interpolatedU95 = typeof standardCertRecord.u95_general === 'number'
+            ? standardCertRecord.u95_general
+            : parseFloat(standardCertRecord.u95_general) || 0;
+    }
+
+    const result = calculateUncertaintyBudget({
+        unit: unitUut,
+        uutReadings,
+        interpolatedCertU95: interpolatedU95,
+        driftStd,
+        resolusiStd,
+        resolusiUut,
+        isAnalog: !!isAnalog
+    });
+
+    let uutUnitStdCorrected = globalStdCorrected;
+    if (unitStd && unitUut && unitStd.toLowerCase() !== unitUut.toLowerCase()) {
+        uutUnitStdCorrected = convertUnit(globalStdCorrected, unitStd, unitUut);
+    }
+    const correctionAvg = uutUnitStdCorrected - globalUutAvg;
+
+    return {
+        uutAvg: globalUutAvg,
+        correction: correctionAvg,
+        uncertainty: result.expanded_uncert_u95
     };
 }

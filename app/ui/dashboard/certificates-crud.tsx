@@ -17,6 +17,7 @@ import { read, utils } from 'xlsx'
 import QCDataModal from '../../../components/features/QCDataModal'
 import UncertaintyModal from '../../../components/features/UncertaintyModal'
 import LHKSReport from '../../../components/features/LHKSReport'
+import { calculateCalibrationResult } from '../../../lib/uncertainty-utils'
 import DateRangePicker from '../../../components/ui/DateRangePicker'
 
 // Keep TrashIcon for backward compatibility in this file
@@ -598,6 +599,76 @@ const CertificatesCRUD: React.FC = () => {
   // New State for Raw Data Section (Part 4)
   const [rawDataFilename, setRawDataFilename] = useState<string | null>(null)
   const [rawPreviewSheetIndex, setRawPreviewSheetIndex] = useState(0)
+  const [isGenerating, setIsGenerating] = useState(false)
+
+  // Auto-Generate Table Result from QC Data
+  const handleAutoGenerate = async (sectionIndex: number) => {
+    if (tableEditIndex === null) return;
+    setIsGenerating(true);
+    
+    try {
+      const currentResult = results[tableEditIndex];
+      const sessionId = (currentResult as any)?.session_id;
+
+      if (!sessionId) {
+        showError("Data QC tidak tersedia. Pastikan sensor ini sudah memiliki Data Raw tersimpan (session_id).");
+        setIsGenerating(false);
+        return;
+      }
+
+      // Fetch QC Raw Data
+      const res = await fetch(`/api/raw-data?session_id=${sessionId}`);
+      const json = await res.json();
+      const currentData = json.data || [];
+
+      if (!currentData.length) {
+        showError("Data QC kosong. Silakan isi Data QC terlebih dahulu.");
+        setIsGenerating(false);
+        return;
+      }
+
+      // Setup inputs for calculation
+      const activeUutSensor = sensors.find(s => s.id === currentResult.sensorId);
+      const standardCertRecord = currentResult.standardCertificateId 
+        ? standardCerts.find(c => c.id === currentResult.standardCertificateId) 
+        : null;
+
+      const uutInstrument = instruments.find(i => i.id === form.instrument);
+      const isAnalog = (uutInstrument?.instrument_type_id ?? 1) === 2;
+
+      // Calculate Results
+      const { uutAvg, correction, uncertainty } = calculateCalibrationResult({
+        currentData,
+        uutSensor: activeUutSensor,
+        standardCertRecord: standardCertRecord,
+        isAnalog
+      });
+
+      // Update Table Draft
+      const v = [...tableDraft];
+      if (!v[sectionIndex]) return;
+
+      // Default Standard Format
+      v[sectionIndex].headers = ['Penunjukan Alat', 'Koreksi', 'Ketidakpastian'];
+      
+      const newRow = {
+        key: uutAvg.toFixed(2),
+        unit: correction.toFixed(4),
+        value: uncertainty.toFixed(4),
+        extraValues: []
+      };
+
+      v[sectionIndex].rows = [newRow];
+      setTableDraft(v);
+
+      showSuccess("Tabel berhasil di-generate dari Data QC!");
+    } catch (err: any) {
+      console.error(err);
+      showError("Gagal men-generate tabel dari Data QC");
+    } finally {
+      setIsGenerating(false);
+    }
+  }
 
   // Excel Import Handler
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>, sectionIndex: number) => {
@@ -1663,7 +1734,7 @@ const CertificatesCRUD: React.FC = () => {
                           (item as any).verifikator_1_status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
                             'bg-yellow-50 text-yellow-700 border-yellow-200'
                           }`}>
-                          {(item as any).verifikator_1_status || 'pending'}
+                          {((item as any).verifikator_1_status === 'pending' || !(item as any).verifikator_1_status) ? 'Belum di periksa' : (item as any).verifikator_1_status}
                         </span>
                       </div>
                       <div className="flex items-center space-x-1">
@@ -1672,7 +1743,7 @@ const CertificatesCRUD: React.FC = () => {
                           (item as any).verifikator_2_status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
                             'bg-yellow-50 text-yellow-700 border-yellow-200'
                           }`}>
-                          {(item as any).verifikator_2_status || 'pending'}
+                          {((item as any).verifikator_2_status === 'pending' || !(item as any).verifikator_2_status) ? 'Belum di periksa' : (item as any).verifikator_2_status}
                         </span>
                       </div>
                     </div>
@@ -1912,7 +1983,7 @@ const CertificatesCRUD: React.FC = () => {
                               </button>
                             )}
 
-                            {can('certificate', 'delete') && canEndpoint('DELETE', `/api/certificates/${item.id}`) && (
+                            {can('certificate', 'delete') && canEndpoint('DELETE', `/api/certificates/${item.id}`) && item.status !== 'sent' && (
                               <button
                                 onClick={() => {
                                   handleDelete(item.id);
@@ -2898,28 +2969,155 @@ const CertificatesCRUD: React.FC = () => {
 
 
 
-                {/* Bagian V – Tabel Hasil (Only Table Result Left Here) */}
+                {/* Bagian V – Tabel Hasil */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mt-6">
-                  <div className="bg-gray-100 border-b border-gray-200 flex px-2 overflow-x-auto">
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('hasil')}
-                      className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap border-[#1e377c] text-[#1e377c] bg-white`}
-                    >
-                      Tabel Hasil (Preview Generik)
-                    </button>
+                  <div className="bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] px-5 py-3">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <FileTextIcon className="w-4 h-4" />
+                      Hasil Kalibrasi / Calibration Results
+                    </h3>
+                    <p className="text-blue-100 text-xs mt-0.5">Isi tabel hasil untuk setiap sensor yang dikalibrasi</p>
                   </div>
 
-                  <div className="p-5 min-h-[100px]">
-                    {activeTab === 'hasil' && (
-                      <div className="space-y-4">
-                        <div className="text-center text-gray-500 py-8">
-                          <FileTextIcon className="w-12 h-12 mx-auto text-gray-300 mb-2" />
-                          <p className="text-sm">Tabel hasil akan digenerate dari Raw Data atau input manual.</p>
-                          <button type="button" onClick={() => setTableEditIndex(0)} className="mt-2 text-[#1e377c] text-sm font-semibold hover:underline">
-                            Input Manual Tabel Hasil
-                          </button>
+                  <div className="p-5 space-y-4">
+                    {results.map((result, ri) => {
+                      const sensorName = (result as any).sensorName || result.sensorDetails?.type || `Sensor ${ri + 1}`;
+                      const hasTable = result.table && result.table.length > 0 && result.table.some((s: any) => s.rows?.some((r: any) => r.key || r.value));
+                      const hasSession = !!(result as any).session_id;
+                      return (
+                        <div key={ri} className="border border-gray-200 rounded-lg overflow-hidden">
+                          <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-100">
+                            <span className="text-sm font-semibold text-gray-700">{sensorName}</span>
+                            <div className="flex items-center gap-2">
+                              {/* Auto-Generate Button */}
+                              <button
+                                type="button"
+                                disabled={isGenerating}
+                                onClick={async () => {
+                                  if (!hasSession) {
+                                    showError("Data QC belum tersedia. Pastikan sertifikat ini sudah memiliki Raw Data yang tersimpan.");
+                                    return;
+                                  }
+                                  setIsGenerating(true);
+                                  try {
+                                    const sessionId = (result as any).session_id;
+                                    const res = await fetch(`/api/raw-data?session_id=${sessionId}`);
+                                    const json = await res.json();
+                                    const currentData = json.data || [];
+
+                                    if (!currentData.length) {
+                                      showError("Data QC kosong.");
+                                      return;
+                                    }
+
+                                    const activeUutSensor = sensors.find(s => s.id === result.sensorId);
+                                    const standardCertRecord = result.standardCertificateId
+                                      ? standardCerts.find(c => c.id === result.standardCertificateId)
+                                      : null;
+                                    const uutInstrument = instruments.find(i => i.id === form.instrument);
+                                    const isAnalog = (uutInstrument?.instrument_type_id ?? 1) === 2;
+
+                                    const { uutAvg, correction, uncertainty } = calculateCalibrationResult({
+                                      currentData,
+                                      uutSensor: activeUutSensor,
+                                      standardCertRecord,
+                                      isAnalog
+                                    });
+
+                                    const newTable = [{
+                                      title: 'Hasil Kalibrasi / Calibration Result',
+                                      headers: ['Penunjukan Alat / Instrument Reading', 'Koreksi / Correction', 'Ketidakpastian / Uncertainty'],
+                                      rows: [{
+                                        key: uutAvg.toFixed(4),
+                                        unit: correction.toFixed(4),
+                                        value: uncertainty.toFixed(4),
+                                        extraValues: []
+                                      }]
+                                    }];
+
+                                    updateResult(ri, { table: newTable });
+                                    showSuccess(`Tabel Sensor ${ri + 1} berhasil di-generate!`);
+                                  } catch(e) {
+                                    showError("Gagal generate tabel dari Data QC");
+                                  } finally {
+                                    setIsGenerating(false);
+                                  }
+                                }}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${hasSession
+                                  ? 'text-white bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 shadow-sm'
+                                  : 'text-gray-400 bg-gray-100 cursor-not-allowed'}`}
+                                title={hasSession ? "Auto-Generate dari Data QC" : "Data QC belum tersimpan"}
+                              >
+                                {isGenerating ? (
+                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
+                                ) : (
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                  </svg>
+                                )}
+                                Auto-Generate QC
+                              </button>
+                              {/* Manual Edit Button */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTableEditIndex(ri);
+                                  setTableDraft(result.table && result.table.length > 0
+                                    ? result.table
+                                    : [{ title: '', rows: [{ key: '', unit: '', value: '', extraValues: [] }] }]);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#1e377c] bg-blue-50 hover:bg-blue-100 rounded-lg transition-all border border-blue-200"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                                Input Manual
+                              </button>
+                            </div>
+                          </div>
+                          {/* Preview rows */}
+                          <div className="px-4 py-3">
+                            {hasTable ? (
+                              (result.table as any[]).map((section: any, si: number) => (
+                                <div key={si} className="mb-2">
+                                  {section.title && <p className="text-xs font-semibold text-gray-600 mb-1">{section.title}</p>}
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-xs border-collapse border border-gray-200">
+                                      {section.headers && (
+                                        <thead>
+                                          <tr>
+                                            {section.headers.map((h: string, hi: number) => (
+                                              <th key={hi} className="border border-gray-200 px-2 py-1 text-center text-gray-600 bg-gray-50 font-semibold">{h}</th>
+                                            ))}
+                                          </tr>
+                                        </thead>
+                                      )}
+                                      <tbody>
+                                        {section.rows?.map((row: any, rowi: number) => (
+                                          <tr key={rowi}>
+                                            <td className="border border-gray-200 px-2 py-1 text-center">{row.key}</td>
+                                            <td className="border border-gray-200 px-2 py-1 text-center">{row.unit}</td>
+                                            <td className="border border-gray-200 px-2 py-1 text-center">{row.value}</td>
+                                            {row.extraValues?.map((ev: string, evi: number) => (
+                                              <td key={evi} className="border border-gray-200 px-2 py-1 text-center">{ev}</td>
+                                            ))}
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="text-xs text-gray-400 italic text-center py-2">Belum ada data — klik Auto-Generate QC atau Input Manual</p>
+                            )}
+                          </div>
                         </div>
+                      );
+                    })}
+                    {results.length === 0 && (
+                      <div className="text-center text-gray-400 py-6 text-sm">
+                        Tambahkan sensor terlebih dahulu di atas
                       </div>
                     )}
                   </div>
@@ -3120,8 +3318,30 @@ const CertificatesCRUD: React.FC = () => {
                           <TrashIcon className="w-4 h-4" />
                         </button>
 
+                        {/* Auto-Generate Button */}
+                        <div className="ml-auto relative mr-2">
+                           <button
+                            type="button"
+                            onClick={() => handleAutoGenerate(si)}
+                            disabled={isGenerating}
+                            className={`inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 border border-transparent shadow-sm ${isGenerating
+                              ? 'bg-gray-100 text-gray-400 cursor-wait'
+                              : 'text-white bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700'}`}
+                            title="Generate dari Data QC"
+                          >
+                            {isGenerating ? (
+                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1.5" />
+                            ) : (
+                              <svg className="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                              </svg>
+                            )}
+                            Auto-Generate QC
+                          </button>
+                        </div>
+
                         {/* Import Excel Button */}
-                        <div className="ml-2 relative">
+                        <div className="relative">
                           <input
                             type="file"
                             accept=".xlsx, .xls"
@@ -3908,9 +4128,36 @@ const CertificatesCRUD: React.FC = () => {
               instruments.find(i => i.id === qcModalCertificate.instrument)?.sensor || []
             }
             instrumentNames={instrumentNames}
+            standardCerts={standardCerts}
+            onCalculateSaved={async (updates) => {
+              const results = Array.isArray(qcModalCertificate.results) ? [...qcModalCertificate.results] : [];
+
+              updates.forEach(update => {
+                const targetIdx = update.sensorId === 'unknown'
+                  ? 0
+                  : results.findIndex((r: any) => r.sensorId === update.sensorId || r.sensor_id === update.sensorId);
+                
+                if (targetIdx >= 0) {
+                  results[targetIdx] = { ...results[targetIdx], table: update.table };
+                }
+              });
+
+              try {
+                // Gunakan updateCertificate dari hook (yg memakai PUT dengan full object)
+                await updateCertificate(qcModalCertificate.id, {
+                  ...qcModalCertificate,
+                  results: results
+                } as any);
+                showSuccess(`✅ Tabel hasil berhasil di-generate & disimpan ke sertifikat ${qcModalCertificate.no_certificate}!`);
+              } catch (err) {
+                console.error(err);
+                showError('Gagal menyimpan tabel ke sertifikat');
+              }
+            }}
           />
         )
       }
+
 
       {/* LHKS Modal */}
       {

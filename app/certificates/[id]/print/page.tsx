@@ -191,11 +191,25 @@ const PrintCertificatePage: React.FC = () => {
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [personel, setPersonel] = useState<Personel[]>([])
   const [sensors, setSensors] = useState<any[]>([])
+  const [instrumentNames, setInstrumentNames] = useState<any[]>([])
   const [isSigned, setIsSigned] = useState<boolean>(false)
   const [verificationLoaded, setVerificationLoaded] = useState<boolean>(false)
   const hasPrintedRef = useRef<boolean>(false)
   const qrRenderedCountRef = useRef<number>(0)
   const expectedQRCodesRef = useRef<number>(0)
+
+  
+  // Helper to resolve canonical sensor name
+  const resolveSensorName = useCallback((res: any, fallbackIndex: number) => {
+    const sd = res?.sensorDetails || {}
+    const sensorRecord = sensors.find((s: any) => s.id === res?.sensorId)
+    let canonicalName = undefined
+    if (sensorRecord?.sensor_name_id) {
+      canonicalName = instrumentNames.find((n: any) => n.id === sensorRecord.sensor_name_id)?.name
+    }
+    // Priority: canonical name from instrument_names table > sensorDetails.name fallback
+    return canonicalName || sensorRecord?.name || sd.name || sd.type || `Sensor ${fallbackIndex + 1}`
+  }, [sensors, instrumentNames])
 
   // Menggunakan useMemo untuk data turunan
   const station = useMemo(() => stations.find(s => s.id === (cert?.station ?? -1)) || null, [stations, cert])
@@ -222,7 +236,7 @@ const PrintCertificatePage: React.FC = () => {
     if (!results || results.length === 0) return ''
     const lines = results.map((res: any, i: number) => {
       const sd = res?.sensorDetails || {}
-      const name = sd.name || sd.type || `Sensor ${i + 1}`
+      const name = resolveSensorName(res, i)
       const manufacturer = sd.manufacturer || '-'
       const type = sd.type || '-'
       const serial = sd.serial_number || '-'
@@ -263,10 +277,11 @@ const PrintCertificatePage: React.FC = () => {
     const load = async () => {
       try {
         // Fetch certificate dan personel
-        const [cRes, pRes, sRes] = await Promise.all([
+        const [cRes, pRes, sRes, inRes] = await Promise.all([
           fetch(`/api/certificates/${id}`),
           fetch('/api/personel'),
           fetch('/api/sensors'),
+          fetch('/api/instrument-names'),
         ])
         const c = await cRes.json()
         const p = await pRes.json()
@@ -274,6 +289,11 @@ const PrintCertificatePage: React.FC = () => {
         if (sRes.ok) {
           const sData = await sRes.json()
           setSensors(Array.isArray(sData) ? sData : (sData?.data ?? []))
+        }
+
+        if (inRes.ok) {
+          const inData = await inRes.json()
+          setInstrumentNames(Array.isArray(inData) ? inData : (inData?.data ?? []))
         }
 
         if (!cRes.ok) throw new Error(c?.error || 'Failed to load certificate')
@@ -1146,7 +1166,7 @@ const PrintCertificatePage: React.FC = () => {
                         {/* Header per Sensor: Detail Sensor & Environment */}
                         <div className="grid grid-cols-1">
                           {(() => {
-                            const name = res?.sensorDetails?.name || res?.sensorDetails?.type || '-'
+                            const name = resolveSensorName(res, idx) || '-'
                             const manufacturer = res?.sensorDetails?.manufacturer || '-'
                             const type = res?.sensorDetails?.type || '-'
                             const serial = res?.sensorDetails?.serial_number || '-'

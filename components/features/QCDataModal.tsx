@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { Instrument, Sensor } from '../../lib/supabase';
 import {
@@ -6,6 +5,7 @@ import {
     hitungKoreksiBatch
 } from '../../lib/qc-utils';
 import { convertUnit, needsConversion } from '../../lib/unitConversion';
+import { calculateCalibrationResult } from '../../lib/uncertainty-utils';
 
 
 interface RawDataRow {
@@ -32,15 +32,18 @@ interface QCDataModalProps {
     instruments: Instrument[];
     sensors: any[];
     instrumentNames: Array<{ id: number; name: string }>;
+    standardCerts?: any[];
+    onCalculateSaved?: (updates: Array<{ sensorId: number | string, table: any[] }>) => void | Promise<void>;
 }
 
 const QCDataModal: React.FC<QCDataModalProps> = ({
-    isOpen, onClose, title, sessionId, instruments, sensors, certificateInstrumentId, instrumentNames
+    isOpen, onClose, title, sessionId, instruments, sensors, certificateInstrumentId, instrumentNames, standardCerts = [], onCalculateSaved
 }) => {
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<RawDataRow[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<number | 'unknown'>('unknown');
+    const [isSavingToTable, setIsSavingToTable] = useState(false);
 
     // Per UUT sensor: QC limits from master_qc
     const [qcLimits, setQcLimits] = useState<Record<string, QCLimit | null>>({});
@@ -225,6 +228,76 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
     const failCount = currentData.filter(row => !computeRowQC(row).qc.passed).length;
     const stdSensorId = currentData.length > 0 ? currentData[0].sensor_id_std : null;
+
+    /**
+     * Calculate UUT Avg, Correction, and Uncertainty for ALL sensor tabs (bulk)
+     * then call onCalculateSaved to update the certificate table.
+     */
+    const handleSaveToTable = async () => {
+        if (sensorKeys.length === 0) return;
+        setIsSavingToTable(true);
+        try {
+            const updates: Array<{ sensorId: number | string, table: any[] }> = [];
+
+            for (const key of sensorKeys) {
+                const groupData = groupedData[key] || [];
+                if (groupData.length === 0) continue;
+
+                const sensorId = key === 'unknown' ? null : Number(key);
+                const uutSensor = sensorId ? sensors.find((s: any) => s.id === sensorId) : null;
+
+                // Find standard cert for this sensor group via correctionMap data
+                const stdSensorId = groupData[0]?.sensor_id_std;
+                const standardCertRecord = stdSensorId
+                    ? standardCerts.find((c: any) => c.sensor_id === stdSensorId)
+                    : null;
+
+                const uutAvg = groupData.reduce((sum, r) => sum + r.uut_data, 0) / groupData.length;
+
+                // Compute average correction from existing correctionMap
+                let correctionAvg = 0;
+                if (correctionMap.size > 0) {
+                    const corrections = groupData.map(row => {
+                        const { uutCorrection } = computeRowQC(row);
+                        return uutCorrection;
+                    });
+                    correctionAvg = corrections.reduce((sum, c) => sum + c, 0) / corrections.length;
+                }
+
+                // Get uncertainty from calculateCalibrationResult
+                const isAnalog = (instruments.find(i => i.id === certificateInstrumentId)?.instrument_type_id ?? 1) === 2;
+                const { uncertainty } = calculateCalibrationResult({
+                    currentData: groupData,
+                    uutSensor,
+                    standardCertRecord,
+                    isAnalog
+                });
+
+                // Format as standard table structure
+                const round4 = (n: number) => Math.round((n + Number.EPSILON) * 10000) / 10000;
+                const newTable = [{
+                    title: 'Hasil Kalibrasi / Calibration Result',
+                    headers: ['Penunjukan Alat / Instrument Reading', 'Koreksi / Correction', 'Ketidakpastian / Uncertainty'],
+                    rows: [{
+                        key: String(round4(uutAvg)),
+                        unit: String(round4(correctionAvg)),
+                        value: String(round4(uncertainty)),
+                        extraValues: []
+                    }]
+                }];
+
+                updates.push({ sensorId: key === 'unknown' ? 'unknown' : Number(key), table: newTable });
+            }
+
+            if (onCalculateSaved && updates.length > 0) {
+                await onCalculateSaved(updates);
+            }
+        } catch (err: any) {
+            console.error('Error calculating table bulk:', err);
+        } finally {
+            setIsSavingToTable(false);
+        }
+    };
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] backdrop-blur-sm">
@@ -446,9 +519,36 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                             <span className="ml-1 text-yellow-600">⚠ Sensor belum ada di Master QC.</span>
                         )}
                     </div>
-                    <button onClick={onClose} className="px-6 py-2 bg-gray-800 text-white text-sm font-medium rounded-lg hover:bg-gray-900 transition-all">
-                        Tutup
-                    </button>
+                    <div className="flex items-center gap-3">
+                        {currentData.length > 0 && (
+                            <button
+                                onClick={handleSaveToTable}
+                                disabled={isSavingToTable}
+                                className={`px-5 py-2 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${
+                                    isSavingToTable
+                                        ? 'bg-gray-100 text-gray-400 cursor-wait'
+                                        : 'bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-white shadow-sm'
+                                }`}
+                            >
+                                {isSavingToTable ? (
+                                    <>
+                                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-transparent" />
+                                        <span>Menyimpan...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                        </svg>
+                                        <span>Hitung & Input ke Tabel Sertifikat</span>
+                                    </>
+                                )}
+                            </button>
+                        )}
+                        <button onClick={onClose} className="px-6 py-2 bg-gray-800 text-white text-sm font-medium rounded-lg hover:bg-gray-900 transition-all">
+                            Tutup
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
