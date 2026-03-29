@@ -145,9 +145,30 @@ const InstrumentsCRUD: React.FC = () => {
     funnel_area_unit: string;
     is_standard: boolean;
     certificates?: Array<any>;
+    drift?: number;
+    u95_general?: number;
+    correction_data?: Array<{ setpoint: string, correction: string, u95: string }>;
   }>>([])
   const [isLoadingSensors, setIsLoadingSensors] = useState(false)
   const [isStandardInstrument, setIsStandardInstrument] = useState(false)
+  // Global certificates for standard instrument (each carries its own calibration data)
+  const [globalCertificates, setGlobalCertificates] = useState<Array<{
+    id?: number,
+    no_certificate: string,
+    calibration_date: string,
+    drift: number,
+    u95_general: number,
+    correction_data: Array<{setpoint: string, correction: string, u95: string}>
+    expanded?: boolean
+  }>>([])
+  const [newGlobalCert, setNewGlobalCert] = useState({
+    no_certificate: '',
+    calibration_date: '',
+    drift: 0 as number | '',
+    u95_general: 0 as number | '',
+    correction_data: [] as Array<{setpoint: string, correction: string, u95: string}>
+  })
+  const [newGlobalCertError, setNewGlobalCertError] = useState('')
 
   // State for Certificate Management
   const [selectedSensorForCert, setSelectedSensorForCert] = useState<string>('')
@@ -341,10 +362,61 @@ const InstrumentsCRUD: React.FC = () => {
           // Ensure sensors array is not empty before setting
           if (Array.isArray(sensors) && sensors.length > 0) {
             console.log('Setting sensorForms with', sensors.length, 'sensors')
-            setSensorForms(sensors)
+            
+            const extractedGlobalCerts: any[] = [];
+            
+            const processedSensors = sensors.map((sensor: any) => {
+              let drift = 0;
+              let u95_general = 0;
+              let correction_data: any[] = [];
+              let range_capacity = sensor.range_capacity || '';
+              let resolution = sensor.resolution || 0;
+
+              if (sensor.certificates && sensor.certificates.length > 0) {
+                // For inline editing, we take the data from the first certificate
+                const firstCert = sensor.certificates[0];
+                drift = firstCert.drift || 0;
+                u95_general = firstCert.u95_general || 0;
+                correction_data = firstCert.correction_data || [];
+                range_capacity = firstCert.range || range_capacity;
+                resolution = firstCert.resolution || resolution;
+
+                // Collect certificates — each with its own calibration data
+                sensor.certificates.forEach((c: any) => {
+                  if (!extractedGlobalCerts.find((gc: any) => gc.no_certificate === c.no_certificate)) {
+                    extractedGlobalCerts.push({
+                      id: c.id,
+                      no_certificate: c.no_certificate,
+                      calibration_date: c.calibration_date,
+                      drift: c.drift || 0,
+                      u95_general: c.u95_general || 0,
+                      correction_data: c.correction_data || [],
+                      expanded: false
+                    });
+                  }
+                });
+              }
+
+              return {
+                ...sensor,
+                drift,
+                u95_general,
+                correction_data,
+                range_capacity,
+                resolution
+              };
+            });
+
+            setSensorForms(processedSensors)
+            setGlobalCertificates(extractedGlobalCerts)
+            // Directly set isStandardInstrument based on loaded sensors (fixes race condition)
+            const anyStandard = processedSensors.some((s: any) => s.is_standard);
+            setIsStandardInstrument(anyStandard);
           } else {
             console.log('No sensors found, setting empty array')
             setSensorForms([])
+            setGlobalCertificates([])
+            setIsStandardInstrument(false);
           }
         } else {
           const errorText = await res.text()
@@ -382,20 +454,8 @@ const InstrumentsCRUD: React.FC = () => {
     }
   }, [isModalOpen, editing])
 
-  // Sync isStandardInstrument when editing
-  useEffect(() => {
-    if (isModalOpen && editing) {
-      // Check if ANY loaded sensor is standard to determine if instrument is "Standard Mode"
-      // or check activeTab context
-      if (sensorForms.length > 0 && sensorForms.some(s => s.is_standard)) {
-        setIsStandardInstrument(true)
-      } else {
-        // If editing standard instrument but sensors not yet loaded, we might default to activeTab if strict
-        if (activeTab === 'certStandard' || filterType === 'standard') setIsStandardInstrument(true)
-        else setIsStandardInstrument(false)
-      }
-    }
-  }, [isModalOpen, editing, sensorForms.length])
+  // isStandardInstrument is now set directly inside openModal after sensors load.
+  // No useEffect needed here — removing to fix race condition.
 
   const closeModal = () => {
     setIsModalOpen(false)
@@ -488,10 +548,31 @@ const InstrumentsCRUD: React.FC = () => {
           volume_per_tip_unit: (isStandardInstrument ? defaultCalibration.volume_per_tip_unit : '') || '',
           funnel_area: (isStandardInstrument ? defaultCalibration.funnel_area : 0) || 0,
           funnel_area_unit: (isStandardInstrument ? defaultCalibration.funnel_area_unit : '') || '',
+          drift: defaultCalibration.drift || 0,
+          u95_general: defaultCalibration.u95_general || 0,
+          resolution: defaultCalibration.resolution || 0,
+          correction_data: defaultCalibration.correction_data || [],
           is_standard: isStandardInstrument,
           certificates: defaultCalibration.certificates || []
         };
         effectiveSensors = [syncedSensor as any]; // Cast to any to match type signature if needed
+      }
+
+      // MERGE GLOBAL CERTIFICATES — each cert carries its own calibration data
+      if (isStandardInstrument && globalCertificates.length > 0) {
+        effectiveSensors = effectiveSensors.map(sensor => {
+          const mergedCerts = globalCertificates.map(gc => ({
+            id: gc.id,
+            no_certificate: gc.no_certificate,
+            calibration_date: gc.calibration_date,
+            drift: Number(gc.drift) || 0,
+            range: sensor.range_capacity || '',
+            resolution: Number(sensor.resolution) || 0,
+            u95_general: Number(gc.u95_general) || 0,
+            correction_data: gc.correction_data || []
+          }));
+          return { ...sensor, certificates: mergedCerts };
+        });
       }
 
       if (editing) {
@@ -1431,6 +1512,226 @@ const InstrumentsCRUD: React.FC = () => {
                             </p>
                           </div>
                         </div>
+                        {/* Global Certificates for Standard Instrument */}
+                        {isStandardInstrument && (
+                          <div className="lg:col-span-2 mt-4 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                            <h4 className="text-md font-semibold text-gray-800 mb-4 border-b pb-2">Daftar Sertifikat (Tiap Tahun)</h4>
+                            
+                            {/* Existing certificate cards */}
+                            {globalCertificates.length > 0 && (
+                              <div className="space-y-3 mb-5">
+                                {globalCertificates.map((cert, idx) => (
+                                  <div key={idx} className="border border-gray-200 rounded-lg overflow-hidden">
+                                    {/* Certificate header row */}
+                                    <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
+                                      <div className="flex items-center gap-4 text-sm">
+                                        <span className="font-semibold text-gray-800">{cert.no_certificate}</span>
+                                        <span className="text-gray-500">{cert.calibration_date}</span>
+                                        <span className="text-gray-500">Drift: <strong>{cert.drift}</strong></span>
+                                        <span className="text-gray-500">U95: <strong>{cert.u95_general}</strong></span>
+                                        <span className="text-gray-400 text-xs">{cert.correction_data?.length || 0} titik koreksi</span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <button type="button"
+                                          onClick={() => setGlobalCertificates(prev => prev.map((c, i) => i === idx ? {...c, expanded: !c.expanded} : c))}
+                                          className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors">
+                                          {cert.expanded ? '▲ Tutup' : '▼ Edit Data'}
+                                        </button>
+                                        <button type="button"
+                                          onClick={() => { if(confirm('Hapus sertifikat ini?')) setGlobalCertificates(prev => prev.filter((_,i) => i !== idx)); }}
+                                          className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors">
+                                          Hapus
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {/* Expandable calibration data editor */}
+                                    {cert.expanded && (
+                                      <div className="px-4 py-4 border-t border-gray-100 bg-white space-y-4">
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-600 mb-1">Nomor Sertifikat</label>
+                                            <input type="text" value={cert.no_certificate}
+                                              onChange={e => setGlobalCertificates(prev => prev.map((c,i) => i===idx ? {...c, no_certificate: e.target.value} : c))}
+                                              className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"/>
+                                          </div>
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-600 mb-1">Tanggal Kalibrasi</label>
+                                            <input type="date" value={cert.calibration_date}
+                                              onChange={e => setGlobalCertificates(prev => prev.map((c,i) => i===idx ? {...c, calibration_date: e.target.value} : c))}
+                                              className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"/>
+                                          </div>
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-600 mb-1">Drift</label>
+                                            <input type="number" step="any" value={cert.drift}
+                                              onChange={e => setGlobalCertificates(prev => prev.map((c,i) => i===idx ? {...c, drift: e.target.value==='' ? 0 : parseFloat(e.target.value)} : c))}
+                                              className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500" placeholder="Ex: -0.05"/>
+                                          </div>
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-600 mb-1">U95 General</label>
+                                            <input type="number" step="any" value={cert.u95_general}
+                                              onChange={e => setGlobalCertificates(prev => prev.map((c,i) => i===idx ? {...c, u95_general: e.target.value==='' ? 0 : parseFloat(e.target.value)} : c))}
+                                              className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500" placeholder="Ex: 0.02"/>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <div className="flex justify-between items-center mb-2">
+                                            <span className="text-xs font-semibold text-gray-700">Tabel Koreksi & Ketidakpastian</span>
+                                            <button type="button"
+                                              onClick={() => setGlobalCertificates(prev => prev.map((c,i) => i===idx ? {...c, correction_data: [...(c.correction_data||[]), {setpoint:'',correction:'',u95:''}]} : c))}
+                                              className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded border border-gray-300 transition-colors">
+                                              + Tambah Baris
+                                            </button>
+                                          </div>
+                                          <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                            <table className="min-w-full divide-y divide-gray-200 text-xs">
+                                              <thead className="bg-gray-50"><tr>
+                                                <th className="px-3 py-1.5 text-left text-gray-500 font-medium uppercase">Setpoint</th>
+                                                <th className="px-3 py-1.5 text-left text-gray-500 font-medium uppercase">Koreksi</th>
+                                                <th className="px-3 py-1.5 text-left text-gray-500 font-medium uppercase">U95</th>
+                                                <th className="px-3 py-1.5 text-center text-gray-500 font-medium uppercase w-12">Aksi</th>
+                                              </tr></thead>
+                                              <tbody className="bg-white divide-y divide-gray-100">
+                                                {(!cert.correction_data || cert.correction_data.length === 0) ? (
+                                                  <tr><td colSpan={4} className="px-4 py-4 text-center text-gray-400 italic">Klik "Tambah Baris" untuk menambah titik koreksi.</td></tr>
+                                                ) : cert.correction_data.map((row, rIdx) => (
+                                                  <tr key={rIdx}>
+                                                    <td className="px-3 py-1"><input type="number" step="any" value={row.setpoint}
+                                                      onChange={e => setGlobalCertificates(prev => prev.map((c,i) => { if(i!==idx) return c; const nd=[...c.correction_data]; nd[rIdx]={...nd[rIdx],setpoint:e.target.value}; return {...c,correction_data:nd}; }))}
+                                                      className="w-full border border-gray-300 rounded p-1 focus:ring-blue-500 focus:border-blue-500"/></td>
+                                                    <td className="px-3 py-1"><input type="number" step="any" value={row.correction}
+                                                      onChange={e => setGlobalCertificates(prev => prev.map((c,i) => { if(i!==idx) return c; const nd=[...c.correction_data]; nd[rIdx]={...nd[rIdx],correction:e.target.value}; return {...c,correction_data:nd}; }))}
+                                                      className="w-full border border-gray-300 rounded p-1 focus:ring-blue-500 focus:border-blue-500"/></td>
+                                                    <td className="px-3 py-1"><input type="number" step="any" value={row.u95}
+                                                      onChange={e => setGlobalCertificates(prev => prev.map((c,i) => { if(i!==idx) return c; const nd=[...c.correction_data]; nd[rIdx]={...nd[rIdx],u95:e.target.value}; return {...c,correction_data:nd}; }))}
+                                                      className="w-full border border-gray-300 rounded p-1 focus:ring-blue-500 focus:border-blue-500"/></td>
+                                                    <td className="px-3 py-1 text-center">
+                                                      <button type="button" onClick={() => setGlobalCertificates(prev => prev.map((c,i) => i!==idx ? c : {...c, correction_data: c.correction_data.filter((_,ri)=>ri!==rIdx)}))}
+                                                        className="text-red-400 hover:text-red-600">
+                                                        <svg className="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                      </button>
+                                                    </td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Form Tambah Sertifikat Baru */}
+                            <div className="border border-dashed border-blue-300 rounded-lg p-4 bg-blue-50/40">
+                              <p className="text-xs font-semibold text-blue-700 mb-3 uppercase tracking-wide">+ Tambah Sertifikat Baru</p>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">Nomor Sertifikat <span className="text-red-400">*</span></label>
+                                  <input type="text" value={newGlobalCert.no_certificate}
+                                    onChange={e => setNewGlobalCert({...newGlobalCert, no_certificate: e.target.value})}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                                    placeholder="Ex: 123/CERT/2026"/>
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">Tanggal Kalibrasi <span className="text-red-400">*</span></label>
+                                  <input type="date" value={newGlobalCert.calibration_date}
+                                    onChange={e => setNewGlobalCert({...newGlobalCert, calibration_date: e.target.value})}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"/>
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">Drift</label>
+                                  <input type="number" step="any" value={newGlobalCert.drift}
+                                    onChange={e => setNewGlobalCert({...newGlobalCert, drift: e.target.value==='' ? '' : parseFloat(e.target.value)})}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" placeholder="Ex: -0.05"/>
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">U95 General</label>
+                                  <input type="number" step="any" value={newGlobalCert.u95_general}
+                                    onChange={e => setNewGlobalCert({...newGlobalCert, u95_general: e.target.value==='' ? '' : parseFloat(e.target.value)})}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500 text-sm bg-white" placeholder="Ex: 0.02"/>
+                                </div>
+                              </div>
+
+                              {/* Tabel Koreksi untuk New Cert */}
+                              <div className="mb-3">
+                                <div className="flex justify-between items-center mb-1.5">
+                                  <span className="text-xs font-medium text-gray-700">Tabel Koreksi</span>
+                                  <button type="button"
+                                    onClick={() => setNewGlobalCert(prev => ({...prev, correction_data: [...prev.correction_data, {setpoint:'',correction:'',u95:''}]}))}
+                                    className="text-xs bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-2.5 py-1 rounded transition-colors">
+                                    + Baris
+                                  </button>
+                                </div>
+                                {newGlobalCert.correction_data.length > 0 && (
+                                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                    <table className="min-w-full divide-y divide-gray-200 text-xs">
+                                      <thead className="bg-gray-100"><tr>
+                                        <th className="px-3 py-1.5 text-left font-medium text-gray-500">Setpoint</th>
+                                        <th className="px-3 py-1.5 text-left font-medium text-gray-500">Koreksi</th>
+                                        <th className="px-3 py-1.5 text-left font-medium text-gray-500">U95</th>
+                                        <th className="px-3 py-1.5 w-10"></th>
+                                      </tr></thead>
+                                      <tbody className="bg-white divide-y divide-gray-100">
+                                        {newGlobalCert.correction_data.map((row, rIdx) => (
+                                          <tr key={rIdx}>
+                                            <td className="px-2 py-1"><input type="number" step="any" value={row.setpoint}
+                                              onChange={e => { const nd=[...newGlobalCert.correction_data]; nd[rIdx]={...nd[rIdx],setpoint:e.target.value}; setNewGlobalCert({...newGlobalCert,correction_data:nd}); }}
+                                              className="w-full border border-gray-300 rounded p-1 focus:ring-blue-500 focus:border-blue-500"/></td>
+                                            <td className="px-2 py-1"><input type="number" step="any" value={row.correction}
+                                              onChange={e => { const nd=[...newGlobalCert.correction_data]; nd[rIdx]={...nd[rIdx],correction:e.target.value}; setNewGlobalCert({...newGlobalCert,correction_data:nd}); }}
+                                              className="w-full border border-gray-300 rounded p-1 focus:ring-blue-500 focus:border-blue-500"/></td>
+                                            <td className="px-2 py-1"><input type="number" step="any" value={row.u95}
+                                              onChange={e => { const nd=[...newGlobalCert.correction_data]; nd[rIdx]={...nd[rIdx],u95:e.target.value}; setNewGlobalCert({...newGlobalCert,correction_data:nd}); }}
+                                              className="w-full border border-gray-300 rounded p-1 focus:ring-blue-500 focus:border-blue-500"/></td>
+                                            <td className="px-2 py-1 text-center">
+                                              <button type="button" onClick={() => setNewGlobalCert(prev => ({...prev, correction_data: prev.correction_data.filter((_,i)=>i!==rIdx)}))}
+                                                className="text-red-400 hover:text-red-600">✕</button>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+
+                              {newGlobalCertError && (
+                                <p className="text-xs text-red-500 mb-2 flex items-center gap-1">
+                                  <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                                  {newGlobalCertError}
+                                </p>
+                              )}
+                              <button type="button"
+                                onClick={() => {
+                                  if (!newGlobalCert.no_certificate || !newGlobalCert.calibration_date) {
+                                    setNewGlobalCertError('Mohon isi Nomor dan Tanggal Sertifikat terlebih dahulu.');
+                                    return;
+                                  }
+                                  setNewGlobalCertError('');
+                                  setGlobalCertificates(prev => [...prev, {
+                                    no_certificate: newGlobalCert.no_certificate,
+                                    calibration_date: newGlobalCert.calibration_date,
+                                    drift: Number(newGlobalCert.drift) || 0,
+                                    u95_general: Number(newGlobalCert.u95_general) || 0,
+                                    correction_data: newGlobalCert.correction_data,
+                                    expanded: false
+                                  }]);
+                                  setNewGlobalCert({ no_certificate: '', calibration_date: '', drift: 0, u95_general: 0, correction_data: [] });
+                                }}
+                                className="w-full sm:w-auto bg-blue-600 text-white hover:bg-blue-700 px-5 py-2 rounded text-sm font-medium transition-colors">
+                                + Tambah Sertifikat
+                              </button>
+                            </div>
+
+                            {globalCertificates.length === 0 && (
+                              <p className="text-sm text-gray-400 italic text-center mt-3">Belum ada sertifikat. Isi form di atas dan klik Tambah Sertifikat.</p>
+                            )}
+                          </div>
+                        )}
+
                       </div>
                     </div>
 
@@ -1527,134 +1828,55 @@ const InstrumentsCRUD: React.FC = () => {
                         {sensorForms.map((sensor, index) => (
                           <div key={sensor.id}> {/* Should be only 1 */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                              {/* Range & Graduating REMOVED for Standard Instrument - Handled in Certificate */}
-                              <div className="col-span-2">
-                                <p className="text-sm text-gray-500 italic">
-                                  Untuk alat standar, Range dan Resolusi diinputkan pada detail Sertifikat Standar dibawah ini.
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Certificate Section */}
-                            <div className="mt-6 pt-6 border-t border-gray-100">
-                              <div className="flex justify-between items-center mb-4">
-                                <h6 className="text-sm font-semibold text-gray-800 flex items-center">
-                                  <svg className="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                  </svg>
-                                  Sertifikat Standar
-                                </h6>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setCertForm({
-                                      no_certificate: '',
-                                      calibration_date: '',
-                                      drift: 0,
-                                      range: '',
-                                      resolution: 0,
-                                      u95_general: 0,
-                                      correction_data: []
-                                    });
-                                    setEditingSensorIndex(index);
-                                    setIsCertModalOpen(true);
-                                  }}
-                                  className="text-sm bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-md transition-colors shadow-sm flex items-center"
-                                >
-                                  <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                  </svg>
-                                  Tambah Sertifikat
-                                </button>
-                              </div>
-
-                              {sensor.certificates && sensor.certificates.length > 0 ? (
-                                <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
-                                  <table className="min-w-full divide-y divide-gray-200">
-                                    <thead className="bg-gray-100">
-                                      <tr>
-                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No. Sertifikat</th>
-                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tgl Kalibrasi</th>
-                                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="bg-white divide-y divide-gray-200">
-                                      {sensor.certificates.map((cert: any, certIdx: number) => (
-                                        <tr key={certIdx}>
-                                          <td className="px-4 py-2 text-sm text-gray-900">{cert.no_certificate}</td>
-                                          <td className="px-4 py-2 text-sm text-gray-900">{cert.calibration_date}</td>
-                                          <td className="px-4 py-2 text-right text-sm font-medium">
-                                            <button
-                                              type="button"
-                                              onClick={async () => {
-                                                if (!confirm('Hapus sertifikat?')) return;
-
-                                                if (cert.id) {
-                                                  try {
-                                                    const res = await fetch(`/api/cert-standards/${cert.id}`, { method: 'DELETE' });
-                                                    if (!res.ok) throw new Error('Failed to delete');
-
-                                                    setSensorForms(prev => prev.map((s, i) => {
-                                                      if (i === index && s.certificates) {
-                                                        const newCerts = [...s.certificates];
-                                                        newCerts.splice(certIdx, 1);
-                                                        return { ...s, certificates: newCerts };
-                                                      }
-                                                      return s;
-                                                    }));
-                                                    showSuccess('Sertifikat berhasil dihapus');
-                                                  } catch (e) {
-                                                    console.error(e);
-                                                    showError('Gagal menghapus sertifikat');
-                                                  }
-                                                } else {
-                                                  setSensorForms(prev => prev.map((s, i) => {
-                                                    if (i === index && s.certificates) {
-                                                      const newCerts = [...s.certificates];
-                                                      newCerts.splice(certIdx, 1);
-                                                      return { ...s, certificates: newCerts };
-                                                    }
-                                                    return s;
-                                                  }));
-                                                }
-                                              }}
-                                              className="text-red-600 hover:text-red-900"
-                                            >
-                                              Hapus
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                const reconstructedData = parseCorrectionData(cert);
-
-                                                setCertForm({
-                                                  no_certificate: cert.no_certificate,
-                                                  calibration_date: cert.calibration_date,
-                                                  drift: cert.drift,
-                                                  range: cert.range,
-                                                  resolution: cert.resolution,
-                                                  u95_general: cert.u95_general,
-                                                  correction_data: reconstructedData.length > 0 ? reconstructedData : [{ setpoint: '', correction: '', u95: '' }]
-                                                });
-                                                setEditingSensorIndex(index);
-                                                setEditingCertIndex(certIdx);
-                                                setIsCertModalOpen(true);
-                                              }}
-                                              className="text-blue-600 hover:text-blue-900 ml-4"
-                                            >
-                                              Detail / Edit
-                                            </button>
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Range Capacity</label>
+                                <div className="flex gap-2">
+                                  <input
+                                    value={sensor.range_capacity}
+                                    onChange={(e) => updateSensor(sensor.id, 'range_capacity', e.target.value)}
+                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="Ex: 0-100"
+                                  />
+                                  <div className="w-28">
+                                    <UnitSelect
+                                      units={units}
+                                      value={sensor.range_capacity_unit}
+                                      onChange={(val) => updateSensor(sensor.id, 'range_capacity_unit', val)}
+                                      placeholder="Unit"
+                                    />
+                                  </div>
                                 </div>
-                              ) : (
-                                <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                                  <p className="text-sm text-gray-500">Belum ada sertifikat. Klik tombol Tambah Sertifikat diatas.</p>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Graduating</label>
+                                <div className="flex gap-2">
+                                  <input
+                                    value={sensor.graduating}
+                                    onChange={(e) => updateSensor(sensor.id, 'graduating', e.target.value)}
+                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="Ex: 0.01"
+                                  />
+                                  <div className="w-28">
+                                    <UnitSelect
+                                      units={units}
+                                      value={sensor.graduating_unit}
+                                      onChange={(val) => updateSensor(sensor.id, 'graduating_unit', val)}
+                                      placeholder="Unit"
+                                    />
+                                  </div>
                                 </div>
-                              )}
+                              </div>
+                              <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Resolution <span className="text-gray-400 text-xs font-normal">(untuk perhitungan U95)</span></label>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={sensor.resolution ?? ''}
+                                  onChange={(e) => updateSensor(sensor.id, 'resolution', e.target.value === '' ? null : parseFloat(e.target.value))}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                  placeholder="Ex: 0.01"
+                                />
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -1833,178 +2055,88 @@ const InstrumentsCRUD: React.FC = () => {
                                     </div>
                                   </div>
 
-                                  {/* Row 5: Funnel Diameter + Unit | Volume Per Tip + Unit | Funnel Area + Unit */}
-                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-2">Funnel Diameter</label>
-                                      <div className="flex gap-2">
-                                        <input
-                                          type="number"
-                                          value={sensor.funnel_diameter}
-                                          onChange={(e) => updateSensor(sensor.id, 'funnel_diameter', parseFloat(e.target.value) || 0)}
-                                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                          placeholder="0"
-                                        />
-                                        <div className="w-24">
-                                          <UnitSelect
-                                            units={units}
-                                            value={sensor.funnel_diameter_unit}
-                                            onChange={(val) => updateSensor(sensor.id, 'funnel_diameter_unit', val)}
-                                            placeholder="Unit"
+                                  {/* Row 5: Funnel Diameter + Unit | Volume Per Tip + Unit | Funnel Area + Unit (Hanya untuk sensor hujan) */}
+                                  {instrumentNames.find(n => n.id === sensor.sensor_name_id)?.name?.toLowerCase().includes('hujan') || 
+                                   instrumentNames.find(n => n.id === sensor.sensor_name_id)?.name?.toLowerCase().includes('rain') ? (
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                      <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Funnel Diameter</label>
+                                        <div className="flex gap-2">
+                                          <input
+                                            type="number"
+                                            value={sensor.funnel_diameter}
+                                            onChange={(e) => updateSensor(sensor.id, 'funnel_diameter', parseFloat(e.target.value) || 0)}
+                                            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                            placeholder="0"
                                           />
+                                          <div className="w-24">
+                                            <UnitSelect
+                                              units={units}
+                                              value={sensor.funnel_diameter_unit}
+                                              onChange={(val) => updateSensor(sensor.id, 'funnel_diameter_unit', val)}
+                                              placeholder="Unit"
+                                            />
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Volume Per Tip</label>
+                                        <div className="flex gap-2">
+                                          <input
+                                            type="text"
+                                            value={sensor.volume_per_tip}
+                                            onChange={(e) => updateSensor(sensor.id, 'volume_per_tip', e.target.value)}
+                                            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                            placeholder="Enter volume"
+                                          />
+                                          <div className="w-24">
+                                            <UnitSelect
+                                              units={units}
+                                              value={sensor.volume_per_tip_unit}
+                                              onChange={(val) => updateSensor(sensor.id, 'volume_per_tip_unit', val)}
+                                              placeholder="Unit"
+                                            />
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Funnel Area</label>
+                                        <div className="flex gap-2">
+                                          <input
+                                            type="number"
+                                            value={sensor.funnel_area}
+                                            onChange={(e) => updateSensor(sensor.id, 'funnel_area', parseFloat(e.target.value) || 0)}
+                                            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                            placeholder="0"
+                                          />
+                                          <div className="w-24">
+                                            <UnitSelect
+                                              units={units}
+                                              value={sensor.funnel_area_unit}
+                                              onChange={(val) => updateSensor(sensor.id, 'funnel_area_unit', val)}
+                                              placeholder="Unit"
+                                            />
+                                          </div>
                                         </div>
                                       </div>
                                     </div>
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-2">Volume Per Tip</label>
-                                      <div className="flex gap-2">
-                                        <input
-                                          type="text"
-                                          value={sensor.volume_per_tip}
-                                          onChange={(e) => updateSensor(sensor.id, 'volume_per_tip', e.target.value)}
-                                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                          placeholder="Enter volume"
-                                        />
-                                        <div className="w-24">
-                                          <UnitSelect
-                                            units={units}
-                                            value={sensor.volume_per_tip_unit}
-                                            onChange={(val) => updateSensor(sensor.id, 'volume_per_tip_unit', val)}
-                                            placeholder="Unit"
-                                          />
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-2">Funnel Area</label>
-                                      <div className="flex gap-2">
-                                        <input
-                                          type="number"
-                                          value={sensor.funnel_area}
-                                          onChange={(e) => updateSensor(sensor.id, 'funnel_area', parseFloat(e.target.value) || 0)}
-                                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                          placeholder="0"
-                                        />
-                                        <div className="w-24">
-                                          <UnitSelect
-                                            units={units}
-                                            value={sensor.funnel_area_unit}
-                                            onChange={(val) => updateSensor(sensor.id, 'funnel_area_unit', val)}
-                                            placeholder="Unit"
-                                          />
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
+                                  ) : null}
 
                                 </div>
 
-                                <div className="mt-4 flex items-center justify-between">
-                                  <div className="flex items-center space-x-3">
-                                    <input
-                                      type="checkbox"
-                                      id={`is_standard_${sensor.id}`}
-                                      checked={sensor.is_standard}
-                                      onChange={(e) => updateSensor(sensor.id, 'is_standard', e.target.checked)}
-                                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                    />
-                                    <label htmlFor={`is_standard_${sensor.id}`} className="text-sm font-medium text-gray-700">
-                                      Is Standard
-                                    </label>
-                                  </div>
-
-                                  {sensor.is_standard && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setCertForm({
-                                          no_certificate: '',
-                                          calibration_date: '',
-                                          drift: 0,
-                                          range: '',
-                                          resolution: 0,
-                                          u95_general: 0,
-                                          correction_data: []
-                                        });
-                                        setEditingSensorIndex(index);
-                                        setEditingCertIndex(null); // Ensure creation mode
-                                        setIsCertModalOpen(true);
-                                      }}
-                                      className="text-sm bg-blue-50 text-blue-700 hover:bg-blue-100 px-3 py-1.5 rounded-md transition-colors font-medium flex items-center border border-blue-200"
-                                    >
-                                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                      </svg>
-                                      Tambah Sertifikat
-                                    </button>
-                                  )}
+                                <div className="mt-4 flex items-center space-x-3 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                                  <input
+                                    type="checkbox"
+                                    id={`is_standard_${sensor.id}`}
+                                    checked={sensor.is_standard}
+                                    onChange={(e) => updateSensor(sensor.id, 'is_standard', e.target.checked)}
+                                    className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                                  />
+                                  <label htmlFor={`is_standard_${sensor.id}`} className="text-sm font-medium text-orange-800 cursor-pointer">
+                                    Sensor Standar
+                                    <span className="text-xs font-normal text-orange-600 ml-2">— Data kalibrasi (Drift, U95, Koreksi) dikelola di bagian Daftar Sertifikat di atas</span>
+                                  </label>
                                 </div>
-
-                                {/* Nested Certificate Management for Standard Sensors */}
-                                {sensor.is_standard && sensor.certificates && sensor.certificates.length > 0 && (
-                                  <div className="mt-4 pt-4 border-t border-gray-100">
-                                    <h6 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Daftar Sertifikat</h6>
-                                    {/* List of pending certificates */}
-                                    <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
-                                      <table className="min-w-full divide-y divide-gray-200">
-                                        <thead className="bg-gray-100">
-                                          <tr>
-                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No. Sertifikat</th>
-                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tgl Kalibrasi</th>
-                                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody className="bg-white divide-y divide-gray-200">
-                                          {sensor.certificates.map((cert: any, certIdx: number) => (
-                                            <tr key={certIdx}>
-                                              <td className="px-4 py-2 text-sm text-gray-900">{cert.no_certificate}</td>
-                                              <td className="px-4 py-2 text-sm text-gray-900">{cert.calibration_date}</td>
-                                              <td className="px-4 py-2 text-right text-sm font-medium">
-                                                <button
-                                                  type="button"
-                                                  onClick={() => {
-                                                    setSensorForms(prev => prev.map((s, i) => {
-                                                      if (i === index && s.certificates) {
-                                                        const newCerts = [...s.certificates];
-                                                        newCerts.splice(certIdx, 1);
-                                                        return { ...s, certificates: newCerts };
-                                                      }
-                                                      return s;
-                                                    }))
-                                                  }}
-                                                  className="text-red-600 hover:text-red-900"
-                                                >
-                                                  Hapus
-                                                </button>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => {
-                                                    const reconstructedData = parseCorrectionData(cert);
-                                                    setCertForm({
-                                                      no_certificate: cert.no_certificate,
-                                                      calibration_date: cert.calibration_date,
-                                                      drift: cert.drift,
-                                                      range: cert.range,
-                                                      resolution: cert.resolution,
-                                                      u95_general: cert.u95_general,
-                                                      correction_data: reconstructedData.length > 0 ? reconstructedData : [{ setpoint: '', correction: '', u95: '' }]
-                                                    });
-                                                    setEditingSensorIndex(index);
-                                                    setEditingCertIndex(certIdx);
-                                                    setIsCertModalOpen(true);
-                                                  }}
-                                                  className="text-blue-600 hover:text-blue-900 ml-4"
-                                                >
-                                                  Detail / Edit
-                                                </button>
-                                              </td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  </div>
-                                )}
                               </div>
                             ))}
                           </div>
