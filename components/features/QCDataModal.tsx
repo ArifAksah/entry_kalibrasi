@@ -44,6 +44,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<number | 'unknown'>('unknown');
     const [isSavingToTable, setIsSavingToTable] = useState(false);
+    const [hasSavedToTable, setHasSavedToTable] = useState(false);
 
     // Per UUT sensor: QC limits from master_qc
     const [qcLimits, setQcLimits] = useState<Record<string, QCLimit | null>>({});
@@ -95,7 +96,10 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
     }, [sensorKeys, activeTab]);
 
     useEffect(() => {
-        if (isOpen && sessionId) fetchRawData(sessionId);
+        if (isOpen && sessionId) {
+            fetchRawData(sessionId);
+            setHasSavedToTable(false); // reset indicator on each open
+        }
     }, [isOpen, sessionId]);
 
     // Fetch QC limits per UUT sensor
@@ -291,6 +295,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
             if (onCalculateSaved && updates.length > 0) {
                 await onCalculateSaved(updates);
+                setHasSavedToTable(true); // mark as saved
             }
         } catch (err: any) {
             console.error('Error calculating table bulk:', err);
@@ -524,10 +529,13 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                             <button
                                 onClick={handleSaveToTable}
                                 disabled={isSavingToTable}
+                                title={hasSavedToTable ? 'Sudah pernah dijalankan. Klik lagi untuk memperbarui.' : 'Hitung dan simpan hasil ke tabel sertifikat'}
                                 className={`px-5 py-2 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${
                                     isSavingToTable
                                         ? 'bg-gray-100 text-gray-400 cursor-wait'
-                                        : 'bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-white shadow-sm'
+                                        : hasSavedToTable
+                                            ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-sm ring-2 ring-green-300'
+                                            : 'bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-white shadow-sm'
                                 }`}
                             >
                                 {isSavingToTable ? (
@@ -535,12 +543,20 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                         <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-transparent" />
                                         <span>Menyimpan...</span>
                                     </>
+                                ) : hasSavedToTable ? (
+                                    <>
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        <span>Tersimpan ke Tabel Sertifikat</span>
+                                        <span className="text-[10px] bg-green-400/30 px-1.5 py-0.5 rounded-full font-normal">Klik lagi utk update</span>
+                                    </>
                                 ) : (
                                     <>
                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                                         </svg>
-                                        <span>Hitung & Input ke Tabel Sertifikat</span>
+                                        <span>Hitung &amp; Input ke Tabel Sertifikat</span>
                                     </>
                                 )}
                             </button>

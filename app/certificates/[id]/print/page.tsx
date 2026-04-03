@@ -1262,6 +1262,19 @@ const PrintCertificatePage: React.FC = () => {
                                           )
                                         )}
                                       </tr>
+                                      {/* Baris Unit Tambahan */}
+                                      {sec.headers && (
+                                        <tr className="font-bold bg-white">
+                                          {sec.headers.map((_: any, i: number) => {
+                                            const unit = res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit || '';
+                                            return (
+                                              <td key={`unit-${i}`} className="p-1 border border-black text-center">
+                                                {unit}
+                                              </td>
+                                            );
+                                          })}
+                                        </tr>
+                                      )}
                                     </thead>
                                     <tbody>
                                       {rows.map((row: any, rIdx: number) => (

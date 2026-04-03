@@ -234,13 +234,12 @@ const SideNav: React.FC = () => {
       <div className="px-4 py-4 border-b border-slate-700">
         <div className="flex flex-col items-center text-center">
           {/* Logo tanpa background card */}
-          <div className="mb-4 p-2">
+          <div className="mb-4 p-2 relative w-[180px] h-[60px] flex items-center justify-center">
             <Image
-              src={bmkgLogo}
-              alt="BMKG"
-              width={50}
-              height={50}
-              className="drop-shadow-lg"
+              src="/silaki.png"
+              alt="SILAKI Logo"
+              fill
+              className="drop-shadow-lg object-contain object-center"
               style={{ filter: 'none' }}
               priority
             />

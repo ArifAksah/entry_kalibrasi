@@ -1293,8 +1293,8 @@ const CertificatesCRUD: React.FC = () => {
     } else {
       setEditing(null)
       setForm({
-        no_certificate: '',
-        no_order: '',
+        no_certificate: 'Membuat nomor otomatis...',
+        no_order: '...',
         no_identification: '',
         authorized_by: null,
         verifikator_1: null as any,
@@ -1304,6 +1304,25 @@ const CertificatesCRUD: React.FC = () => {
         instrument: null,
         station_address: null as any,
       })
+
+      fetch('/api/certificates/generate-number')
+        .then(res => res.json())
+        .then(data => {
+          setForm(prev => ({
+            ...prev,
+            no_certificate: data.no_certificate || '',
+            no_order: data.no_order || ''
+          }));
+        })
+        .catch(err => {
+          console.error("Failed to fetch generated numbers", err);
+          setForm(prev => ({
+            ...prev,
+            no_certificate: '',
+            no_order: ''
+          }));
+        });
+
       setResults([{
         sensorId: null,
         startDate: '',
@@ -2922,16 +2941,19 @@ const CertificatesCRUD: React.FC = () => {
                             </div>
                             <div className="space-y-1">
                               <label className="block text-xs font-semibold text-gray-700">Metode Kalibrasi</label>
-                              <input
-                                list={`method-options-${resultIndex}`}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                              <select
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] bg-white"
                                 value={result.notesForm?.calibration_methode || ''}
                                 onChange={e => updateResult(resultIndex, { notesForm: { ...result.notesForm, calibration_methode: e.target.value } })}
-                                placeholder="Pilih atau ketik metode..."
-                              />
-                              <datalist id={`method-options-${resultIndex}`}>
-                                <option value="Perbandingan Langsung" />
-                              </datalist>
+                              >
+                                <option value="">-- Pilih Metode Kalibrasi --</option>
+                                <option value="MK 01 - Suhu">MK 01 - Suhu</option>
+                                <option value="MK 03 - Kelembapan Udara Relatif">MK 03 - Kelembapan Udara Relatif</option>
+                                <option value="MK 02 - Tekanan Udara">MK 02 - Tekanan Udara</option>
+                                <option value="MK 04 - Anemometer (Kecepatan Angin)">MK 04 - Anemometer (Kecepatan Angin)</option>
+                                <option value="MK 05 - Anemometer (Arah Angin)">MK 05 - Anemometer (Arah Angin)</option>
+                                <option value="MK 06 - Penakar Hujan">MK 06 - Penakar Hujan</option>
+                              </select>
                             </div>
                             <div className="space-y-1">
                               <label className="block text-xs font-semibold text-gray-700">Dokumen Acuan</label>

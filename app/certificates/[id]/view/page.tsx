@@ -432,12 +432,10 @@ const ViewCertificatePage: React.FC = () => {
       .then(res => res.json())
       .then(data => {
         const rawLogs = data.data || [];
-        // Only show max 3 latest 'updated' (Koreksi Data) logs
-        let updatedCount = 0;
+        // Hilangkan log 'updated' (Koreksi Data) dari linimasa sesuai permintaan
         const filteredLogs = rawLogs.filter((log: any) => {
           if (log.action === 'updated') {
-            updatedCount++;
-            return updatedCount <= 3;
+            return false;
           }
           return true;
         });
@@ -549,7 +547,7 @@ const ViewCertificatePage: React.FC = () => {
     
     /* Footer khusus untuk halaman 1 saja */
     .page-1-footer {
-      position: fixed !important;
+      position: absolute !important;
       bottom: 10mm !important;
       left: 20mm !important;
       right: 20mm !important;
@@ -868,6 +866,24 @@ const ViewCertificatePage: React.FC = () => {
       table.repeatable-page-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
       thead.print-repeat-header { display: table-header-group; }
       tbody.print-content { display: table-row-group; }
+    }
+
+    /* Style tambahan untuk tampilan layar (Screen View) agar tampak rapi seperti lembaran A4 */
+    @media screen {
+      .print-container {
+        padding: 40px 0;
+        background: transparent !important;
+        box-shadow: none !important;
+      }
+      .page-container {
+        background: white;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+        margin-bottom: 30px !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        min-height: 297mm; /* Simulate A4 exact height for consistent element placement */
+        border: 1px solid #e5e7eb;
+      }
     }
   `
 
@@ -1322,6 +1338,19 @@ const ViewCertificatePage: React.FC = () => {
                                           )
                                         )}
                                       </tr>
+                                      {/* Baris Unit Tambahan */}
+                                      {sec.headers && (
+                                        <tr className="font-bold bg-white">
+                                          {sec.headers.map((_: any, i: number) => {
+                                            const unit = res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit || '';
+                                            return (
+                                              <td key={`unit-${i}`} className="p-1 border border-black text-center">
+                                                {unit}
+                                              </td>
+                                            );
+                                          })}
+                                        </tr>
+                                      )}
                                     </thead>
                                     <tbody>
                                       {rows.map((row: any, rIdx: number) => (

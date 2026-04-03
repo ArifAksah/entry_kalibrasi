@@ -120,14 +120,13 @@ const LoginPage: React.FC = () => {
             {/* Logo Section - Larger */}
             <div className="flex flex-col items-center mb-8">
               <div className="mb-6 transform transition-all duration-500 hover:scale-110 hover:rotate-3">
-                <div className="relative">
+                <div className="relative flex justify-center w-[120px] h-[120px]">
                   <div className="absolute inset-0 bg-blue-500/20 rounded-full blur-lg animate-pulse-gentle"></div>
                   <Image
-                    src={bmkgLogo}
-                    alt="BMKG"
-                    width={80}
-                    height={80}
-                    className="relative z-10 drop-shadow-2xl"
+                    src="/silaki.png"
+                    alt="SILAKI Logo"
+                    fill
+                    className="relative z-10 drop-shadow-2xl object-contain object-center"
                   />
                 </div>
               </div>

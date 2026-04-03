@@ -156,7 +156,6 @@ const InstrumentsCRUD: React.FC = () => {
   const [globalCertificates, setGlobalCertificates] = useState<Array<{
     no_certificate: string,
     calibration_date: string,
-    traceability?: string,
     expanded?: boolean,
     sensorData: Array<{
       sensorLocalId: string,   // matches sensorForms[i].id
@@ -169,7 +168,6 @@ const InstrumentsCRUD: React.FC = () => {
   const [newGlobalCert, setNewGlobalCert] = useState({
     no_certificate: '',
     calibration_date: '',
-    traceability: '',
   })
   const [newGlobalCertError, setNewGlobalCertError] = useState('')
 
@@ -404,7 +402,6 @@ const InstrumentsCRUD: React.FC = () => {
                     certsMap.set(c.no_certificate, {
                       no_certificate: c.no_certificate,
                       calibration_date: c.calibration_date,
-                      traceability: c.traceability || '',
                       expanded: false,
                       sensorData: []
                     });
@@ -584,7 +581,6 @@ const InstrumentsCRUD: React.FC = () => {
               id: sd.dbCertId,
               no_certificate: gc.no_certificate,
               calibration_date: gc.calibration_date,
-              traceability: gc.traceability || '',
               drift: Number(sd.drift) || 0,
               range: sensor.range_capacity || '',
               resolution: Number(sensor.resolution) || 0,
@@ -1150,7 +1146,7 @@ const InstrumentsCRUD: React.FC = () => {
 
                                   {/* Editable cert header (inline) */}
                                   {cert.expanded && (
-                                    <div className="px-4 py-3 bg-amber-50/60 border-t border-orange-100 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <div className="px-4 py-3 bg-amber-50/60 border-t border-orange-100 grid grid-cols-2 gap-3">
                                       <div>
                                         <label className="block text-xs font-medium text-gray-600 mb-1">Nomor Sertifikat</label>
                                         <input type="text" value={cert.no_certificate}
@@ -1163,276 +1159,111 @@ const InstrumentsCRUD: React.FC = () => {
                                           onChange={e => setGlobalCertificates(prev => prev.map((c,i) => i===certIdx ? {...c, calibration_date: e.target.value} : c))}
                                           className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded focus:ring-orange-400 focus:border-orange-400 bg-white"/>
                                       </div>
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Traceability</label>
-                                        <input type="text" value={cert.traceability || ''}
-                                          onChange={e => setGlobalCertificates(prev => prev.map((c,i) => i===certIdx ? {...c, traceability: e.target.value} : c))}
-                                          className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded focus:ring-orange-400 focus:border-orange-400 bg-white" placeholder="KAN / BMKG"/>
-                                      </div>
                                     </div>
                                   )}
 
-                                  {/* Per-sensor data cards — full sensor form integrated inside cert card */}
+                                  {/* Per-sensor data cards */}
                                   {cert.expanded && (
-                                    <div className="border-t border-orange-100 bg-white">
-                                      <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-                                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Sensor Yang Dikalibrasi</p>
-                                        <button type="button"
-                                          onClick={() => {
-                                            const newSensorId = `sensor_${Date.now()}`;
-                                            const newSensor = {
-                                              id: newSensorId,
-                                              sensor_name_id: null,
-                                              nama_sensor: '',
-                                              merk_sensor: '',
-                                              tipe_sensor: '',
-                                              serial_number_sensor: '',
-                                              range_capacity: '',
-                                              range_capacity_unit: '',
-                                              graduating: '',
-                                              graduating_unit: '',
-                                              resolution: null,
-                                              funnel_diameter: 0,
-                                              funnel_diameter_unit: '',
-                                              volume_per_tip: '',
-                                              volume_per_tip_unit: '',
-                                              funnel_area: 0,
-                                              funnel_area_unit: '',
-                                              is_standard: true,
-                                              certificates: []
-                                            };
-                                            setSensorForms(prev => [...prev, newSensor]);
-                                            setGlobalCertificates(prev => prev.map((c, ci) => {
-                                              if (ci !== certIdx) return c;
-                                              return { ...c, sensorData: [...(c.sensorData || []), { sensorLocalId: newSensorId, drift: 0, u95_general: 0, correction_data: [] }] };
-                                            }));
-                                          }}
-                                          className="flex items-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
-                                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                                          + Tambah Sensor
-                                        </button>
-                                      </div>
-                                      {(!cert.sensorData || cert.sensorData.length === 0) && (
-                                        <p className="px-4 pb-4 text-xs text-gray-400 italic">Belum ada sensor. Klik "+ Tambah Sensor" untuk menambahkan sensor ke sertifikat ini.</p>
+                                    <div className="px-4 py-4 border-t border-orange-100 bg-white space-y-4">
+                                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Data Teknis Per Sensor</p>
+                                      {sensorForms.length === 0 && (
+                                        <p className="text-xs text-gray-400 italic">Tambahkan sensor terlebih dahulu di bagian Informasi Sensor.</p>
                                       )}
-                                      <div className="px-4 pb-4 space-y-5">
-                                      {(cert.sensorData || []).map((sd: any, sIdx: number) => {
-                                        const sensor = sensorForms.find(s => s.id === sd.sensorLocalId) || {
-                                          id: sd.sensorLocalId, sensor_name_id: null,
-                                          nama_sensor: '', merk_sensor: '', tipe_sensor: '',
-                                          serial_number_sensor: '', range_capacity: '', range_capacity_unit: '',
-                                          graduating: '', graduating_unit: '', resolution: null,
-                                          funnel_diameter: 0, funnel_diameter_unit: '',
-                                          volume_per_tip: '', volume_per_tip_unit: '',
-                                          funnel_area: 0, funnel_area_unit: '', is_standard: true
-                                        };
-
-                                        const updateSensorIdentity = (field: string, value: any) => {
-                                          setSensorForms(prev => prev.map(s => s.id === sd.sensorLocalId ? { ...s, [field]: value } : s));
-                                        };
+                                      {sensorForms.map((sensor, sIdx) => {
+                                        const sd = cert.sensorData?.find((d: any) => d.sensorLocalId === sensor.id) ||
+                                          { sensorLocalId: sensor.id, drift: 0, u95_general: 0, correction_data: [] };
 
                                         const updateSensorData = (field: string, value: any) => {
                                           setGlobalCertificates(prev => prev.map((c, ci) => {
                                             if (ci !== certIdx) return c;
-                                            const ex = c.sensorData?.find((d: any) => d.sensorLocalId === sd.sensorLocalId);
-                                            if (ex) return { ...c, sensorData: c.sensorData.map((d: any) => d.sensorLocalId === sd.sensorLocalId ? { ...d, [field]: value } : d) };
-                                            return { ...c, sensorData: [...(c.sensorData || []), { sensorLocalId: sd.sensorLocalId, drift: 0, u95_general: 0, correction_data: [], [field]: value }] };
+                                            const existing = c.sensorData?.find(d => d.sensorLocalId === sensor.id);
+                                            if (existing) {
+                                              return { ...c, sensorData: c.sensorData.map(d => d.sensorLocalId === sensor.id ? { ...d, [field]: value } : d) };
+                                            } else {
+                                              return { ...c, sensorData: [...(c.sensorData || []), { sensorLocalId: sensor.id, drift: 0, u95_general: 0, correction_data: [], [field]: value }] };
+                                            }
                                           }));
                                         };
 
-                                        const isRainSensor = instrumentNames.find(n => n.id === sensor.sensor_name_id)?.name?.toLowerCase().includes('hujan') ||
-                                          instrumentNames.find(n => n.id === sensor.sensor_name_id)?.name?.toLowerCase().includes('rain');
-
                                         return (
-                                          <div key={sd.sensorLocalId} className="border border-blue-200 rounded-xl overflow-hidden shadow-sm">
-                                            {/* Sensor header with delete */}
-                                            <div className="px-4 py-2.5 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-between border-b border-blue-100">
-                                              <div className="flex items-center gap-2">
-                                                <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-                                                </svg>
-                                                <span className="text-sm font-semibold text-blue-900">
-                                                  Sensor {sIdx + 1}{sensor.nama_sensor ? ` — ${sensor.nama_sensor}` : ''}
+                                          <div key={sensor.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                                            {/* Sensor header */}
+                                            <div className="px-4 py-2.5 bg-gray-50 flex items-center gap-3">
+                                              <svg className="w-4 h-4 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                                              </svg>
+                                              <div className="flex-1">
+                                                <span className="text-sm font-semibold text-gray-800">
+                                                  {sensor.nama_sensor || sensor.tipe_sensor || `Sensor ${sIdx + 1}`}
                                                 </span>
+                                                {sensor.serial_number_sensor && <span className="text-xs text-gray-400 ml-2">SN: {sensor.serial_number_sensor}</span>}
                                               </div>
-                                              <button type="button"
-                                                onClick={() => {
-                                                  setSensorForms(prev => prev.filter(s => s.id !== sd.sensorLocalId));
-                                                  setGlobalCertificates(prev => prev.map((c, ci) => {
-                                                    if (ci !== certIdx) return c;
-                                                    return { ...c, sensorData: c.sensorData.filter((d: any) => d.sensorLocalId !== sd.sensorLocalId) };
-                                                  }));
-                                                }}
-                                                className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors" title="Hapus sensor ini">
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                              </button>
                                             </div>
-                                            <div className="p-4 space-y-4">
-                                              {/* Identitas Sensor */}
+                                            {/* Sensor drift, u95 */}
+                                            <div className="px-4 py-3 grid grid-cols-2 gap-3">
                                               <div>
-                                                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Identitas Sensor</p>
-                                                <div className="space-y-3">
-                                                  <div>
-                                                    <label className="block text-xs font-medium text-gray-600 mb-1">Nama Sensor</label>
-                                                    <CustomSelect
-                                                      options={instrumentNames.map(n => ({ value: n.id, label: n.name }))}
-                                                      value={sensor.sensor_name_id}
-                                                      onChange={(val) => updateSensorIdentity('sensor_name_id', val ? Number(val) : null)}
-                                                      placeholder="-- Pilih Nama Sensor --"
-                                                      clearLabel="— Tidak dipilih"
-                                                    />
-                                                  </div>
-                                                  <div>
-                                                    <label className="block text-xs font-medium text-gray-600 mb-1">Alias Sensor</label>
-                                                    <input type="text" value={sensor.nama_sensor}
-                                                      onChange={e => updateSensorIdentity('nama_sensor', e.target.value)}
-                                                      className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
-                                                      placeholder="Contoh: Sensor Suhu Ruang A..."/>
-                                                  </div>
-                                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                                    <div>
-                                                      <label className="block text-xs font-medium text-gray-600 mb-1">Merk</label>
-                                                      <input type="text" value={sensor.merk_sensor}
-                                                        onChange={e => updateSensorIdentity('merk_sensor', e.target.value)}
-                                                        className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
-                                                        placeholder="Manufacturer"/>
-                                                    </div>
-                                                    <div>
-                                                      <label className="block text-xs font-medium text-gray-600 mb-1">Tipe</label>
-                                                      <input type="text" value={sensor.tipe_sensor}
-                                                        onChange={e => updateSensorIdentity('tipe_sensor', e.target.value)}
-                                                        className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
-                                                        placeholder="Tipe sensor"/>
-                                                    </div>
-                                                    <div>
-                                                      <label className="block text-xs font-medium text-gray-600 mb-1">Serial Number</label>
-                                                      <input type="text" value={sensor.serial_number_sensor}
-                                                        onChange={e => updateSensorIdentity('serial_number_sensor', e.target.value)}
-                                                        className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
-                                                        placeholder="SN"/>
-                                                    </div>
-                                                  </div>
-                                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                    <div>
-                                                      <label className="block text-xs font-medium text-gray-600 mb-1">Range Capacity</label>
-                                                      <div className="flex gap-2">
-                                                        <input type="text" value={sensor.range_capacity}
-                                                          onChange={e => updateSensorIdentity('range_capacity', e.target.value)}
-                                                          className="flex-1 text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
-                                                          placeholder="Ex: 0-100"/>
-                                                        <div className="w-24"><UnitSelect units={units} value={sensor.range_capacity_unit} onChange={val => updateSensorIdentity('range_capacity_unit', val)} placeholder="Unit"/></div>
-                                                      </div>
-                                                    </div>
-                                                    <div>
-                                                      <label className="block text-xs font-medium text-gray-600 mb-1">Graduating</label>
-                                                      <div className="flex gap-2">
-                                                        <input type="text" value={sensor.graduating}
-                                                          onChange={e => updateSensorIdentity('graduating', e.target.value)}
-                                                          className="flex-1 text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
-                                                          placeholder="Ex: 0.01"/>
-                                                        <div className="w-24"><UnitSelect units={units} value={sensor.graduating_unit} onChange={val => updateSensorIdentity('graduating_unit', val)} placeholder="Unit"/></div>
-                                                      </div>
-                                                    </div>
-                                                    <div className="sm:col-span-2">
-                                                      <label className="block text-xs font-medium text-gray-600 mb-1">Resolution <span className="text-gray-400 font-normal">(untuk perhitungan U95)</span></label>
-                                                      <input type="number" step="any" value={sensor.resolution ?? ''}
-                                                        onChange={e => updateSensorIdentity('resolution', e.target.value === '' ? null : parseFloat(e.target.value))}
-                                                        className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
-                                                        placeholder="Ex: 0.01"/>
-                                                    </div>
-                                                  </div>
-                                                  {isRainSensor && (
-                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                                      <div>
-                                                        <label className="block text-xs font-medium text-gray-600 mb-1">Funnel Diameter</label>
-                                                        <div className="flex gap-2">
-                                                          <input type="number" value={sensor.funnel_diameter} onChange={e => updateSensorIdentity('funnel_diameter', parseFloat(e.target.value)||0)} className="flex-1 text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg bg-white" placeholder="0"/>
-                                                          <div className="w-20"><UnitSelect units={units} value={sensor.funnel_diameter_unit} onChange={val => updateSensorIdentity('funnel_diameter_unit', val)} placeholder="Unit"/></div>
-                                                        </div>
-                                                      </div>
-                                                      <div>
-                                                        <label className="block text-xs font-medium text-gray-600 mb-1">Volume Per Tip</label>
-                                                        <div className="flex gap-2">
-                                                          <input type="text" value={sensor.volume_per_tip} onChange={e => updateSensorIdentity('volume_per_tip', e.target.value)} className="flex-1 text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg bg-white" placeholder="volume"/>
-                                                          <div className="w-20"><UnitSelect units={units} value={sensor.volume_per_tip_unit} onChange={val => updateSensorIdentity('volume_per_tip_unit', val)} placeholder="Unit"/></div>
-                                                        </div>
-                                                      </div>
-                                                      <div>
-                                                        <label className="block text-xs font-medium text-gray-600 mb-1">Funnel Area</label>
-                                                        <div className="flex gap-2">
-                                                          <input type="number" value={sensor.funnel_area} onChange={e => updateSensorIdentity('funnel_area', parseFloat(e.target.value)||0)} className="flex-1 text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg bg-white" placeholder="0"/>
-                                                          <div className="w-20"><UnitSelect units={units} value={sensor.funnel_area_unit} onChange={val => updateSensorIdentity('funnel_area_unit', val)} placeholder="Unit"/></div>
-                                                        </div>
-                                                      </div>
-                                                    </div>
-                                                  )}
-                                                </div>
+                                                <label className="block text-xs font-medium text-gray-600 mb-1">Drift</label>
+                                                <input type="number" step="any" value={sd.drift}
+                                                  onChange={e => updateSensorData('drift', e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                                                  className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+                                                  placeholder="Ex: -0.05"/>
                                               </div>
-                                              {/* Data Kalibrasi */}
-                                              <div className="bg-amber-50/60 rounded-lg p-3 border border-amber-200">
-                                                <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-3">Data Kalibrasi</p>
-                                                <div className="grid grid-cols-2 gap-3 mb-3">
-                                                  <div>
-                                                    <label className="block text-xs font-medium text-gray-600 mb-1">Drift</label>
-                                                    <input type="number" step="any" value={sd.drift}
-                                                      onChange={e => updateSensorData('drift', e.target.value === '' ? 0 : parseFloat(e.target.value))}
-                                                      className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded focus:ring-amber-400 focus:border-amber-400 bg-white"
-                                                      placeholder="Ex: -0.05"/>
-                                                  </div>
-                                                  <div>
-                                                    <label className="block text-xs font-medium text-gray-600 mb-1">U95 General</label>
-                                                    <input type="number" step="any" value={sd.u95_general}
-                                                      onChange={e => updateSensorData('u95_general', e.target.value === '' ? 0 : parseFloat(e.target.value))}
-                                                      className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded focus:ring-amber-400 focus:border-amber-400 bg-white"
-                                                      placeholder="Ex: 0.02"/>
-                                                  </div>
-                                                </div>
-                                                <div className="flex justify-between items-center mb-2">
-                                                  <span className="text-xs font-semibold text-gray-600">Tabel Koreksi &amp; Ketidakpastian</span>
-                                                  <button type="button"
-                                                    onClick={() => updateSensorData('correction_data', [...(sd.correction_data || []), {setpoint:'',correction:'',u95:''}])}
-                                                    className="text-xs bg-white hover:bg-amber-50 text-amber-700 px-2.5 py-1 rounded border border-amber-300 transition-colors">
-                                                    + Tambah Baris
-                                                  </button>
-                                                </div>
-                                                <div className="border border-gray-200 rounded-lg overflow-hidden">
-                                                  <table className="min-w-full divide-y divide-gray-200 text-xs">
-                                                    <thead className="bg-gray-50"><tr>
-                                                      <th className="px-3 py-1.5 text-left text-gray-500 font-medium uppercase">Setpoint</th>
-                                                      <th className="px-3 py-1.5 text-left text-gray-500 font-medium uppercase">Koreksi</th>
-                                                      <th className="px-3 py-1.5 text-left text-gray-500 font-medium uppercase">U95</th>
-                                                      <th className="px-3 py-1.5 w-10"></th>
-                                                    </tr></thead>
-                                                    <tbody className="bg-white divide-y divide-gray-100">
-                                                      {(!sd.correction_data || sd.correction_data.length === 0) ? (
-                                                        <tr><td colSpan={4} className="px-4 py-3 text-center text-gray-400 italic">Klik "+ Tambah Baris" untuk menambah titik koreksi.</td></tr>
-                                                      ) : sd.correction_data.map((row: any, rIdx: number) => (
-                                                        <tr key={rIdx}>
-                                                          <td className="px-2 py-1"><input type="number" step="any" value={row.setpoint}
-                                                            onChange={e => { const nd=[...(sd.correction_data||[])]; nd[rIdx]={...nd[rIdx],setpoint:e.target.value}; updateSensorData('correction_data',nd); }}
-                                                            className="w-full border border-gray-300 rounded p-1"/></td>
-                                                          <td className="px-2 py-1"><input type="number" step="any" value={row.correction}
-                                                            onChange={e => { const nd=[...(sd.correction_data||[])]; nd[rIdx]={...nd[rIdx],correction:e.target.value}; updateSensorData('correction_data',nd); }}
-                                                            className="w-full border border-gray-300 rounded p-1"/></td>
-                                                          <td className="px-2 py-1"><input type="number" step="any" value={row.u95}
-                                                            onChange={e => { const nd=[...(sd.correction_data||[])]; nd[rIdx]={...nd[rIdx],u95:e.target.value}; updateSensorData('correction_data',nd); }}
-                                                            className="w-full border border-gray-300 rounded p-1"/></td>
-                                                          <td className="px-2 py-1 text-center">
-                                                            <button type="button" onClick={() => updateSensorData('correction_data', sd.correction_data.filter((_: any, ri: number) => ri !== rIdx))} className="text-red-400 hover:text-red-600">
-                                                              <svg className="w-3.5 h-3.5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                                                            </button>
-                                                          </td>
-                                                        </tr>
-                                                      ))}
-                                                    </tbody>
-                                                  </table>
-                                                </div>
+                                              <div>
+                                                <label className="block text-xs font-medium text-gray-600 mb-1">U95 General</label>
+                                                <input type="number" step="any" value={sd.u95_general}
+                                                  onChange={e => updateSensorData('u95_general', e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                                                  className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+                                                  placeholder="Ex: 0.02"/>
+                                              </div>
+                                            </div>
+                                            {/* Tabel Koreksi per sensor */}
+                                            <div className="px-4 pb-4">
+                                              <div className="flex justify-between items-center mb-2">
+                                                <span className="text-xs font-semibold text-gray-600">Tabel Koreksi &amp; Ketidakpastian</span>
+                                                <button type="button"
+                                                  onClick={() => updateSensorData('correction_data', [...(sd.correction_data || []), {setpoint:'',correction:'',u95:''}])}
+                                                  className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-2.5 py-1 rounded border border-blue-200 transition-colors">
+                                                  + Tambah Baris
+                                                </button>
+                                              </div>
+                                              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                                <table className="min-w-full divide-y divide-gray-200 text-xs">
+                                                  <thead className="bg-gray-50"><tr>
+                                                    <th className="px-3 py-1.5 text-left text-gray-500 font-medium uppercase">Setpoint</th>
+                                                    <th className="px-3 py-1.5 text-left text-gray-500 font-medium uppercase">Koreksi</th>
+                                                    <th className="px-3 py-1.5 text-left text-gray-500 font-medium uppercase">U95</th>
+                                                    <th className="px-3 py-1.5 w-10"></th>
+                                                  </tr></thead>
+                                                  <tbody className="bg-white divide-y divide-gray-100">
+                                                    {(!sd.correction_data || sd.correction_data.length === 0) ? (
+                                                      <tr><td colSpan={4} className="px-4 py-3 text-center text-gray-400 italic">Klik "+ Tambah Baris" untuk menambah titik koreksi.</td></tr>
+                                                    ) : sd.correction_data.map((row: any, rIdx: number) => (
+                                                      <tr key={rIdx}>
+                                                        <td className="px-2 py-1"><input type="number" step="any" value={row.setpoint}
+                                                          onChange={e => { const nd=[...(sd.correction_data||[])]; nd[rIdx]={...nd[rIdx],setpoint:e.target.value}; updateSensorData('correction_data',nd); }}
+                                                          className="w-full border border-gray-300 rounded p-1 focus:ring-blue-500 focus:border-blue-500"/></td>
+                                                        <td className="px-2 py-1"><input type="number" step="any" value={row.correction}
+                                                          onChange={e => { const nd=[...(sd.correction_data||[])]; nd[rIdx]={...nd[rIdx],correction:e.target.value}; updateSensorData('correction_data',nd); }}
+                                                          className="w-full border border-gray-300 rounded p-1 focus:ring-blue-500 focus:border-blue-500"/></td>
+                                                        <td className="px-2 py-1"><input type="number" step="any" value={row.u95}
+                                                          onChange={e => { const nd=[...(sd.correction_data||[])]; nd[rIdx]={...nd[rIdx],u95:e.target.value}; updateSensorData('correction_data',nd); }}
+                                                          className="w-full border border-gray-300 rounded p-1 focus:ring-blue-500 focus:border-blue-500"/></td>
+                                                        <td className="px-2 py-1 text-center">
+                                                          <button type="button"
+                                                            onClick={() => updateSensorData('correction_data', sd.correction_data.filter((_: any, ri: number) => ri !== rIdx))}
+                                                            className="text-red-400 hover:text-red-600">
+                                                            <svg className="w-3.5 h-3.5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                          </button>
+                                                        </td>
+                                                      </tr>
+                                                    ))}
+                                                  </tbody>
+                                                </table>
                                               </div>
                                             </div>
                                           </div>
                                         );
                                       })}
-                                      </div>
                                     </div>
                                   )}
                                 </div>
@@ -1442,8 +1273,8 @@ const InstrumentsCRUD: React.FC = () => {
                             {/* Form Tambah Sertifikat Baru */}
                             <div className="border border-dashed border-blue-300 rounded-xl p-4 bg-blue-50/40">
                               <p className="text-xs font-semibold text-blue-700 mb-3 uppercase tracking-wide">+ Tambah Sertifikat Baru</p>
-                              <p className="text-xs text-gray-500 mb-3">Buat sertifikat baru, lalu klik <strong>"+ Tambah Sensor"</strong> di dalam card sertifikat untuk mendaftarkan sensor berikut data kalibrasinya (Drift, U95, Koreksi).</p>
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <p className="text-xs text-gray-500 mb-3">Sertifikat ditambahkan dulu, lalu isi data drift/U95/koreksi per sensor di dalam card sertifikat.</p>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                   <label className="block text-xs font-medium text-gray-700 mb-1">Nomor Sertifikat <span className="text-red-400">*</span></label>
                                   <input type="text" value={newGlobalCert.no_certificate}
@@ -1456,13 +1287,6 @@ const InstrumentsCRUD: React.FC = () => {
                                   <input type="date" value={newGlobalCert.calibration_date}
                                     onChange={e => setNewGlobalCert({...newGlobalCert, calibration_date: e.target.value})}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"/>
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-700 mb-1">Traceability</label>
-                                  <input type="text" value={newGlobalCert.traceability || ''}
-                                    onChange={e => setNewGlobalCert({...newGlobalCert, traceability: e.target.value})}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
-                                    placeholder="Ex: KAN / BMKG"/>
                                 </div>
                               </div>
 
@@ -1479,15 +1303,15 @@ const InstrumentsCRUD: React.FC = () => {
                                     return;
                                   }
                                   setNewGlobalCertError('');
-                                  // Start with empty sensorData — user adds sensors inside the cert card
+                                  // Initialize sensorData from current sensorForms
+                                  const initSensorData = sensorForms.map(s => ({ sensorLocalId: s.id, drift: 0, u95_general: 0, correction_data: [] }));
                                   setGlobalCertificates(prev => [...prev, {
                                     no_certificate: newGlobalCert.no_certificate,
                                     calibration_date: newGlobalCert.calibration_date,
-                                    traceability: newGlobalCert.traceability,
                                     expanded: true,
-                                    sensorData: []
+                                    sensorData: initSensorData
                                   }]);
-                                  setNewGlobalCert({ no_certificate: '', calibration_date: '', traceability: '' });
+                                  setNewGlobalCert({ no_certificate: '', calibration_date: '' });
                                 }}>
                                 + Tambah Sertifikat
                               </button>
@@ -1502,185 +1326,7 @@ const InstrumentsCRUD: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Multi-Sensor Non-Standard: Informasi Sensor */}
-                    {form.memiliki_lebih_satu && !isStandardInstrument && (
-                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200 mt-6">
-                        <div className="flex items-center justify-between mb-6 sticky top-0 z-20 bg-gradient-to-r from-blue-50 to-indigo-50 -mx-6 px-6 py-3 border-b border-blue-200 shadow-sm">
-                          <div className="flex items-center">
-                            <div className="bg-blue-100 rounded-full p-2 mr-3">
-                              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-                              </svg>
-                            </div>
-                            <div>
-                              <h4 className="text-lg font-semibold text-blue-900">Informasi Sensor</h4>
-                              <p className="text-sm text-blue-700">Kelola sensor untuk alat ini ({sensorForms.length} sensor)</p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => addSensor(false)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center text-sm font-medium"
-                          >
-                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                            </svg>
-                            Tambah Sensor
-                          </button>
-                        </div>
-
-                        {sensorForms.length === 0 ? (
-                          <div className="text-center py-8">
-                            <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-                            </svg>
-                            <p className="text-gray-500 text-sm">Belum ada sensor. Klik "Tambah Sensor" untuk menambahkan sensor pertama.</p>
-                          </div>
-                        ) : (
-                          <div className="space-y-6">
-                            {sensorForms.map((sensor, index) => (
-                              <div key={sensor.id} className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
-                                <div className="flex items-center justify-between mb-4">
-                                  <h5 className="text-md font-semibold text-gray-800 flex items-center">
-                                    <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-                                    </svg>
-                                    Sensor {index + 1}
-                                  </h5>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeSensor(sensor.id)}
-                                    className="text-red-600 hover:text-red-800 transition-colors duration-200 p-1"
-                                    title="Hapus sensor ini"
-                                  >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                  </button>
-                                </div>
-
-                                <div className="space-y-4">
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Nama Sensor</label>
-                                    <CustomSelect
-                                      options={instrumentNames.map(n => ({ value: n.id, label: n.name }))}
-                                      value={sensor.sensor_name_id}
-                                      onChange={(val) => updateSensor(sensor.id, 'sensor_name_id', val ? Number(val) : null)}
-                                      placeholder="-- Pilih Nama Sensor --"
-                                      clearLabel="— Tidak dipilih"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                      Alias Sensor <span className="text-gray-400 font-normal text-xs">(nama khusus sensor)</span>
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={sensor.nama_sensor}
-                                      onChange={(e) => updateSensor(sensor.id, 'nama_sensor', e.target.value)}
-                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                      placeholder="Contoh: Sensor Suhu Ruang A..."
-                                    />
-                                  </div>
-                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-2">Merk Sensor</label>
-                                      <input type="text" value={sensor.merk_sensor}
-                                        onChange={(e) => updateSensor(sensor.id, 'merk_sensor', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                        placeholder="Enter sensor manufacturer"/>
-                                    </div>
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-2">Tipe Sensor</label>
-                                      <input type="text" value={sensor.tipe_sensor}
-                                        onChange={(e) => updateSensor(sensor.id, 'tipe_sensor', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                        placeholder="Enter sensor type"/>
-                                    </div>
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-2">Serial Number Sensor</label>
-                                      <input type="text" value={sensor.serial_number_sensor}
-                                        onChange={(e) => updateSensor(sensor.id, 'serial_number_sensor', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                        placeholder="Enter sensor serial number"/>
-                                    </div>
-                                  </div>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-2">Range Capacity</label>
-                                      <div className="flex gap-2">
-                                        <input type="text" value={sensor.range_capacity}
-                                          onChange={(e) => updateSensor(sensor.id, 'range_capacity', e.target.value)}
-                                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                          placeholder="Ex: 0-100"/>
-                                        <div className="w-28">
-                                          <UnitSelect units={units} value={sensor.range_capacity_unit}
-                                            onChange={(val) => updateSensor(sensor.id, 'range_capacity_unit', val)} placeholder="Unit"/>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-2">Graduating</label>
-                                      <div className="flex gap-2">
-                                        <input type="text" value={sensor.graduating}
-                                          onChange={(e) => updateSensor(sensor.id, 'graduating', e.target.value)}
-                                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                          placeholder="Ex: 0.01"/>
-                                        <div className="w-28">
-                                          <UnitSelect units={units} value={sensor.graduating_unit}
-                                            onChange={(val) => updateSensor(sensor.id, 'graduating_unit', val)} placeholder="Unit"/>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <div className="sm:col-span-2">
-                                      <label className="block text-sm font-medium text-gray-700 mb-2">Resolution <span className="text-gray-400 text-xs font-normal">(untuk perhitungan U95)</span></label>
-                                      <input type="number" step="any" value={sensor.resolution ?? ''}
-                                        onChange={(e) => updateSensor(sensor.id, 'resolution', e.target.value === '' ? null : parseFloat(e.target.value))}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                        placeholder="Ex: 0.01"/>
-                                    </div>
-                                  </div>
-                                  {(instrumentNames.find(n => n.id === sensor.sensor_name_id)?.name?.toLowerCase().includes('hujan') ||
-                                    instrumentNames.find(n => n.id === sensor.sensor_name_id)?.name?.toLowerCase().includes('rain')) && (
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                      <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Funnel Diameter</label>
-                                        <div className="flex gap-2">
-                                          <input type="number" value={sensor.funnel_diameter}
-                                            onChange={(e) => updateSensor(sensor.id, 'funnel_diameter', parseFloat(e.target.value) || 0)}
-                                            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0"/>
-                                          <div className="w-24"><UnitSelect units={units} value={sensor.funnel_diameter_unit} onChange={(val) => updateSensor(sensor.id, 'funnel_diameter_unit', val)} placeholder="Unit"/></div>
-                                        </div>
-                                      </div>
-                                      <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Volume Per Tip</label>
-                                        <div className="flex gap-2">
-                                          <input type="text" value={sensor.volume_per_tip}
-                                            onChange={(e) => updateSensor(sensor.id, 'volume_per_tip', e.target.value)}
-                                            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="volume"/>
-                                          <div className="w-24"><UnitSelect units={units} value={sensor.volume_per_tip_unit} onChange={(val) => updateSensor(sensor.id, 'volume_per_tip_unit', val)} placeholder="Unit"/></div>
-                                        </div>
-                                      </div>
-                                      <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Funnel Area</label>
-                                        <div className="flex gap-2">
-                                          <input type="number" value={sensor.funnel_area}
-                                            onChange={(e) => updateSensor(sensor.id, 'funnel_area', parseFloat(e.target.value) || 0)}
-                                            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0"/>
-                                          <div className="w-24"><UnitSelect units={units} value={sensor.funnel_area_unit} onChange={(val) => updateSensor(sensor.id, 'funnel_area_unit', val)} placeholder="Unit"/></div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-
+                    {/* Single Non-Standard Sensor Form (When NOT Multi-Sensor AND NOT Standard) */}
                     {!form.memiliki_lebih_satu && !isStandardInstrument && sensorForms.length > 0 && (
                       <div className="bg-white rounded-lg p-6 border border-gray-200 mt-6 shadow-sm">
                         <div className="flex items-center mb-6">
@@ -1828,6 +1474,266 @@ const InstrumentsCRUD: React.FC = () => {
                       </div>
                     )}
 
+                    {/* Sensor Information - Conditional */}
+                    {form.memiliki_lebih_satu && (
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200">
+                        <div className="flex items-center justify-between mb-6 sticky top-0 z-20 bg-gradient-to-r from-blue-50 to-indigo-50 -mx-6 px-6 py-3 border-b border-blue-200 shadow-sm">
+                          <div className="flex items-center">
+                            <div className="bg-blue-100 rounded-full p-2 mr-3">
+                              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                              </svg>
+                            </div>
+                            <div>
+                              <h4 className="text-lg font-semibold text-blue-900">Informasi Sensor</h4>
+                              <p className="text-sm text-blue-700">Kelola sensor untuk alat ini ({sensorForms.length} sensor)</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => addSensor(activeTab === 'certStandard' || filterType === 'standard')}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center text-sm font-medium"
+                          >
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                            </svg>
+                            Tambah Sensor
+                          </button>
+                        </div>
+
+                        {sensorForms.length === 0 ? (
+                          <div className="text-center py-8">
+                            <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                            </svg>
+                            <p className="text-gray-500 text-sm">Belum ada sensor. Klik "Tambah Sensor" untuk menambahkan sensor pertama.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-6">
+                            {sensorForms.map((sensor, index) => (
+                              <div key={sensor.id} className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
+                                <div className="flex items-center justify-between mb-4">
+                                  <h5 className="text-md font-semibold text-gray-800 flex items-center">
+                                    <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                                    </svg>
+                                    Sensor {index + 1}
+                                  </h5>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeSensor(sensor.id)}
+                                    className="text-red-600 hover:text-red-800 transition-colors duration-200 p-1"
+                                    title="Hapus sensor ini"
+                                  >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
+                                </div>
+
+                                <div className="space-y-4">
+                                  {/* Row 1: Nama Sensor (full width) */}
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Nama Sensor</label>
+                                    <CustomSelect
+                                      options={instrumentNames.map(n => ({ value: n.id, label: n.name }))}
+                                      value={sensor.sensor_name_id}
+                                      onChange={(val) => updateSensor(sensor.id, 'sensor_name_id', val ? Number(val) : null)}
+                                      placeholder="-- Pilih Nama Sensor --"
+                                      clearLabel="— Tidak dipilih"
+                                    />
+                                  </div>
+
+                                  {/* Row 2: Alias Sensor (full width, sendiri) */}
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Alias Sensor <span className="text-gray-400 font-normal text-xs">(nama khusus sensor)</span>
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={sensor.nama_sensor}
+                                      onChange={(e) => updateSensor(sensor.id, 'nama_sensor', e.target.value)}
+                                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                      placeholder="Contoh: Sensor Suhu Ruang A..."
+                                    />
+                                  </div>
+
+                                  {/* Row 3: Merk | Tipe | Serial Number — satu baris 3 kolom */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Merk Sensor</label>
+                                      <input
+                                        type="text"
+                                        value={sensor.merk_sensor}
+                                        onChange={(e) => updateSensor(sensor.id, 'merk_sensor', e.target.value)}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                        placeholder="Enter sensor manufacturer"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Tipe Sensor</label>
+                                      <input
+                                        type="text"
+                                        value={sensor.tipe_sensor}
+                                        onChange={(e) => updateSensor(sensor.id, 'tipe_sensor', e.target.value)}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                        placeholder="Enter sensor type"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Serial Number Sensor</label>
+                                      <input
+                                        type="text"
+                                        value={sensor.serial_number_sensor}
+                                        onChange={(e) => updateSensor(sensor.id, 'serial_number_sensor', e.target.value)}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                        placeholder="Enter sensor serial number"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Range Capacity</label>
+                                      <div className="flex gap-2">
+                                        <input
+                                          type="text"
+                                          value={sensor.range_capacity}
+                                          onChange={(e) => updateSensor(sensor.id, 'range_capacity', e.target.value)}
+                                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                          placeholder="Ex: 0-100"
+                                        />
+                                        <div className="w-28">
+                                          <UnitSelect
+                                            units={units}
+                                            value={sensor.range_capacity_unit}
+                                            onChange={(val) => updateSensor(sensor.id, 'range_capacity_unit', val)}
+                                            placeholder="Unit"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Graduating</label>
+                                      <div className="flex gap-2">
+                                        <input
+                                          type="text"
+                                          value={sensor.graduating}
+                                          onChange={(e) => updateSensor(sensor.id, 'graduating', e.target.value)}
+                                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                          placeholder="Ex: 0.01"
+                                        />
+                                        <div className="w-28">
+                                          <UnitSelect
+                                            units={units}
+                                            value={sensor.graduating_unit}
+                                            onChange={(val) => updateSensor(sensor.id, 'graduating_unit', val)}
+                                            placeholder="Unit"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Resolution <span className="text-gray-400 text-xs font-normal">(untuk perhitungan U95)</span></label>
+                                      <input
+                                        type="number"
+                                        step="any"
+                                        value={sensor.resolution ?? ''}
+                                        onChange={(e) => updateSensor(sensor.id, 'resolution', e.target.value === '' ? null : parseFloat(e.target.value))}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                        placeholder="Ex: 0.01"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {/* Row 5: Funnel Diameter + Unit | Volume Per Tip + Unit | Funnel Area + Unit (Hanya untuk sensor hujan) */}
+                                  {instrumentNames.find(n => n.id === sensor.sensor_name_id)?.name?.toLowerCase().includes('hujan') || 
+                                   instrumentNames.find(n => n.id === sensor.sensor_name_id)?.name?.toLowerCase().includes('rain') ? (
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                      <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Funnel Diameter</label>
+                                        <div className="flex gap-2">
+                                          <input
+                                            type="number"
+                                            value={sensor.funnel_diameter}
+                                            onChange={(e) => updateSensor(sensor.id, 'funnel_diameter', parseFloat(e.target.value) || 0)}
+                                            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                            placeholder="0"
+                                          />
+                                          <div className="w-24">
+                                            <UnitSelect
+                                              units={units}
+                                              value={sensor.funnel_diameter_unit}
+                                              onChange={(val) => updateSensor(sensor.id, 'funnel_diameter_unit', val)}
+                                              placeholder="Unit"
+                                            />
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Volume Per Tip</label>
+                                        <div className="flex gap-2">
+                                          <input
+                                            type="text"
+                                            value={sensor.volume_per_tip}
+                                            onChange={(e) => updateSensor(sensor.id, 'volume_per_tip', e.target.value)}
+                                            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                            placeholder="Enter volume"
+                                          />
+                                          <div className="w-24">
+                                            <UnitSelect
+                                              units={units}
+                                              value={sensor.volume_per_tip_unit}
+                                              onChange={(val) => updateSensor(sensor.id, 'volume_per_tip_unit', val)}
+                                              placeholder="Unit"
+                                            />
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Funnel Area</label>
+                                        <div className="flex gap-2">
+                                          <input
+                                            type="number"
+                                            value={sensor.funnel_area}
+                                            onChange={(e) => updateSensor(sensor.id, 'funnel_area', parseFloat(e.target.value) || 0)}
+                                            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                            placeholder="0"
+                                          />
+                                          <div className="w-24">
+                                            <UnitSelect
+                                              units={units}
+                                              value={sensor.funnel_area_unit}
+                                              onChange={(val) => updateSensor(sensor.id, 'funnel_area_unit', val)}
+                                              placeholder="Unit"
+                                            />
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ) : null}
+
+                                </div>
+
+                                <div className="mt-4 flex items-center space-x-3 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                                  <input
+                                    type="checkbox"
+                                    id={`is_standard_${sensor.id}`}
+                                    checked={sensor.is_standard}
+                                    onChange={(e) => updateSensor(sensor.id, 'is_standard', e.target.checked)}
+                                    className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                                  />
+                                  <label htmlFor={`is_standard_${sensor.id}`} className="text-sm font-medium text-orange-800 cursor-pointer">
+                                    Sensor Standar
+                                    <span className="text-xs font-normal text-orange-600 ml-2">— Data kalibrasi (Drift, U95, Koreksi) dikelola di bagian Daftar Sertifikat di atas</span>
+                                  </label>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </form>
                 </div>
 
