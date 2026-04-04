@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
         range_capacity,
         range_capacity_unit,
         is_standard,
+        tracebility,
         instrument_id,
         instrument:instrument_id (
           id,

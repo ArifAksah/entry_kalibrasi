@@ -386,6 +386,7 @@ const CertificatesCRUD: React.FC = () => {
     authorized_by: null,
     verifikator_1: null as any,
     verifikator_2: null as any,
+    verifikator_3: null as any,
     issue_date: '',
     station: null,
     instrument: null,
@@ -1124,6 +1125,7 @@ const CertificatesCRUD: React.FC = () => {
       (item as any).authorized_by,
       (item as any).verifikator_1,
       (item as any).verifikator_2,
+      (item as any).verifikator_3,
     ]
     if (directFields.some(f => (f !== undefined && f !== null) && String(f) === uid)) return true
 
@@ -1155,6 +1157,7 @@ const CertificatesCRUD: React.FC = () => {
         authorized_by: item.authorized_by,
         verifikator_1: (item as any).verifikator_1 ?? null,
         verifikator_2: (item as any).verifikator_2 ?? null,
+        verifikator_3: (item as any).verifikator_3 ?? null,
         issue_date: item.issue_date,
         station: item.station,
         instrument: item.instrument,
@@ -1299,6 +1302,7 @@ const CertificatesCRUD: React.FC = () => {
         authorized_by: null,
         verifikator_1: null as any,
         verifikator_2: null as any,
+        verifikator_3: null as any,
         issue_date: '',
         station: null,
         instrument: null,
@@ -1362,15 +1366,16 @@ const CertificatesCRUD: React.FC = () => {
       return
     }
 
-    if (!(form as any).verifikator_1 || !(form as any).verifikator_2) {
-      showError('Verifikator 1 dan Verifikator 2 harus dipilih')
+    if (!(form as any).verifikator_1 || !(form as any).verifikator_2 || !(form as any).verifikator_3) {
+      showError('Verifikator 1, Verifikator 2, dan Verifikator 3 harus dipilih')
       return
     }
 
-    // Validasi: assignor, verifikator 1, dan verifikator 2 tidak boleh sama
+    // Validasi: assignor, verifikator 1, verifikator 2, dan verifikator 3 tidak boleh sama
     const assignor = form.authorized_by
     const verifikator1 = (form as any).verifikator_1
     const verifikator2 = (form as any).verifikator_2
+    const verifikator3 = (form as any).verifikator_3
 
     if (assignor && verifikator1 && assignor === verifikator1) {
       showError('Assignor tidak boleh sama dengan Verifikator 1')
@@ -1382,8 +1387,23 @@ const CertificatesCRUD: React.FC = () => {
       return
     }
 
+    if (assignor && verifikator3 && assignor === verifikator3) {
+      showError('Assignor tidak boleh sama dengan Verifikator 3')
+      return
+    }
+
     if (verifikator1 && verifikator2 && verifikator1 === verifikator2) {
       showError('Verifikator 1 tidak boleh sama dengan Verifikator 2')
+      return
+    }
+
+    if (verifikator1 && verifikator3 && verifikator1 === verifikator3) {
+      showError('Verifikator 1 tidak boleh sama dengan Verifikator 3')
+      return
+    }
+
+    if (verifikator2 && verifikator3 && verifikator2 === verifikator3) {
+      showError('Verifikator 2 tidak boleh sama dengan Verifikator 3')
       return
     }
 
@@ -1765,6 +1785,15 @@ const CertificatesCRUD: React.FC = () => {
                           {((item as any).verifikator_2_status === 'pending' || !(item as any).verifikator_2_status) ? 'Belum di periksa' : (item as any).verifikator_2_status}
                         </span>
                       </div>
+                      <div className="flex items-center space-x-1">
+                        <span className="text-xs font-medium text-gray-500">Verifikator 3:</span>
+                        <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${(item as any).verifikator_3_status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' :
+                          (item as any).verifikator_3_status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
+                            'bg-yellow-50 text-yellow-700 border-yellow-200'
+                          }`}>
+                          {((item as any).verifikator_3_status === 'pending' || !(item as any).verifikator_3_status) ? 'Belum di periksa' : (item as any).verifikator_3_status}
+                        </span>
+                      </div>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm">
@@ -1893,7 +1922,7 @@ const CertificatesCRUD: React.FC = () => {
                               className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
                             >
                               <PrinterIcon className="w-4 h-4 text-gray-600" />
-                              Print Certificate
+                              Preview LHKS
                             </a>
                             <button
                               onClick={() => {
@@ -1944,7 +1973,7 @@ const CertificatesCRUD: React.FC = () => {
                               <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                               </svg>
-                              Uncertainty Budget
+                              Uncertainty
                             </button>
                           </div>
 
@@ -1963,7 +1992,7 @@ const CertificatesCRUD: React.FC = () => {
                               </button>
                             )}
 
-                            {((item as any).repair_status === 'none' && ((item as any).verifikator_1_status === 'rejected' || (item as any).verifikator_2_status === 'rejected')) && (
+                            {((item as any).repair_status === 'none' && ((item as any).verifikator_1_status === 'rejected' || (item as any).verifikator_2_status === 'rejected' || (item as any).verifikator_3_status === 'rejected')) && (
                               <button
                                 onClick={() => {
                                   openModal(item);
@@ -2216,6 +2245,24 @@ const CertificatesCRUD: React.FC = () => {
                           }))}
                         placeholder="Pilih verifikator 2"
                         searchPlaceholder="Cari verifikator 2..."
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700">Verifikator 3 *</label>
+                      <SearchableDropdown
+                        id="form-verifikator-3"
+                        value={(form as any).verifikator_3 ?? null}
+                        onChange={(value) => setForm({ ...form, verifikator_3: value as string | null } as any)}
+                        options={personel
+                          .filter(p => p.role === 'verifikator')
+                          .map(p => ({
+                            id: p.id,
+                            name: p.nip ? `${p.name} (${p.nip})` : p.name,
+                            station_id: p.id.slice(0, 8),
+                            nip: p.nip || ''
+                          }))}
+                        placeholder="Pilih verifikator 3"
+                        searchPlaceholder="Cari verifikator 3..."
                       />
                     </div>
                   </div>
@@ -2990,160 +3037,6 @@ const CertificatesCRUD: React.FC = () => {
 
 
 
-
-                {/* Bagian V – Tabel Hasil */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mt-6">
-                  <div className="bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] px-5 py-3">
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                      <FileTextIcon className="w-4 h-4" />
-                      Hasil Kalibrasi / Calibration Results
-                    </h3>
-                    <p className="text-blue-100 text-xs mt-0.5">Isi tabel hasil untuk setiap sensor yang dikalibrasi</p>
-                  </div>
-
-                  <div className="p-5 space-y-4">
-                    {results.map((result, ri) => {
-                      const sensorName = (result as any).sensorName || result.sensorDetails?.type || `Sensor ${ri + 1}`;
-                      const hasTable = result.table && result.table.length > 0 && result.table.some((s: any) => s.rows?.some((r: any) => r.key || r.value));
-                      const hasSession = !!(result as any).session_id;
-                      return (
-                        <div key={ri} className="border border-gray-200 rounded-lg overflow-hidden">
-                          <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-100">
-                            <span className="text-sm font-semibold text-gray-700">{sensorName}</span>
-                            <div className="flex items-center gap-2">
-                              {/* Auto-Generate Button */}
-                              <button
-                                type="button"
-                                disabled={isGenerating}
-                                onClick={async () => {
-                                  if (!hasSession) {
-                                    showError("Data QC belum tersedia. Pastikan sertifikat ini sudah memiliki Raw Data yang tersimpan.");
-                                    return;
-                                  }
-                                  setIsGenerating(true);
-                                  try {
-                                    const sessionId = (result as any).session_id;
-                                    const res = await fetch(`/api/raw-data?session_id=${sessionId}`);
-                                    const json = await res.json();
-                                    const currentData = json.data || [];
-
-                                    if (!currentData.length) {
-                                      showError("Data QC kosong.");
-                                      return;
-                                    }
-
-                                    const activeUutSensor = sensors.find(s => s.id === result.sensorId);
-                                    const standardCertRecord = result.standardCertificateId
-                                      ? standardCerts.find(c => c.id === result.standardCertificateId)
-                                      : null;
-                                    const uutInstrument = instruments.find(i => i.id === form.instrument);
-                                    const isAnalog = (uutInstrument?.instrument_type_id ?? 1) === 2;
-
-                                    const { uutAvg, correction, uncertainty } = calculateCalibrationResult({
-                                      currentData,
-                                      uutSensor: activeUutSensor,
-                                      standardCertRecord,
-                                      isAnalog
-                                    });
-
-                                    const newTable = [{
-                                      title: 'Hasil Kalibrasi / Calibration Result',
-                                      headers: ['Penunjukan Alat / Instrument Reading', 'Koreksi / Correction', 'Ketidakpastian / Uncertainty'],
-                                      rows: [{
-                                        key: uutAvg.toFixed(4),
-                                        unit: correction.toFixed(4),
-                                        value: uncertainty.toFixed(4),
-                                        extraValues: []
-                                      }]
-                                    }];
-
-                                    updateResult(ri, { table: newTable });
-                                    showSuccess(`Tabel Sensor ${ri + 1} berhasil di-generate!`);
-                                  } catch(e) {
-                                    showError("Gagal generate tabel dari Data QC");
-                                  } finally {
-                                    setIsGenerating(false);
-                                  }
-                                }}
-                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${hasSession
-                                  ? 'text-white bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 shadow-sm'
-                                  : 'text-gray-400 bg-gray-100 cursor-not-allowed'}`}
-                                title={hasSession ? "Auto-Generate dari Data QC" : "Data QC belum tersimpan"}
-                              >
-                                {isGenerating ? (
-                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
-                                ) : (
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                  </svg>
-                                )}
-                                Auto-Generate QC
-                              </button>
-                              {/* Manual Edit Button */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setTableEditIndex(ri);
-                                  setTableDraft(result.table && result.table.length > 0
-                                    ? result.table
-                                    : [{ title: '', rows: [{ key: '', unit: '', value: '', extraValues: [] }] }]);
-                                }}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#1e377c] bg-blue-50 hover:bg-blue-100 rounded-lg transition-all border border-blue-200"
-                              >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                                Input Manual
-                              </button>
-                            </div>
-                          </div>
-                          {/* Preview rows */}
-                          <div className="px-4 py-3">
-                            {hasTable ? (
-                              (result.table as any[]).map((section: any, si: number) => (
-                                <div key={si} className="mb-2">
-                                  {section.title && <p className="text-xs font-semibold text-gray-600 mb-1">{section.title}</p>}
-                                  <div className="overflow-x-auto">
-                                    <table className="w-full text-xs border-collapse border border-gray-200">
-                                      {section.headers && (
-                                        <thead>
-                                          <tr>
-                                            {section.headers.map((h: string, hi: number) => (
-                                              <th key={hi} className="border border-gray-200 px-2 py-1 text-center text-gray-600 bg-gray-50 font-semibold">{h}</th>
-                                            ))}
-                                          </tr>
-                                        </thead>
-                                      )}
-                                      <tbody>
-                                        {section.rows?.map((row: any, rowi: number) => (
-                                          <tr key={rowi}>
-                                            <td className="border border-gray-200 px-2 py-1 text-center">{row.key}</td>
-                                            <td className="border border-gray-200 px-2 py-1 text-center">{row.unit}</td>
-                                            <td className="border border-gray-200 px-2 py-1 text-center">{row.value}</td>
-                                            {row.extraValues?.map((ev: string, evi: number) => (
-                                              <td key={evi} className="border border-gray-200 px-2 py-1 text-center">{ev}</td>
-                                            ))}
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </div>
-                              ))
-                            ) : (
-                              <p className="text-xs text-gray-400 italic text-center py-2">Belum ada data — klik Auto-Generate QC atau Input Manual</p>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {results.length === 0 && (
-                      <div className="text-center text-gray-400 py-6 text-sm">
-                        Tambahkan sensor terlebih dahulu di atas
-                      </div>
-                    )}
-                  </div>
-                </div>
 
 
                 {/* Footer Action Buttons */}

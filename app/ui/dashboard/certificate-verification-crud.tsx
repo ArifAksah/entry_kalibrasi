@@ -14,10 +14,17 @@ import Alert from '../../../components/ui/Alert'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useAlert } from '../../../hooks/useAlert'
 import { useCertificateRejection } from '../../../hooks/useCertificateRejection'
-import RejectionModal from './rejection-modal'
 import { Certificate, CertificateInsert, Station, Instrument, Sensor } from '../../../lib/supabase'
 import { EditIcon, DeleteIcon, ViewIcon, CloseIcon, CheckIcon, XIcon, EditButton, ViewButton, VerifyButton, RejectButton } from '../../../components/ui/ActionIcons'
 import Dropdown, { DropdownItem } from '../../../components/ui/Dropdown'
+import { supabase } from '../../../lib/supabase'
+
+interface RejectionOption {
+  value: string
+  label: string
+  description: string
+  icon: string
+}
 
 const CertificateVerificationCRUD: React.FC = () => {
   const { pendingCertificates, loading, error, createVerification, updateVerification } = useCertificateVerification()
@@ -31,16 +38,69 @@ const CertificateVerificationCRUD: React.FC = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [isRejectionModalOpen, setIsRejectionModalOpen] = useState(false)
   const [selectedCertificate, setSelectedCertificate] = useState<PendingCertificate | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  
   const { rejectCertificate } = useCertificateRejection()
   const [verificationForm, setVerificationForm] = useState({
     status: 'approved' as 'approved' | 'rejected',
     notes: '',
     rejection_reason: '',
+    rejection_destination: 'creator',
     approval_notes: ''
   })
+
+  // Dynamic Rejection States
+  const [rejectionOptions, setRejectionOptions] = useState<RejectionOption[]>([])
+  const [loadingRejectionOptions, setLoadingRejectionOptions] = useState(false)
+
+  // Fetch rejection options when status becomes rejected
+  useEffect(() => {
+    let isMounted = true
+    const fetchOptions = async () => {
+      if (verificationForm.status !== 'rejected' || !selectedCertificate) return
+      
+      const verificationLevel = selectedCertificate.verification_status.user_verification_level
+      if (![2, 3].includes(verificationLevel || 0)) return
+
+      setLoadingRejectionOptions(true)
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) throw new Error('Not authenticated')
+
+        const response = await fetch(`/api/certificates/${selectedCertificate.id}/reject`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to load rejection options')
+        }
+
+        const data = await response.json()
+        if (isMounted) {
+          setRejectionOptions(data.options || [])
+          // set default destination if currently selected is not in options or if it's the first time loaded
+          if (data.options?.length && !data.options.find((o: any) => o.value === verificationForm.rejection_destination)) {
+            setVerificationForm(prev => ({ ...prev, rejection_destination: data.options[0].value }))
+          }
+        }
+      } catch (error) {
+        console.error('Error loading rejection options:', error)
+        if (isMounted) {
+          showError('Gagal memuat opsi penolakan')
+        }
+      } finally {
+        if (isMounted) setLoadingRejectionOptions(false)
+      }
+    }
+
+    fetchOptions()
+    return () => { isMounted = false }
+  }, [verificationForm.status, selectedCertificate, showError])
 
   const [personel, setPersonel] = useState<Array<{ id: string; name: string }>>([])
   const [isPassphraseModalOpen, setIsPassphraseModalOpen] = useState(false)
@@ -95,6 +155,7 @@ const CertificateVerificationCRUD: React.FC = () => {
   const getVerificationLevel = (cert: PendingCertificate) => {
     if (cert.verifikator_1 === user?.id) return 'Verifikator 1'
     if (cert.verifikator_2 === user?.id) return 'Verifikator 2'
+    if (cert.verifikator_3 === user?.id) return 'Verifikator 3'
     if (cert.authorized_by === user?.id) return 'Penandatangan'
     return 'Unknown'
   }
@@ -116,6 +177,7 @@ const CertificateVerificationCRUD: React.FC = () => {
         cert.verification_status.user_verification_status || 'pending',
         cert.verification_status.verifikator_1 || '',
         cert.verification_status.verifikator_2 || '',
+        cert.verification_status.verifikator_3 || '',
         cert.verification_status.authorized_by || '',
         new Date(cert.issue_date).toLocaleDateString()
       ].join(' ').toLowerCase()
@@ -203,40 +265,7 @@ const CertificateVerificationCRUD: React.FC = () => {
     setSelectedCertificate(null)
   }
 
-  const openRejectionModal = (certificate: PendingCertificate) => {
-    setSelectedCertificate(certificate)
-    setIsRejectionModalOpen(true)
-  }
 
-  const closeRejectionModal = () => {
-    setIsRejectionModalOpen(false)
-    setSelectedCertificate(null)
-  }
-
-  const handleRejection = async (rejectionData: any) => {
-    if (!selectedCertificate) return
-
-    try {
-      setIsSubmitting(true)
-
-      const result = await rejectCertificate(selectedCertificate.id, rejectionData)
-
-      if (result.success) {
-        closeRejectionModal()
-        showSuccess('Sertifikat berhasil ditolak')
-
-        // Refresh the data
-        window.location.reload()
-      } else {
-        showError(result.error || 'Gagal menolak sertifikat')
-      }
-    } catch (error) {
-      console.error('Rejection error:', error)
-      showError('Terjadi kesalahan saat menolak sertifikat')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
 
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -257,7 +286,7 @@ const CertificateVerificationCRUD: React.FC = () => {
         return
       }
 
-      if (verificationForm.status === 'approved' && verificationLevel === 3) {
+      if (verificationForm.status === 'approved' && verificationLevel === 4) {
         setIsSubmitting(false)
         setPassphrase('')
         setPassphraseError(null)
@@ -279,17 +308,26 @@ const CertificateVerificationCRUD: React.FC = () => {
       const existingId = selectedCertificate.verification_status.user_verification_id
       let result
 
-      if (existingId) {
-        result = await updateVerification(existingId, verificationForm)
-      } else {
-        result = await createVerification({
-          certificate_id: selectedCertificate.id,
+      if (verificationForm.status === 'rejected') {
+        const rejectionData = {
           verification_level: verificationLevel,
-          status: verificationForm.status,
-          notes: verificationForm.notes || undefined,
-          rejection_reason: verificationForm.status === 'rejected' ? verificationForm.rejection_reason : undefined,
-          approval_notes: verificationForm.status === 'approved' ? verificationForm.approval_notes : undefined
-        })
+          rejection_reason: verificationForm.rejection_reason,
+          rejection_destination: verificationForm.rejection_destination || 'creator'
+        }
+        result = await rejectCertificate(selectedCertificate.id, rejectionData)
+      } else {
+        if (existingId) {
+          result = await updateVerification(existingId, verificationForm)
+        } else {
+          result = await createVerification({
+            certificate_id: selectedCertificate.id,
+            verification_level: verificationLevel,
+            status: verificationForm.status,
+            notes: verificationForm.notes || undefined,
+            rejection_reason: undefined,
+            approval_notes: verificationForm.approval_notes || undefined
+          })
+        }
       }
 
       if (result.success) {
@@ -353,7 +391,17 @@ const CertificateVerificationCRUD: React.FC = () => {
         return
       }
 
-      const result = await updateVerification(existingId, verificationForm)
+      let result;
+      if (verificationForm.status === 'rejected') {
+        const rejectionData = {
+          verification_level: verificationLevel,
+          rejection_reason: verificationForm.rejection_reason,
+          rejection_destination: verificationForm.rejection_destination || 'creator'
+        }
+        result = await rejectCertificate(selectedCertificate.id, rejectionData)
+      } else {
+        result = await updateVerification(existingId, verificationForm)
+      }
 
       if (result.success) {
         closeEditModal()
@@ -486,14 +534,13 @@ const CertificateVerificationCRUD: React.FC = () => {
         <Table headers={[
           'Certificate No',
           'Station',
-          'Your Role',
-          'Your Status',
+          'Your Role & Status',
           'Overall Status',
           'Actions'
         ]}>
           {currentCertificates.length === 0 ? (
             <tr>
-              <td colSpan={6} className="px-6 py-4 text-center text-sm text-gray-500">
+              <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">
                 {searchQuery ? 'No certificates found matching your search' : 'No certificates assigned to you'}
               </td>
             </tr>
@@ -523,27 +570,27 @@ const CertificateVerificationCRUD: React.FC = () => {
                     </span>
                   </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {getVerificationLevel(cert)}
-                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <div className="flex flex-col">
+                  <div className="flex flex-col items-start space-y-1.5">
+                    <span className="font-medium text-gray-700 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded text-xs">
+                      {getVerificationLevel(cert)}
+                    </span>
                     <span className={getStatusBadge(cert.verification_status.user_verification_status || 'pending')}>
                       {cert.verification_status.user_verification_status || 'pending'}
                     </span>
                     {cert.verification_status.user_verification_status === 'rejected' && (
-                      <span className="text-xs text-red-500 mt-1">
+                      <span className="text-[10px] text-red-500">
                         Sertifikat ditolak
                       </span>
                     )}
                     {cert.verification_status.user_verification_status === 'pending' && (
-                      <span className="text-xs text-yellow-600 mt-1">
+                      <span className="text-[10px] text-yellow-600">
                         Menunggu verifikasi
                       </span>
                     )}
                     {cert.verification_status.user_verification_status === 'approved' && (
-                      <span className="text-xs text-green-600 mt-1">
-                        Sertifikat disetujui - edit tidak tersedia
+                      <span className="text-[10px] text-green-600">
+                        Edit terkunci
                       </span>
                     )}
                   </div>
@@ -560,6 +607,12 @@ const CertificateVerificationCRUD: React.FC = () => {
                       <span className="text-xs text-gray-500">Verifikator 2:</span>
                       <span className={getStatusBadge(cert.verification_status.verifikator_2)}>
                         {cert.verification_status.verifikator_2}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-gray-500">Verifikator 3:</span>
+                      <span className={getStatusBadge(cert.verification_status.verifikator_3)}>
+                        {cert.verification_status.verifikator_3}
                       </span>
                     </div>
                     <div className="flex items-center space-x-2">
@@ -583,7 +636,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                       </button>
                     ) : (
                       <a
-                        href={`/certificates/${cert.id}/print`}
+                        href={`/certificates/${cert.id}/view`}
                         target="_blank"
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-all duration-200 shadow-sm"
                       >
@@ -605,13 +658,26 @@ const CertificateVerificationCRUD: React.FC = () => {
                       {/* View (if not primary) */}
                       {cert.verification_status.user_can_act && (
                         <DropdownItem
-                          href={`/certificates/${cert.id}/print`}
+                          href={`/certificates/${cert.id}/view`}
                           target="_blank"
                           icon={<ViewIcon className="w-4 h-4" />}
                         >
                           View Certificate
                         </DropdownItem>
                       )}
+
+                      {/* Preview LHKS */}
+                      <DropdownItem
+                        href={`/certificates/${cert.id}/print`}
+                        target="_blank"
+                        icon={
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                          </svg>
+                        }
+                      >
+                        Preview LHKS
+                      </DropdownItem>
 
                       {/* Edit Certificate (if pending) */}
                       {cert.verification_status.user_verification_status === 'pending' && (
@@ -623,27 +689,9 @@ const CertificateVerificationCRUD: React.FC = () => {
                         </DropdownItem>
                       )}
 
-                      {/* Reject (if can act) */}
-                      {cert.verification_status.user_can_act && (
-                        <DropdownItem
-                          onClick={() => openRejectionModal(cert)}
-                          variant="danger"
-                          icon={<XIcon className="w-4 h-4" />}
-                        >
-                          Reject
-                        </DropdownItem>
-                      )}
 
-                      {/* Edit Verification (if can act and already verified) */}
-                      {cert.verification_status.user_can_act && cert.verification_status.user_verification_id && (
-                        <DropdownItem
-                          onClick={() => openEditModal(cert)}
-                          variant="warning"
-                          icon={<EditIcon className="w-4 h-4" />}
-                        >
-                          Edit Verification
-                        </DropdownItem>
-                      )}
+
+
 
                       {/* Download Signed PDF */}
                       {cert.verification_status.authorized_by === 'approved' && (cert as any).pdf_path && (
@@ -1012,18 +1060,81 @@ const CertificateVerificationCRUD: React.FC = () => {
                   </div>
 
                   {verificationForm.status === 'rejected' && (
-                    <div>
-                      <label className="block text-sm font-medium text-red-700 mb-2">
-                        Rejection Reason *
-                      </label>
-                      <textarea
-                        value={verificationForm.rejection_reason}
-                        onChange={(e) => setVerificationForm({ ...verificationForm, rejection_reason: e.target.value })}
-                        className="w-full px-3 py-2 border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-                        rows={3}
-                        placeholder="Please provide a detailed reason for rejection..."
-                        required
-                      />
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-red-700 mb-2">
+                          Rejection Reason *
+                        </label>
+                        <textarea
+                          value={verificationForm.rejection_reason}
+                          onChange={(e) => setVerificationForm({ ...verificationForm, rejection_reason: e.target.value })}
+                          className="w-full px-3 py-2 border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                          rows={3}
+                          placeholder="Please provide a detailed reason for rejection..."
+                          required
+                        />
+                      </div>
+
+                      {/* Rejection Destination for V2 and V3 */}
+                      {[2, 3].includes(selectedCertificate.verification_status.user_verification_level || 0) && (
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-3">
+                            Tujuan Pengembalian *
+                          </label>
+                          
+                          {loadingRejectionOptions ? (
+                            <div className="flex items-center justify-center py-4">
+                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
+                              <span className="ml-3 text-sm text-gray-600">Memuat opsi...</span>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              {rejectionOptions.map((option) => (
+                                <label
+                                  key={option.value}
+                                  className={`flex items-start p-3 border rounded-lg cursor-pointer transition-all ${
+                                    verificationForm.rejection_destination === option.value
+                                      ? 'border-red-500 bg-red-50'
+                                      : 'border-gray-200 hover:border-gray-300'
+                                  }`}
+                                >
+                                  <input
+                                    type="radio"
+                                    name="rejection_destination"
+                                    value={option.value}
+                                    checked={verificationForm.rejection_destination === option.value}
+                                    onChange={(e) => setVerificationForm({ ...verificationForm, rejection_destination: e.target.value })}
+                                    className="mt-1 mr-3 text-red-600 focus:ring-red-500"
+                                  />
+                                  <div className="flex-1">
+                                    <div className="flex items-center space-x-2">
+                                      <span className="text-base">{option.icon}</span>
+                                      <span className="font-medium text-sm text-gray-900">{option.label}</span>
+                                    </div>
+                                    <p className="text-xs text-gray-600 mt-1">{option.description}</p>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                        <div className="flex items-start space-x-2">
+                          <svg className="w-4 h-4 text-yellow-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                          </svg>
+                          <div>
+                            <p className="text-xs text-yellow-700">
+                              {selectedCertificate.verification_status.user_verification_level === 1 
+                                ? 'Sertifikat akan dikembalikan langsung ke pembuat untuk diperbaiki.'
+                                : 'Sertifikat akan dikembalikan sesuai tujuan pilihan Anda.'
+                              }
+                            </p>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -1169,18 +1280,65 @@ const CertificateVerificationCRUD: React.FC = () => {
                   </div>
 
                   {verificationForm.status === 'rejected' && (
-                    <div>
-                      <label className="block text-sm font-medium text-red-700 mb-2">
-                        Rejection Reason *
-                      </label>
-                      <textarea
-                        value={verificationForm.rejection_reason}
-                        onChange={(e) => setVerificationForm({ ...verificationForm, rejection_reason: e.target.value })}
-                        className="w-full px-3 py-2 border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-                        rows={3}
-                        placeholder="Please provide a detailed reason for rejection..."
-                        required
-                      />
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-red-700 mb-2">
+                          Rejection Reason *
+                        </label>
+                        <textarea
+                          value={verificationForm.rejection_reason}
+                          onChange={(e) => setVerificationForm({ ...verificationForm, rejection_reason: e.target.value })}
+                          className="w-full px-3 py-2 border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                          rows={3}
+                          placeholder="Please provide a detailed reason for rejection..."
+                          required
+                        />
+                      </div>
+
+                      {/* Rejection Destination for V2 and V3 */}
+                      {[2, 3].includes(selectedCertificate.verification_status.user_verification_level || 0) && (
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-3">
+                            Tujuan Pengembalian *
+                          </label>
+                          
+                          {loadingRejectionOptions ? (
+                            <div className="flex items-center justify-center py-4">
+                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
+                              <span className="ml-3 text-sm text-gray-600">Memuat opsi...</span>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              {rejectionOptions.map((option) => (
+                                <label
+                                  key={option.value}
+                                  className={`flex items-start p-3 border rounded-lg cursor-pointer transition-all ${
+                                    verificationForm.rejection_destination === option.value
+                                      ? 'border-red-500 bg-red-50'
+                                      : 'border-gray-200 hover:border-gray-300'
+                                  }`}
+                                >
+                                  <input
+                                    type="radio"
+                                    name="edit_rejection_destination"
+                                    value={option.value}
+                                    checked={verificationForm.rejection_destination === option.value}
+                                    onChange={(e) => setVerificationForm({ ...verificationForm, rejection_destination: e.target.value })}
+                                    className="mt-1 mr-3 text-red-600 focus:ring-red-500"
+                                  />
+                                  <div className="flex-1">
+                                    <div className="flex items-center space-x-2">
+                                      <span className="text-base">{option.icon}</span>
+                                      <span className="font-medium text-sm text-gray-900">{option.label}</span>
+                                    </div>
+                                    <p className="text-xs text-gray-600 mt-1">{option.description}</p>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1226,17 +1384,7 @@ const CertificateVerificationCRUD: React.FC = () => {
         </div>
       )}
 
-      {/* Rejection Modal */}
-      {selectedCertificate && (
-        <RejectionModal
-          isOpen={isRejectionModalOpen}
-          onClose={closeRejectionModal}
-          onConfirm={handleRejection}
-          certificateId={selectedCertificate.id}
-          verificationLevel={getVerificationLevel(selectedCertificate) === 'Verifikator 1' ? 1 : 2}
-          certificateNumber={selectedCertificate.no_certificate}
-        />
-      )}
+
 
       {isPassphraseModalOpen && selectedCertificate && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

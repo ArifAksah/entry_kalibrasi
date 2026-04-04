@@ -34,7 +34,7 @@ export async function GET(
     // Get certificate info
     const { data: certificate, error: certError } = await supabaseAdmin
       .from('certificate')
-      .select('id, no_certificate, sent_by, verifikator_1, verifikator_2, status')
+      .select('id, no_certificate, sent_by, verifikator_1, verifikator_2, verifikator_3, status')
       .eq('id', certificateId)
       .single()
 
@@ -42,8 +42,11 @@ export async function GET(
       return NextResponse.json({ error: 'Certificate not found' }, { status: 404 })
     }
 
-    // Check if user is verifikator 2
-    if (certificate.verifikator_2 !== user.id) {
+    const isV2 = certificate.verifikator_2 === user.id
+    const isV3 = certificate.verifikator_3 === user.id
+
+    // Check if user is verifikator 2 or 3
+    if (!isV2 && !isV3) {
       return NextResponse.json({ 
         error: 'You are not authorized to view rejection options for this certificate' 
       }, { status: 403 })
@@ -53,7 +56,7 @@ export async function GET(
     const { data: personel, error: personelError } = await supabaseAdmin
       .from('personel')
       .select('id, name')
-      .in('id', [certificate.sent_by, certificate.verifikator_1])
+      .in('id', [certificate.sent_by, certificate.verifikator_1, certificate.verifikator_2])
 
     if (personelError) {
       return NextResponse.json({ error: 'Failed to fetch personel info' }, { status: 500 })
@@ -61,6 +64,7 @@ export async function GET(
 
     const creator = personel.find(p => p.id === certificate.sent_by)
     const verifikator1 = personel.find(p => p.id === certificate.verifikator_1)
+    const verifikator2 = personel.find(p => p.id === certificate.verifikator_2)
 
     const options = [
       {
@@ -68,14 +72,26 @@ export async function GET(
         label: 'Kembali ke Pembuat Sertifikat',
         description: `Sertifikat akan dikembalikan ke ${creator?.name || 'Pembuat'} untuk diperbaiki`,
         icon: '👤'
-      },
-      {
+      }
+    ]
+
+    if (isV2 || isV3) {
+      options.push({
         value: 'verifikator_1',
         label: 'Kembali ke Verifikator 1',
         description: `Sertifikat akan dikembalikan ke ${verifikator1?.name || 'Verifikator 1'} untuk review ulang`,
         icon: '🔍'
-      }
-    ]
+      })
+    }
+
+    if (isV3) {
+      options.push({
+        value: 'verifikator_2',
+        label: 'Kembali ke Verifikator 2',
+        description: `Sertifikat akan dikembalikan ke ${verifikator2?.name || 'Verifikator 2'} untuk review ulang`,
+        icon: '📝'
+      })
+    }
 
     return NextResponse.json({
       success: true,
@@ -130,17 +146,21 @@ export async function POST(
       }, { status: 400 })
     }
 
-    // Validate verification level
-    if (![1, 2].includes(verification_level)) {
+    if (![1, 2, 3].includes(verification_level)) {
       return NextResponse.json({ 
-        error: 'Invalid verification level. Must be 1 or 2' 
+        error: 'Invalid verification level. Must be 1, 2, or 3' 
       }, { status: 400 })
     }
 
-    // Validate rejection destination for verifikator 2
+    // Validate rejection destination based on level
     if (verification_level === 2 && !['creator', 'verifikator_1'].includes(rejection_destination)) {
       return NextResponse.json({ 
         error: 'Invalid rejection destination. Must be "creator" or "verifikator_1"' 
+      }, { status: 400 })
+    }
+    if (verification_level === 3 && !['creator', 'verifikator_1', 'verifikator_2'].includes(rejection_destination)) {
+      return NextResponse.json({ 
+        error: 'Invalid rejection destination. Must be "creator", "verifikator_1", or "verifikator_2"' 
       }, { status: 400 })
     }
 
@@ -150,7 +170,7 @@ export async function POST(
     // Get certificate info
     const { data: certificate, error: certError } = await supabaseAdmin
       .from('certificate')
-      .select('id, no_certificate, verifikator_1, verifikator_2, sent_by, status')
+      .select('id, no_certificate, verifikator_1, verifikator_2, verifikator_3, sent_by, status')
       .eq('id', certificateId)
       .single()
 
@@ -161,15 +181,16 @@ export async function POST(
     // Check authorization
     const isVerifikator1 = certificate.verifikator_1 === user.id
     const isVerifikator2 = certificate.verifikator_2 === user.id
+    const isVerifikator3 = certificate.verifikator_3 === user.id
 
-    if (!isVerifikator1 && !isVerifikator2) {
+    if (!isVerifikator1 && !isVerifikator2 && !isVerifikator3) {
       return NextResponse.json({ 
         error: 'You are not authorized to reject this certificate' 
       }, { status: 403 })
     }
 
     // Check if user is trying to reject the correct level
-    if ((isVerifikator1 && verification_level !== 1) || (isVerifikator2 && verification_level !== 2)) {
+    if ((isVerifikator1 && verification_level !== 1) || (isVerifikator2 && verification_level !== 2) || (isVerifikator3 && verification_level !== 3)) {
       return NextResponse.json({ 
         error: 'You can only reject your assigned verification level' 
       }, { status: 403 })
@@ -282,9 +303,10 @@ export async function POST(
       // Don't fail the request if logging fails
     }
 
-    // If going back to verifikator 1, reset their verification status
-    if (actualDestination === 'verifikator_1') {
-      const { error: resetVerif1Error } = await supabaseAdmin
+    // If going back to a specific verifikator, reset their verification status
+    if (['verifikator_1', 'verifikator_2'].includes(actualDestination)) {
+      const levelToReset = actualDestination === 'verifikator_1' ? 1 : 2
+      const { error: resetVerifError } = await supabaseAdmin
         .from('certificate_verification')
         .update({
           status: 'pending',
@@ -294,10 +316,10 @@ export async function POST(
           updated_at: new Date().toISOString()
         })
         .eq('certificate_id', certificateId)
-        .eq('verification_level', 1)
+        .eq('verification_level', levelToReset)
 
-      if (resetVerif1Error) {
-        console.error('Failed to reset verifikator 1 status:', resetVerif1Error)
+      if (resetVerifError) {
+        console.error(`Failed to reset verifikator ${levelToReset} status:`, resetVerifError)
         // Don't fail the request, just log the error
       }
     }

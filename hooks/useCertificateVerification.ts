@@ -41,6 +41,7 @@ export interface PendingCertificate {
   issue_date: string
   verifikator_1?: string
   verifikator_2?: string
+  verifikator_3?: string
   authorized_by?: string
   created_at: string
   station?: {
@@ -58,6 +59,7 @@ export interface PendingCertificate {
   verification_status: {
     verifikator_1: string
     verifikator_2: string
+    verifikator_3: string
     authorized_by: string
     user_verification_status: string | null
     user_verification_level: number | null
@@ -65,8 +67,10 @@ export interface PendingCertificate {
     verif1_created_at?: string
     verif2_created_at?: string
     verif3_created_at?: string
+    verif4_created_at?: string
     verif1_status_for_v2?: string
-    verif2_status_for_auth?: string
+    verif2_status_for_v3?: string
+    verif3_status_for_auth?: string
     user_can_act: boolean
   }
 }

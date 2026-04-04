@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     // Validate certificate exists
     const { data: certData, error: certError } = await supabaseAdmin
       .from('certificate')
-      .select('id, no_certificate, verifikator_1, verifikator_2, authorized_by, version')
+      .select('id, no_certificate, verifikator_1, verifikator_2, verifikator_3, authorized_by, version')
       .eq('id', certificate_id)
       .single()
 
@@ -95,15 +95,17 @@ export async function POST(request: NextRequest) {
     console.log('Certificate ID:', certificate_id)
     console.log('Certificate V1:', certData.verifikator_1)
     console.log('Certificate V2:', certData.verifikator_2)
+    console.log('Certificate V3:', certData.verifikator_3)
     console.log('Verified By (from body):', verified_by)
     console.log('Actual Verified By (from auth):', actualVerifiedBy)
     console.log('User ID Type:', typeof actualVerifiedBy)
     console.log('V1 Type:', typeof certData.verifikator_1)
     console.log('V2 Type:', typeof certData.verifikator_2)
+    console.log('V3 Type:', typeof certData.verifikator_3)
     console.log('=====================================')
 
     // Check if verifikator fields are null (certificate created before validation)
-    if (!certData.verifikator_1 || !certData.verifikator_2) {
+    if (!certData.verifikator_1 || !certData.verifikator_2 || !certData.verifikator_3) {
       return NextResponse.json({
         error: 'Certificate does not have verifikator assignments. Please edit the certificate to assign verifikators.',
       }, { status: 400 })
@@ -122,7 +124,13 @@ export async function POST(request: NextRequest) {
       }, { status: 403 })
     }
 
-    if (verification_level === 3 && certData.authorized_by !== actualVerifiedBy) {
+    if (verification_level === 3 && certData.verifikator_3 !== actualVerifiedBy) {
+      return NextResponse.json({
+        error: 'You are not assigned as Verifikator 3 for this certificate',
+      }, { status: 403 })
+    }
+
+    if (verification_level === 4 && certData.authorized_by !== actualVerifiedBy) {
       return NextResponse.json({
         error: 'You are not assigned as Authorized By for this certificate',
       }, { status: 403 })
@@ -163,7 +171,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Enforce sequence: Authorized By can only verify after Verifikator 2 approved
+    // Enforce sequence: Verifikator 3 can only verify after Verifikator 2 approved
     if (verification_level === 3) {
       const { data: v2, error: v2Err } = await supabaseAdmin
         .from('certificate_verification')
@@ -177,7 +185,26 @@ export async function POST(request: NextRequest) {
       }
       if (!v2 || v2.status !== 'approved') {
         return NextResponse.json({
-          error: 'Authorized By can verify only after Verifikator 2 has approved.'
+          error: 'Verifikator 3 can verify only after Verifikator 2 has approved.'
+        }, { status: 400 })
+      }
+    }
+
+    // Enforce sequence: Authorized By can only verify after Verifikator 3 approved
+    if (verification_level === 4) {
+      const { data: v3, error: v3Err } = await supabaseAdmin
+        .from('certificate_verification')
+        .select('status')
+        .eq('certificate_id', certificate_id)
+        .eq('verification_level', 3)
+        .eq('certificate_version', certificate_version ?? certData.version ?? 1)
+        .maybeSingle()
+      if (v3Err) {
+        // tolerate missing table errors elsewhere; here return explicit requirement
+      }
+      if (!v3 || v3.status !== 'approved') {
+        return NextResponse.json({
+          error: 'Authorized By can verify only after Verifikator 3 has approved.'
         }, { status: 400 })
       }
     }
@@ -219,8 +246,8 @@ export async function POST(request: NextRequest) {
     try {
       const { createCertificateLog } = await import('../../../lib/certificate-log-helper')
       const actionMap: Record<string, string> = {
-        'approved': verification_level === 1 ? 'approved_v1' : verification_level === 2 ? 'approved_v2' : 'approved_assignor',
-        'rejected': verification_level === 1 ? 'rejected_v1' : verification_level === 2 ? 'rejected_v2' : 'rejected_assignor'
+        'approved': verification_level === 1 ? 'approved_v1' : verification_level === 2 ? 'approved_v2' : verification_level === 3 ? 'approved_v3' : 'approved_assignor',
+        'rejected': verification_level === 1 ? 'rejected_v1' : verification_level === 2 ? 'rejected_v2' : verification_level === 3 ? 'rejected_v3' : 'rejected_assignor'
       }
       const logAction = actionMap[status] || 'updated'
       
@@ -240,7 +267,7 @@ export async function POST(request: NextRequest) {
         approval_notes: approval_notes || null,
         verification_level: verification_level,
         previous_status: currentCert?.status || null,
-        new_status: status === 'approved' ? (verification_level === 3 ? 'approved' : 'sent') : 'rejected'
+        new_status: status === 'approved' ? (verification_level === 4 ? 'approved' : 'sent') : 'rejected'
       })
     } catch (logError) {
       console.error('Failed to create certificate log:', logError)
@@ -252,22 +279,24 @@ export async function POST(request: NextRequest) {
     if (status === 'approved') {
         if (verification_level === 1 && certData.verifikator_2) {
             await createNotification(certData.verifikator_2, `Sertifikat ${certData.no_certificate} telah disetujui oleh Verifikator 1 dan siap untuk verifikasi Anda.`, link);
-        } else if (verification_level === 2 && certData.authorized_by) {
-            await createNotification(certData.authorized_by, `Sertifikat ${certData.no_certificate} telah disetujui oleh Verifikator 2 dan siap untuk otorisasi final.`, link);
+        } else if (verification_level === 2 && certData.verifikator_3) {
+            await createNotification(certData.verifikator_3, `Sertifikat ${certData.no_certificate} telah disetujui oleh Verifikator 2 dan siap untuk verifikasi Anda.`, link);
         } else if (verification_level === 3 && certData.authorized_by) {
+            await createNotification(certData.authorized_by, `Sertifikat ${certData.no_certificate} telah disetujui oleh Verifikator 3 dan siap untuk otorisasi final.`, link);
+        } else if (verification_level === 4 && certData.authorized_by) {
             // Notify the creator/assignor that it's fully approved. For simplicity, we'll notify all involved.
-            const recipients = Array.from(new Set([certData.verifikator_1, certData.verifikator_2, certData.authorized_by]));
+            const recipients = Array.from(new Set([certData.verifikator_1, certData.verifikator_2, certData.verifikator_3, certData.authorized_by]));
             for (const recipientId of recipients) {
                 if (recipientId) {
-                    await createNotification(recipientId, `Sertifikat ${certData.no_certificate} telah sepenuhnya disetujui.`, link);
+                    await createNotification(recipientId as string, `Sertifikat ${certData.no_certificate} telah sepenuhnya disetujui.`, link);
                 }
             }
         }
     } else if (status === 'rejected') {
-        const recipients = Array.from(new Set([certData.verifikator_1, certData.verifikator_2, certData.authorized_by]));
+        const recipients = Array.from(new Set([certData.verifikator_1, certData.verifikator_2, certData.verifikator_3, certData.authorized_by]));
         for (const recipientId of recipients) {
             if (recipientId) {
-                await createNotification(recipientId, `Sertifikat ${certData.no_certificate} telah ditolak oleh ${user.email}.`, link);
+                await createNotification(recipientId as string, `Sertifikat ${certData.no_certificate} telah ditolak oleh ${user.email}.`, link);
             }
         }
     }

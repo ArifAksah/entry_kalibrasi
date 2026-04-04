@@ -34,7 +34,7 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { name } = body
+    const { name, code_alat } = body
 
     if (!name) {
       return NextResponse.json(
@@ -45,7 +45,7 @@ export async function PUT(
 
     const { data, error } = await supabase
       .from('instrument_names')
-      .update({ name })
+      .update({ name, code_alat })
       .eq('id', id)
       .select()
       .single()

@@ -25,7 +25,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name } = body
+    const { name, code_alat } = body
 
     if (!name) {
       return NextResponse.json(
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('instrument_names')
-      .insert({ name })
+      .insert({ name, code_alat })
       .select()
       .single()
 

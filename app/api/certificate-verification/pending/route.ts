@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       .from("certificate")
       .select("*, station:station(*), instrument:instrument(*)")
       .or(
-        `verifikator_1.eq.${user.id},verifikator_2.eq.${user.id},authorized_by.eq.${user.id}`,
+        `verifikator_1.eq.${user.id},verifikator_2.eq.${user.id},verifikator_3.eq.${user.id},authorized_by.eq.${user.id}`,
       )
       .order("created_at", { ascending: false });
 
@@ -81,9 +81,16 @@ export async function GET(request: NextRequest) {
             v.verification_level === 3 &&
             (v.certificate_version ?? 1) === certVersion,
         );
+        const verif4 = verifications?.find(
+          (v) =>
+            v.certificate_id === cert.id &&
+            v.verification_level === 4 &&
+            (v.certificate_version ?? 1) === certVersion,
+        );
 
         const isVerifikator1 = cert.verifikator_1 === user.id;
         const isVerifikator2 = cert.verifikator_2 === user.id;
+        const isVerifikator3 = cert.verifikator_3 === user.id;
         const isAuthorizedBy = cert.authorized_by === user.id;
 
         let userVerificationStatus = null;
@@ -95,16 +102,20 @@ export async function GET(request: NextRequest) {
         } else if (isVerifikator2) {
           userVerificationStatus = verif2?.status || "pending";
           userVerificationLevel = 2;
-        } else if (isAuthorizedBy) {
+        } else if (isVerifikator3) {
           userVerificationStatus = verif3?.status || "pending";
           userVerificationLevel = 3;
+        } else if (isAuthorizedBy) {
+          userVerificationStatus = verif4?.status || "pending";
+          userVerificationLevel = 4;
         }
 
         // Gate: Sequential verification - each level must wait for previous approval
         const canUserAct = (() => {
           if (isVerifikator1) return true;
           if (isVerifikator2) return verif1?.status === "approved";
-          if (isAuthorizedBy) return verif2?.status === "approved";
+          if (isVerifikator3) return verif2?.status === "approved";
+          if (isAuthorizedBy) return verif3?.status === "approved";
           return false;
         })();
 
@@ -114,21 +125,26 @@ export async function GET(request: NextRequest) {
           verification_status: {
             verifikator_1: verif1?.status || "pending",
             verifikator_2: verif2?.status || "pending",
-            authorized_by: verif3?.status || "pending",
+            verifikator_3: verif3?.status || "pending",
+            authorized_by: verif4?.status || "pending",
             user_verification_status: userVerificationStatus,
             user_verification_level: userVerificationLevel,
             user_verification_id: isVerifikator1
               ? (verif1?.id ?? null)
               : isVerifikator2
                 ? (verif2?.id ?? null)
-                : isAuthorizedBy
+                : isVerifikator3
                   ? (verif3?.id ?? null)
-                  : null,
+                  : isAuthorizedBy
+                    ? (verif4?.id ?? null)
+                    : null,
             verif1_created_at: verif1?.created_at,
             verif2_created_at: verif2?.created_at,
             verif3_created_at: verif3?.created_at,
+            verif4_created_at: verif4?.created_at,
             verif1_status_for_v2: verif1?.status || "pending",
-            verif2_status_for_auth: verif2?.status || "pending",
+            verif2_status_for_v3: verif2?.status || "pending",
+            verif3_status_for_auth: verif3?.status || "pending",
             user_can_act: canUserAct,
           },
         };

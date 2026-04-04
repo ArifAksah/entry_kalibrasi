@@ -688,28 +688,33 @@ const CertificatePreview: React.FC<{
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {rows.map((row: any, rIdx: number) => (
-                                    <tr key={rIdx}>
-                                      {/* If headers exist, map based on standard + extra values */}
-                                      {sec.headers ? (
-                                        <>
-                                          <td className="p-1 border border-black text-left">{row.key || '-'}</td>
-                                          <td className="p-1 border border-black text-left">{row.unit || '-'}</td>
-                                          <td className="p-1 border border-black text-left">{row.value || '-'}</td>
-                                          {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
-                                            <td key={`extra-${vi}`} className="p-1 border border-black text-left">{v || '-'}</td>
-                                          ))}
-                                        </>
-                                      ) : (
-                                        // Fallback
-                                        <>
-                                          <td className="p-1 border border-black text-left">{row.key || '-'}</td>
-                                          <td className="p-1 border border-black text-left">{row.unit || '-'}</td>
-                                          <td className="p-1 border border-black text-left">{row.value || '-'}</td>
-                                        </>
-                                      )}
-                                    </tr>
-                                  ))}
+                                  {rows.map((row: any, rIdx: number) => {
+                                    const isBlank = (val: any) => !val || String(val).trim() === '' || String(val).trim() === '-';
+                                    const isFirstEmptyRow = rIdx === 0 && isBlank(row.key) && isBlank(row.unit) && isBlank(row.value);
+                                    let unitDisplay = res?.unitUut || '-';
+                                    return (
+                                      <tr key={rIdx}>
+                                        {/* If headers exist, map based on standard + extra values */}
+                                        {sec.headers ? (
+                                          <>
+                                            <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
+                                            <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.unit || '-')}</td>
+                                            <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.value || '-')}</td>
+                                            {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
+                                              <td key={`extra-${vi}`} className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (v || '-')}</td>
+                                            ))}
+                                          </>
+                                        ) : (
+                                          // Fallback
+                                          <>
+                                            <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
+                                            <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.unit || '-')}</td>
+                                            <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.value || '-')}</td>
+                                          </>
+                                        )}
+                                      </tr>
+                                    );
+                                  })}
                                 </tbody>
                               </table>
                             </div>

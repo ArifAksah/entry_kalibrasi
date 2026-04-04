@@ -110,7 +110,7 @@ const sections: NavSection[] = [
   {
     title: 'Master Data',
     items: [
-      { name: 'Master Nama', href: '/master-names', icon: Icon.database },
+      { name: 'Daftar Alat', href: '/master-names', icon: Icon.database },
       { name: 'Master QC', href: '/master-qc', icon: Icon.beaker },
     ],
   },

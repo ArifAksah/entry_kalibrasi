@@ -37,6 +37,7 @@ export async function GET(
         name,
         sensor_name_id,
         is_standard,
+        tracebility,
         created_at,
         certificate_standard (
           *
@@ -69,6 +70,7 @@ export async function GET(
       funnel_area: sensor.funnel_area || 0,
       funnel_area_unit: sensor.funnel_area_unit || '',
       is_standard: sensor.is_standard || false,
+      tracebility: sensor.tracebility || '',
       certificates: Array.isArray(sensor.certificate_standard) ? sensor.certificate_standard.map((c: any) => ({
         id: c.id,
         no_certificate: c.no_certificate,
@@ -161,6 +163,7 @@ export async function POST(
         name: body.nama_sensor || '',
         sensor_name_id: body.sensor_name_id ? parseInt(body.sensor_name_id) : null,
         is_standard: body.is_standard || false,
+        tracebility: body.tracebility || '',
         instrument_id: parseInt(id)
       })
       .select()
@@ -233,7 +236,8 @@ export async function POST(
       volume_per_tip_unit: sensorData.volume_per_tip_unit || '',
       funnel_area: sensorData.funnel_area || 0,
       funnel_area_unit: sensorData.funnel_area_unit || '',
-      is_standard: sensorData.is_standard || false
+      is_standard: sensorData.is_standard || false,
+      tracebility: sensorData.tracebility || ''
     }
 
     return NextResponse.json(responseSensor, { status: 201 })
@@ -276,6 +280,7 @@ export async function PUT(
         name: body.nama_sensor || '',
         sensor_name_id: body.sensor_name_id ? parseInt(body.sensor_name_id) : null,
         is_standard: body.is_standard || false,
+        tracebility: body.tracebility || '',
         instrument_id: parseInt(id)
       })
       .eq('id', body.id)

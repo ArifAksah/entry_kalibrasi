@@ -144,6 +144,7 @@ const InstrumentsCRUD: React.FC = () => {
     funnel_area: number;
     funnel_area_unit: string;
     is_standard: boolean;
+    tracebility?: string;
     certificates?: Array<any>;
     drift?: number;
     u95_general?: number;
@@ -156,7 +157,6 @@ const InstrumentsCRUD: React.FC = () => {
   const [globalCertificates, setGlobalCertificates] = useState<Array<{
     no_certificate: string,
     calibration_date: string,
-    traceability?: string,
     expanded?: boolean,
     sensorData: Array<{
       sensorLocalId: string,   // matches sensorForms[i].id
@@ -169,7 +169,6 @@ const InstrumentsCRUD: React.FC = () => {
   const [newGlobalCert, setNewGlobalCert] = useState({
     no_certificate: '',
     calibration_date: '',
-    traceability: '',
   })
   const [newGlobalCertError, setNewGlobalCertError] = useState('')
 
@@ -404,7 +403,6 @@ const InstrumentsCRUD: React.FC = () => {
                     certsMap.set(c.no_certificate, {
                       no_certificate: c.no_certificate,
                       calibration_date: c.calibration_date,
-                      traceability: c.traceability || '',
                       expanded: false,
                       sensorData: []
                     });
@@ -501,6 +499,7 @@ const InstrumentsCRUD: React.FC = () => {
       funnel_area: 0,
       funnel_area_unit: '',
       is_standard: isStandard,
+      tracebility: '',
       certificates: []
     }
     setSensorForms(prev => [...prev, newSensor])
@@ -568,6 +567,7 @@ const InstrumentsCRUD: React.FC = () => {
           resolution: defaultCalibration.resolution || 0,
           correction_data: defaultCalibration.correction_data || [],
           is_standard: isStandardInstrument,
+          tracebility: defaultCalibration.tracebility || '',
           certificates: defaultCalibration.certificates || []
         };
         effectiveSensors = [syncedSensor as any]; // Cast to any to match type signature if needed
@@ -584,7 +584,6 @@ const InstrumentsCRUD: React.FC = () => {
               id: sd.dbCertId,
               no_certificate: gc.no_certificate,
               calibration_date: gc.calibration_date,
-              traceability: gc.traceability || '',
               drift: Number(sd.drift) || 0,
               range: sensor.range_capacity || '',
               resolution: Number(sensor.resolution) || 0,
@@ -1150,7 +1149,7 @@ const InstrumentsCRUD: React.FC = () => {
 
                                   {/* Editable cert header (inline) */}
                                   {cert.expanded && (
-                                    <div className="px-4 py-3 bg-amber-50/60 border-t border-orange-100 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <div className="px-4 py-3 bg-amber-50/60 border-t border-orange-100 grid grid-cols-1 sm:grid-cols-2 gap-3">
                                       <div>
                                         <label className="block text-xs font-medium text-gray-600 mb-1">Nomor Sertifikat</label>
                                         <input type="text" value={cert.no_certificate}
@@ -1162,12 +1161,6 @@ const InstrumentsCRUD: React.FC = () => {
                                         <input type="date" value={cert.calibration_date}
                                           onChange={e => setGlobalCertificates(prev => prev.map((c,i) => i===certIdx ? {...c, calibration_date: e.target.value} : c))}
                                           className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded focus:ring-orange-400 focus:border-orange-400 bg-white"/>
-                                      </div>
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Traceability</label>
-                                        <input type="text" value={cert.traceability || ''}
-                                          onChange={e => setGlobalCertificates(prev => prev.map((c,i) => i===certIdx ? {...c, traceability: e.target.value} : c))}
-                                          className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded focus:ring-orange-400 focus:border-orange-400 bg-white" placeholder="KAN / BMKG"/>
                                       </div>
                                     </div>
                                   )}
@@ -1199,6 +1192,7 @@ const InstrumentsCRUD: React.FC = () => {
                                               funnel_area: 0,
                                               funnel_area_unit: '',
                                               is_standard: true,
+                                              tracebility: '',
                                               certificates: []
                                             };
                                             setSensorForms(prev => [...prev, newSensor]);
@@ -1224,7 +1218,7 @@ const InstrumentsCRUD: React.FC = () => {
                                           graduating: '', graduating_unit: '', resolution: null,
                                           funnel_diameter: 0, funnel_diameter_unit: '',
                                           volume_per_tip: '', volume_per_tip_unit: '',
-                                          funnel_area: 0, funnel_area_unit: '', is_standard: true
+                                          funnel_area: 0, funnel_area_unit: '', is_standard: true, tracebility: ''
                                         };
 
                                         const updateSensorIdentity = (field: string, value: any) => {
@@ -1333,12 +1327,19 @@ const InstrumentsCRUD: React.FC = () => {
                                                         <div className="w-24"><UnitSelect units={units} value={sensor.graduating_unit} onChange={val => updateSensorIdentity('graduating_unit', val)} placeholder="Unit"/></div>
                                                       </div>
                                                     </div>
-                                                    <div className="sm:col-span-2">
+                                                    <div className="sm:col-span-1">
                                                       <label className="block text-xs font-medium text-gray-600 mb-1">Resolution <span className="text-gray-400 font-normal">(untuk perhitungan U95)</span></label>
                                                       <input type="number" step="any" value={sensor.resolution ?? ''}
                                                         onChange={e => updateSensorIdentity('resolution', e.target.value === '' ? null : parseFloat(e.target.value))}
                                                         className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
                                                         placeholder="Ex: 0.01"/>
+                                                    </div>
+                                                    <div className="sm:col-span-1">
+                                                      <label className="block text-xs font-medium text-gray-600 mb-1">Traceability</label>
+                                                      <input type="text" value={sensor.tracebility || ''}
+                                                        onChange={e => updateSensorIdentity('tracebility', e.target.value)}
+                                                        className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
+                                                        placeholder="Ex: KAN / BMKG"/>
                                                     </div>
                                                   </div>
                                                   {isRainSensor && (
@@ -1443,26 +1444,19 @@ const InstrumentsCRUD: React.FC = () => {
                             <div className="border border-dashed border-blue-300 rounded-xl p-4 bg-blue-50/40">
                               <p className="text-xs font-semibold text-blue-700 mb-3 uppercase tracking-wide">+ Tambah Sertifikat Baru</p>
                               <p className="text-xs text-gray-500 mb-3">Buat sertifikat baru, lalu klik <strong>"+ Tambah Sensor"</strong> di dalam card sertifikat untuk mendaftarkan sensor berikut data kalibrasinya (Drift, U95, Koreksi).</p>
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="col-span-1">
                                   <label className="block text-xs font-medium text-gray-700 mb-1">Nomor Sertifikat <span className="text-red-400">*</span></label>
                                   <input type="text" value={newGlobalCert.no_certificate}
                                     onChange={e => setNewGlobalCert({...newGlobalCert, no_certificate: e.target.value})}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
                                     placeholder="Ex: 123/CERT/2026"/>
                                 </div>
-                                <div>
+                                <div className="col-span-1">
                                   <label className="block text-xs font-medium text-gray-700 mb-1">Tanggal Kalibrasi <span className="text-red-400">*</span></label>
                                   <input type="date" value={newGlobalCert.calibration_date}
                                     onChange={e => setNewGlobalCert({...newGlobalCert, calibration_date: e.target.value})}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"/>
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-700 mb-1">Traceability</label>
-                                  <input type="text" value={newGlobalCert.traceability || ''}
-                                    onChange={e => setNewGlobalCert({...newGlobalCert, traceability: e.target.value})}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
-                                    placeholder="Ex: KAN / BMKG"/>
                                 </div>
                               </div>
 
@@ -1483,11 +1477,10 @@ const InstrumentsCRUD: React.FC = () => {
                                   setGlobalCertificates(prev => [...prev, {
                                     no_certificate: newGlobalCert.no_certificate,
                                     calibration_date: newGlobalCert.calibration_date,
-                                    traceability: newGlobalCert.traceability,
                                     expanded: true,
                                     sensorData: []
                                   }]);
-                                  setNewGlobalCert({ no_certificate: '', calibration_date: '', traceability: '' });
+                                  setNewGlobalCert({ no_certificate: '', calibration_date: '' });
                                 }}>
                                 + Tambah Sertifikat
                               </button>

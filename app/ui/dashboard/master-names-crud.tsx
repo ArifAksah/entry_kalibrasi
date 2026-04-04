@@ -8,6 +8,7 @@ import Alert from '../../../components/ui/Alert'
 interface NameItem {
     id: number
     name: string
+    code_alat?: string
     created_at: string
 }
 
@@ -23,6 +24,7 @@ const MasterNamesCRUD: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [editingItem, setEditingItem] = useState<NameItem | null>(null)
     const [nameInput, setNameInput] = useState('')
+    const [codeInput, setCodeInput] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [search, setSearch] = useState('')
 
@@ -52,6 +54,7 @@ const MasterNamesCRUD: React.FC = () => {
     const openModal = (item?: NameItem) => {
         setEditingItem(item || null)
         setNameInput(item?.name || '')
+        setCodeInput(item?.code_alat || '')
         setIsModalOpen(true)
     }
 
@@ -59,6 +62,7 @@ const MasterNamesCRUD: React.FC = () => {
         setIsModalOpen(false)
         setEditingItem(null)
         setNameInput('')
+        setCodeInput('')
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -66,6 +70,11 @@ const MasterNamesCRUD: React.FC = () => {
         if (!nameInput.trim()) return
         setIsSubmitting(true)
         try {
+            const payload: any = { name: nameInput.trim() }
+            if (activeTab === 'instrument_names') {
+                payload.code_alat = codeInput.trim() || null
+            }
+
             if (editingItem) {
                 // Update - use [id] endpoint
                 const idPath = activeTab === 'instrument_names'
@@ -74,7 +83,7 @@ const MasterNamesCRUD: React.FC = () => {
                 const res = await fetch(idPath, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: nameInput.trim() })
+                    body: JSON.stringify(payload)
                 })
                 if (!res.ok) {
                     const err = await res.json()
@@ -86,7 +95,7 @@ const MasterNamesCRUD: React.FC = () => {
                 const res = await fetch(apiPath, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: nameInput.trim() })
+                    body: JSON.stringify(payload)
                 })
                 if (!res.ok) {
                     const err = await res.json()
@@ -133,22 +142,7 @@ const MasterNamesCRUD: React.FC = () => {
             )}
 
             {/* Tabs */}
-            <div className="border-b border-gray-200">
-                <nav className="-mb-px flex space-x-8">
-                    {(['instrument_names', 'sensor_names'] as ActiveTab[]).map(tab => (
-                        <button
-                            key={tab}
-                            onClick={() => { setActiveTab(tab); setSearch('') }}
-                            className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === tab
-                                ? 'border-blue-500 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                }`}
-                        >
-                            {tab === 'instrument_names' ? 'Nama Instrumen' : 'Nama Sensor'}
-                        </button>
-                    ))}
-                </nav>
-            </div>
+            {/* Tab navigation dihilangkan sesuai permintaan */}
 
             {/* Toolbar */}
             <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm">
@@ -195,6 +189,9 @@ const MasterNamesCRUD: React.FC = () => {
                             <thead className="bg-gray-50">
                                 <tr>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">No</th>
+                                    {activeTab === 'instrument_names' && (
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kode Alat</th>
+                                    )}
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal Dibuat</th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
@@ -204,6 +201,11 @@ const MasterNamesCRUD: React.FC = () => {
                                 {filtered.map((item, idx) => (
                                     <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
+                                        {activeTab === 'instrument_names' && (
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <span className="text-sm text-gray-700">{item.code_alat || '-'}</span>
+                                            </td>
+                                        )}
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className="text-sm font-medium text-gray-900">{item.name}</span>
                                         </td>
@@ -269,6 +271,20 @@ const MasterNamesCRUD: React.FC = () => {
                                     autoFocus
                                 />
                             </div>
+                            {activeTab === 'instrument_names' && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Kode Alat
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={codeInput}
+                                        onChange={e => setCodeInput(e.target.value)}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        placeholder="Masukkan kode alat (opsional)..."
+                                    />
+                                </div>
+                            )}
                             <div className="flex justify-end gap-3 pt-2">
                                 <button
                                     type="button"

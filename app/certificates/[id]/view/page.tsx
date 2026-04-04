@@ -526,10 +526,11 @@ const ViewCertificatePage: React.FC = () => {
     }
     
     .page-container {
-      width: 210mm;
+      width: 100%;
+      max-width: 900px;
       /* Jangan pakai min-height tetap agar tidak melebihi tinggi A4 saat ditambah padding */
       min-height: auto;
-      padding: 20mm; /* Padding standar dokumen */
+      padding: 24px; /* Padding standar dokumen untuk layar */
       padding-bottom: 40mm; /* Ruang untuk footer static (halaman cover) */
       margin: 0 auto;
       box-sizing: border-box;
@@ -539,8 +540,8 @@ const ViewCertificatePage: React.FC = () => {
     
     /* Halaman hasil kalibrasi (dengan QR footer) butuh padding konsisten */
     .page-container.results-page {
-      padding-bottom: 30mm; /* Space untuk QR code footer - KONSISTEN DI SEMUA HALAMAN */
-      min-height: 257mm; /* A4 height (297mm) - top padding (20mm) = 277mm content area, use 257mm for safety */
+      padding-bottom: 30px; /* Space untuk QR code footer - KONSISTEN DI SEMUA HALAMAN */
+      min-height: auto;
       box-sizing: border-box;
       position: relative;
     }
@@ -1342,10 +1343,10 @@ const ViewCertificatePage: React.FC = () => {
                                       {sec.headers && (
                                         <tr className="font-bold bg-white">
                                           {sec.headers.map((_: any, i: number) => {
-                                            const unit = res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit || '';
+                                            const unit = res?.unitUut || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit || '';
                                             return (
                                               <td key={`unit-${i}`} className="p-1 border border-black text-center">
-                                                {unit}
+                                                {unit || '-'}
                                               </td>
                                             );
                                           })}
@@ -1353,28 +1354,33 @@ const ViewCertificatePage: React.FC = () => {
                                       )}
                                     </thead>
                                     <tbody>
-                                      {rows.map((row: any, rIdx: number) => (
-                                        <tr key={rIdx}>
-                                          {/* If headers exist, map based on standard + extra values */}
-                                          {sec.headers ? (
-                                            <>
-                                              <td className="p-1 border border-black text-left">{row.key || '-'}</td>
-                                              <td className="p-1 border border-black text-center">{row.unit || '-'}</td>
-                                              <td className="p-1 border border-black text-left">{row.value || '-'}</td>
-                                              {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
-                                                <td key={`extra-${vi}`} className="p-1 border border-black text-left">{v || '-'}</td>
-                                              ))}
-                                            </>
-                                          ) : (
-                                            // Fallback
-                                            <>
-                                              <td className="p-1 border border-black text-left">{row.key || '-'}</td>
-                                              <td className="p-1 border border-black text-center">{row.unit || '-'}</td>
-                                              <td className="p-1 border border-black text-left">{row.value || '-'}</td>
-                                            </>
-                                          )}
-                                        </tr>
-                                      ))}
+                                      {rows.map((row: any, rIdx: number) => {
+                                        const isBlank = (val: any) => !val || String(val).trim() === '' || String(val).trim() === '-';
+                                        const isFirstEmptyRow = rIdx === 0 && isBlank(row.key) && isBlank(row.unit) && isBlank(row.value);
+                                        let unitDisplay = res?.unitUut || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit || '-';
+                                        return (
+                                          <tr key={rIdx}>
+                                            {/* If headers exist, map based on standard + extra values */}
+                                            {sec.headers ? (
+                                              <>
+                                                <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
+                                                <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.unit || '-')}</td>
+                                                <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.value || '-')}</td>
+                                                {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
+                                                  <td key={`extra-${vi}`} className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (v || '-')}</td>
+                                                ))}
+                                              </>
+                                            ) : (
+                                              // Fallback
+                                              <>
+                                                <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
+                                                <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.unit || '-')}</td>
+                                                <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.value || '-')}</td>
+                                              </>
+                                            )}
+                                          </tr>
+                                        );
+                                      })}
                                     </tbody>
                                   </table>
                                 </div>

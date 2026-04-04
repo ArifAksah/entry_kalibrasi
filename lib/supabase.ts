@@ -79,6 +79,7 @@ export interface Sensor {
   instrument_id?: number
   sensor_name_id?: number
   setpoint?: any
+  tracebility?: string
 }
 
 export interface CertStandard {
