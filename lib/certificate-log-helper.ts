@@ -8,7 +8,7 @@ const supabaseAdmin = createClient(
 
 export interface CreateLogParams {
   certificate_id: number
-  action: 'created' | 'sent' | 'approved_v1' | 'approved_v2' | 'approved_assignor' | 'rejected_v1' | 'rejected_v2' | 'rejected_assignor' | 'updated' | 'deleted'
+  action: 'created' | 'sent' | 'approved_v1' | 'approved_v2' | 'approved_v3' | 'approved_assignor' | 'rejected_v1' | 'rejected_v2' | 'rejected_v3' | 'rejected_assignor' | 'updated' | 'deleted'
   performed_by: string
   notes?: string | null
   rejection_reason?: string | null

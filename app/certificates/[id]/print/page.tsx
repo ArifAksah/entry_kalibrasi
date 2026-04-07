@@ -41,6 +41,7 @@ type Cert = {
   authorized_by: string | null
   verifikator_1?: string | null
   verifikator_2?: string | null
+  verifikator_3?: string | null
   station_address?: string | null
   results?: ResultItem[] // Menambahkan results di sini
   version?: number
@@ -218,6 +219,7 @@ const PrintCertificatePage: React.FC = () => {
   const authorized = useMemo(() => personel.find(p => p.id === (cert?.authorized_by ?? '')) || null, [personel, cert])
   const verifikator1 = useMemo(() => personel.find(p => p.id === (cert?.verifikator_1 ?? '')) || null, [personel, cert])
   const verifikator2 = useMemo(() => personel.find(p => p.id === (cert?.verifikator_2 ?? '')) || null, [personel, cert])
+  const verifikator3 = useMemo(() => personel.find(p => p.id === (cert?.verifikator_3 ?? '')) || null, [personel, cert])
 
   // Data hasil kalibrasi (normalize ke array)
   const results = useMemo(() => {
@@ -543,15 +545,23 @@ const PrintCertificatePage: React.FC = () => {
     
     /* Halaman hasil kalibrasi (dengan QR footer) butuh padding konsisten */
     .page-container.results-page {
-      padding-bottom: 30mm; /* Space untuk QR code footer - KONSISTEN DI SEMUA HALAMAN */
-      min-height: 257mm; /* A4 height (297mm) - top padding (20mm) = 277mm content area, use 257mm for safety */
+      padding: 0 20mm 30mm 20mm;
+      min-height: 257mm;
       box-sizing: border-box;
       position: relative;
+    }
+    /* Remove default cell padding from thead, handle spacing inside */
+    .page-container.results-page thead.print-repeat-header > tr > td {
+      padding: 10mm 0 0 0 !important;
+    }
+    /* Minimal top padding for tbody content */
+    .page-container.results-page tbody.print-content > tr > td {
+      padding-top: 2mm !important;
     }
     
     /* Footer khusus untuk halaman 1 saja */
     .page-1-footer {
-      position: fixed !important;
+      position: absolute !important;
       bottom: 10mm !important;
       left: 20mm !important;
       right: 20mm !important;
@@ -570,7 +580,6 @@ const PrintCertificatePage: React.FC = () => {
       list-style-image: none !important;
       background: transparent !important;
       background-image: none !important;
-      border: none !important;
       outline: none !important;
       text-indent: 0 !important;
       padding-left: 0 !important;
@@ -632,8 +641,8 @@ const PrintCertificatePage: React.FC = () => {
       position: absolute !important;
       bottom: 4mm !important;
       left: 4mm !important;
-      width: 70px !important;
-      height: 70px !important;
+      width: 100px !important;
+      height: 100px !important;
       z-index: 999 !important;
       display: block !important;
       visibility: visible !important;
@@ -704,9 +713,28 @@ const PrintCertificatePage: React.FC = () => {
       
       /* Halaman hasil kalibrasi (dengan QR footer) butuh padding lebih untuk QR code */
       .page-container.results-page {
-        padding-bottom: 30mm !important; /* Space untuk QR code footer - KONSISTEN DI SEMUA HALAMAN */
-        min-height: 257mm !important; /* A4 height consistency */
+        min-height: 297mm !important;
+        height: 297mm !important;
+        padding: 0 20mm 20mm 20mm !important;
         box-sizing: border-box !important;
+        position: relative !important;
+      }
+      /* Table must fill full height so tfoot sits at page bottom */
+      .page-container.results-page table.repeatable-page-table {
+        height: 100% !important;
+      }
+      /* thead td handles top margin itself */
+      .page-container.results-page thead.print-repeat-header > tr > td {
+        padding: 10mm 0 0 0 !important;
+      }
+      /* Remove top padding from first tbody cell */
+      .page-container.results-page tbody.print-content > tr > td {
+        padding-top: 2mm !important;
+      }
+      
+      .page-container.cover-page {
+        height: 297mm !important; /* Force exact physical A4 height explicitly on print */
+        max-height: 297mm !important;
         position: relative !important;
       }
       
@@ -716,13 +744,19 @@ const PrintCertificatePage: React.FC = () => {
         break-after: avoid;
       }
       
-      /* Footer halaman 1 tetap static di mode print */
+      /* Footer halaman 1 tetap static di mode print, jangan gunakan fixed karena akan duplikat di semua halaman */
       .page-1-footer {
-        position: fixed !important;
-        bottom: 10mm !important;
+        position: absolute !important;
+        bottom: 8mm !important;
         left: 20mm !important;
         right: 20mm !important;
         z-index: 1000 !important;
+        background-color: white !important; /* Tutupi elemen fixed di belakangnya */
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        padding-top: 20px !important; /* Make white mask taller */
+        padding-bottom: 20px !important;
+        margin-bottom: -10px !important;
         list-style-type: none !important;
         list-style: none !important;
         list-style-position: outside !important;
@@ -737,7 +771,6 @@ const PrintCertificatePage: React.FC = () => {
         list-style-image: none !important;
         background: transparent !important;
         background-image: none !important;
-        border: none !important;
         outline: none !important;
         text-indent: 0 !important;
         padding-left: 0 !important;
@@ -799,8 +832,8 @@ const PrintCertificatePage: React.FC = () => {
         position: absolute !important;
         bottom: 4mm !important;
         left: 4mm !important;
-        width: 70px !important;
-        height: 70px !important;
+        width: 100px !important;
+        height: 100px !important;
         z-index: 999 !important;
         display: block !important;
         visibility: visible !important;
@@ -867,9 +900,60 @@ const PrintCertificatePage: React.FC = () => {
         opacity: 0.3 !important;
       }
       /* Repeating header via real table elements */
-      table.repeatable-page-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+      table.repeatable-page-table { 
+        width: 100%; 
+        table-layout: fixed; 
+        border-collapse: collapse;
+        border-spacing: 0;
+      }
       thead.print-repeat-header { display: table-header-group; }
+      thead.print-repeat-header tr { margin: 0; padding: 0; }
+      thead.print-repeat-header tr td { margin: 0; }
+      
+      /* tfoot as table-footer-group so footer appears after tbody content on each page */
+      tfoot.print-repeat-footer { 
+        display: table-footer-group !important;
+        background-color: white !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      /* Ensure tfoot content is visible (not hidden) */
+      tfoot.print-repeat-footer .footer-content-wrapper {
+        visibility: visible !important;
+      }
+      
       tbody.print-content { display: table-row-group; }
+    }
+    
+    @media screen {
+      tfoot.print-repeat-footer {
+        position: absolute;
+        bottom: 24px;
+        left: 24px;
+        width: calc(100% - 48px);
+        display: block;
+      }
+      
+      tfoot.print-repeat-footer > tr, 
+      tfoot.print-repeat-footer > tr > td {
+        display: block;
+        width: 100%;
+      }
+      /* Fix table spacing on screen */
+      table.repeatable-page-table {
+        border-collapse: collapse !important;
+        border-spacing: 0 !important;
+      }
+      thead.print-repeat-header > tr > td {
+        padding: 10mm 0 0 0 !important;
+      }
+      tbody.print-content > tr > td {
+        padding-top: 2mm !important;
+      }
+      .page-container.results-page {
+        padding-bottom: 40mm !important; 
+        min-height: 297mm !important;
+      }
     }
   `
 
@@ -886,8 +970,8 @@ const PrintCertificatePage: React.FC = () => {
         </div>
       )}
 
-      {/* --- HALAMAN 1 (COVER) - TIDAK ADA QR CODE KECIL --- */}
-      <div className="page-container break-after-page bg-white shadow-lg my-4 print:shadow-none print:my-0 relative">
+      {/* --- HALAMAN 1 (COVER) --- */}
+      <div className="page-container cover-page break-after-page bg-white shadow-lg my-4 print:shadow-none print:my-0 relative">
         {/* Watermark Logo BMKG */}
         <div
           className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 watermark"
@@ -905,14 +989,14 @@ const PrintCertificatePage: React.FC = () => {
         <div className="relative z-10">
           {/* Header Halaman 1 */}
           <header className="flex flex-row items-center justify-between border-b-4 border-black pb-2">
-            <div className="w-[80px]">
-              <Image src={bmkgLogo} alt="BMKG" width={80} height={80} priority />
+            <div className="flex items-start w-[100px]">
+              <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
             </div>
             <div className="text-center leading-tight">
               <h1 className="text-base font-bold">BADAN METEOROLOGI KLIMATOLOGI DAN GEOFISIKA</h1>
               <h2 className="text-base font-bold">LABORATORIUM KALIBRASI BMKG</h2>
             </div>
-            <div className="w-[80px]"></div> {/* Spacer agar center */}
+            <div className="w-[100px]"></div> {/* Spacer agar center */}
           </header>
 
           {/* Judul Sertifikat */}
@@ -954,8 +1038,8 @@ const PrintCertificatePage: React.FC = () => {
 
           {/* Identitas Pemilik */}
           <div className="mb-4">
-            <h3 className="text-sm font-bold">IDENTITAS PEMILIK</h3>
-            <h4 className="text-xs italic text-gray-700 mb-1">Owner Identification</h4>
+            <h3 className="text-sm font-bold underline leading-tight mb-0">IDENTITAS PEMILIK</h3>
+            <h4 className="text-xs italic text-gray-700 leading-tight mb-1">Owner's Identification</h4>
             <table className="w-full text-xs">
               <tbody>
                 <tr>
@@ -972,104 +1056,128 @@ const PrintCertificatePage: React.FC = () => {
             </table>
           </div>
 
-          {/* Pengesahan - di sebelah kanan */}
-          <div className="mt-8 flex justify-end">
-            <div className="text-xs max-w-sm">
-              <div className="mb-2">
-                <div className="font-semibold">Sertifikat ini terdiri atas {totalPrintedPages} halaman</div>
-                <div className="text-[10px] italic text-gray-700">This certificate comprises of {totalPrintedPages} pages</div>
-              </div>
-
-              <div className="mb-4">
-                <div className="font-semibold">Diterbitkan tanggal {new Date(cert.issue_date).toISOString().slice(0, 10)}</div>
-                <div className="text-[10px] italic text-gray-700">Date of issue</div>
-              </div>
-
-              <div className="mb-4">
-                <div className="font-semibold">Direktur Direktorat </div>
-                <div className="font-semibold">Instrumentasi dan Kalibrasi</div>
-              </div>
-
-
-              <div className="flex justify-center mb-2">
-                {qrCodeData && (
-                  <div className="w-40 h-40  flex items-center justify-center bg-white qr-code-container">
-                    <QRCodeWithBMKGLogo
-                      key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
-                      value={qrCodeData}
-                      size={120}
-                      logoSize={36}
-                      fgColor={isSigned ? '#000000' : '#B91C1C'}
-                      onRendered={handleQRRendered}
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="text-center font-bold underline">
-                {authorized?.name || '-'}
-              </div>
-            </div>
+          {/* Pengesahan */}
+          <div className="mb-8">
+            <h3 className="text-sm font-bold underline leading-tight mb-0">PENGESAHAN</h3>
+            <h4 className="text-[11px] italic text-gray-700 font-bold mb-2 leading-tight">Authorization</h4>
+            <table className="w-full text-xs">
+              <tbody>
+                <tr>
+                  <td className="w-[30%] align-top"><PdfLabel indo="Pejabat Pengesahan" eng="Authorizing officer" /></td>
+                  <td className="w-[5%] align-top">:</td>
+                  <td className="w-[65%] align-top font-bold">Direktur Instrumentasi dan Kalibrasi BMKG</td>
+                </tr>
+                <tr>
+                  <td className="align-top"><PdfLabel indo="Nama" eng="Name" /></td>
+                  <td className="align-top">:</td>
+                  <td className="align-top font-bold">{authorized?.name || '-'}</td>
+                </tr>
+                <tr>
+                  <td className="align-top"><PdfLabel indo="Tanggal Pengesahan" eng="Date of issue" /></td>
+                  <td className="align-top">:</td>
+                  <td className="align-top font-bold">
+                    {cert.issue_date ? new Date(cert.issue_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="align-top"><PdfLabel indo="Jumlah halaman" eng="Total number of pages" /></td>
+                  <td className="align-top">:</td>
+                  <td className="align-top font-bold">{totalPrintedPages}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
         {/* Footer Halaman 1 */}
-        <footer className="page-1-footer text-xs" style={{ listStyle: 'none', listStyleType: 'none', listStylePosition: 'outside' }}>
-          <div className="text-center text-[10px] text-gray-700" style={{ listStyle: 'none', listStyleType: 'none' }}>
-            Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
-          </div>
-          <div className="flex justify-between items-end mt-2" style={{ listStyle: 'none', listStyleType: 'none' }}>
-            <div className="font-semibold" style={{ listStyle: 'none', listStyleType: 'none', display: 'block', textAlign: 'left' }}>F/IKK 7.8.1</div>
-            <div className="text-center text-[10px] text-gray-700 leading-tight" style={{ listStyle: 'none', listStyleType: 'none' }}>
-              Jl. Angkasa I No. 02 Kemayoran Jakarta Pusat
-              <br />
-              Tlp. 021-4246321 Ext. 5125; Fax: 021-6545626; P.O. Box 3540 Jkt; Website: http://www.bmkg.go.id
-            </div>
-            <div className="font-semibold" style={{ listStyle: 'none', listStyleType: 'none', display: 'block', textAlign: 'right' }}>Edisi/Revisi: 11/0</div>
-          </div>
+        <footer className="page-1-footer" style={{ listStyle: 'none', listStyleType: 'none', listStylePosition: 'outside' }}>
+          <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none', marginBottom: '4px' }}>
+            <tbody>
+              <tr>
+                <td className="align-middle text-right pr-4" style={{ width: '15%' }}>
+                    {qrCodeData ? (
+                      <div className="inline-block w-[100px] h-[100px] bg-white qr-code-container" style={{ listStyle: 'none', display: 'inline-block' }}>
+                        <QRCodeWithBMKGLogo
+                          key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
+                          value={qrCodeData}
+                          size={100}
+                          logoSize={28}
+                          fgColor={isSigned ? '#000000' : '#B91C1C'}
+                          onRendered={handleQRRendered}
+                        />
+                      </div>
+                    ) : (
+                        <div className="inline-block w-[100px] h-[100px] bg-transparent" style={{ display: 'inline-block' }}></div>
+                    )}
+                </td>
+                <td className="align-middle" style={{ width: '85%', textAlign: 'justify', lineHeight: '1.3' }}>
+                  <div style={{ textJustify: 'inter-word', paddingBottom: '4px', display: 'block' }} className="text-xs font-bold leading-relaxed">
+                    Dokumen ini telah ditandatangani secara elektronik menggunakan Sertifikat Elektronik yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE) dan tidak memerlukan tanda tangan atau cap. Dokumen asli dapat diperoleh dengan memindai kode QR di samping ini.
+                  </div>
+                  <div style={{ textJustify: 'inter-word', display: 'block' }} className="italic text-[10px] font-bold text-gray-800 leading-relaxed">
+                    This document is digitally signed. No signature or seal is required. The original document can be obtained by scanning the QR on the left.
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <hr className="my-1 border-t-[2px] border-black" style={{ borderTop: '2px solid black', borderColor: '#000' }} />
+          <table className="w-full text-black mt-1" style={{ borderCollapse: 'collapse', border: 'none' }}>
+            <tbody>
+              <tr>
+                <td className="align-top text-left text-[10px] font-bold" style={{ width: '25%' }}>F/IKK 7.8.1</td>
+                <td className="align-top text-center text-[10px] font-bold text-gray-800" style={{ width: '50%', lineHeight: '1.4' }}>
+                  JL. Angkasa I No. 02 Kemayoran Jakarta Pusat
+                  <br />
+                  Tlp. 021-4246321-ext 5125; P.O. Box 3540 Jkt; Website : http://www.bmkg.go.id
+                </td>
+                <td className="align-top text-right text-[10px] font-bold" style={{ width: '25%' }}>Edisi/Revisi : 11/1</td>
+              </tr>
+            </tbody>
+          </table>
         </footer>
       </div>
 
       {/* --- HALAMAN 2..N: satu halaman per sensor --- */}
       {results.length === 0 ? (
         <div className="page-container bg-white shadow-lg my-4 print:shadow-none print:my-0">
-          <table className="repeatable-page-table">
+          <table className="repeatable-page-table" style={{ borderCollapse: 'collapse', borderSpacing: 0 }}>
             <thead className="print-repeat-header">
               <tr>
                 <td>
                   <table className="w-full text-xs">
                     <tbody>
                       <tr>
-                        <td className="w-[80px] align-top">
-                          <Image src={bmkgLogo} alt="BMKG" width={80} height={80} priority />
+                        <td className="w-[100px] align-top">
+                          <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
                         </td>
                         <td className="align-top"></td>
                         <td className="align-top">
-                          <table className="text-xs table-fixed ml-auto mr-0">
+                          <table className="w-[360px] text-xs table-fixed ml-auto mr-0">
                             <tbody>
                               <tr>
-                                <td className="w-[55%] text-right font-bold leading-tight">
-                                  <div>No. Sertifikat</div>
-                                  <div className="italic font-normal">Certificate Number</div>
+                                <td className="w-[48%] text-left font-bold leading-tight align-top">
+                                  No. Sertifikat / <span className="italic">Certificate</span><br />
+                                  <span className="italic">Number</span>
                                 </td>
-                                <td className="w-[5%] px-1">:</td>
-                                <td className="w-[40%]">{cert.no_certificate}</td>
+                                <td className="w-[4%] px-1 align-top">:</td>
+                                <td className="w-[48%] align-top font-bold">{cert.no_certificate}</td>
                               </tr>
                               <tr>
-                                <td className="text-right font-bold leading-tight">
-                                  <div>No. Order</div>
-                                  <div className="italic font-normal">Order Number</div>
+                                <td className="text-left font-bold leading-tight align-top">
+                                  No. Order / <br />
+                                  <span className="italic">Order Number</span>
                                 </td>
-                                <td className="px-1">:</td>
-                                <td>{cert.no_order}</td>
+                                <td className="px-1 align-top">:</td>
+                                <td className="align-top font-bold">{cert.no_order}</td>
                               </tr>
                               <tr>
-                                <td className="text-right font-bold leading-tight">
-                                  <div>Halaman</div>
-                                  <div className="italic font-normal">Page</div>
+                                <td className="text-left font-bold leading-tight align-top">
+                                  Halaman / <br />
+                                  <span className="italic">Page</span>
                                 </td>
-                                <td className="px-1">:</td>
-                                <td>2 dari {totalPrintedPages}</td>
+                                <td className="px-1 align-top">:</td>
+                                <td className="align-top font-bold">2 dari {totalPrintedPages}</td>
                               </tr>
                             </tbody>
                           </table>
@@ -1090,62 +1198,71 @@ const PrintCertificatePage: React.FC = () => {
                 </td>
               </tr>
             </tbody>
+            <tfoot className="print-repeat-footer">
+              <tr>
+                <td>
+                  <div className="h-2"></div>
+                  <div className="w-full mt-4 footer-content-wrapper">
+                    <div style={{ borderTop: '1px solid black', borderBottom: '2px solid black', height: '4px', marginBottom: '8px', width: '100%' }}></div>
+                    <div className="w-full text-center text-[10px] font-medium text-black mb-4" style={{ lineHeight: '1.4' }}>
+                      Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
+                      <br />
+                      yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
+                    </div>
+                    <table className="w-full text-black mt-1" style={{ borderCollapse: 'collapse', border: 'none' }}>
+                      <tbody>
+                        <tr>
+                          <td className="align-bottom text-left text-[10px] font-bold" style={{ width: '50%' }}>F/IKK 7.8.2</td>
+                          <td className="align-bottom text-right text-[10px] font-bold" style={{ width: '50%' }}>Edisi/Revisi : 11/1</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       ) : (
         results.map((res: any, idx: number) => (
           <div key={idx} className={`page-container results-page bg-white shadow-lg my-4 print:shadow-none print:my-0 ${idx !== results.length - 1 ? 'break-after-page' : ''}`}>
-            {/* QR Code kecil di footer untuk halaman 2+ - SELALU muncul di semua status (draft, sent, level 1, level 2, level 3) */}
-            {/* Warna: Merah (#B91C1C) jika belum approved level 3, Hitam (#000000) jika sudah approved level 3 */}
-            {qrCodeData && (
-              <div className="footer-qr-small results-page-qr">
-                <QRCodeWithBMKGLogo
-                  key={`qr-footer-${isSigned ? 'signed' : 'unsigned'}-${idx}`}
-                  value={qrCodeData}
-                  size={70}
-                  logoSize={21}
-                  fgColor={isSigned ? '#000000' : '#B91C1C'}
-                  onRendered={handleQRRendered}
-                />
-              </div>
-            )}
-            <table className="repeatable-page-table">
+            <table className="repeatable-page-table" style={{ borderCollapse: 'collapse', borderSpacing: 0 }}>
               <thead className="print-repeat-header">
                 <tr>
                   <td>
                     <table className="w-full text-xs">
                       <tbody>
                         <tr>
-                          <td className="w-[80px] align-top">
-                            <Image src={bmkgLogo} alt="BMKG" width={80} height={80} priority />
+                          <td className="w-[100px] align-top">
+                            <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
                           </td>
                           <td className="align-top"></td>
                           <td className="align-top">
-                            <table className="text-xs table-fixed ml-auto mr-0">
+                            <table className="w-[360px] text-xs table-fixed ml-auto mr-0">
                               <tbody>
                                 <tr>
-                                  <td className="w-[55%] text-right font-bold leading-tight">
-                                    <div>No. Sertifikat</div>
-                                    <div className="italic font-normal">Certificate Number</div>
+                                  <td className="w-[48%] text-left font-bold leading-tight align-top">
+                                    No. Sertifikat / <span className="italic">Certificate</span><br />
+                                    <span className="italic">Number</span>
                                   </td>
-                                  <td className="w-[5%] px-1">:</td>
-                                  <td className="w-[40%]">{cert.no_certificate}</td>
+                                  <td className="w-[4%] px-1 align-top">:</td>
+                                  <td className="w-[48%] align-top font-bold">{cert.no_certificate}</td>
                                 </tr>
                                 <tr>
-                                  <td className="text-right font-bold leading-tight">
-                                    <div>No. Order</div>
-                                    <div className="italic font-normal">Order Number</div>
+                                  <td className="text-left font-bold leading-tight align-top">
+                                    No. Order / <br />
+                                    <span className="italic">Order Number</span>
                                   </td>
-                                  <td className="px-1">:</td>
-                                  <td>{cert.no_order}</td>
+                                  <td className="px-1 align-top">:</td>
+                                  <td className="align-top font-bold">{cert.no_order}</td>
                                 </tr>
                                 <tr>
-                                  <td className="text-right font-bold leading-tight">
-                                    <div>Halaman</div>
-                                    <div className="italic font-normal">Page</div>
+                                  <td className="text-left font-bold leading-tight align-top">
+                                    Halaman / <br />
+                                    <span className="italic">Page</span>
                                   </td>
-                                  <td className="px-1">:</td>
-                                  <td>{idx + 2} dari {totalPrintedPages}</td>
+                                  <td className="px-1 align-top">:</td>
+                                  <td className="align-top font-bold">{idx + 2} dari {totalPrintedPages}</td>
                                 </tr>
                               </tbody>
                             </table>
@@ -1153,6 +1270,7 @@ const PrintCertificatePage: React.FC = () => {
                         </tr>
                       </tbody>
                     </table>
+                    <div style={{ borderTop: '1px solid black', borderBottom: '2px solid black', height: '4px', marginTop: '2px', width: '100%' }}></div>
                   </td>
                 </tr>
               </thead>
@@ -1236,13 +1354,15 @@ const PrintCertificatePage: React.FC = () => {
 
                         {/* Hasil Kalibrasi per Sensor */}
                         {Array.isArray(res?.table) && res.table.length > 0 && (
-                          <div className="mt-6 space-y-3">
-                            <h3 className="text-sm font-bold text-center">HASIL KALIBRASI / <span className="italic">CALIBRATION RESULT</span></h3>
+                          <div className="mt-6 space-y-3 w-[85%] mx-auto">
+                            <div className="text-[12px] font-bold text-center mb-1">Hasil Kalibrasi / <span className="italic font-normal">Calibration Result</span></div>
                             {res.table.map((sec: any, sIdx: number) => {
                               const rows = Array.isArray(sec?.rows) ? sec.rows : []
+                              const isDuplicateTitle = sec?.title?.toLowerCase().includes('hasil kalibrasi') || sec?.title?.toLowerCase().includes('calibration result');
                               return (
                                 <div key={sIdx} className="mt-3 avoid-break">
-                                  <div className="text-xs font-bold mb-1">{sec?.title || `Tabel ${sIdx + 1}`}</div>
+                                  {sec?.title && sec.title.trim() !== '' && !isDuplicateTitle && <div className="text-xs font-bold mb-1 text-center">{sec.title}</div>}
+                                  {(!sec?.title || sec.title.trim() === '') && <div className="text-xs font-bold mb-1 text-center">{`Tabel ${sIdx + 1}`}</div>}
                                   <table className="w-full text-xs border-[2px] border-black text-center border-collapse">
                                     <thead>
                                       <tr className="font-bold">
@@ -1282,19 +1402,19 @@ const PrintCertificatePage: React.FC = () => {
                                           {/* If headers exist, map based on standard + extra values */}
                                           {sec.headers ? (
                                             <>
-                                              <td className="p-1 border border-black text-left">{row.key || '-'}</td>
+                                              <td className="p-1 border border-black text-center">{row.key || '-'}</td>
                                               <td className="p-1 border border-black text-center">{row.unit || '-'}</td>
-                                              <td className="p-1 border border-black text-left">{row.value || '-'}</td>
+                                              <td className="p-1 border border-black text-center">{row.value || '-'}</td>
                                               {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
-                                                <td key={`extra-${vi}`} className="p-1 border border-black text-left">{v || '-'}</td>
+                                                <td key={`extra-${vi}`} className="p-1 border border-black text-center">{v || '-'}</td>
                                               ))}
                                             </>
                                           ) : (
                                             // Fallback
                                             <>
-                                              <td className="p-1 border border-black text-left">{row.key || '-'}</td>
+                                              <td className="p-1 border border-black text-center">{row.key || '-'}</td>
                                               <td className="p-1 border border-black text-center">{row.unit || '-'}</td>
-                                              <td className="p-1 border border-black text-left">{row.value || '-'}</td>
+                                              <td className="p-1 border border-black text-center">{row.value || '-'}</td>
                                             </>
                                           )}
                                         </tr>
@@ -1424,19 +1544,18 @@ const PrintCertificatePage: React.FC = () => {
                                   <tbody>
                                     <tr>
                                       <td className="w-[35%] align-top text-left pr-2 py-0">
-                                        <div className="font-bold leading-tight">Diverifikasi Oleh</div>
-                                        <div className="italic text-[10px] text-gray-700 leading-tight">Verified by</div>
+                                        <span className="font-bold leading-tight">Diverifikasi Oleh</span>
+                                        <span className="italic text-[10px] text-gray-700 leading-tight"> / Verified by</span>
                                       </td>
                                       <td className="w-[5%] align-top py-0">:</td>
-                                      <td className="w-[60%] align-top whitespace-pre-line py-0">{verifikator1?.name || '-'}</td>
-                                    </tr>
-                                    <tr>
-                                      <td className="align-top text-left pr-2 py-0">
-                                        <div className="font-bold leading-tight">Divalidasi Oleh</div>
-                                        <div className="italic text-[10px] text-gray-700 leading-tight">Validated by</div>
+                                      <td className="w-[60%] align-top py-0">
+                                        {[verifikator1?.name, verifikator2?.name, verifikator3?.name].filter(Boolean).length > 0
+                                          ? [verifikator1?.name, verifikator2?.name, verifikator3?.name].filter(Boolean).map((name, idx) => (
+                                              <div key={idx}>{idx + 1}. {name}</div>
+                                            ))
+                                          : <div>-</div>
+                                        }
                                       </td>
-                                      <td className="align-top py-0">:</td>
-                                      <td className="align-top whitespace-pre-line py-0">{verifikator2?.name || '-'}</td>
                                     </tr>
                                   </tbody>
                                 </table>
@@ -1459,6 +1578,29 @@ const PrintCertificatePage: React.FC = () => {
                   </td>
                 </tr>
               </tbody>
+              <tfoot className="print-repeat-footer">
+                <tr>
+                  <td>
+                    <div className="h-2"></div>
+                    <div className="w-full mt-4 footer-content-wrapper">
+                      <div style={{ borderTop: '1px solid black', borderBottom: '2px solid black', height: '4px', marginBottom: '8px', width: '100%' }}></div>
+                      <div className="w-full text-center text-[10px] font-medium text-black mb-4" style={{ lineHeight: '1.4' }}>
+                        Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
+                        <br />
+                        yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
+                      </div>
+                      <table className="w-full text-black mt-1" style={{ borderCollapse: 'collapse', border: 'none' }}>
+                        <tbody>
+                          <tr>
+                            <td className="align-top text-left text-[10px] font-bold" style={{ width: '50%' }}>F/IKK 7.8.2</td>
+                            <td className="align-top text-right text-[10px] font-bold" style={{ width: '50%' }}>Edisi/Revisi : 11/1</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         ))

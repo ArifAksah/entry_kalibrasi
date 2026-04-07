@@ -14,6 +14,7 @@ import Alert from '../../../components/ui/Alert'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useAlert } from '../../../hooks/useAlert'
 import { useCertificateRejection } from '../../../hooks/useCertificateRejection'
+import LHKSReport from '../../../components/features/LHKSReport'
 import { Certificate, CertificateInsert, Station, Instrument, Sensor } from '../../../lib/supabase'
 import { EditIcon, DeleteIcon, ViewIcon, CloseIcon, CheckIcon, XIcon, EditButton, ViewButton, VerifyButton, RejectButton } from '../../../components/ui/ActionIcons'
 import Dropdown, { DropdownItem } from '../../../components/ui/Dropdown'
@@ -29,12 +30,18 @@ interface RejectionOption {
 const CertificateVerificationCRUD: React.FC = () => {
   const { pendingCertificates, loading, error, createVerification, updateVerification } = useCertificateVerification()
   const { updateCertificate } = useCertificates()
-  const { stations } = useStations()
-  const { instruments } = useInstruments()
+  const { stations, refetch: fetchStations } = useStations()
+  const { instruments, fetchInstruments } = useInstruments()
   const { sensors } = useSensors()
   const { user } = useAuth()
   const { can, canEndpoint } = usePermissions()
   const { alert, showError, showSuccess, showWarning, hideAlert } = useAlert()
+
+  // Fetch instruments & stations on mount (hooks don't auto-fetch)
+  useEffect(() => {
+    fetchInstruments({ pageSize: 500 })
+    fetchStations({ pageSize: 500 })
+  }, [])
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
@@ -112,6 +119,35 @@ const CertificateVerificationCRUD: React.FC = () => {
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false)
   const [verificationResult, setVerificationResult] = useState<any>(null)
   const [isVerifying, setIsVerifying] = useState(false)
+
+  // LHKS Modal State
+  const [showLHKSModal, setShowLHKSModal] = useState(false)
+  const [lhksCertificate, setLhksCertificate] = useState<Certificate | null>(null)
+  const [lhksRawData, setLhksRawData] = useState<any[]>([])
+  const [lhksStandardCerts, setLhksStandardCerts] = useState<any[]>([])
+
+  const handlePreviewLHKS = async (cert: PendingCertificate) => {
+    setLhksCertificate(cert as unknown as Certificate)
+    setLhksRawData([])
+    setLhksStandardCerts([])
+    try {
+      const [rawRes, stdRes] = await Promise.all([
+        fetch(`/api/inspection-results?certificate_id=${cert.id}`),
+        fetch('/api/cert-standards'),
+      ])
+      if (rawRes.ok) {
+        const json = await rawRes.json()
+        setLhksRawData(json.data || [])
+      }
+      if (stdRes.ok) {
+        const json = await stdRes.json()
+        setLhksStandardCerts(Array.isArray(json) ? json : [])
+      }
+    } catch (e) {
+      console.error('Failed to fetch data for LHKS', e)
+    }
+    setShowLHKSModal(true)
+  }
 
   const handleVerifyBSrE = async (cert: PendingCertificate) => {
     setIsVerifying(true)
@@ -629,7 +665,12 @@ const CertificateVerificationCRUD: React.FC = () => {
                     {cert.verification_status.user_can_act ? (
                       <button
                         onClick={() => openModal(cert)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-all duration-200 shadow-sm"
+                        disabled={cert.verification_status.user_verification_status === 'approved' || cert.verification_status.user_verification_status === 'rejected'}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white rounded-lg transition-all duration-200 shadow-sm ${
+                          cert.verification_status.user_verification_status === 'approved' || cert.verification_status.user_verification_status === 'rejected'
+                            ? 'bg-gray-400 cursor-not-allowed opacity-60'
+                            : 'bg-blue-600 hover:bg-blue-700'
+                        }`}
                       >
                         <CheckIcon className="w-4 h-4" />
                         <span>{cert.verification_status.user_verification_id ? 'Update' : 'Verify'}</span>
@@ -668,8 +709,7 @@ const CertificateVerificationCRUD: React.FC = () => {
 
                       {/* Preview LHKS */}
                       <DropdownItem
-                        href={`/certificates/${cert.id}/print`}
-                        target="_blank"
+                        onClick={() => handlePreviewLHKS(cert)}
                         icon={
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -1387,49 +1427,99 @@ const CertificateVerificationCRUD: React.FC = () => {
 
 
       {isPassphraseModalOpen && selectedCertificate && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-md bg-white rounded-lg shadow-xl">
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-md bg-white rounded-xl shadow-2xl">
+            {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Masukkan Passphrase TTE</h3>
-              <button
-                onClick={() => {
-                  setIsPassphraseModalOpen(false)
-                }}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Passphrase</label>
-                <input
-                  type="password"
-                  autoComplete="new-password"
-                  value={passphrase}
-                  onChange={(e) => {
-                    setPassphrase(e.target.value)
-                    setPassphraseError(null)
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Masukkan passphrase TTE Anda"
-                />
-                {passphraseError && (
-                  <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-sm text-red-700 font-medium flex items-center gap-2">
-                      <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                      </svg>
-                      {passphraseError}
-                    </p>
-                  </div>
-                )}
+                <h3 className="text-lg font-semibold text-gray-900">Tanda Tangan Elektronik (TTE)</h3>
               </div>
+              {!isSigning && (
+                <button
+                  onClick={() => {
+                    setIsPassphraseModalOpen(false)
+                    setPassphraseError(null)
+                    setPassphrase('')
+                  }}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
             </div>
-            <div className="flex justify-end space-x-3 p-6 border-t border-gray-200 bg-gray-50">
-              {passphraseError && passphraseError.includes('profil') && (
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
+              {/* Info sertifikat */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-xs text-blue-700">
+                  <span className="font-semibold">Sertifikat:</span> {selectedCertificate.no_certificate}
+                </p>
+              </div>
+
+              {/* Loading state saat proses berlangsung */}
+              {isSigning ? (
+                <div className="flex flex-col items-center justify-center py-6 space-y-4">
+                  <div className="relative">
+                    <div className="w-16 h-16 rounded-full border-4 border-blue-100"></div>
+                    <div className="w-16 h-16 rounded-full border-4 border-blue-600 border-t-transparent animate-spin absolute inset-0"></div>
+                  </div>
+                  <div className="text-center space-y-1">
+                    <p className="text-sm font-semibold text-gray-800">Sedang memproses...</p>
+                    <p className="text-xs text-gray-500">Membuat PDF dan mengirim ke BSrE untuk penandatanganan.</p>
+                    <p className="text-xs text-amber-600 font-medium">Proses ini dapat memakan waktu 1-3 menit, harap tunggu.</p>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Passphrase BSrE
+                  </label>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={passphrase}
+                    onChange={(e) => {
+                      setPassphrase(e.target.value)
+                      setPassphraseError(null)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !isSigning && passphrase.trim()) {
+                        e.currentTarget.closest('div')?.parentElement?.querySelector<HTMLButtonElement>('[data-sign-btn]')?.click()
+                      }
+                    }}
+                    disabled={isSigning}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    placeholder="Masukkan passphrase TTE Anda"
+                    autoFocus
+                  />
+                </div>
+              )}
+
+              {/* Error display - selalu tampil jika ada error, bahkan saat loading selesai */}
+              {passphraseError && !isSigning && (
+                <div className="p-4 bg-red-50 border border-red-300 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-semibold text-red-800">Gagal menandatangani dokumen</p>
+                      <p className="text-sm text-red-700 mt-1">{passphraseError}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+              {passphraseError && passphraseError.toLowerCase().includes('nik') && !isSigning && (
                 <a
                   href="/profile-settings"
                   className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 rounded-lg border border-blue-200 flex items-center gap-2"
@@ -1440,15 +1530,22 @@ const CertificateVerificationCRUD: React.FC = () => {
                   Atur NIK di Profil
                 </a>
               )}
+              {!isSigning && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPassphraseModalOpen(false)
+                    setPassphraseError(null)
+                    setPassphrase('')
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  Batal
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => setIsPassphraseModalOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
+                data-sign-btn
                 disabled={isSigning}
                 onClick={async () => {
                   if (!selectedCertificate) return
@@ -1456,93 +1553,133 @@ const CertificateVerificationCRUD: React.FC = () => {
                     setPassphraseError('Passphrase wajib diisi')
                     return
                   }
+
+                  // Clear error sebelum mulai
+                  setPassphraseError(null)
+
                   try {
                     setIsSigning(true)
                     const { data: { session } } = await (await import('../../../lib/supabase')).supabase.auth.getSession()
                     const token = session?.access_token
                     if (!token) {
-                      showError('Not authenticated')
+                      setPassphraseError('Sesi login tidak valid. Silakan login ulang.')
                       setIsSigning(false)
                       return
                     }
-                    const res = await fetch('/api/certificate-verification/sign-level-3', {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                      },
-                      body: JSON.stringify({
-                        documentId: String(selectedCertificate.id),
-                        userPassphrase: passphrase
+
+                    let res: Response
+                    try {
+                      res = await fetch('/api/certificate-verification/sign-level-3', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                          documentId: String(selectedCertificate.id),
+                          userPassphrase: passphrase
+                        })
                       })
-                    })
+                    } catch (networkErr: any) {
+                      // Network error / fetch failed
+                      setPassphraseError('Gagal terhubung ke server. Periksa koneksi internet Anda dan coba lagi.')
+                      setIsSigning(false)
+                      return
+                    }
 
-                    // Parse response body first
-                    const data = await res.json().catch(() => ({ error: 'Gagal memproses response' }))
+                    // Parse response body
+                    let data: any = {}
+                    try {
+                      data = await res.json()
+                    } catch {
+                      data = { error: 'Gagal memproses response dari server' }
+                    }
 
-                    // Handle errors according to BSrE JUKNIS format:
-                    // HTTP 400: {"error": "Passphrase yang dimasukkan salah"} atau {"error": "NIK peserta tidak terdaftar"}
-                    // HTTP 401: {"error": "Sertifikat belum diterbitkan"}
                     if (!res.ok) {
                       const errorMsg = data?.error || 'Gagal menandatangani dokumen'
                       const errorCode = data?.code
 
-                      // Handle specific NIK missing error
-                      if (errorCode === 'NIK_MISSING' || errorMsg.includes('NIK belum diatur')) {
+                      // NIK belum diatur
+                      if (
+                        errorCode === 'NIK_MISSING' ||
+                        errorMsg.includes('NIK belum diatur') ||
+                        errorMsg.includes('NIK tidak ditemukan') ||
+                        errorMsg.includes('NIK_NOT_FOUND')
+                      ) {
                         setPassphraseError('NIK belum diatur di profil Anda. Silakan lengkapi data profil terlebih dahulu.')
                         setIsSigning(false)
                         return
                       }
 
-                      // Check if passphrase is wrong (HTTP 400)
-                      if (res.status === 400 && (
-                        errorMsg.includes('Passphrase') ||
-                        errorMsg.includes('passphrase') ||
-                        errorMsg.includes('salah')
-                      )) {
-                        setPassphraseError('Passphrase yang dimasukkan salah. Silakan masukkan passphrase yang benar.')
+                      // Passphrase salah (HTTP 400)
+                      if (res.status === 400) {
+                        // Pesan khusus passphrase
+                        if (
+                          errorMsg.toLowerCase().includes('passphrase') ||
+                          errorMsg.toLowerCase().includes('salah')
+                        ) {
+                          setPassphraseError('Passphrase yang Anda masukkan salah. Silakan coba lagi.')
+                        } else {
+                          setPassphraseError(errorMsg)
+                        }
                         setIsSigning(false)
                         return
                       }
 
-                      // Check if NIK is not registered (HTTP 400)
-                      if (res.status === 400 && (
-                        errorMsg.includes('NIK') ||
-                        errorMsg.includes('nik') ||
-                        errorMsg.includes('tidak terdaftar') ||
-                        errorMsg.includes('tidak ditemukan')
-                      )) {
-                        setPassphraseError('NIK peserta tidak terdaftar. Pastikan NIK sudah terdaftar di sistem BSrE.')
+                      // Belum semua verifikator approve (HTTP 401)
+                      if (res.status === 401) {
+                        setPassphraseError('Sertifikat belum siap untuk ditandatangani. Pastikan semua verifikator sudah menyetujui.')
                         setIsSigning(false)
                         return
                       }
 
-                      // For other errors, show error message in modal and alert
-                      setPassphraseError(errorMsg)
-                      showError(errorMsg)
+                      // Tidak berwenang (HTTP 403)
+                      if (res.status === 403) {
+                        setPassphraseError('Anda tidak berwenang menandatangani dokumen ini.')
+                        setIsSigning(false)
+                        return
+                      }
+
+                      // Error lainnya (500, dll)
+                      setPassphraseError(`Terjadi kesalahan: ${errorMsg}`)
                       setIsSigning(false)
                       return
                     }
-                    setIsPassphraseModalOpen(false)
+
+                    // === SUCCESS ===
+                    setIsSigning(false)
                     setPassphrase('')
-                    showSuccess('Dokumen berhasil ditandatangani!')
-                    // Set localStorage flag to notify other tabs/windows
+                    setIsPassphraseModalOpen(false)
                     localStorage.setItem('certificate_signed', JSON.stringify({
                       certificateId: selectedCertificate.id,
                       timestamp: Date.now()
                     }))
+                    // Tampilkan notifikasi sukses menggunakan useAlert (bukan window.alert)
+                    // window.alert() bisa di-suppress browser saat async handler sebelum reload
+                    showSuccess('✅ Dokumen berhasil ditandatangani! Halaman akan diperbarui...')
+                    // Tunggu 3 detik agar notifikasi terlihat sebelum reload
                     setTimeout(() => {
                       window.location.reload()
-                    }, 1500)
-                  } catch (err) {
-                    showError('Terjadi kesalahan saat mengirim passphrase')
-                  } finally {
+                    }, 3000)
+
+                  } catch (err: any) {
+                    // Catch-all untuk error yang tidak terduga
+                    console.error('[Passphrase Submit] Unexpected error:', err)
+                    setPassphraseError(`Terjadi kesalahan tidak terduga: ${err?.message || 'Silakan coba lagi.'}`)
                     setIsSigning(false)
                   }
                 }}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {isSigning ? 'Memproses...' : 'Setuju dan Tanda Tangan'}
+                {isSigning ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Memproses...
+                  </span>
+                ) : 'Setuju dan Tanda Tangan'}
               </button>
             </div>
           </div>
@@ -1652,6 +1789,31 @@ const CertificateVerificationCRUD: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* LHKS Modal */}
+      {showLHKSModal && lhksCertificate && (
+        <LHKSReport
+          isOpen={showLHKSModal}
+          onClose={() => { setShowLHKSModal(false); setLhksCertificate(null) }}
+          certificate={lhksCertificate}
+          owner={stations.find(s => s.id === lhksCertificate.station) || null}
+          instrument={instruments.find(i => i.id === lhksCertificate.instrument) || null}
+          sensors={instruments.find(i => i.id === lhksCertificate.instrument)?.sensor || []}
+          rawData={lhksRawData}
+          standardCerts={lhksStandardCerts}
+          calibrationDate={(lhksCertificate.results as any)?.[0]?.startDate || lhksCertificate.issue_date || ''}
+          calibrationLocation={(lhksCertificate.results as any)?.[0]?.place || ''}
+          environmentConditions={(() => {
+            const envs = (lhksCertificate.results as any)?.[0]?.environment || []
+            const temp = envs.find((e: any) => e.key?.toLowerCase().includes('suhu') || e.key?.toLowerCase().includes('temp'))?.value
+            const hum = envs.find((e: any) => e.key?.toLowerCase().includes('kelembapan') || e.key?.toLowerCase().includes('humidity') || e.key?.toLowerCase().includes('rh'))?.value
+            return { temperature: temp || '-', humidity: hum || '-' }
+          })()}
+          sessionResults={(lhksCertificate.results as any) || []}
+          allInstruments={instruments}
+          allSensors={sensors}
+        />
       )}
     </div>
   )

@@ -201,6 +201,7 @@ export interface Certificate {
   authorized_by: string | null
   verifikator_1: string | null
   verifikator_2: string | null
+  verifikator_3?: string | null
   station_address?: string | null
   results?: any
   version?: number

@@ -41,7 +41,7 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
 
         if (!personelError && personelData?.nik) {
           nik = personelData.nik
-          console.log(`[PDF Helper] Found NIK for user ${authorizedByUserId}: ${nik}`)
+          console.log(`[PDF Helper] Found NIK for user ${authorizedByUserId}`)
         } else {
           console.warn(`[PDF Helper] NIK not found for user ${authorizedByUserId}`)
         }
@@ -58,7 +58,10 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
       return { success: false, error: 'NIK_NOT_FOUND_IN_DB' }
     }
 
-    if (existingCert?.pdf_path) {
+    // IMPORTANT: Only skip PDF regeneration if no passphrase is provided.
+    // If passphrase IS provided, we must ALWAYS go through BSrE signing to validate it.
+    // Skipping when passphrase exists would allow any passphrase (including wrong ones) to succeed.
+    if (!passphrase && existingCert?.pdf_path) {
       // Check if file exists in local filesystem
       const localPath = path.join(process.cwd(), 'e-certificate-signed', path.basename(existingCert.pdf_path))
       if (fs.existsSync(localPath)) {
@@ -375,75 +378,112 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
               const errorText = await signResponse.text().catch(() => '')
               console.error(`[PDF Helper] BSrE sign failed: ${signResponse.status} - ${errorText}`)
 
-              // If passphrase is wrong (401), fail the PDF generation
-              if (signResponse.status === 401) {
-                console.error(`[PDF Helper] Passphrase salah, PDF signing gagal`)
-                // Clean up temporary file
-                if (fs.existsSync(tempFilePath)) {
-                  fs.unlinkSync(tempFilePath)
-                }
+              // Try to parse JSON error for more context
+              let errorDetail = errorText
+              try {
+                const errJson = JSON.parse(errorText)
+                console.error(`[PDF Helper] BSrE error JSON:`, errJson)
+                // Extract meaningful error message
+                errorDetail = errJson.message || errJson.error || errJson.pesan || errorText
+              } catch { /* not JSON */ }
+
+              // If passphrase is wrong (401 or 400 or 403), fail immediately
+              if (signResponse.status === 401 || signResponse.status === 400 || signResponse.status === 403) {
+                console.error(`[PDF Helper] Passphrase salah atau tidak berwenang (HTTP ${signResponse.status})`)
+                if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
                 return {
                   success: false,
-                  error: 'Passphrase TTE salah. Silakan masukkan passphrase yang benar dan coba lagi.'
+                  error: `Passphrase TTE salah. Silakan masukkan passphrase yang benar dan coba lagi. (HTTP ${signResponse.status})`
                 }
               }
 
-              // For 500 errors, log more details for debugging
-              if (signResponse.status === 500) {
-                console.error(`[PDF Helper] BSrE server error (500). Error details:`, errorText)
-                console.error(`[PDF Helper] Request details: endpoint=${signEndpoint}, fileSize=${pdfFile.length}, nik=${nik}`)
-                // Try to parse error for more details
-                try {
-                  const errorJson = JSON.parse(errorText)
-                  console.error(`[PDF Helper] BSrE error JSON:`, errorJson)
-                } catch (e) {
-                  // Not JSON, ignore
-                }
-                // Clean up temporary file
-                if (fs.existsSync(tempFilePath)) {
-                  fs.unlinkSync(tempFilePath)
-                }
-                return {
-                  success: false,
-                  error: 'Gagal menandatangani PDF. Server BSrE mengalami error. Silakan coba lagi nanti.'
-                }
-              }
-
-              // For other errors, fail PDF generation (don't save unsigned PDF)
-              console.error(`[PDF Helper] BSrE sign failed with status ${signResponse.status}, PDF generation cancelled`)
-              // Clean up temporary file
-              if (fs.existsSync(tempFilePath)) {
-                fs.unlinkSync(tempFilePath)
-              }
+              // For 500 or other server errors
+              console.error(`[PDF Helper] BSrE server error (${signResponse.status}). Details: ${errorDetail}`)
+              if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
               return {
                 success: false,
-                error: `Gagal menandatangani PDF. Error: ${errorText || `HTTP ${signResponse.status}`}`
+                error: `Gagal menandatangani PDF (BSrE HTTP ${signResponse.status}). ${errorDetail || 'Silakan coba lagi nanti.'}`
               }
             } else {
-              // Check content type to determine if response is PDF or JSON
+              // BSrE returned 200 - now parse and validate the response body
               const contentType = signResponse.headers.get('content-type') || ''
-              console.log(`[PDF Helper] BSrE response content-type: ${contentType}`)
+              console.log(`[PDF Helper] BSrE response content-type: ${contentType}, status: ${signResponse.status}`)
 
-              // Read response body only ONCE as ArrayBuffer
+              // Read response body ONCE
               const responseArrayBuffer = await signResponse.arrayBuffer()
+              const responseBuffer = Buffer.from(responseArrayBuffer)
+
+              // Helper: validate PDF magic bytes
+              const isPdfBuffer = (buf: Buffer): boolean => {
+                // PDF files start with %PDF-
+                return buf.length > 4 && buf.slice(0, 5).toString('ascii') === '%PDF-'
+              }
 
               if (contentType.includes('application/pdf')) {
-                // Response is PDF, use directly
-                signedPdf = Buffer.from(responseArrayBuffer)
+                // Response claims to be PDF - still validate magic bytes
+                if (!isPdfBuffer(responseBuffer)) {
+                  // BSrE returned 200 with content-type PDF but body is NOT a PDF
+                  // This can happen when passphrase is wrong and BSrE returns JSON error with wrong content-type
+                  const bodyPreview = responseBuffer.slice(0, 500).toString('utf-8')
+                  console.error(`[PDF Helper] ❌ BSrE returned 200 with PDF content-type but body is NOT a PDF!`)
+                  console.error(`[PDF Helper] Body preview: ${bodyPreview}`)
+
+                  // Try to parse as JSON for error details
+                  try {
+                    const errJson = JSON.parse(responseBuffer.toString('utf-8'))
+                    console.error(`[PDF Helper] BSrE error body JSON:`, errJson)
+                    const errMsg = errJson.message || errJson.error || errJson.pesan || errJson.status || JSON.stringify(errJson)
+                    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
+                    return {
+                      success: false,
+                      error: `Passphrase TTE salah atau tidak valid: ${errMsg}`
+                    }
+                  } catch {
+                    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
+                    return {
+                      success: false,
+                      error: `BSrE mengembalikan response tidak valid. Kemungkinan passphrase salah. Body: ${bodyPreview.substring(0, 100)}`
+                    }
+                  }
+                }
+
+                signedPdf = responseBuffer
                 console.log(`[PDF Helper] ✅ PDF signed successfully by BSrE - Size: ${signedPdf.length} bytes`)
-              } else if (contentType.includes('application/json')) {
-                // Response is JSON, try to parse and extract id_dokumen or PDF data
+
+              } else if (contentType.includes('application/json') || contentType.includes('text/')) {
+                // Response is JSON or text - parse it
+                const responseText = responseBuffer.toString('utf-8')
+                console.log(`[PDF Helper] BSrE JSON/text response (first 500 chars): ${responseText.substring(0, 500)}`)
+
                 try {
-                  const responseText = Buffer.from(responseArrayBuffer).toString('utf-8')
                   const responseData = JSON.parse(responseText)
                   console.log(`[PDF Helper] BSrE sign response:`, responseData)
+
+                  // Check for explicit error indicators in JSON
+                  if (
+                    responseData.status === 'error' ||
+                    responseData.status === 'gagal' ||
+                    responseData.error ||
+                    responseData.pesan?.toLowerCase().includes('salah') ||
+                    responseData.pesan?.toLowerCase().includes('gagal') ||
+                    responseData.message?.toLowerCase().includes('invalid') ||
+                    responseData.message?.toLowerCase().includes('incorrect') ||
+                    responseData.message?.toLowerCase().includes('wrong')
+                  ) {
+                    const errMsg = responseData.pesan || responseData.message || responseData.error || 'Passphrase salah'
+                    console.error(`[PDF Helper] ❌ BSrE returned 200 but JSON contains error indicator:`, errMsg)
+                    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
+                    return {
+                      success: false,
+                      error: `Passphrase TTE salah atau tidak valid: ${errMsg}`
+                    }
+                  }
 
                   // Check if response contains id_dokumen (for download endpoint)
                   if (responseData.id_dokumen || responseData.id || responseData.document_id) {
                     const documentId = responseData.id_dokumen || responseData.id || responseData.document_id
                     console.log(`[PDF Helper] Document ID received: ${documentId}, downloading signed PDF...`)
 
-                    // Download signed PDF from BSrE download endpoint
                     const downloadEndpoint = `${bsreBaseURL}/api/sign/download/${documentId}`
                     console.log(`[PDF Helper] Downloading from: ${downloadEndpoint}`)
 
@@ -462,33 +502,82 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
                     clearTimeout(downloadTimeoutId)
 
                     if (!downloadResponse.ok) {
-                      const errorText = await downloadResponse.text().catch(() => '')
-                      console.error(`[PDF Helper] Failed to download signed PDF: ${downloadResponse.status} - ${errorText}`)
+                      const dlError = await downloadResponse.text().catch(() => '')
+                      console.error(`[PDF Helper] Failed to download signed PDF: ${downloadResponse.status} - ${dlError}`)
                       signedPdf = null
                     } else {
-                      const downloadArrayBuffer = await downloadResponse.arrayBuffer()
-                      signedPdf = Buffer.from(downloadArrayBuffer)
-                      console.log(`[PDF Helper] ✅ PDF downloaded and signed successfully - Size: ${signedPdf.length} bytes`)
+                      const downloadBuf = Buffer.from(await downloadResponse.arrayBuffer())
+                      if (!isPdfBuffer(downloadBuf)) {
+                        console.error(`[PDF Helper] Downloaded file is not a valid PDF`)
+                        signedPdf = null
+                      } else {
+                        signedPdf = downloadBuf
+                        console.log(`[PDF Helper] ✅ PDF downloaded and signed successfully - Size: ${signedPdf.length} bytes`)
+                      }
                     }
                   } else if (responseData.pdf || responseData.signed_pdf) {
-                    // If response contains PDF data in base64 or other format, handle it here
                     const pdfBase64 = responseData.pdf || responseData.signed_pdf
-                    signedPdf = Buffer.from(pdfBase64, 'base64')
-                    console.log(`[PDF Helper] ✅ PDF signed successfully (from base64) - Size: ${signedPdf.length} bytes`)
+                    const decoded = Buffer.from(pdfBase64, 'base64')
+                    if (!isPdfBuffer(decoded)) {
+                      console.error(`[PDF Helper] Base64 decoded content is not a valid PDF`)
+                      signedPdf = null
+                    } else {
+                      signedPdf = decoded
+                      console.log(`[PDF Helper] ✅ PDF signed successfully (from base64) - Size: ${signedPdf.length} bytes`)
+                    }
                   } else {
-                    console.warn(`[PDF Helper] BSrE response does not contain id_dokumen or PDF data`)
-                    signedPdf = null
+                    console.warn(`[PDF Helper] BSrE JSON response has no id_dokumen or pdf field and no error indicator. Full response:`, responseData)
+                    // CAUTION: Do NOT accept this as success - return error
+                    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
+                    return {
+                      success: false,
+                      error: `BSrE mengembalikan response JSON tanpa data PDF. Response: ${responseText.substring(0, 200)}`
+                    }
                   }
                 } catch (jsonError: any) {
-                  console.warn(`[PDF Helper] Failed to parse JSON response:`, jsonError.message)
-                  // If JSON parsing fails, try to use response as PDF anyway
-                  signedPdf = Buffer.from(responseArrayBuffer)
-                  console.log(`[PDF Helper] ✅ PDF signed successfully (fallback to binary) - Size: ${signedPdf.length} bytes`)
+                  // Not valid JSON - maybe binary data served with wrong content-type?
+                  console.warn(`[PDF Helper] Response text is not valid JSON, checking if it's binary PDF...`)
+                  if (isPdfBuffer(responseBuffer)) {
+                    signedPdf = responseBuffer
+                    console.log(`[PDF Helper] ✅ PDF signed successfully (binary disguised as text) - Size: ${signedPdf.length} bytes`)
+                  } else {
+                    console.error(`[PDF Helper] Response is neither valid JSON nor a PDF`)
+                    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
+                    return {
+                      success: false,
+                      error: `BSrE mengembalikan response tidak valid. Kemungkinan passphrase salah.`
+                    }
+                  }
                 }
+
               } else {
-                // Content type not clear, try to use as PDF (most likely it's PDF)
-                signedPdf = Buffer.from(responseArrayBuffer)
-                console.log(`[PDF Helper] ✅ PDF signed successfully (binary, unknown content-type) - Size: ${signedPdf.length} bytes`)
+                // Unknown content-type - validate PDF magic bytes STRICTLY
+                if (isPdfBuffer(responseBuffer)) {
+                  signedPdf = responseBuffer
+                  console.log(`[PDF Helper] ✅ PDF signed successfully (binary, unknown content-type) - Size: ${signedPdf.length} bytes`)
+                } else {
+                  // Could be an error response with wrong content-type
+                  const bodyPreview = responseBuffer.slice(0, 300).toString('utf-8')
+                  console.error(`[PDF Helper] ❌ BSrE returned 200 but response is NOT a valid PDF (unknown content-type)`)
+                  console.error(`[PDF Helper] Body preview: ${bodyPreview}`)
+
+                  // Try to check if it's a JSON error
+                  try {
+                    const errJson = JSON.parse(responseBuffer.toString('utf-8'))
+                    const errMsg = errJson.pesan || errJson.message || errJson.error || JSON.stringify(errJson)
+                    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
+                    return {
+                      success: false,
+                      error: `Passphrase TTE salah atau tidak valid: ${errMsg}`
+                    }
+                  } catch {
+                    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
+                    return {
+                      success: false,
+                      error: `BSrE mengembalikan response tidak valid. Kemungkinan passphrase salah. Preview: ${bodyPreview.substring(0, 100)}`
+                    }
+                  }
+                }
               }
             }
           }

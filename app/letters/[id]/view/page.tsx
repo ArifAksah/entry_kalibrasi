@@ -164,8 +164,20 @@ const ViewLetterPage: React.FC = () => {
           </div>
 
           <div className="border-t pt-4">
-            <div className="text-sm font-semibold text-gray-900 mb-2">Verifikasi</div>
-            <div className="text-sm text-gray-900">{verificationNames.length ? verificationNames.join(', ') : '-'}</div>
+            <div className="flex text-sm">
+              <div className="w-64 shrink-0">
+                <span className="font-bold text-gray-900">Diverifikasi Oleh</span>
+                <span className="font-normal italic text-gray-500"> / Verified by</span>
+              </div>
+              <div className="shrink-0 px-4 text-gray-900">:</div>
+              <div className="text-gray-900">
+                {verificationNames.length
+                  ? verificationNames.map((name, idx) => (
+                      <div key={idx}>{idx + 1}. {name}</div>
+                    ))
+                  : '-'}
+              </div>
+            </div>
           </div>
 
           <div className="border-t pt-4">

@@ -22,9 +22,10 @@ const KirimNaskahModal: React.FC<{
   certificate: Certificate | null
   verifikator1: Personel | null
   verifikator2: Personel | null
+  verifikator3: Personel | null
   assignor: Personel | null
   confirmDisabled?: boolean
-}> = ({ isOpen, onClose, onConfirm, certificate, verifikator1, verifikator2, assignor, confirmDisabled = false }) => {
+}> = ({ isOpen, onClose, onConfirm, certificate, verifikator1, verifikator2, verifikator3, assignor, confirmDisabled = false }) => {
   if (!isOpen) return null
 
   return (
@@ -76,6 +77,20 @@ const KirimNaskahModal: React.FC<{
                 <div>
                   <p className="text-sm font-medium text-gray-700">Kepada:</p>
                   <p className="text-sm text-gray-900">{verifikator2.name} - Verifikator 2</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Unit Kerja:</p>
+                  <p className="text-sm text-gray-900">Direktorat Data dan Komputasi BMKG</p>
+                </div>
+              </div>
+            )}
+
+            {/* Verifikator 3 */}
+            {verifikator3 && (
+              <div className="grid grid-cols-2 gap-4 p-3 bg-yellow-50 rounded-lg">
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Kepada:</p>
+                  <p className="text-sm text-gray-900">{verifikator3.name} - Verifikator 3</p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-700">Unit Kerja:</p>
@@ -264,6 +279,7 @@ const CertificatePreview: React.FC<{
   const authorized = personel.find(p => p.id === certificate.authorized_by)
   const verifikator1 = personel.find(p => p.id === certificate.verifikator_1)
   const verifikator2 = personel.find(p => p.id === certificate.verifikator_2)
+  const verifikator3 = personel.find(p => p.id === certificate.verifikator_3)
   const assignor = personel.find(p => p.id === certificate.assignor)
 
   // Parse results data (handle both string and object)
@@ -392,14 +408,14 @@ const CertificatePreview: React.FC<{
         {/* Certificate Header (mirror print) */}
         <div className="mb-8">
           <header className="flex flex-row items-center justify-between border-b-4 border-black pb-2">
-            <div className="w-[80px] flex items-center justify-center">
-              <img src={bmkgLogo.src} alt="BMKG" className="h-20 w-20 object-contain" />
+            <div className="w-[100px] flex items-center justify-center">
+              <img src={bmkgLogo.src} alt="BMKG" className="h-[100px] w-[100px] object-contain" />
             </div>
             <div className="text-center leading-tight">
               <h1 className="text-base font-bold text-gray-900">BADAN METEOROLOGI KLIMATOLOGI DAN GEOFISIKA</h1>
               <h2 className="text-base font-bold text-gray-900">LABORATORIUM KALIBRASI BMKG</h2>
             </div>
-            <div className="w-[80px]" />
+            <div className="w-[100px]" />
           </header>
 
           {/* Certificate Title */}
@@ -471,8 +487,8 @@ const CertificatePreview: React.FC<{
 
               {/* Identitas Pemilik */}
               <div>
-                <h3 className="text-sm font-bold text-gray-900">IDENTITAS PEMILIK</h3>
-                <h4 className="text-xs italic text-gray-600 mb-2">Owner Identification</h4>
+                <h3 className="text-sm font-bold text-gray-900 underline leading-tight mb-0">IDENTITAS PEMILIK</h3>
+                <h4 className="text-xs italic text-gray-600 leading-tight mb-1">Owner's Identification</h4>
                 <table className="w-full text-xs">
                   <tbody>
                     <tr>
@@ -504,37 +520,62 @@ const CertificatePreview: React.FC<{
               </div>
             </div>
 
-            {/* Authorization block with QR below (placed under Owner Identification, right aligned) */}
-            <div className="mt-6 flex justify-end">
-              <div className="text-xs w-[300px]">
-                <div className="mb-2">
-                  <div className="font-semibold">Sertifikat ini terdiri atas {totalPrintedPages} halaman</div>
-                  <div className="text-[10px] italic text-gray-700">This certificate comprises of pages</div>
-                </div>
-                <div className="mb-4">
-                  <div className="font-semibold">Diterbitkan tanggal {formatDateIndo(certificate.issue_date)}</div>
-                  <div className="text-[10px] italic text-gray-700">Date of issue</div>
-                </div>
-                <div className="mb-4">
-                  <div className="font-semibold">Kepala Pusat Instrumentasi,</div>
-                  <div className="font-semibold">Kalibrasi dan Rekayasa</div>
-                </div>
-                <div className="flex justify-start mb-2">
-                  {qrUrl && (
-                    <div className="border-2 border-black bg-white flex items-center justify-center" style={{ width: 140, height: 140 }}>
-                      <QRCodeBox
-                        key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
-                        value={qrUrl}
-                        size={120}
-                        logoSize={36}
-                        fgColor={isSigned ? '#000000' : '#B91C1C'}
-                      />
-                    </div>
-                  )}
-                </div>
-                <div className="font-bold underline">{authorized?.name || '-'}</div>
-                <div className="text-xs font-semibold underline mt-1">Assignor</div>
-              </div>
+            {/* PENGESAHAN */}
+            <div className="mt-6 mb-8">
+              <h3 className="text-sm font-bold text-gray-900 underline leading-tight mb-0">PENGESAHAN</h3>
+              <h4 className="text-[11px] italic text-gray-700 font-bold mb-2 leading-tight">Authorization</h4>
+              <table className="w-full text-xs">
+                <tbody>
+                  <tr>
+                    <td className="w-[32%] align-top pr-2">
+                      <div className="font-semibold">Pejabat Pengesahan</div>
+                      <div className="text-[10px] italic text-gray-600">Authorizing officer</div>
+                    </td>
+                    <td className="w-[3%] align-top">:</td>
+                    <td className="align-top">
+                      <div className="inline-flex items-start w-full">
+                        <div className="flex-1 font-bold">Direktur Instrumentasi dan Kalibrasi BMKG</div>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="align-top pr-2">
+                      <div className="font-semibold">Nama</div>
+                      <div className="text-[10px] italic text-gray-600">Name</div>
+                    </td>
+                    <td className="align-top">:</td>
+                    <td className="align-top">
+                      <div className="inline-flex items-start w-full">
+                        <div className="flex-1 font-bold">{authorized?.name || '-'}</div>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="align-top pr-2">
+                      <div className="font-semibold">Tanggal Pengesahan</div>
+                      <div className="text-[10px] italic text-gray-600">Date of issue</div>
+                    </td>
+                    <td className="align-top">:</td>
+                    <td className="align-top">
+                      <div className="inline-flex items-start w-full">
+                        <div className="flex-1 font-bold">{certificate.issue_date ? formatDateIndo(certificate.issue_date) : '-'}</div>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="align-top pr-2">
+                      <div className="font-semibold">Jumlah halaman</div>
+                      <div className="text-[10px] italic text-gray-600">Total number of pages</div>
+                    </td>
+                    <td className="align-top">:</td>
+                    <td className="align-top">
+                      <div className="inline-flex items-start w-full">
+                        <div className="flex-1 font-bold">{totalPrintedPages}</div>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -564,35 +605,35 @@ const CertificatePreview: React.FC<{
                     </div>
                     {/* Header per halaman sensor */}
                     <header className="flex justify-between items-start text-xs mb-4">
-                      <div className="w-[80px]">
-                        <img src={bmkgLogo.src} alt="BMKG" className="h-20 w-20 object-contain" />
+                      <div className="w-[100px]">
+                        <img src={bmkgLogo.src} alt="BMKG" className="h-[100px] w-[100px] object-contain" />
                       </div>
                       <div className="flex-1 flex justify-end items-start">
-                        <table className="text-xs table-fixed ml-auto mr-0">
+                        <table className="w-[360px] text-xs table-fixed ml-auto mr-0">
                           <tbody>
                             <tr>
-                              <td className="w-[55%] text-right font-bold leading-tight">
-                                <div>No. Sertifikat</div>
-                                <div className="italic font-normal">Certificate Number</div>
+                              <td className="w-[48%] text-left font-bold leading-tight align-top">
+                                No. Sertifikat / <span className="italic">Certificate</span><br />
+                                <span className="italic">Number</span>
                               </td>
-                              <td className="w-[5%] px-1">:</td>
-                              <td className="w-[40%]">{certificate.no_certificate || '-'}</td>
+                              <td className="w-[4%] px-1 align-top">:</td>
+                              <td className="w-[48%] align-top font-bold">{certificate.no_certificate}</td>
                             </tr>
                             <tr>
-                              <td className="text-right font-bold leading-tight">
-                                <div>No. Order</div>
-                                <div className="italic font-normal">Order Number</div>
+                              <td className="text-left font-bold leading-tight align-top">
+                                No. Order / <br />
+                                <span className="italic">Order Number</span>
                               </td>
-                              <td className="px-1">:</td>
-                              <td>{certificate.no_order || '-'}</td>
+                              <td className="px-1 align-top">:</td>
+                              <td className="align-top font-bold">{certificate.no_order}</td>
                             </tr>
                             <tr>
-                              <td className="text-right font-bold leading-tight">
-                                <div>Halaman</div>
-                                <div className="italic font-normal">Page</div>
+                              <td className="text-left font-bold leading-tight align-top">
+                                Halaman / <br />
+                                <span className="italic">Page</span>
                               </td>
-                              <td className="px-1">:</td>
-                              <td>{index + 2} dari {totalPrintedPages}</td>
+                              <td className="px-1 align-top">:</td>
+                              <td className="align-top font-bold">{index + 2} dari {totalPrintedPages}</td>
                             </tr>
                           </tbody>
                         </table>
@@ -660,13 +701,15 @@ const CertificatePreview: React.FC<{
 
                     {/* Calibration Result Tables (mirror print) */}
                     {Array.isArray(res?.table) && res.table.length > 0 && (
-                      <div className="mt-6 space-y-3">
-                        <h5 className="text-sm font-bold text-center">HASIL KALIBRASI / <span className="italic">CALIBRATION RESULT</span></h5>
+                      <div className="mt-6 space-y-3 w-[85%] mx-auto">
+                        <div className="text-[12px] font-bold text-center mb-1">Hasil Kalibrasi / <span className="italic font-normal">Calibration Result</span></div>
                         {res.table.map((sec: any, sIdx: number) => {
                           const rows = Array.isArray(sec?.rows) ? sec.rows : []
+                          const isDuplicateTitle = sec?.title?.toLowerCase().includes('hasil kalibrasi') || sec?.title?.toLowerCase().includes('calibration result');
                           return (
                             <div key={sIdx} className="mt-2">
-                              <div className="text-xs font-bold mb-1">{sec?.title || `Tabel ${sIdx + 1}`}</div>
+                              {sec?.title && sec.title.trim() !== '' && !isDuplicateTitle && <div className="text-xs font-bold mb-1 text-center">{sec.title}</div>}
+                              {(!sec?.title || sec.title.trim() === '') && <div className="text-xs font-bold mb-1 text-center">{`Tabel ${sIdx + 1}`}</div>}
                               <table className="w-full text-xs border-[2px] border-black text-center border-collapse">
                                 <thead>
                                   <tr className="font-bold">
@@ -807,8 +850,8 @@ const CertificatePreview: React.FC<{
                               <div className="text-[10px] italic text-gray-700">This certificate only applies to equipment with the identity stated above.</div>
                             </div>
                             <div>
-                              <div className="font-bold">Ketidakpastian pengukuran dinyatakan pada tingkat kepercayaan tidak kurang dari 95 % dengan faktor cakupan k = 2,01</div>
-                              <div className="text-[10px] italic text-gray-700">Uncertainty of measurement is expressed at a confidence level of no less than 95 % with coverage factor k = 2.01</div>
+                              <div className="font-bold">Ketidakpastian pengukuran dinyatakan pada tingkat kepercayaan tidak kurang dari 95 % dengan faktor cakupan k = 2</div>
+                              <div className="text-[10px] italic text-gray-700">Uncertainty of measurement is expressed at a confidence level of no less than 95 % with coverage factor k = 2</div>
                             </div>
                           </div>
                         </div>
@@ -855,18 +898,49 @@ const CertificatePreview: React.FC<{
         </div>
 
         <footer className="mt-6 text-xs">
-          <div className="text-center text-[10px] text-gray-700">
-            Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
-          </div>
-          <div className="flex justify-between items-end mt-2">
-            <span className="font-semibold">F/IKK 7.8.1</span>
-            <div className="text-center text-[10px] text-gray-700 leading-tight">
-              Jl. Angkasa I No. 02 Kemayoran Jakarta Pusat
-              <br />
-              Tlp. 021-4246321 Ext. 5125; Fax: 021-6545626; P.O. Box 3540 Jkt; Website: http://www.bmkg.go.id
-            </div>
-            <span className="font-semibold">Edisi/Revisi: 11/0</span>
-          </div>
+          <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none', marginBottom: '4px' }}>
+            <tbody>
+              <tr>
+                <td className="align-middle text-right pr-4" style={{ width: '15%' }}>
+                    {qrUrl ? (
+                      <div className="inline-block w-[70px] h-[70px] bg-white border border-gray-200" style={{ listStyle: 'none', display: 'inline-block' }}>
+                        <QRCodeBox
+                          key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
+                          value={qrUrl}
+                          size={70}
+                          logoSize={20}
+                          fgColor={isSigned ? '#000000' : '#B91C1C'}
+                        />
+                      </div>
+                    ) : (
+                        <div className="inline-block w-[70px] h-[70px] bg-transparent" style={{ display: 'inline-block' }}></div>
+                    )}
+                </td>
+                <td className="align-middle" style={{ width: '85%', textAlign: 'justify', lineHeight: '1.2' }}>
+                  <div style={{ textJustify: 'inter-word', paddingBottom: '2px', display: 'block' }} className="text-[10px] font-bold">
+                    Dokumen ini telah ditandatangani secara elektronik menggunakan Sertifikat Elektronik yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE) dan tidak memerlukan tanda tangan atau cap. Dokumen asli dapat diperoleh dengan memindai kode QR di samping ini.
+                  </div>
+                  <div style={{ textJustify: 'inter-word', display: 'block' }} className="italic text-[9px] font-bold text-gray-800">
+                    This document is digitally signed. No signature or seal is required. The original document can be obtained by scanning the QR on the left.
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <hr className="my-1" style={{ borderTop: '2px solid black', borderColor: '#000' }} />
+          <table className="w-full text-black mt-1" style={{ borderCollapse: 'collapse', border: 'none' }}>
+            <tbody>
+              <tr>
+                <td className="align-top text-left text-[10px] font-bold" style={{ width: '25%' }}>F/IKK 7.8.1</td>
+                <td className="align-top text-center text-[9px] font-bold text-gray-800" style={{ width: '50%', lineHeight: '1.2' }}>
+                  JL. Angkasa I No. 02 Kemayoran Jakarta Pusat
+                  <br />
+                  Tlp. 021-4246321-ext 5125; P.O. Box 3540 Jkt; Website : http://www.bmkg.go.id
+                </td>
+                <td className="align-top text-right text-[10px] font-bold" style={{ width: '25%' }}>Edisi/Revisi : 11/1</td>
+              </tr>
+            </tbody>
+          </table>
         </footer>
       </div>
     </div>
@@ -891,12 +965,14 @@ const DraftView: React.FC<{
   const [showPreview, setShowPreview] = useState(false)
   const [selectedVerifikator1, setSelectedVerifikator1] = useState(certificate.verifikator_1 || '')
   const [selectedVerifikator2, setSelectedVerifikator2] = useState(certificate.verifikator_2 || '')
+  const [selectedVerifikator3, setSelectedVerifikator3] = useState(certificate.verifikator_3 || '')
   const [showQCModal, setShowQCModal] = useState(false)
 
   const station = stations.find(s => s.id === certificate.station)
   const instrument = instruments.find(i => i.id === certificate.instrument)
   const verifikator1 = personel.find(p => p.id === certificate.verifikator_1)
   const verifikator2 = personel.find(p => p.id === certificate.verifikator_2)
+  const verifikator3 = personel.find(p => p.id === certificate.verifikator_3)
   const assignor = personel.find(p => p.id === certificate.assignor)
 
   const handleSendKonsep = async () => {
@@ -943,13 +1019,15 @@ const DraftView: React.FC<{
         station_address: certificate.station_address,
         results: certificate.results,
         verifikator_1: selectedVerifikator1 || null,
-        verifikator_2: selectedVerifikator2 || null
+        verifikator_2: selectedVerifikator2 || null,
+        verifikator_3: selectedVerifikator3 || null
       })
       setIsEditing(false)
 
       // Update local state to reflect changes
       certificate.verifikator_1 = selectedVerifikator1 || null
       certificate.verifikator_2 = selectedVerifikator2 || null
+      certificate.verifikator_3 = selectedVerifikator3 || null
     } catch (error) {
       console.error('Error updating certificate:', error)
       // Don't close editing mode if there's an error
@@ -967,7 +1045,7 @@ const DraftView: React.FC<{
           <p className="text-sm text-gray-600">Status: Draft</p>
         </div>
         <div className="flex items-center space-x-3">
-          <button
+          {/* <button
             onClick={() => setShowPreview(!showPreview)}
             className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
           >
@@ -976,7 +1054,7 @@ const DraftView: React.FC<{
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
             </svg>
             {showPreview ? 'HIDE PREVIEW' : 'PREVIEW'}
-          </button>
+          </button> */}
 
           <button
             onClick={() => {
@@ -1111,6 +1189,10 @@ const DraftView: React.FC<{
             <span className="font-medium text-gray-600">Verifikator 2:</span>
             <span className="text-gray-900">{verifikator2?.name || 'Belum ditentukan'}</span>
           </div>
+          <div className="flex justify-between py-2 border-b border-gray-100">
+            <span className="font-medium text-gray-600">Verifikator 3:</span>
+            <span className="text-gray-900">{verifikator3?.name || 'Belum ditentukan'}</span>
+          </div>
           <div className="flex justify-between py-2">
             <span className="font-medium text-gray-600">Assignor:</span>
             <span className="text-gray-900">{assignor?.name || 'Belum ditentukan'}</span>
@@ -1146,6 +1228,21 @@ const DraftView: React.FC<{
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Pilih Verifikator 2</option>
+                {personel.map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Verifikator 3</label>
+              <select
+                value={selectedVerifikator3}
+                onChange={(e) => setSelectedVerifikator3(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Pilih Verifikator 3</option>
                 {personel.map((person) => (
                   <option key={person.id} value={person.id}>
                     {person.name}
@@ -1196,6 +1293,7 @@ const DraftView: React.FC<{
         certificate={certificate}
         verifikator1={verifikator1 || null}
         verifikator2={verifikator2 || null}
+        verifikator3={verifikator3 || null}
         assignor={assignor || null}
         confirmDisabled={isSending || hasSent}
       />

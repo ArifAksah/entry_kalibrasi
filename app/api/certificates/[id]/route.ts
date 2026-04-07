@@ -51,6 +51,7 @@ export async function PUT(
       authorized_by,
       verifikator_1,
       verifikator_2,
+      verifikator_3,
       results,
       station_address
     } = body
@@ -64,7 +65,7 @@ export async function PUT(
     // Get current certificate data before updating
     const { data: currentCertificate, error: currentError } = await supabaseAdmin
       .from('certificate')
-      .select('authorized_by, verifikator_1, verifikator_2, version, no_certificate, no_order, no_identification, issue_date, station, instrument, station_address, results')
+      .select('authorized_by, verifikator_1, verifikator_2, verifikator_3, version, no_certificate, no_order, no_identification, issue_date, station, instrument, station_address, results')
       .eq('id', id)
       .single();
 
@@ -146,6 +147,20 @@ export async function PUT(
       v2 = verifikator_2
     }
 
+    // Validate verifikator_3 if provided
+    let v3: string | null = null
+    if (verifikator_3) {
+      const { data: p3, error: p3Err } = await supabaseAdmin
+        .from('personel')
+        .select('id')
+        .eq('id', verifikator_3)
+        .single()
+      if (p3Err || !p3) {
+        return NextResponse.json({ error: 'Invalid verifikator_3 (personel) id' }, { status: 400 })
+      }
+      v3 = verifikator_3
+    }
+
     // Auto-increment version when content changes meaningfully
     const nextVersion = (() => {
       const prev = currentCertificate?.version ?? 1
@@ -170,7 +185,8 @@ export async function PUT(
         authorized_by: authorizedPersonId,
         verifikator_1: v1,
         verifikator_2: v2,
-        assignor: authorizedPersonId, // Set assignor same as authorized_by
+        verifikator_3: v3,
+        assignor: authorizedPersonId,
         issue_date,
         station: station ? parseInt(station) : null,
         instrument: instrument ? parseInt(instrument) : null,
@@ -200,7 +216,7 @@ export async function PUT(
 
           // Create new verification records with updated version
           if (currentCertificate?.verifikator_1 && currentCertificate?.verifikator_2) {
-            const newVerificationRecords = [
+            const newVerificationRecords: any[] = [
               {
                 certificate_id: parseInt(id),
                 verification_level: 1,
@@ -220,6 +236,18 @@ export async function PUT(
                 updated_at: new Date().toISOString()
               }
             ]
+
+            if (currentCertificate?.verifikator_3) {
+              newVerificationRecords.push({
+                certificate_id: parseInt(id),
+                verification_level: 3,
+                status: 'pending',
+                verified_by: currentCertificate.verifikator_3,
+                certificate_version: nextVersion,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              })
+            }
 
             const { error: insertError } = await supabaseAdmin
               .from('certificate_verification')

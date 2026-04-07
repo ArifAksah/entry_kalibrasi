@@ -1794,6 +1794,15 @@ const CertificatesCRUD: React.FC = () => {
                           {((item as any).verifikator_3_status === 'pending' || !(item as any).verifikator_3_status) ? 'Belum di periksa' : (item as any).verifikator_3_status}
                         </span>
                       </div>
+                      <div className="flex items-center space-x-1">
+                        <span className="text-xs font-medium text-gray-500">Penandatangan:</span>
+                        <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${(item as any).authorized_by_status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' :
+                          (item as any).authorized_by_status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
+                            'bg-yellow-50 text-yellow-700 border-yellow-200'
+                          }`}>
+                          {((item as any).authorized_by_status === 'pending' || !(item as any).authorized_by_status) ? 'Belum di periksa' : (item as any).authorized_by_status}
+                        </span>
+                      </div>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm">

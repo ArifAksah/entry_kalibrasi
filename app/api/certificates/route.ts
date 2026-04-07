@@ -42,10 +42,14 @@ export async function GET() {
       const certVersion = (cert as any).version ?? 1
       const verif1 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 1 && (v.certificate_version ?? 1) === certVersion)
       const verif2 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 2 && (v.certificate_version ?? 1) === certVersion)
+      const verif3 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 3 && (v.certificate_version ?? 1) === certVersion)
+      const verif4 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 4 && (v.certificate_version ?? 1) === certVersion)
       return {
         ...cert,
         verifikator_1_status: verif1?.status || 'pending',
         verifikator_2_status: verif2?.status || 'pending',
+        verifikator_3_status: verif3?.status || 'pending',
+        authorized_by_status: verif4?.status || 'pending',
       }
     })
 

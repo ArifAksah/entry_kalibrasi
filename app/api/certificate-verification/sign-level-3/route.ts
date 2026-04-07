@@ -91,29 +91,9 @@ export async function POST(request: NextRequest) {
 
     const effectiveVersion = (cert as any).version ?? 1
 
-    // Ensure level 2 is approved
+    // Ensure level 3 (Verifikator 3) is approved before penandatangan can sign
     {
-      const { data: v2, error: v2Err } = await supabaseAdmin
-        .from('certificate_verification')
-        .select('status')
-        .eq('certificate_id', cert.id)
-        .eq('verification_level', 2)
-        .eq('certificate_version', effectiveVersion)
-        .maybeSingle()
-
-      if (!v2 || v2?.status !== 'approved') {
-        await logAction(request, user.id, 'bsre_sign', 'error', {
-          documentId,
-          reason: 'level_2_not_approved'
-        })
-        // Mapping this to "Sertifikat belum diterbitkan" as it's not ready for signing
-        return NextResponse.json({ error: 'Sertifikat belum diterbitkan' }, { status: 401 })
-      }
-    }
-
-    // Check if already signed (Level 3 approved)
-    {
-      const { data: v3 } = await supabaseAdmin
+      const { data: v3, error: v3Err } = await supabaseAdmin
         .from('certificate_verification')
         .select('status')
         .eq('certificate_id', cert.id)
@@ -121,7 +101,26 @@ export async function POST(request: NextRequest) {
         .eq('certificate_version', effectiveVersion)
         .maybeSingle()
 
-      if (v3 && v3.status === 'approved') {
+      if (!v3 || v3?.status !== 'approved') {
+        await logAction(request, user.id, 'bsre_sign', 'error', {
+          documentId,
+          reason: 'level_3_not_approved'
+        })
+        return NextResponse.json({ error: 'Sertifikat belum diterbitkan' }, { status: 401 })
+      }
+    }
+
+    // Check if already signed (Level 4 / Authorized By approved)
+    {
+      const { data: v4 } = await supabaseAdmin
+        .from('certificate_verification')
+        .select('status')
+        .eq('certificate_id', cert.id)
+        .eq('verification_level', 4)
+        .eq('certificate_version', effectiveVersion)
+        .maybeSingle()
+
+      if (v4 && v4.status === 'approved') {
         await logAction(request, user.id, 'bsre_sign', 'error', {
           documentId,
           reason: 'already_signed'
@@ -140,7 +139,8 @@ export async function POST(request: NextRequest) {
     const isMock = (process.env.BSRE_MOCK || '').toLowerCase() === 'true'
 
     if (isMock) {
-      if ((userPassphrase || '').toLowerCase() === 'wrong') {
+      const mockPassphrase = process.env.BSRE_MOCK_PASSPHRASE || 'demo123'
+      if ((userPassphrase || '') !== mockPassphrase) {
         await logAction(request, user.id, 'bsre_sign', 'error', { documentId, reason: 'invalid_passphrase_mock' })
         return NextResponse.json({ error: 'Passphrase anda salah' }, { status: 400 })
       }
@@ -167,16 +167,28 @@ export async function POST(request: NextRequest) {
       if (!pdfResult.success) {
         console.error(`[sign-level-3] ❌ PDF signing failed for certificate ${cert.id}:`, pdfResult.error)
 
-        // Check if error is due to passphrase
-        if (pdfResult.error?.includes('Passphrase') || pdfResult.error?.includes('passphrase') ||
-          pdfResult.error?.includes('salah') || pdfResult.error?.includes('401')) {
+        // Check if error is due to passphrase (covers all messages from certificate-pdf-helper)
+        if (
+          pdfResult.error?.includes('Passphrase') ||
+          pdfResult.error?.includes('passphrase') ||
+          pdfResult.error?.includes('salah') ||
+          pdfResult.error?.includes('401') ||
+          pdfResult.error?.includes('TTE') ||
+          pdfResult.error?.includes('password') ||
+          pdfResult.error?.includes('tidak valid') ||
+          pdfResult.error?.includes('Kemungkinan passphrase') ||
+          pdfResult.error?.includes('BSrE mengembalikan response tidak valid') ||
+          pdfResult.error?.includes('HTTP 400') ||
+          pdfResult.error?.includes('HTTP 401') ||
+          pdfResult.error?.includes('HTTP 403')
+        ) {
 
           await logAction(request, user.id, 'bsre_sign', 'error', {
             documentId,
             reason: 'invalid_passphrase',
             error: pdfResult.error
           })
-          return NextResponse.json({ error: 'Passphrase anda salah' }, { status: 400 })
+          return NextResponse.json({ error: 'Passphrase yang Anda masukkan salah. Silakan coba lagi.' }, { status: 400 })
         }
 
         // Check if NIK issues
@@ -186,9 +198,10 @@ export async function POST(request: NextRequest) {
             reason: 'nik_issue',
             error: pdfResult.error
           })
-          // Using the same error message for simplicity or specific one if needed
-          // User request didn't specify NIK error format, but let's be helpful
-          return NextResponse.json({ error: 'NIK tidak ditemukan atau tidak terdaftar' }, { status: 400 })
+          return NextResponse.json({ 
+            error: 'NIK tidak ditemukan atau tidak terdaftar di profil Anda. Silakan lengkapi data NIK di halaman profil.',
+            code: 'NIK_MISSING'
+          }, { status: 400 })
         }
 
         // Other errors
@@ -212,39 +225,56 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Terjadi kesalahan sistem saat memproses PDF' }, { status: 500 })
     }
 
-    // Update status to approved
-    const { data: existingL3 } = await supabaseAdmin
+    // Update status to approved (level 4 = penandatangan / authorized_by)
+    // Using upsert to handle both new and existing records atomically,
+    // avoiding unique constraint violations if the record already exists.
+    const { error: upsertErr } = await supabaseAdmin
       .from('certificate_verification')
-      .select('id')
-      .eq('certificate_id', cert.id)
-      .eq('verification_level', 3)
-      .eq('certificate_version', effectiveVersion)
-      .maybeSingle()
+      .upsert({
+        certificate_id: cert.id,
+        verification_level: 4,
+        status: 'approved',
+        approval_notes: 'Signed via BSRE',
+        verified_by: user.id,
+        signature_data: bsreData || { provider: 'BSrE', signed: true },
+        signed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        certificate_version: effectiveVersion
+      }, {
+        onConflict: 'certificate_id,verification_level,certificate_version',
+        ignoreDuplicates: false
+      })
 
-    if (existingL3) {
-      await supabaseAdmin
-        .from('certificate_verification')
-        .update({
-          status: 'approved',
-          approval_notes: 'Signed via BSRE',
-          signature_data: bsreData || { provider: 'BSrE', signed: true },
-          signed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', existingL3.id)
+    if (upsertErr) {
+      console.error('[sign-level-3] ❌ Failed to upsert verification record:', upsertErr)
+      await logAction(request, user.id, 'bsre_sign', 'error', { documentId, reason: 'db_upsert_failed', error: upsertErr.message })
+
+      // Check if this is a constraint violation on verification_level
+      // Code 23514 = check_violation in PostgreSQL
+      if (upsertErr.code === '23514' && upsertErr.message?.includes('verification_level_check')) {
+        return NextResponse.json({
+          error: 'Konfigurasi database belum mendukung level verifikasi Penandatangan (level 4). ' +
+                 'Silakan jalankan migration SQL: database/fix_verification_level_4_constraint.sql di Supabase SQL Editor.',
+          code: 'DB_CONSTRAINT_ERROR'
+        }, { status: 500 })
+      }
+
+      return NextResponse.json({ error: 'Berhasil ditandatangani, namun gagal menyimpan status di database. Hubungi administrator.' }, { status: 500 })
+    }
+    console.log('[sign-level-3] ✅ Level 4 verification record upserted (approved)')
+
+
+
+    // Also update certificate status to 'completed'
+    const { error: certUpdateErr } = await supabaseAdmin
+      .from('certificate')
+      .update({ status: 'completed' })
+      .eq('id', cert.id)
+    if (certUpdateErr) {
+      console.error('[sign-level-3] ❌ Failed to update certificate status:', certUpdateErr)
+      // Non-fatal: verification record is already saved, just log the error
     } else {
-      await supabaseAdmin
-        .from('certificate_verification')
-        .insert({
-          certificate_id: cert.id,
-          verification_level: 3,
-          status: 'approved',
-          approval_notes: 'Signed via BSRE',
-          verified_by: user.id,
-          signature_data: bsreData || { provider: 'BSrE', signed: true },
-          signed_at: new Date().toISOString(),
-          certificate_version: effectiveVersion
-        })
+      console.log('[sign-level-3] ✅ Certificate status updated to completed')
     }
 
     // Create certificate log
@@ -255,8 +285,7 @@ export async function POST(request: NextRequest) {
         action: 'approved_assignor',
         performed_by: user.id,
         approval_notes: 'Signed via BSRE',
-        verification_level: 3,
-        previous_status: cert.status,
+        verification_level: 4,
         new_status: 'approved',
         metadata: { signature_data: bsreData }
       })
