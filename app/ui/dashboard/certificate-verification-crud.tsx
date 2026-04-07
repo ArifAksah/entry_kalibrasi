@@ -114,6 +114,9 @@ const CertificateVerificationCRUD: React.FC = () => {
   const [passphrase, setPassphrase] = useState('')
   const [isSigning, setIsSigning] = useState(false)
   const [passphraseError, setPassphraseError] = useState<string | null>(null)
+  // Ref untuk menyimpan certificate ID tepat saat passphrase modal dibuka
+  // Menghindari stale closure / selectedCertificate ter-reset sebelum signing selesai
+  const signingCertificateIdRef = React.useRef<string | null>(null)
 
   // BSrE Verification State
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false)
@@ -326,6 +329,8 @@ const CertificateVerificationCRUD: React.FC = () => {
         setIsSubmitting(false)
         setPassphrase('')
         setPassphraseError(null)
+        // Simpan certificate ID ke ref agar tidak hilang saat modal transition
+        signingCertificateIdRef.current = String(selectedCertificate.id)
         setIsPassphraseModalOpen(true)
         return
       }
@@ -1475,7 +1480,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                     <p className="text-xs text-amber-600 font-medium">Proses ini dapat memakan waktu 1-3 menit, harap tunggu.</p>
                   </div>
                 </div>
-              ) : (
+              ) : passphraseError && passphraseError.toLowerCase().includes('nik') ? null : (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Passphrase BSrE
@@ -1489,8 +1494,12 @@ const CertificateVerificationCRUD: React.FC = () => {
                       setPassphraseError(null)
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !isSigning && passphrase.trim()) {
-                        e.currentTarget.closest('div')?.parentElement?.querySelector<HTMLButtonElement>('[data-sign-btn]')?.click()
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        if (!isSigning) {
+                          const btn = document.querySelector('[data-sign-btn]') as HTMLButtonElement
+                          if (btn) btn.click()
+                        }
                       }
                     }}
                     disabled={isSigning}
@@ -1543,144 +1552,174 @@ const CertificateVerificationCRUD: React.FC = () => {
                   Batal
                 </button>
               )}
-              <button
-                type="button"
-                data-sign-btn
-                disabled={isSigning}
-                onClick={async () => {
-                  if (!selectedCertificate) return
-                  if (!passphrase.trim()) {
-                    setPassphraseError('Passphrase wajib diisi')
-                    return
-                  }
-
-                  // Clear error sebelum mulai
-                  setPassphraseError(null)
-
-                  try {
-                    setIsSigning(true)
-                    const { data: { session } } = await (await import('../../../lib/supabase')).supabase.auth.getSession()
-                    const token = session?.access_token
-                    if (!token) {
-                      setPassphraseError('Sesi login tidak valid. Silakan login ulang.')
-                      setIsSigning(false)
+              {!(passphraseError && passphraseError.toLowerCase().includes('nik')) && (
+                <button
+                  type="button"
+                  data-sign-btn
+                  disabled={isSigning}
+                  onClick={async (e) => {
+                    e.preventDefault()
+                    if (!selectedCertificate) return
+                    if (!passphrase.trim()) {
+                      setPassphraseError('Passphrase wajib diisi')
                       return
                     }
 
-                    let res: Response
+                    // Clear error sebelum mulai
+                    setPassphraseError(null)
+
                     try {
-                      res = await fetch('/api/certificate-verification/sign-level-3', {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type': 'application/json',
-                          'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify({
-                          documentId: String(selectedCertificate.id),
-                          userPassphrase: passphrase
+                      setIsSigning(true)
+                      const { data: { session } } = await (await import('../../../lib/supabase')).supabase.auth.getSession()
+                      const token = session?.access_token
+                      if (!token) {
+                        setPassphraseError('Sesi login tidak valid. Silakan login ulang.')
+                        setIsSigning(false)
+                        return
+                      }
+
+                      let res: Response
+                      try {
+                        res = await fetch('/api/certificate-verification/sign-level-3', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                          },
+                          body: JSON.stringify({
+                            // Gunakan ref untuk memastikan document ID yang dipakai
+                            // adalah ID sertifikat yang dipilih saat modal dibuka,
+                            // bukan selectedCertificate yang mungkin sudah berubah/null
+                            documentId: signingCertificateIdRef.current || String(selectedCertificate?.id),
+                            userPassphrase: passphrase
+                          })
                         })
-                      })
-                    } catch (networkErr: any) {
-                      // Network error / fetch failed
-                      setPassphraseError('Gagal terhubung ke server. Periksa koneksi internet Anda dan coba lagi.')
-                      setIsSigning(false)
-                      return
-                    }
-
-                    // Parse response body
-                    let data: any = {}
-                    try {
-                      data = await res.json()
-                    } catch {
-                      data = { error: 'Gagal memproses response dari server' }
-                    }
-
-                    if (!res.ok) {
-                      const errorMsg = data?.error || 'Gagal menandatangani dokumen'
-                      const errorCode = data?.code
-
-                      // NIK belum diatur
-                      if (
-                        errorCode === 'NIK_MISSING' ||
-                        errorMsg.includes('NIK belum diatur') ||
-                        errorMsg.includes('NIK tidak ditemukan') ||
-                        errorMsg.includes('NIK_NOT_FOUND')
-                      ) {
-                        setPassphraseError('NIK belum diatur di profil Anda. Silakan lengkapi data profil terlebih dahulu.')
+                      } catch (networkErr: any) {
+                        // Network error / fetch failed
+                        setPassphraseError('Gagal terhubung ke server. Periksa koneksi internet Anda dan coba lagi.')
                         setIsSigning(false)
                         return
                       }
 
-                      // Passphrase salah (HTTP 400)
-                      if (res.status === 400) {
-                        // Pesan khusus passphrase
+                      // Parse response body
+                      let data: any = {}
+                      try {
+                        data = await res.json()
+                      } catch {
+                        data = { error: 'Gagal memproses response dari server' }
+                      }
+
+                      if (!res.ok) {
+                        const errorMsg = data?.error || 'Gagal menandatangani dokumen'
+                        const errorCode = data?.code
+                        const errorMsgLower = errorMsg.toLowerCase()
+
+                        // NIK belum diatur di database
                         if (
-                          errorMsg.toLowerCase().includes('passphrase') ||
-                          errorMsg.toLowerCase().includes('salah')
+                          errorCode === 'NIK_MISSING' ||
+                          errorMsg.includes('NIK belum diatur') ||
+                          errorMsg.includes('NIK tidak ditemukan') ||
+                          errorMsg.includes('NIK_NOT_FOUND')
                         ) {
-                          setPassphraseError('Passphrase yang Anda masukkan salah. Silakan coba lagi.')
-                        } else {
-                          setPassphraseError(errorMsg)
+                          setPassphraseError('NIK belum diatur di profil Anda. Silakan lengkapi data NIK di halaman profil.')
+                          setIsSigning(false)
+                          return
                         }
+
+                        // NIK ada di database tapi tidak dikenali BSrE
+                        if (
+                          errorCode === 'NIK_INVALID_BSRE' ||
+                          errorMsg.includes('NIK_INVALID') ||
+                          errorMsg.includes('NIK Anda tidak dikenali')
+                        ) {
+                          setPassphraseError('NIK Anda tidak dikenali oleh sistem BSrE. Pastikan NIK yang didaftarkan di profil sudah terdaftar di BSrE.')
+                          setIsSigning(false)
+                          return
+                        }
+
+                        // Cek NIK error dari pesan (fallback jika error code tidak spesifik)
+                        // Ini safety net agar NIK error tidak disalahklasifikasikan sebagai passphrase salah
+                        const isNikError =
+                          errorMsgLower.includes('nik') ||
+                          errorMsgLower.includes('tidak terdaftar di bsre') ||
+                          errorMsgLower.includes('user not found') ||
+                          errorMsgLower.includes('pengguna tidak ditemukan')
+                        if (isNikError) {
+                          setPassphraseError('NIK Anda tidak dikenali atau tidak terdaftar di BSrE. Silakan periksa data NIK di halaman profil.')
+                          setIsSigning(false)
+                          return
+                        }
+
+                        // Passphrase salah (HTTP 400) — hanya jika bukan error NIK
+                        if (res.status === 400) {
+                          if (
+                            errorMsgLower.includes('passphrase') ||
+                            errorMsgLower.includes('salah')
+                          ) {
+                            setPassphraseError('Passphrase yang Anda masukkan salah. Silakan coba lagi.')
+                          } else {
+                            setPassphraseError(errorMsg)
+                          }
+                          setIsSigning(false)
+                          return
+                        }
+
+                        // Belum semua verifikator approve (HTTP 401)
+                        if (res.status === 401) {
+                          setPassphraseError('Sertifikat belum siap untuk ditandatangani. Pastikan semua verifikator sudah menyetujui.')
+                          setIsSigning(false)
+                          return
+                        }
+
+                        // Tidak berwenang (HTTP 403)
+                        if (res.status === 403) {
+                          setPassphraseError('Anda tidak berwenang menandatangani dokumen ini.')
+                          setIsSigning(false)
+                          return
+                        }
+
+                        // Error lainnya (500, dll)
+                        setPassphraseError(`Terjadi kesalahan: ${errorMsg}`)
                         setIsSigning(false)
                         return
                       }
 
-                      // Belum semua verifikator approve (HTTP 401)
-                      if (res.status === 401) {
-                        setPassphraseError('Sertifikat belum siap untuk ditandatangani. Pastikan semua verifikator sudah menyetujui.')
-                        setIsSigning(false)
-                        return
-                      }
-
-                      // Tidak berwenang (HTTP 403)
-                      if (res.status === 403) {
-                        setPassphraseError('Anda tidak berwenang menandatangani dokumen ini.')
-                        setIsSigning(false)
-                        return
-                      }
-
-                      // Error lainnya (500, dll)
-                      setPassphraseError(`Terjadi kesalahan: ${errorMsg}`)
+                      // === SUCCESS ===
                       setIsSigning(false)
-                      return
+                      setPassphrase('')
+                      setIsPassphraseModalOpen(false)
+                      localStorage.setItem('certificate_signed', JSON.stringify({
+                        certificateId: selectedCertificate.id,
+                        timestamp: Date.now()
+                      }))
+                      // Tampilkan notifikasi sukses menggunakan useAlert (bukan window.alert)
+                      // window.alert() bisa di-suppress browser saat async handler sebelum reload
+                      showSuccess('✅ Dokumen berhasil ditandatangani! Halaman akan diperbarui...')
+                      // Tunggu 3 detik agar notifikasi terlihat sebelum reload
+                      setTimeout(() => {
+                        window.location.reload()
+                      }, 3000)
+
+                    } catch (err: any) {
+                      // Catch-all untuk error yang tidak terduga
+                      console.error('[Passphrase Submit] Unexpected error:', err)
+                      setPassphraseError(`Terjadi kesalahan tidak terduga: ${err?.message || 'Silakan coba lagi.'}`)
+                      setIsSigning(false)
                     }
-
-                    // === SUCCESS ===
-                    setIsSigning(false)
-                    setPassphrase('')
-                    setIsPassphraseModalOpen(false)
-                    localStorage.setItem('certificate_signed', JSON.stringify({
-                      certificateId: selectedCertificate.id,
-                      timestamp: Date.now()
-                    }))
-                    // Tampilkan notifikasi sukses menggunakan useAlert (bukan window.alert)
-                    // window.alert() bisa di-suppress browser saat async handler sebelum reload
-                    showSuccess('✅ Dokumen berhasil ditandatangani! Halaman akan diperbarui...')
-                    // Tunggu 3 detik agar notifikasi terlihat sebelum reload
-                    setTimeout(() => {
-                      window.location.reload()
-                    }, 3000)
-
-                  } catch (err: any) {
-                    // Catch-all untuk error yang tidak terduga
-                    console.error('[Passphrase Submit] Unexpected error:', err)
-                    setPassphraseError(`Terjadi kesalahan tidak terduga: ${err?.message || 'Silakan coba lagi.'}`)
-                    setIsSigning(false)
-                  }
-                }}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {isSigning ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    Memproses...
-                  </span>
-                ) : 'Setuju dan Tanda Tangan'}
-              </button>
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isSigning ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Memproses...
+                    </span>
+                  ) : 'Setuju dan Tanda Tangan'}
+                </button>
+              )}
             </div>
           </div>
         </div>

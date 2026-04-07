@@ -380,16 +380,61 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
 
               // Try to parse JSON error for more context
               let errorDetail = errorText
+              let bsreStatusCode: number | null = null
               try {
                 const errJson = JSON.parse(errorText)
                 console.error(`[PDF Helper] BSrE error JSON:`, errJson)
+                // Capture BSrE internal status_code (e.g. 2021 = no active cert)
+                bsreStatusCode = typeof errJson.status_code === 'number' ? errJson.status_code : null
                 // Extract meaningful error message
                 errorDetail = errJson.message || errJson.error || errJson.pesan || errorText
               } catch { /* not JSON */ }
 
               // If passphrase is wrong (401 or 400 or 403), fail immediately
+              // BUT: cek dulu apakah error dari BSrE terkait NIK, bukan passphrase
               if (signResponse.status === 401 || signResponse.status === 400 || signResponse.status === 403) {
-                console.error(`[PDF Helper] Passphrase salah atau tidak berwenang (HTTP ${signResponse.status})`)
+
+                // ── Cek BSrE status_code terlebih dahulu ────────────────────────
+                // 2021 = "Pengguna terdaftar dan belum memiliki sertifikat aktif"
+                //        (NIK dikenali tapi sertifikat BSrE-nya belum aktif)
+                // 2022/2023 = variasi status sertifikat belum aktif
+                // 4001/4002/4003 = masalah identitas / akun
+                const BSRE_ACCOUNT_ERROR_CODES = [2021, 2022, 2023, 4001, 4002, 4003]
+                if (bsreStatusCode !== null && BSRE_ACCOUNT_ERROR_CODES.includes(bsreStatusCode)) {
+                  console.error(`[PDF Helper] ❌ BSrE status_code ${bsreStatusCode} = masalah akun/sertifikat BSrE (bukan passphrase): ${errorDetail}`)
+                  if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
+                  return {
+                    success: false,
+                    error: `NIK_INVALID_IN_BSRE: [${bsreStatusCode}] ${errorDetail}`
+                  }
+                }
+
+                // ── Cek keyword NIK / user tidak ditemukan ──────────────────────
+                // BSrE mengembalikan 401/400 juga saat NIK tidak terdaftar
+                const errorDetailLower = errorDetail.toLowerCase()
+                const isNIKError =
+                  errorDetailLower.includes('nik') ||
+                  errorDetailLower.includes('sertifikat aktif') ||
+                  errorDetailLower.includes('belum memiliki sertifikat') ||
+                  errorDetailLower.includes('user not found') ||
+                  errorDetailLower.includes('pengguna tidak ditemukan') ||
+                  errorDetailLower.includes('user tidak ditemukan') ||
+                  errorDetailLower.includes('tidak terdaftar') ||
+                  errorDetailLower.includes('not registered') ||
+                  errorDetailLower.includes('unauthorized user') ||
+                  errorDetailLower.includes('identity') ||
+                  errorDetailLower.includes('identitas')
+
+                if (isNIKError) {
+                  console.error(`[PDF Helper] ❌ BSrE error terkait NIK/akun (HTTP ${signResponse.status}): ${errorDetail}`)
+                  if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
+                  return {
+                    success: false,
+                    error: `NIK_INVALID_IN_BSRE: ${errorDetail}`
+                  }
+                }
+
+                console.error(`[PDF Helper] Passphrase salah atau tidak berwenang (HTTP ${signResponse.status}): ${errorDetail}`)
                 if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
                 return {
                   success: false,
@@ -473,6 +518,27 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
                     const errMsg = responseData.pesan || responseData.message || responseData.error || 'Passphrase salah'
                     console.error(`[PDF Helper] ❌ BSrE returned 200 but JSON contains error indicator:`, errMsg)
                     if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
+
+                    // ── Cek NIK dulu sebelum menyimpulkan passphrase salah ──
+                    const errMsgLower = errMsg.toLowerCase()
+                    const isNikErrorInJson =
+                      errMsgLower.includes('nik') ||
+                      errMsgLower.includes('user not found') ||
+                      errMsgLower.includes('pengguna tidak ditemukan') ||
+                      errMsgLower.includes('tidak terdaftar') ||
+                      errMsgLower.includes('not registered') ||
+                      errMsgLower.includes('unauthorized user') ||
+                      errMsgLower.includes('identity') ||
+                      errMsgLower.includes('identitas')
+
+                    if (isNikErrorInJson) {
+                      console.error(`[PDF Helper] ❌ BSrE JSON 200 error terkait NIK: ${errMsg}`)
+                      return {
+                        success: false,
+                        error: `NIK_INVALID_IN_BSRE: ${errMsg}`
+                      }
+                    }
+
                     return {
                       success: false,
                       error: `Passphrase TTE salah atau tidak valid: ${errMsg}`

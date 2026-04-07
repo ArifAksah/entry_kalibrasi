@@ -7,6 +7,11 @@ const supabaseAdmin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 )
 
+// In-memory lock untuk mencegah race condition double-submit
+// Jika dua request datang bersamaan untuk sertifikat yang sama,
+// hanya satu yang boleh melanjutkan proses signing
+const signingLocks = new Map<string, boolean>()
+
 async function logAction(
   req: NextRequest,
   userId: string,
@@ -32,8 +37,12 @@ async function logAction(
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
+  // ID unik per percobaan untuk traceability di audit log
+  const attemptId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
   let userIdForLog = 'unknown'
   let documentIdForLog = 'unknown'
+  // lockKey dideklarasikan di luar try agar bisa diakses di catch block
+  let lockKey: string | undefined
 
   try {
     // Auth check
@@ -123,11 +132,27 @@ export async function POST(request: NextRequest) {
       if (v4 && v4.status === 'approved') {
         await logAction(request, user.id, 'bsre_sign', 'error', {
           documentId,
+          attemptId,
           reason: 'already_signed'
         })
         return NextResponse.json({ error: 'Dokumen telah ditandatangani' }, { status: 400 })
       }
     }
+
+    // ── LOCK: Cegah double-submit race condition ──────────────────────────────
+    lockKey = `cert_${cert.id}_v${effectiveVersion}`
+    if (signingLocks.get(lockKey)) {
+      console.warn(`[sign-level-3] ⚠️ Duplicate request blocked for cert ${cert.id} (lock active)`)
+      await logAction(request, user.id, 'bsre_sign', 'error', {
+        documentId,
+        attemptId,
+        reason: 'duplicate_request_blocked'
+      })
+      return NextResponse.json({ error: 'Proses penandatanganan sedang berlangsung, harap tunggu.' }, { status: 429 })
+    }
+    signingLocks.set(lockKey, true)
+    console.log(`[sign-level-3] 🔒 Lock acquired for cert ${cert.id}`)
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Prepare payload to BSRE
     const bsrePayload: Record<string, any> = {
@@ -165,9 +190,56 @@ export async function POST(request: NextRequest) {
       const pdfResult = await generateAndSaveCertificatePDF(cert.id, user.id, userPassphrase, true)
 
       if (!pdfResult.success) {
+        signingLocks.delete(lockKey) // Release lock on error
         console.error(`[sign-level-3] ❌ PDF signing failed for certificate ${cert.id}:`, pdfResult.error)
 
-        // Check if error is due to passphrase (covers all messages from certificate-pdf-helper)
+        // ── Cek NIK TERLEBIH DAHULU (sebelum cek passphrase) ──────────────────
+        // Karena BSrE juga mengembalikan 401/400 saat NIK tidak valid,
+        // sehingga pesan error bisa disalah-artikan sebagai salah passphrase
+
+        // NIK tidak ada di database sama sekali
+        if (pdfResult.error === 'NIK_NOT_FOUND_IN_DB' || pdfResult.error?.startsWith('NIK_NOT_FOUND')) {
+          await logAction(request, user.id, 'bsre_sign', 'error', {
+            documentId,
+            attemptId,
+            reason: 'nik_not_in_db',
+            error: pdfResult.error
+          })
+          return NextResponse.json({
+            error: 'NIK belum diatur di profil Anda. Silakan lengkapi data NIK di halaman profil.',
+            code: 'NIK_MISSING'
+          }, { status: 400 })
+        }
+
+        // NIK ada di database, tapi tidak terdaftar / tidak dikenali oleh BSrE
+        if (pdfResult.error?.startsWith('NIK_INVALID_IN_BSRE') || pdfResult.error?.includes('NIK_INVALID')) {
+          await logAction(request, user.id, 'bsre_sign', 'error', {
+            documentId,
+            attemptId,
+            reason: 'nik_invalid_in_bsre',
+            error: pdfResult.error
+          })
+          return NextResponse.json({
+            error: 'NIK Anda tidak dikenali oleh sistem BSrE. Pastikan NIK sudah terdaftar di BSrE dan sesuai dengan data profil Anda.',
+            code: 'NIK_INVALID_BSRE'
+          }, { status: 400 })
+        }
+
+        // NIK bermasalah (general)
+        if (pdfResult.error?.includes('NIK')) {
+          await logAction(request, user.id, 'bsre_sign', 'error', {
+            documentId,
+            attemptId,
+            reason: 'nik_issue',
+            error: pdfResult.error
+          })
+          return NextResponse.json({
+            error: 'NIK tidak ditemukan atau tidak terdaftar di profil Anda. Silakan lengkapi data NIK di halaman profil.',
+            code: 'NIK_MISSING'
+          }, { status: 400 })
+        }
+
+        // ── Baru setelah NIK tidak bermasalah, cek apakah ini error passphrase ──
         if (
           pdfResult.error?.includes('Passphrase') ||
           pdfResult.error?.includes('passphrase') ||
@@ -182,31 +254,19 @@ export async function POST(request: NextRequest) {
           pdfResult.error?.includes('HTTP 401') ||
           pdfResult.error?.includes('HTTP 403')
         ) {
-
           await logAction(request, user.id, 'bsre_sign', 'error', {
             documentId,
+            attemptId,
             reason: 'invalid_passphrase',
             error: pdfResult.error
           })
           return NextResponse.json({ error: 'Passphrase yang Anda masukkan salah. Silakan coba lagi.' }, { status: 400 })
         }
 
-        // Check if NIK issues
-        if (pdfResult.error === 'NIK_NOT_FOUND_IN_DB' || pdfResult.error?.includes('NIK')) {
-          await logAction(request, user.id, 'bsre_sign', 'error', {
-            documentId,
-            reason: 'nik_issue',
-            error: pdfResult.error
-          })
-          return NextResponse.json({ 
-            error: 'NIK tidak ditemukan atau tidak terdaftar di profil Anda. Silakan lengkapi data NIK di halaman profil.',
-            code: 'NIK_MISSING'
-          }, { status: 400 })
-        }
-
         // Other errors
         await logAction(request, user.id, 'bsre_sign', 'error', {
           documentId,
+          attemptId,
           reason: 'pdf_signing_failed',
           error: pdfResult.error
         })
@@ -216,9 +276,11 @@ export async function POST(request: NextRequest) {
       console.log(`[sign-level-3] ✅ PDF generated and signed successfully`)
 
     } catch (pdfError: any) {
+      signingLocks.delete(lockKey) // Release lock on exception
       console.error('[sign-level-3] ❌ Error during PDF generation/signing:', pdfError)
       await logAction(request, user.id, 'bsre_sign', 'error', {
         documentId,
+        attemptId,
         reason: 'pdf_generation_exception',
         error: pdfError.message
       })
@@ -246,8 +308,9 @@ export async function POST(request: NextRequest) {
       })
 
     if (upsertErr) {
+      signingLocks.delete(lockKey) // Release lock on DB error
       console.error('[sign-level-3] ❌ Failed to upsert verification record:', upsertErr)
-      await logAction(request, user.id, 'bsre_sign', 'error', { documentId, reason: 'db_upsert_failed', error: upsertErr.message })
+      await logAction(request, user.id, 'bsre_sign', 'error', { documentId, attemptId, reason: 'db_upsert_failed', error: upsertErr.message })
 
       // Check if this is a constraint violation on verification_level
       // Code 23514 = check_violation in PostgreSQL
@@ -298,13 +361,16 @@ export async function POST(request: NextRequest) {
     const durationStr = `${duration} ms`
 
     // Success Log
+    signingLocks.delete(lockKey) // ✅ Release lock after success
+    console.log(`[sign-level-3] 🔓 Lock released for cert ${cert.id}`)
     await logAction(request, user.id, 'bsre_sign', 'success', {
       documentId,
+      attemptId,
       waktu: durationStr,
       message: 'Proses berhasil'
     })
 
-    // Return respon lengkap (Revisi)
+    // Return respon lengkap
     return NextResponse.json({
       success: true,
       message: 'Dokumen berhasil ditandatangani',
@@ -313,8 +379,11 @@ export async function POST(request: NextRequest) {
     }, { status: 200 })
   } catch (e: any) {
     console.error('sign-level-3 error:', e)
+    // Release lock on unexpected error (lockKey might not exist if error before lock)
+    if (typeof lockKey !== 'undefined') signingLocks.delete(lockKey)
     await logAction(request, userIdForLog, 'bsre_sign', 'error', {
       documentId: documentIdForLog,
+      attemptId,
       reason: 'internal_error',
       error: e.message
     })
