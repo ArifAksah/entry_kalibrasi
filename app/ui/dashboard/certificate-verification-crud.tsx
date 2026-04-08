@@ -276,6 +276,7 @@ const CertificateVerificationCRUD: React.FC = () => {
       status: 'approved',
       notes: '',
       rejection_reason: '',
+      rejection_destination: 'creator',
       approval_notes: ''
     })
     setIsModalOpen(true)
@@ -294,6 +295,7 @@ const CertificateVerificationCRUD: React.FC = () => {
       status: existingStatus === 'approved' ? 'approved' : 'rejected',
       notes: '',
       rejection_reason: '',
+      rejection_destination: 'creator',
       approval_notes: ''
     })
     setIsEditModalOpen(true)
