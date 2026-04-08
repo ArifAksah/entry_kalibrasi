@@ -926,23 +926,34 @@ const PrintCertificatePage: React.FC = () => {
     }
     
     @media screen {
+      /* ─── tfoot di screen mode ───────────────────────────────────────────────────
+         PENTING: Jangan gunakan position:absolute + display:block di sini.
+         position:absolute menyebabkan tfoot "bocor" ke halaman berikutnya saat
+         Playwright generate PDF — bahkan ketika emulateMedia('print') sudah di-set.
+         Solusinya: biarkan tfoot tetap sebagai table-footer-group juga di screen.
+         Tampilan screen dijaga dengan padding-bottom pada container.
+      ────────────────────────────────────────────────────────────────────────────── */
       tfoot.print-repeat-footer {
-        position: absolute;
-        bottom: 24px;
-        left: 24px;
-        width: calc(100% - 48px);
-        display: block;
+        display: table-footer-group;
+        position: static;
+        bottom: auto;
+        left: auto;
+        width: auto;
       }
       
       tfoot.print-repeat-footer > tr, 
       tfoot.print-repeat-footer > tr > td {
-        display: block;
-        width: 100%;
+        display: table-row;
+        width: auto;
+      }
+      tfoot.print-repeat-footer > tr > td {
+        display: table-cell;
       }
       /* Fix table spacing on screen */
       table.repeatable-page-table {
         border-collapse: collapse !important;
         border-spacing: 0 !important;
+        height: 100% !important;
       }
       thead.print-repeat-header > tr > td {
         padding: 10mm 0 0 0 !important;
@@ -1201,9 +1212,8 @@ const PrintCertificatePage: React.FC = () => {
             <tfoot className="print-repeat-footer">
               <tr>
                 <td>
-                  <div className="h-2"></div>
-                  <div className="w-full mt-4 footer-content-wrapper">
-                    <div style={{ borderTop: '1px solid black', borderBottom: '2px solid black', height: '4px', marginBottom: '8px', width: '100%' }}></div>
+                  <div className="w-full footer-content-wrapper">
+                    {/* Separator removed as requested */}
                     <div className="w-full text-center text-[10px] font-medium text-black mb-4" style={{ lineHeight: '1.4' }}>
                       Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
                       <br />
@@ -1270,7 +1280,7 @@ const PrintCertificatePage: React.FC = () => {
                         </tr>
                       </tbody>
                     </table>
-                    <div style={{ borderTop: '1px solid black', borderBottom: '2px solid black', height: '4px', marginTop: '2px', width: '100%' }}></div>
+                    {/* Separator removed as requested */}
                   </td>
                 </tr>
               </thead>
@@ -1368,9 +1378,15 @@ const PrintCertificatePage: React.FC = () => {
                                       <tr className="font-bold">
                                         {/* Use explicit headers if available, otherwise fallback to Key/Unit/Value logic */}
                                         {sec.headers ? (
-                                          sec.headers.map((h: string, i: number) => (
-                                            <td key={i} className="p-1 border border-black text-center">{h}</td>
-                                          ))
+                                          sec.headers.map((h: string, i: number) => {
+                                            const unit = res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit;
+                                            // Extract base header string without HTML tags if any, but since it's string just append
+                                            return (
+                                              <td key={i} className="p-1 border border-black text-center">
+                                                {h}<br/>{unit ? `(${unit})` : ''}
+                                              </td>
+                                            );
+                                          })
                                         ) : (
                                           // Fallback for old data without headers
                                           rows.length > 0 && (
@@ -1382,19 +1398,7 @@ const PrintCertificatePage: React.FC = () => {
                                           )
                                         )}
                                       </tr>
-                                      {/* Baris Unit Tambahan */}
-                                      {sec.headers && (
-                                        <tr className="font-bold bg-white">
-                                          {sec.headers.map((_: any, i: number) => {
-                                            const unit = res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit || '';
-                                            return (
-                                              <td key={`unit-${i}`} className="p-1 border border-black text-center">
-                                                {unit}
-                                              </td>
-                                            );
-                                          })}
-                                        </tr>
-                                      )}
+                                      {/* Baris Unit Tambahan dihapus as requested */}
                                     </thead>
                                     <tbody>
                                       {rows.map((row: any, rIdx: number) => (
@@ -1468,7 +1472,7 @@ const PrintCertificatePage: React.FC = () => {
                                       <td className="w-[60%] align-top whitespace-pre-line py-0">
                                         {(() => {
                                           const parts = []
-                                          if (nf.others) parts.push(nf.others)
+                                          // Removed nf.others from Standar Kalibrasi
 
                                           if (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0) {
                                             const standards = nf.standardInstruments.map((sid: number) => {
@@ -1520,6 +1524,16 @@ const PrintCertificatePage: React.FC = () => {
                                       <td className="align-top whitespace-pre-line py-0">{nf.reference_document}</td>
                                     </tr>
                                   )}
+                                  {nf.others && (
+                                    <tr>
+                                      <td className="align-top text-left pr-2 py-0">
+                                        <div className="font-bold leading-tight">Catatan Lainnya</div>
+                                        <div className="italic text-[10px] text-gray-700 leading-tight">Other Notes</div>
+                                      </td>
+                                      <td className="align-top py-0">:</td>
+                                      <td className="align-top whitespace-pre-line py-0">{nf.others}</td>
+                                    </tr>
+                                  )}
                                 </tbody>
                               </table>
 
@@ -1566,7 +1580,7 @@ const PrintCertificatePage: React.FC = () => {
                         {/* End of Certificate on the last sensor page (always show on last page) */}
                         {/* Positioned absolutely to not affect QR code position */}
                         {idx === results.length - 1 && (
-                          <div className="absolute left-0 right-0" style={{ bottom: '30mm' }}>
+                          <div className="mt-8 mb-4">
                             <p className="text-center font-bold text-sm m-0">
                               --- Akhir dari Sertifikat / <span className="italic">End of Certificate</span> ---
                             </p>
@@ -1581,9 +1595,8 @@ const PrintCertificatePage: React.FC = () => {
               <tfoot className="print-repeat-footer">
                 <tr>
                   <td>
-                    <div className="h-2"></div>
-                    <div className="w-full mt-4 footer-content-wrapper">
-                      <div style={{ borderTop: '1px solid black', borderBottom: '2px solid black', height: '4px', marginBottom: '8px', width: '100%' }}></div>
+                    <div className="w-full footer-content-wrapper">
+                      {/* Separator removed as requested */}
                       <div className="w-full text-center text-[10px] font-medium text-black mb-4" style={{ lineHeight: '1.4' }}>
                         Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
                         <br />

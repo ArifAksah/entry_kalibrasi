@@ -239,6 +239,22 @@ export async function POST(request: NextRequest) {
           }, { status: 400 })
         }
 
+        // ── BSrE_DOWNLOAD_FAILED: BSrE menerima request tapi tidak menghasilkan PDF ──
+        // Ini biasanya terjadi ketika passphrase salah (BSrE sign berhasil tapi
+        // kembalikan error saat download, atau tidak mengembalikan PDF sama sekali)
+        if (pdfResult.error?.startsWith('BSrE_DOWNLOAD_FAILED')) {
+          await logAction(request, user.id, 'bsre_sign', 'error', {
+            documentId,
+            attemptId,
+            reason: 'bsre_download_failed_likely_wrong_passphrase',
+            error: pdfResult.error
+          })
+          return NextResponse.json({
+            error: 'Passphrase yang Anda masukkan salah atau BSrE tidak dapat memproses dokumen. Silakan periksa passphrase dan coba lagi.',
+            code: 'PASSPHRASE_OR_BSRE_ERROR'
+          }, { status: 400 })
+        }
+
         // ── Baru setelah NIK tidak bermasalah, cek apakah ini error passphrase ──
         if (
           pdfResult.error?.includes('Passphrase') ||

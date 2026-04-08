@@ -106,7 +106,14 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+        '--font-render-hinting=none',
+        '--disable-font-subpixel-positioning',
+        '--run-all-compositor-stages-before-draw',
+        '--hide-scrollbars',
+        '--mute-audio'
       ]
     })
 
@@ -115,100 +122,191 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
         viewport: {
           width: 794, // A4 width in pixels at 96 DPI
           height: 1123, // A4 height in pixels at 96 DPI
+        },
+        // Set locale agar format tanggal konsisten
+        locale: 'id-ID',
+        timezoneId: 'Asia/Jakarta',
+        // Izinkan load font dari Google Fonts (bypass CORS)
+        extraHTTPHeaders: {
+          'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7'
         }
       })
 
+      // Abort Google Fonts agar tidak hang menunggu external font load
+      await context.route('**fonts.googleapis.com**', async (route: any) => { await route.abort() })
+      await context.route('**fonts.gstatic.com**', async (route: any) => { await route.abort() })
+
       const page = await context.newPage()
 
-      // Navigate to print page
+      // ─── FIX UTAMA: emulateMedia('print') SEBELUM page.goto() ────────────────
+      // Tanpa ini, page render dengan @media screen:
+      //   tfoot.print-repeat-footer { position: absolute; bottom: 24px } ← BERANTAKAN
+      // Dengan ini, page render dengan @media print dari awal:
+      //   tfoot.print-repeat-footer { display: table-footer-group } ← BENAR
+      await page.emulateMedia({ media: 'print' })
+      // ─────────────────────────────────────────────────────────────────────────
+
+      console.log(`[PDF Helper] Navigating (print media): ${printUrl}`)
       await page.goto(printUrl, {
-        waitUntil: 'networkidle',
+        waitUntil: 'domcontentloaded',
         timeout: 60000
       })
 
-      // Wait for loading to complete
-      const loadingSelector = 'text=Memuat data sertifikat untuk dicetak...'
-      const loadingExists = await page.locator(loadingSelector).count() > 0
-
-      if (loadingExists) {
-        await page.waitForSelector(loadingSelector, {
-          state: 'hidden',
-          timeout: 30000
-        }).catch(() => {
-          console.log('[PDF Helper] Loading message still visible, but continuing...')
-        })
-      }
-
-      // Wait for main content
-      await page.waitForSelector('.page-container', {
-        timeout: 30000,
-        state: 'visible'
-      }).catch(() => {
-        console.log('[PDF Helper] Page container not found, trying alternative selectors...')
+      // Tunggu data API selesai dimuat (maks 15 detik)
+      await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {
+        console.log('[PDF Helper] networkidle timeout, continuing...')
       })
 
-      // Wait for footer
-      await page.waitForSelector('.page-1-footer', {
-        timeout: 30000,
-        state: 'visible'
-      }).catch(() => {
-        console.log('[PDF Helper] Footer not found, but continuing...')
-      })
-
-      // Wait for React to finish rendering
+      // Tunggu React render selesai
       await page.waitForFunction(() => {
-        const loadingText = Array.from(document.querySelectorAll('*')).find(el =>
-          el.textContent?.includes('Memuat data sertifikat untuk dicetak...')
+        // Cek apakah masih ada loading state
+        const hasLoading = Array.from(document.querySelectorAll('*')).some(el =>
+          el.textContent?.trim() === 'Memuat data sertifikat untuk dicetak...'
         )
-        if (loadingText) return false
-
-        const pageContainer = document.querySelector('.page-container')
-        if (!pageContainer) return false
-
-        const footer = document.querySelector('.page-1-footer')
-        if (!footer) return false
-
+        if (hasLoading) return false
+        // Harus ada minimal satu .page-container
+        if (!document.querySelector('.page-container')) return false
+        // Halaman dianggap siap jika ada .page-1-footer (cover) ATAU .print-repeat-footer (results)
+        const hasCoverFooter = !!document.querySelector('.page-1-footer')
+        const hasResultsFooter = !!document.querySelector('.print-repeat-footer')
+        if (!hasCoverFooter && !hasResultsFooter) return false
         return true
       }, { timeout: 30000 }).catch(() => {
-        console.log('[PDF Helper] Wait function timeout, but continuing...')
+        console.log('[PDF Helper] Content readiness timeout, continuing...')
       })
 
-      // Wait for dynamic content (QR codes, etc.)
-      await page.waitForTimeout(5000)
+      // ─── STOP SEMUA INTERVAL & TIMEOUT ────────────────────────────────────────
+      // Print page memiliki setInterval(checkVerificationStatus, 5000) yang
+      // terus polling /api/verify-certificate. Ini menyebabkan:
+      // 1. networkidle tidak pernah tercapai
+      // 2. State bisa berubah saat PDF sedang di-generate
+      await page.evaluate(() => {
+        try {
+          const maxId = window.setTimeout(() => {}, 1)
+          for (let i = 0; i <= maxId + 200; i++) {
+            window.clearTimeout(i)
+            window.clearInterval(i)
+          }
+        } catch { /* ignore */ }
+      })
+      console.log('[PDF Helper] Intervals/timeouts cleared')
 
-      // Inject CSS to prevent any list styling artifacts
+      // Tunggu QR canvas ter-render
+      await page.waitForFunction(() => {
+        const containers = document.querySelectorAll('.qr-code-container')
+        if (containers.length === 0) return true
+        return Array.from(containers).every(c => {
+          const cv = c.querySelector('canvas') as HTMLCanvasElement | null
+          return cv && cv.width > 0 && cv.height > 0
+        })
+      }, { timeout: 15000 }).catch(() => {
+        console.log('[PDF Helper] QR canvas timeout, continuing...')
+      })
+
+      // Extra wait agar canvas fully painted
+      await page.waitForTimeout(2000)
+
+      console.log('[PDF Helper] Injecting print CSS overrides...')
+
       await page.addStyleTag({
         content: `
-          * {
-            list-style: none !important;
-            list-style-type: none !important;
-            list-style-position: outside !important;
-            list-style-image: none !important;
+          /* Font fallback - hanya untuk elemen text, bukan semua elemen */
+          body, p, span, div, td, th, h1, h2, h3, h4, h5, h6, button, input, label {
+            font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif !important;
           }
-          *::marker {
-            display: none !important;
-            content: "" !important;
-            color: transparent !important;
-            font-size: 0 !important;
+          /* Sembunyikan no-print */
+          .no-print { display: none !important; }
+          .bg-gray-100 { background-color: white !important; }
+          .page-container { box-shadow: none !important; margin: 0 !important; }
+
+          /* ── PERBAIKAN UTAMA: tfoot harus table-footer-group, BUKAN position:absolute ── */
+          tfoot.print-repeat-footer {
+            display: table-footer-group !important;
+            position: static !important;
+            bottom: auto !important;
+            left: auto !important;
+            width: auto !important;
+            background-color: white !important;
           }
+          /* tr di dalam tfoot tetap display:table-row */
+          tfoot.print-repeat-footer > tr {
+            display: table-row !important;
+            position: static !important;
+            width: auto !important;
+          }
+          /* td di dalam tfoot harus display:table-cell (BUKAN table-row!) */
+          tfoot.print-repeat-footer > tr > td {
+            display: table-cell !important;
+            position: static !important;
+            width: auto !important;
+          }
+
+          /* Pastikan table utama mengisi tinggi halaman */
+          table.repeatable-page-table {
+            height: 100% !important;
+            width: 100% !important;
+            table-layout: fixed !important;
+            border-collapse: collapse !important;
+          }
+          thead.print-repeat-header { display: table-header-group !important; }
+          tbody.print-content { display: table-row-group !important; }
+
+          /* Page container */
+          .page-container.results-page {
+            position: relative !important;
+            min-height: 297mm !important;
+            height: 297mm !important;
+            box-sizing: border-box !important;
+          }
+          .page-container.cover-page {
+            height: 297mm !important;
+            max-height: 297mm !important;
+            position: relative !important;
+            box-sizing: border-box !important;
+          }
+
+          /* List cleanup - hanya untuk ul/ol/li, tidak untuk semua elemen */
+          ul, ol, li { list-style: none !important; padding-left: 0 !important; }
+          *::marker { display: none !important; content: "" !important; font-size: 0 !important; }
         `
       })
 
+      // ── Force-fix tfoot styles via JavaScript (lebih reliable dari CSS injection) ──
+      await page.evaluate(() => {
+        // Paksa semua tfoot.print-repeat-footer agar menggunakan table-footer-group
+        document.querySelectorAll('tfoot.print-repeat-footer').forEach((tfoot: Element) => {
+          const el = tfoot as HTMLElement
+          el.style.setProperty('display', 'table-footer-group', 'important')
+          el.style.setProperty('position', 'static', 'important')
+          el.style.setProperty('bottom', 'auto', 'important')
+          el.style.setProperty('left', 'auto', 'important')
+          el.style.setProperty('width', 'auto', 'important')
+        })
+        // Paksa semua td di dalam tfoot agar table-cell
+        document.querySelectorAll('tfoot.print-repeat-footer > tr > td').forEach((td: Element) => {
+          const el = td as HTMLElement
+          el.style.setProperty('display', 'table-cell', 'important')
+          el.style.setProperty('position', 'static', 'important')
+        })
+        // Pastikan tabel utama mengisi tinggi penuh
+        document.querySelectorAll('table.repeatable-page-table').forEach((table: Element) => {
+          const el = table as HTMLElement
+          el.style.setProperty('height', '100%', 'important')
+        })
+      })
+      console.log('[PDF Helper] JS style overrides applied')
+
       await page.waitForTimeout(500)
 
-      // Generate PDF
+      console.log('[PDF Helper] Generating PDF...')
       const pdf = await page.pdf({
         format: 'A4',
         printBackground: true,
-        margin: {
-          top: '0mm',
-          right: '0mm',
-          bottom: '0mm',
-          left: '0mm'
-        },
+        margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' },
         preferCSSPageSize: true,
         displayHeaderFooter: false
       })
+      console.log(`[PDF Helper] PDF generated: ${pdf.length} bytes`)
 
       // Get certificate number for filename
       const certificateNumber = existingCert?.no_certificate || String(certificateId)
@@ -570,12 +668,34 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
                     if (!downloadResponse.ok) {
                       const dlError = await downloadResponse.text().catch(() => '')
                       console.error(`[PDF Helper] Failed to download signed PDF: ${downloadResponse.status} - ${dlError}`)
-                      signedPdf = null
+                      // Cek apakah error download terkait passphrase atau NIK
+                      const dlErrorLower = dlError.toLowerCase()
+                      if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
+                      if (dlErrorLower.includes('nik') || dlErrorLower.includes('user not found') || dlErrorLower.includes('tidak terdaftar')) {
+                        return { success: false, error: `NIK_INVALID_IN_BSRE: ${dlError}` }
+                      }
+                      if (downloadResponse.status === 401 || downloadResponse.status === 403 || dlErrorLower.includes('passphrase') || dlErrorLower.includes('salah')) {
+                        return { success: false, error: `Passphrase TTE salah atau tidak valid (download gagal HTTP ${downloadResponse.status}): ${dlError}` }
+                      }
+                      return { success: false, error: `BSrE_DOWNLOAD_FAILED: Gagal mengunduh PDF yang ditandatangani dari BSrE (HTTP ${downloadResponse.status}). ${dlError.substring(0, 200)}` }
                     } else {
                       const downloadBuf = Buffer.from(await downloadResponse.arrayBuffer())
                       if (!isPdfBuffer(downloadBuf)) {
                         console.error(`[PDF Helper] Downloaded file is not a valid PDF`)
-                        signedPdf = null
+                        const bodyStr = downloadBuf.slice(0, 300).toString('utf-8')
+                        if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
+                        // Coba parse sebagai JSON error dari BSrE
+                        try {
+                          const errJson = JSON.parse(bodyStr)
+                          const errMsg = errJson.pesan || errJson.message || errJson.error || bodyStr
+                          const errMsgL = errMsg.toLowerCase()
+                          if (errMsgL.includes('nik') || errMsgL.includes('user not found') || errMsgL.includes('tidak terdaftar')) {
+                            return { success: false, error: `NIK_INVALID_IN_BSRE: ${errMsg}` }
+                          }
+                          return { success: false, error: `Passphrase TTE salah atau tidak valid: ${errMsg}` }
+                        } catch {
+                          return { success: false, error: `BSrE_DOWNLOAD_FAILED: File yang diunduh bukan PDF yang valid. Preview: ${bodyStr.substring(0, 100)}` }
+                        }
                       } else {
                         signedPdf = downloadBuf
                         console.log(`[PDF Helper] ✅ PDF downloaded and signed successfully - Size: ${signedPdf.length} bytes`)
@@ -586,7 +706,8 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
                     const decoded = Buffer.from(pdfBase64, 'base64')
                     if (!isPdfBuffer(decoded)) {
                       console.error(`[PDF Helper] Base64 decoded content is not a valid PDF`)
-                      signedPdf = null
+                      if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
+                      return { success: false, error: `BSrE_DOWNLOAD_FAILED: Konten base64 dari BSrE bukan PDF yang valid.` }
                     } else {
                       signedPdf = decoded
                       console.log(`[PDF Helper] ✅ PDF signed successfully (from base64) - Size: ${signedPdf.length} bytes`)
@@ -668,9 +789,11 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
         if (fs.existsSync(tempFilePath)) {
           fs.unlinkSync(tempFilePath)
         }
+        // Return prefix BSrE_DOWNLOAD_FAILED agar sign-level-3 bisa mengenali ini
+        // sebagai error download/koneksi BSrE, bukan error passphrase atau NIK
         return {
           success: false,
-          error: 'Gagal mendapatkan PDF yang ditandatangani dari BSrE. Silakan coba lagi.'
+          error: 'BSrE_DOWNLOAD_FAILED: Tidak ada PDF yang berhasil diterima dari BSrE. Kemungkinan passphrase salah atau ada masalah koneksi ke server BSrE.'
         }
       }
 
