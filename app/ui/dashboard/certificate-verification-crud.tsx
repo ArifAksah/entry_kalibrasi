@@ -736,46 +736,65 @@ const CertificateVerificationCRUD: React.FC = () => {
                         </DropdownItem>
                       )}
 
-
-
-
-
-                      {/* Download Signed PDF */}
                       {cert.verification_status.authorized_by === 'approved' && (cert as any).pdf_path && (
-                        <DropdownItem
-                          onClick={async () => {
-                            try {
-                              const response = await fetch(`/api/certificates/${cert.id}/pdf?download=true`)
-                              if (!response.ok) {
-                                const errorData = await response.json().catch(() => ({ error: 'Failed to download PDF' }))
-                                showError(errorData.error || 'Gagal mengunduh PDF.')
-                                return
-                              }
-                              const blob = await response.blob()
-                              const url = window.URL.createObjectURL(blob)
-                              const a = document.createElement('a')
-                              a.href = url
-                              const certificateNumber = cert.no_certificate || String(cert.id)
-                              const safeFileName = certificateNumber.replace(/[^a-zA-Z0-9]/g, '_')
-                              a.download = `Certificate_${safeFileName}_Signed.pdf`
-                              document.body.appendChild(a)
-                              a.click()
-                              window.URL.revokeObjectURL(url)
-                              document.body.removeChild(a)
-                              showSuccess('PDF berhasil diunduh')
-                            } catch (err) {
-                              console.error('Error downloading PDF:', err)
-                              showError('Gagal mengunduh PDF.')
+                        <>
+                          <DropdownItem
+                            href={`/api/certificates/${cert.id}/pdf`}
+                            target="_blank"
+                            icon={
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
                             }
-                          }}
-                          icon={
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                          }
-                        >
-                          Download Signed PDF
-                        </DropdownItem>
+                          >
+                            View Saved PDF
+                          </DropdownItem>
+                          <DropdownItem
+                            onClick={async () => {
+                              try {
+                                const response = await fetch(`/api/certificates/${cert.id}/pdf`)
+                                if (!response.ok) {
+                                  const errorData = await response.json().catch(() => ({ error: 'Failed to download PDF' }))
+                                  showError(errorData.error || 'Gagal mengunduh PDF.')
+                                  return
+                                }
+                                
+                                const contentDisposition = response.headers.get('Content-Disposition')
+                                let filename = `Certificate_${cert.no_certificate || cert.id}_Signed.pdf`
+                                if (contentDisposition) {
+                                  const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i)
+                                  if (filenameMatch && filenameMatch[1]) {
+                                    filename = filenameMatch[1].replace(/['"]/g, '')
+                                    if (filename.includes('%')) filename = decodeURIComponent(filename)
+                                  }
+                                }
+
+                                if (!filename.toLowerCase().endsWith('.pdf')) filename = `${filename}.pdf`
+
+                                const blob = await response.blob()
+                                const url = window.URL.createObjectURL(blob)
+                                const a = document.createElement('a')
+                                a.href = url
+                                a.download = filename
+                                a.type = 'application/pdf'
+                                document.body.appendChild(a)
+                                a.click()
+                                window.URL.revokeObjectURL(url)
+                                document.body.removeChild(a)
+                              } catch (err) {
+                                console.error('Error downloading PDF:', err)
+                                showError('Gagal mengunduh PDF.')
+                              }
+                            }}
+                            icon={
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            }
+                          >
+                            Download Signed PDF
+                          </DropdownItem>
+                        </>
                       )}
 
                       {/* Verify BSrE */}
@@ -1489,7 +1508,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                   </label>
                   <input
                     type="password"
-                    autoComplete="new-password"
+                    autoComplete="off"
                     value={passphrase}
                     onChange={(e) => {
                       setPassphrase(e.target.value)

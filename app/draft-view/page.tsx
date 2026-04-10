@@ -918,7 +918,7 @@ const CertificatePreview: React.FC<{
                 </td>
                 <td className="align-middle" style={{ width: '85%', textAlign: 'justify', lineHeight: '1.2' }}>
                   <div style={{ textJustify: 'inter-word', paddingBottom: '2px', display: 'block' }} className="text-[10px] font-bold">
-                    Dokumen ini telah ditandatangani secara elektronik menggunakan Sertifikat Elektronik yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE) dan tidak memerlukan tanda tangan atau cap. Dokumen asli dapat diperoleh dengan memindai kode QR di samping ini.
+                    Dokumen ini telah ditandatangani secara elektronik menggunakan Sertifikat Elektronik yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), BSSN dan tidak memerlukan tanda tangan atau cap. Dokumen asli dapat diperoleh dengan memindai kode QR di samping ini.
                   </div>
                   <div style={{ textJustify: 'inter-word', display: 'block' }} className="italic text-[9px] font-bold text-gray-800">
                     This document is digitally signed. No signature or seal is required. The original document can be obtained by scanning the QR on the left.

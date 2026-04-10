@@ -1123,7 +1123,7 @@ const PrintCertificatePage: React.FC = () => {
                 </td>
                 <td className="align-middle" style={{ width: '85%', textAlign: 'justify', lineHeight: '1.3' }}>
                   <div style={{ textJustify: 'inter-word', paddingBottom: '4px', display: 'block' }} className="text-xs font-bold leading-relaxed">
-                    Dokumen ini telah ditandatangani secara elektronik menggunakan Sertifikat Elektronik yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE) dan tidak memerlukan tanda tangan atau cap. Dokumen asli dapat diperoleh dengan memindai kode QR di samping ini.
+                    Dokumen ini telah ditandatangani secara elektronik menggunakan Sertifikat Elektronik yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), BSSN dan tidak memerlukan tanda tangan atau cap. Dokumen asli dapat diperoleh dengan memindai kode QR di samping ini.
                   </div>
                   <div style={{ textJustify: 'inter-word', display: 'block' }} className="italic text-[10px] font-bold text-gray-800 leading-relaxed">
                     This document is digitally signed. No signature or seal is required. The original document can be obtained by scanning the QR on the left.
@@ -1217,7 +1217,7 @@ const PrintCertificatePage: React.FC = () => {
                     <div className="w-full text-center text-[10px] font-medium text-black mb-4" style={{ lineHeight: '1.4' }}>
                       Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
                       <br />
-                      yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
+                      yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), BSSN, Badan Siber dan Sandi Negara
                     </div>
                     <table className="w-full text-black mt-1" style={{ borderCollapse: 'collapse', border: 'none' }}>
                       <tbody>
@@ -1600,7 +1600,7 @@ const PrintCertificatePage: React.FC = () => {
                       <div className="w-full text-center text-[10px] font-medium text-black mb-4" style={{ lineHeight: '1.4' }}>
                         Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
                         <br />
-                        yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
+                        yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), BSSN, Badan Siber dan Sandi Negara
                       </div>
                       <table className="w-full text-black mt-1" style={{ borderCollapse: 'collapse', border: 'none' }}>
                         <tbody>
