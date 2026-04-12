@@ -32,7 +32,8 @@ const CertificateVerificationCRUD: React.FC = () => {
   const { updateCertificate } = useCertificates()
   const { stations, refetch: fetchStations } = useStations()
   const { instruments, fetchInstruments } = useInstruments()
-  const { sensors } = useSensors()
+  const { sensors, fetchSensors } = useSensors()
+  const [instrumentNames, setInstrumentNames] = useState<any[]>([])
   const { user } = useAuth()
   const { can, canEndpoint } = usePermissions()
   const { alert, showError, showSuccess, showWarning, hideAlert } = useAlert()
@@ -41,6 +42,14 @@ const CertificateVerificationCRUD: React.FC = () => {
   useEffect(() => {
     fetchInstruments({ pageSize: 500 })
     fetchStations({ pageSize: 500 })
+    fetchSensors({ pageSize: 500 })
+    
+    fetch('/api/instrument-names')
+      .then(res => res.json())
+      .then(data => {
+        setInstrumentNames(Array.isArray(data) ? data : data?.data || [])
+      })
+      .catch(e => console.error("Could not fetch instrument names", e))
   }, [])
 
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -130,19 +139,30 @@ const CertificateVerificationCRUD: React.FC = () => {
   const [lhksStandardCerts, setLhksStandardCerts] = useState<any[]>([])
 
   const handlePreviewLHKS = async (cert: PendingCertificate) => {
-    setLhksCertificate(cert as unknown as Certificate)
+    const fullCert = cert as unknown as Certificate
+    setLhksCertificate(fullCert)
     setLhksRawData([])
     setLhksStandardCerts([])
     try {
-      const [rawRes, stdRes] = await Promise.all([
-        fetch(`/api/inspection-results?certificate_id=${cert.id}`),
-        fetch('/api/cert-standards'),
-      ])
-      if (rawRes.ok) {
+      const sessionId = (fullCert.results && Array.isArray(fullCert.results) && fullCert.results.length > 0)
+        ? (fullCert.results[0] as any).session_id
+        : null
+
+      const fetchPromises = []
+      if (sessionId) {
+        fetchPromises.push(fetch(`/api/raw-data?session_id=${sessionId}`))
+      } else {
+        fetchPromises.push(Promise.resolve(null))
+      }
+      fetchPromises.push(fetch('/api/cert-standards'))
+
+      const [rawRes, stdRes] = await Promise.all(fetchPromises)
+
+      if (rawRes && rawRes.ok) {
         const json = await rawRes.json()
         setLhksRawData(json.data || [])
       }
-      if (stdRes.ok) {
+      if (stdRes && stdRes.ok) {
         const json = await stdRes.json()
         setLhksStandardCerts(Array.isArray(json) ? json : [])
       }
@@ -1857,9 +1877,9 @@ const CertificateVerificationCRUD: React.FC = () => {
           isOpen={showLHKSModal}
           onClose={() => { setShowLHKSModal(false); setLhksCertificate(null) }}
           certificate={lhksCertificate}
-          owner={stations.find(s => s.id === lhksCertificate.station) || null}
-          instrument={instruments.find(i => i.id === lhksCertificate.instrument) || null}
-          sensors={instruments.find(i => i.id === lhksCertificate.instrument)?.sensor || []}
+          owner={stations.find(s => s.id === (typeof lhksCertificate.station === 'object' ? (lhksCertificate.station as any)?.id : lhksCertificate.station)) || null}
+          instrument={instruments.find(i => i.id === (typeof lhksCertificate.instrument === 'object' ? (lhksCertificate.instrument as any)?.id : lhksCertificate.instrument)) || null}
+          sensors={instruments.find(i => i.id === (typeof lhksCertificate.instrument === 'object' ? (lhksCertificate.instrument as any)?.id : lhksCertificate.instrument))?.sensor || []}
           rawData={lhksRawData}
           standardCerts={lhksStandardCerts}
           calibrationDate={(lhksCertificate.results as any)?.[0]?.startDate || lhksCertificate.issue_date || ''}
@@ -1873,6 +1893,7 @@ const CertificateVerificationCRUD: React.FC = () => {
           sessionResults={(lhksCertificate.results as any) || []}
           allInstruments={instruments}
           allSensors={sensors}
+          instrumentNames={instrumentNames}
         />
       )}
     </div>

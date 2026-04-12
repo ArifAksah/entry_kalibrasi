@@ -198,6 +198,34 @@ const PrintCertificatePage: React.FC = () => {
   const hasPrintedRef = useRef<boolean>(false)
   const qrRenderedCountRef = useRef<number>(0)
   const expectedQRCodesRef = useRef<number>(0)
+  const [allRawData, setAllRawData] = useState<any[]>([])
+
+  const computeEnvCondition = useCallback((type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
+      const keywords = type === 'suhu'
+          ? ['suhu', 'temp', 'termometer', 'temperature', 'thermo']
+          : ['kelembab', 'hum', 'hygro', 'rh'];
+
+      const matchedRows = sensorRawData.filter(r => {
+          const name = (r.sheet_name || '').toLowerCase();
+          return keywords.some(k => name.includes(k));
+      });
+
+      if (matchedRows.length === 0) return '-';
+
+      const values = matchedRows
+          .map(r => r.std_corrected ?? (r.standard_data + (r.std_correction ?? 0)))
+          .filter(v => typeof v === 'number' && !isNaN(v));
+
+      if (values.length === 0) return '-';
+
+      const minV = Math.min(...values);
+      const maxV = Math.max(...values);
+      const mean = (minV + maxV) / 2;
+      const halfRange = maxV - mean;
+
+      const unit = type === 'suhu' ? '°C' : '%';
+      return `(${mean.toFixed(1)} ± ${halfRange.toFixed(1)}) ${unit}`;
+  }, []);
 
   
   // Helper to resolve canonical sensor name
@@ -300,6 +328,23 @@ const PrintCertificatePage: React.FC = () => {
 
         if (!cRes.ok) throw new Error(c?.error || 'Failed to load certificate')
         setCert(c)
+
+        if (c?.results) {
+          try {
+            const parsedResults = typeof c.results === 'string' ? JSON.parse(c.results) : c.results;
+            const sessionIds = parsedResults.map((r: any) => r.session_id).filter(Boolean);
+            if (sessionIds.length > 0) {
+              const rawDataPromises = sessionIds.map((sid: string) => 
+                fetch(`/api/raw-data?session_id=${sid}`).then(res => res.ok ? res.json() : { data: [] })
+              );
+              const allRawDataResp = await Promise.all(rawDataPromises);
+              const mergedRawData = allRawDataResp.flatMap(resp => resp.data || []);
+              setAllRawData(mergedRawData);
+            }
+          } catch (e) {
+            console.error("Failed to fetch raw data for print", e);
+          }
+        }
 
         const personelData = Array.isArray(p) ? p : []
         setPersonel(personelData)
@@ -1309,16 +1354,47 @@ const PrintCertificatePage: React.FC = () => {
                               { label: 'Tanggal Kalibrasi / ', labelEng: 'Calibration Date', value: end },
                               { label: 'Tempat Kalibrasi / ', labelEng: 'Calibration Place', value: place },
                             ]
-                            const envRows: Array<{ label: string; labelEng: string; value: React.ReactNode }> = (res?.environment || []).map((env: any) => {
+                            const sensorSessionId = res?.session_id;
+                            const sensorRawData = sensorSessionId ? allRawData.filter(rd => rd.session_id === sensorSessionId) : [];
+                            const rawSuhu = computeEnvCondition('suhu', sensorRawData);
+                            const rawHum = computeEnvCondition('kelembaban', sensorRawData);
+
+                            let envList = Array.isArray(res?.environment) ? [...res.environment] : [];
+                            
+                            // Ensure Suhu and Kelembaban exist in envList if they have raw values
+                            if (envList.length === 0) {
+                                if (rawSuhu !== '-') envList.push({ key: 'Suhu', value: '-' });
+                                if (rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
+                            } else {
+                                const hasSuhu = envList.some(e => e.key.toLowerCase().includes('suhu'));
+                                const hasHum = envList.some(e => e.key.toLowerCase().includes('kelembaban') || e.key.toLowerCase().includes('rh'));
+                                if (!hasSuhu && rawSuhu !== '-') envList.push({ key: 'Suhu', value: '-' });
+                                if (!hasHum && rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
+                            }
+
+                            const envRows: Array<{ label: string; labelEng: string; value: React.ReactNode }> = envList.map((env: any) => {
                               const key = String(env?.key || '')
                               const lower = key.toLowerCase()
-                              const label = lower.includes('suhu')
+                              const isSuhu = lower.includes('suhu')
+                              const isHum = lower.includes('kelembaban') || lower.includes('rh')
+                              
+                              const label = isSuhu
                                 ? 'Suhu / '
-                                : lower.includes('kelembaban')
+                                : isHum
                                   ? 'Kelembaban / '
                                   : `${key} `
-                              const eng = lower.includes('suhu') ? 'Temperature' : lower.includes('kelembaban') ? 'Relative Humidity' : ''
-                              return { label, labelEng: eng, value: env?.value || '-' }
+                              const eng = isSuhu ? 'Temperature' : isHum ? 'Relative Humidity' : ''
+                              
+                              let finalValue = env?.value || '-'
+                              
+                              // Override with computed QC data if available
+                              if (isSuhu && rawSuhu !== '-') {
+                                finalValue = rawSuhu
+                              } else if (isHum && rawHum !== '-') {
+                                finalValue = rawHum
+                              }
+
+                              return { label, labelEng: eng, value: finalValue }
                             })
 
                             return (
