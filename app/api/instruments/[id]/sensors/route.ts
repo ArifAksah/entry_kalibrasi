@@ -385,7 +385,18 @@ export async function DELETE(
       return NextResponse.json({ error: 'sensorId parameter is required' }, { status: 400 })
     }
 
-    // Delete sensor from sensor table
+    // Step 1: Delete related certificate_standard records first (to avoid FK constraint)
+    const { error: certDeleteError } = await supabaseAdmin
+      .from('certificate_standard')
+      .delete()
+      .eq('sensor_id', sensorId)
+
+    if (certDeleteError) {
+      console.error('Error deleting related certificate_standard records:', certDeleteError)
+      return NextResponse.json({ error: `Gagal menghapus sertifikat terkait sensor: ${certDeleteError.message}` }, { status: 500 })
+    }
+
+    // Step 2: Delete the sensor itself
     const { error: deleteError } = await supabaseAdmin
       .from('sensor')
       .delete()

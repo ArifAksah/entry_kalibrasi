@@ -511,15 +511,25 @@ const InstrumentsCRUD: React.FC = () => {
     if (!isNaN(Number(sensorId)) && editing?.id) {
       try {
         console.log('Deleting sensor from database:', sensorId)
-        await fetch(`/api/instruments/${editing.id}/sensors?sensorId=${sensorId}`, {
+        const res = await fetch(`/api/instruments/${editing.id}/sensors?sensorId=${sensorId}`, {
           method: 'DELETE'
         })
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}))
+          const errMsg = errData?.error || `Gagal menghapus sensor (HTTP ${res.status})`
+          showError(errMsg)
+          console.error('Error deleting sensor:', errMsg)
+          return // DO NOT remove from local state if server delete failed
+        }
       } catch (error) {
         console.error('Error deleting sensor:', error)
+        showError('Gagal menghapus sensor: koneksi bermasalah')
+        return
       }
     }
 
-    setSensorForms(sensorForms.filter(sensor => sensor.id !== sensorId))
+    // Only remove from local state if delete succeeded (or it's a new unsaved sensor)
+    setSensorForms(prev => prev.filter(sensor => sensor.id !== sensorId))
   }
 
   // Fungsi untuk update sensor
@@ -608,9 +618,14 @@ const InstrumentsCRUD: React.FC = () => {
           for (const existingSensor of existingSensors) {
             const stillExists = effectiveSensors.some(sf => sf.id === existingSensor.id.toString())
             if (!stillExists) {
-              await fetch(`/api/instruments/${editing.id}/sensors?sensorId=${existingSensor.id}`, {
+              const delRes = await fetch(`/api/instruments/${editing.id}/sensors?sensorId=${existingSensor.id}`, {
                 method: 'DELETE'
               })
+              if (!delRes.ok) {
+                const errData = await delRes.json().catch(() => ({}))
+                console.error('Failed to delete sensor during save:', errData?.error)
+                // Continue saving other sensors even if one delete fails
+              }
             }
           }
 
@@ -1250,8 +1265,11 @@ const InstrumentsCRUD: React.FC = () => {
                                                 </span>
                                               </div>
                                               <button type="button"
-                                                onClick={() => {
-                                                  setSensorForms(prev => prev.filter(s => s.id !== sd.sensorLocalId));
+                                                onClick={async () => {
+                                                  // Delete from DB first (if existing sensor with numeric ID)
+                                                  await removeSensor(sd.sensorLocalId);
+                                                  // After removeSensor succeeds, also clean up globalCertificates
+                                                  // removeSensor already filtered from sensorForms; we mirror that here
                                                   setGlobalCertificates(prev => prev.map((c, ci) => {
                                                     if (ci !== certIdx) return c;
                                                     return { ...c, sensorData: c.sensorData.filter((d: any) => d.sensorLocalId !== sd.sensorLocalId) };
