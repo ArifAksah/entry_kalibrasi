@@ -454,12 +454,13 @@ const PrintCertificatePage: React.FC = () => {
     }
   }, [cert?.id])
 
-  // Calculate expected QR codes: 1 for cover + 1 for each result page
+  // Calculate expected QR codes: 1 for cover + 1 for each result page footer (or 1 for empty page footer)
   useEffect(() => {
     if (!cert || !results) return
     const coverQR = qrCodeData ? 1 : 0
-    const footerQRs = results.length > 0 && qrCodeData ? results.length : 0
-    expectedQRCodesRef.current = coverQR + footerQRs
+    // Each result page has 1 QR in footer; empty page also has 1 QR in footer
+    const resultPageQRs = qrCodeData ? Math.max(1, results.length) : 0
+    expectedQRCodesRef.current = coverQR + resultPageQRs
     qrRenderedCountRef.current = 0 // Reset counter when results change
   }, [cert, results, qrCodeData])
 
@@ -1257,22 +1258,43 @@ const PrintCertificatePage: React.FC = () => {
             <tfoot className="print-repeat-footer">
               <tr>
                 <td>
-                  <div className="w-full footer-content-wrapper">
-                    {/* Separator removed as requested */}
-                    <div className="w-full text-center text-[10px] font-medium text-black mb-4" style={{ lineHeight: '1.4' }}>
-                      Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
-                      <br />
-                      yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), BSSN, Badan Siber dan Sandi Negara
-                    </div>
-                    <table className="w-full text-black mt-1" style={{ borderCollapse: 'collapse', border: 'none' }}>
-                      <tbody>
-                        <tr>
-                          <td className="align-bottom text-left text-[10px] font-bold" style={{ width: '50%' }}>F/IKK 7.8.2</td>
-                          <td className="align-bottom text-right text-[10px] font-bold" style={{ width: '50%' }}>Edisi/Revisi : 11/1</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
+                          <div className="w-full">
+                            <table className="w-full" style={{ borderCollapse: 'collapse', border: 'none' }}>
+                              <tbody>
+                                <tr>
+                                  {/* QR code kecil di kiri footer */}
+                                  <td className="align-middle" style={{ width: '80px', paddingRight: '8px' }}>
+                                    {qrCodeData && (
+                                      <QRCodeWithBMKGLogo
+                                        key={`qr-footer-p2-empty-${isSigned ? 'signed' : 'unsigned'}`}
+                                        value={qrCodeData}
+                                        size={70}
+                                        logoSize={20}
+                                        fgColor={isSigned ? '#000000' : '#B91C1C'}
+                                        onRendered={handleQRRendered}
+                                      />
+                                    )}
+                                  </td>
+                                  {/* Teks TTE + kode dokumen di kanan */}
+                                  <td className="align-middle">
+                                    <div className="text-center text-[10px] font-medium text-black mb-2" style={{ lineHeight: '1.4' }}>
+                                      Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
+                                      <br />
+                                      yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), BSSN, Badan Siber dan Sandi Negara
+                                    </div>
+                                    <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none' }}>
+                                      <tbody>
+                                        <tr>
+                                          <td className="align-bottom text-left text-[10px] font-bold">F/IKK 7.8.2</td>
+                                          <td className="align-bottom text-right text-[10px] font-bold">Edisi/Revisi : 11/1</td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
                 </td>
               </tr>
             </tfoot>
@@ -1671,18 +1693,39 @@ const PrintCertificatePage: React.FC = () => {
               <tfoot className="print-repeat-footer">
                 <tr>
                   <td>
-                    <div className="w-full footer-content-wrapper">
-                      {/* Separator removed as requested */}
-                      <div className="w-full text-center text-[10px] font-medium text-black mb-4" style={{ lineHeight: '1.4' }}>
-                        Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
-                        <br />
-                        yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), BSSN, Badan Siber dan Sandi Negara
-                      </div>
-                      <table className="w-full text-black mt-1" style={{ borderCollapse: 'collapse', border: 'none' }}>
+                    <div className="w-full">
+                      <table className="w-full" style={{ borderCollapse: 'collapse', border: 'none' }}>
                         <tbody>
                           <tr>
-                            <td className="align-top text-left text-[10px] font-bold" style={{ width: '50%' }}>F/IKK 7.8.2</td>
-                            <td className="align-top text-right text-[10px] font-bold" style={{ width: '50%' }}>Edisi/Revisi : 11/1</td>
+                            {/* QR code kecil di kiri footer */}
+                            <td className="align-middle" style={{ width: '80px', paddingRight: '8px' }}>
+                              {qrCodeData && (
+                                <QRCodeWithBMKGLogo
+                                  key={`qr-footer-p${idx + 2}-${isSigned ? 'signed' : 'unsigned'}`}
+                                  value={qrCodeData}
+                                  size={70}
+                                  logoSize={20}
+                                  fgColor={isSigned ? '#000000' : '#B91C1C'}
+                                  onRendered={handleQRRendered}
+                                />
+                              )}
+                            </td>
+                            {/* Teks TTE + kode dokumen di kanan */}
+                            <td className="align-middle">
+                              <div className="text-center text-[10px] font-medium text-black mb-2" style={{ lineHeight: '1.4' }}>
+                                Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
+                                <br />
+                                yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), BSSN, Badan Siber dan Sandi Negara
+                              </div>
+                              <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none' }}>
+                                <tbody>
+                                  <tr>
+                                    <td className="align-bottom text-left text-[10px] font-bold">F/IKK 7.8.2</td>
+                                    <td className="align-bottom text-right text-[10px] font-bold">Edisi/Revisi : 11/1</td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </td>
                           </tr>
                         </tbody>
                       </table>
