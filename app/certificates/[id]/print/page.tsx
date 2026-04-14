@@ -1477,7 +1477,7 @@ const PrintCertificatePage: React.FC = () => {
                                         {/* Use explicit headers if available, otherwise fallback to Key/Unit/Value logic */}
                                         {sec.headers ? (
                                           sec.headers.map((h: string, i: number) => {
-                                            const unit = res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit;
+                                            const unit = res?.unitUut || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit;
                                             // Extract base header string without HTML tags if any, but since it's string just append
                                             return (
                                               <td key={i} className="p-1 border border-black text-center">
