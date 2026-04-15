@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
       authorized_by,
       verifikator_1,
       verifikator_2,
+      verifikator_3,
       results,
       station_address
     } = body
@@ -106,9 +107,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate verifikator fields are required
-    if (!verifikator_1 || !verifikator_2) {
+    if (!verifikator_1 || !verifikator_2 || !verifikator_3) {
       return NextResponse.json({
-        error: 'Verifikator 1 and Verifikator 2 are required',
+        error: 'Verifikator 1, Verifikator 2, and Verifikator 3 are required',
       }, { status: 400 })
     }
 
@@ -186,10 +187,25 @@ export async function POST(request: NextRequest) {
       v2 = verifikator_2
     }
 
+    // Validate verifikator_3 if provided
+    let v3: string | null = null
+    if (verifikator_3) {
+      const { data: p3, error: p3Err } = await supabaseAdmin
+        .from('personel')
+        .select('id')
+        .eq('id', verifikator_3)
+        .single()
+      if (p3Err || !p3) {
+        return NextResponse.json({ error: 'Invalid verifikator_3 (personel) id' }, { status: 400 })
+      }
+      v3 = verifikator_3
+    }
+
     // Debug logging for certificate creation
     console.log('=== Creating Certificate ===')
     console.log('Verifikator 1:', v1)
     console.log('Verifikator 2:', v2)
+    console.log('Verifikator 3:', v3)
     console.log('Authorized By:', authorizedPersonId)
     console.log('============================')
 
@@ -202,6 +218,7 @@ export async function POST(request: NextRequest) {
         authorized_by: authorizedPersonId,
         verifikator_1: v1,
         verifikator_2: v2,
+        verifikator_3: v3,
         assignor: authorizedPersonId, // Set assignor same as authorized_by
         issue_date,
         station: station ? parseInt(station) : null,
