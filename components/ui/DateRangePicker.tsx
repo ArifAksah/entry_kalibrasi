@@ -16,7 +16,8 @@ function isoToDate(iso: string): Date | null {
 }
 
 function dateToIso(d: Date): string {
-    return d.toISOString().split('T')[0]
+    const pad = (n: number) => n.toString().padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 function formatDisplay(start: string, end: string): string {
