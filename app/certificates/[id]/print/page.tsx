@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import QRCodeStyling from 'qr-code-styling'
+import QRCode from 'react-qr-code'
 import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
 
 // --- TIPE DATA KOMPREHENSIF ---
@@ -74,8 +75,8 @@ type Personel = { id: string; name: string | null }
 // Untuk meniru format label di PDF (Indo bold + English italic)
 const PdfLabel: React.FC<{ indo: string; eng: string; className?: string }> = ({ indo, eng, className = '' }) => (
   <div className={`leading-tight ${className}`}>
-    <div className="font-bold text-xs">{indo}</div>
-    <div className="text-[10px] italic text-gray-600">{eng}</div>
+    <div className="cert-text-id">{indo}</div>
+    <div className="cert-text-en">{eng}</div>
   </div>
 )
 
@@ -180,6 +181,38 @@ const QRCodeWithBMKGLogo: React.FC<{
   }, [value, size, fgColor, logoSize, onRendered])
 
   return <div className={className} ref={containerRef} />
+}
+
+const FooterQRCode: React.FC<{
+  value: string;
+  size?: number;
+  fgColor?: string;
+  onRendered?: () => void;
+}> = ({ value, size = 52, fgColor = '#000000', onRendered }) => {
+  useEffect(() => {
+    const timer = window.setTimeout(() => onRendered?.(), 0)
+    return () => window.clearTimeout(timer)
+  }, [value, fgColor, onRendered])
+
+  return (
+    <div className="footer-qr-rendered" style={{ width: size, height: size, position: 'relative', background: '#fff' }}>
+      <QRCode value={value || ' '} size={size} bgColor="#FFFFFF" fgColor={fgColor} level="H" />
+      <img
+        src={bmkgLogo.src}
+        alt=""
+        style={{
+          position: 'absolute',
+          left: '50%',
+          top: '50%',
+          width: Math.round(size * 0.28),
+          height: Math.round(size * 0.28),
+          transform: 'translate(-50%, -50%)',
+          background: '#fff',
+          padding: 2,
+        }}
+      />
+    </div>
+  )
 }
 
 const PrintCertificatePage: React.FC = () => {
@@ -576,13 +609,52 @@ const PrintCertificatePage: React.FC = () => {
       color: #000;
       list-style: none !important;
     }
+
+    .print-container,
+    .print-container * {
+      font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif !important;
+      color: #000 !important;
+    }
+
+    .cert-title-id {
+      font-size: 20px !important;
+      line-height: 1.15 !important;
+      font-weight: 700 !important;
+      letter-spacing: 0 !important;
+      color: #000 !important;
+    }
+
+    .cert-title-en {
+      font-size: 7px !important;
+      line-height: 1.2 !important;
+      font-weight: 700 !important;
+      font-style: italic !important;
+      color: #000 !important;
+    }
+
+    .cert-text-id,
+    .cert-info-text,
+    .cert-info-text td {
+      font-size: 11px !important;
+      line-height: 1.25 !important;
+      font-weight: 700 !important;
+      color: #000 !important;
+    }
+
+    .cert-text-en {
+      font-size: 7px !important;
+      line-height: 1.15 !important;
+      font-weight: 700 !important;
+      font-style: italic !important;
+      color: #000 !important;
+    }
     
     .page-container {
       width: 210mm;
       /* Jangan pakai min-height tetap agar tidak melebihi tinggi A4 saat ditambah padding */
       min-height: auto;
-      padding: 20mm; /* Padding standar dokumen */
-      padding-bottom: 40mm; /* Ruang untuk footer static (halaman cover) */
+      padding: 5mm; /* Batas tepi kerja sesuai rujukan */
+      padding-bottom: 35mm; /* Ruang untuk footer static (halaman cover) */
       margin: 0 auto;
       box-sizing: border-box;
       position: relative;
@@ -591,14 +663,14 @@ const PrintCertificatePage: React.FC = () => {
     
     /* Halaman hasil kalibrasi (dengan QR footer) butuh padding konsisten */
     .page-container.results-page {
-      padding: 0 20mm 30mm 20mm;
-      min-height: 257mm;
+      padding: 0 5mm 25mm 5mm;
+      min-height: 297mm;
       box-sizing: border-box;
       position: relative;
     }
     /* Remove default cell padding from thead, handle spacing inside */
     .page-container.results-page thead.print-repeat-header > tr > td {
-      padding: 10mm 0 0 0 !important;
+      padding: 5mm 0 0 0 !important;
     }
     /* Minimal top padding for tbody content */
     .page-container.results-page tbody.print-content > tr > td {
@@ -608,9 +680,9 @@ const PrintCertificatePage: React.FC = () => {
     /* Footer khusus untuk halaman 1 saja */
     .page-1-footer {
       position: absolute !important;
-      bottom: 10mm !important;
-      left: 20mm !important;
-      right: 20mm !important;
+      bottom: 5mm !important;
+      left: 5mm !important;
+      right: 5mm !important;
       z-index: 1000 !important;
       list-style-type: none !important;
       list-style: none !important;
@@ -705,6 +777,82 @@ const PrintCertificatePage: React.FC = () => {
       visibility: hidden !important;
       opacity: 0 !important;
     }
+
+    .bsre-result-footer {
+      display: grid;
+      grid-template-columns: 16mm minmax(0, 1fr);
+      column-gap: 10mm;
+      align-items: start;
+      width: 100%;
+      padding-top: 2mm;
+      color: #000;
+    }
+
+    .bsre-footer-qr {
+      width: 16mm;
+      height: 16mm;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      background: #fff;
+      transform: translateY(-4mm);
+    }
+
+    .bsre-footer-qr .qr-code-container {
+      width: 52px !important;
+      height: 52px !important;
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      overflow: visible !important;
+    }
+
+    .bsre-footer-qr .qr-code-container canvas,
+    .bsre-footer-qr .qr-code-container svg {
+      display: block !important;
+      width: 52px !important;
+      height: 52px !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
+
+    .bsre-footer-qr .footer-qr-rendered,
+    .bsre-footer-qr .footer-qr-rendered svg,
+    .bsre-footer-qr .footer-qr-rendered img {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    .bsre-footer-content {
+      padding-top: 2mm;
+      min-width: 0;
+    }
+
+    .bsre-footer-line {
+      border-top: 1px solid #000;
+      width: 100%;
+      height: 0;
+      margin: 0 0 1mm;
+    }
+
+    .bsre-footer-page {
+      text-align: center;
+      font-size: 11px;
+      line-height: 1;
+      margin-bottom: 2mm;
+      font-weight: 400;
+    }
+
+    .bsre-footer-text {
+      text-align: center;
+      font-size: 10px;
+      line-height: 1.25;
+      font-weight: 400;
+      color: #000;
+    }
     
     /* Hapus aturan last-child; break diatur manual dengan kelas */
     
@@ -749,8 +897,8 @@ const PrintCertificatePage: React.FC = () => {
       }
       .page-container {
         margin: 0;
-        padding: 20mm; /* Pastikan padding sama */
-        padding-bottom: 20mm; /* Padding bawah default untuk halaman cover */
+        padding: 5mm; /* Batas tepi kerja sesuai rujukan */
+        padding-bottom: 25mm; /* Ruang footer halaman cover */
         border: none !important;
         box-shadow: none !important;
         page-break-after: auto; /* Jangan paksa break di akhir container */
@@ -761,7 +909,7 @@ const PrintCertificatePage: React.FC = () => {
       .page-container.results-page {
         min-height: 297mm !important;
         height: 297mm !important;
-        padding: 0 20mm 20mm 20mm !important;
+        padding: 0 5mm 25mm 5mm !important;
         box-sizing: border-box !important;
         position: relative !important;
       }
@@ -771,7 +919,7 @@ const PrintCertificatePage: React.FC = () => {
       }
       /* thead td handles top margin itself */
       .page-container.results-page thead.print-repeat-header > tr > td {
-        padding: 10mm 0 0 0 !important;
+        padding: 5mm 0 0 0 !important;
       }
       /* Remove top padding from first tbody cell */
       .page-container.results-page tbody.print-content > tr > td {
@@ -793,9 +941,9 @@ const PrintCertificatePage: React.FC = () => {
       /* Footer halaman 1 tetap static di mode print, jangan gunakan fixed karena akan duplikat di semua halaman */
       .page-1-footer {
         position: absolute !important;
-        bottom: 8mm !important;
-        left: 20mm !important;
-        right: 20mm !important;
+        bottom: 5mm !important;
+        left: 5mm !important;
+        right: 5mm !important;
         z-index: 1000 !important;
         background-color: white !important; /* Tutupi elemen fixed di belakangnya */
         -webkit-print-color-adjust: exact !important;
@@ -1002,13 +1150,13 @@ const PrintCertificatePage: React.FC = () => {
         height: 100% !important;
       }
       thead.print-repeat-header > tr > td {
-        padding: 10mm 0 0 0 !important;
+        padding: 5mm 0 0 0 !important;
       }
       tbody.print-content > tr > td {
         padding-top: 2mm !important;
       }
       .page-container.results-page {
-        padding-bottom: 40mm !important; 
+        padding-bottom: 25mm !important; 
         min-height: 297mm !important;
       }
     }
@@ -1058,16 +1206,16 @@ const PrintCertificatePage: React.FC = () => {
 
           {/* Judul Sertifikat */}
           <div className="text-center my-6">
-            <h1 className="text-xl font-bold tracking-wide">SERTIFIKAT KALIBRASI</h1>
-            <h2 className="text-base italic text-gray-700">CALIBRATION CERTIFICATE</h2>
-            <div className="text-sm font-semibold mt-2">{cert.no_certificate}</div>
+            <h1 className="cert-title-id">SERTIFIKAT KALIBRASI</h1>
+            <h2 className="cert-title-en">CALIBRATION CERTIFICATE</h2>
+            <div className="cert-info-text mt-2">{cert.no_certificate}</div>
           </div>
 
           {/* Identitas Alat */}
           <div className="mb-4">
-            <h3 className="text-sm font-bold">IDENTITAS ALAT</h3>
-            <h4 className="text-xs italic text-gray-700 mb-1">Instrument Details</h4>
-            <table className="w-full text-xs">
+            <h3 className="cert-text-id">IDENTITAS ALAT</h3>
+            <h4 className="cert-text-en mb-1">Instrument Details</h4>
+            <table className="w-full cert-info-text">
               <tbody>
                 <tr>
                   <td className="w-[30%] align-top"><PdfLabel indo="Nama Alat" eng="Instrument Name" /></td>
@@ -1095,9 +1243,9 @@ const PrintCertificatePage: React.FC = () => {
 
           {/* Identitas Pemilik */}
           <div className="mb-4">
-            <h3 className="text-sm font-bold underline leading-tight mb-0">IDENTITAS PEMILIK</h3>
-            <h4 className="text-xs italic text-gray-700 leading-tight mb-1">Owner's Identification</h4>
-            <table className="w-full text-xs">
+            <h3 className="cert-text-id underline leading-tight mb-0">IDENTITAS PEMILIK</h3>
+            <h4 className="cert-text-en leading-tight mb-1">Owner's Identification</h4>
+            <table className="w-full cert-info-text">
               <tbody>
                 <tr>
                   <td className="w-[30%] align-top"><PdfLabel indo="Nama" eng="Designation" /></td>
@@ -1115,9 +1263,9 @@ const PrintCertificatePage: React.FC = () => {
 
           {/* Pengesahan */}
           <div className="mb-8">
-            <h3 className="text-sm font-bold underline leading-tight mb-0">PENGESAHAN</h3>
-            <h4 className="text-[11px] italic text-gray-700 font-bold mb-2 leading-tight">Authorization</h4>
-            <table className="w-full text-xs">
+            <h3 className="cert-text-id underline leading-tight mb-0">PENGESAHAN</h3>
+            <h4 className="cert-text-en mb-2 leading-tight">Authorization</h4>
+            <table className="w-full cert-info-text">
               <tbody>
                 <tr>
                   <td className="w-[30%] align-top"><PdfLabel indo="Pejabat Pengesahan" eng="Authorizing officer" /></td>
@@ -1258,43 +1406,26 @@ const PrintCertificatePage: React.FC = () => {
             <tfoot className="print-repeat-footer">
               <tr>
                 <td>
-                          <div className="w-full">
-                            <table className="w-full" style={{ borderCollapse: 'collapse', border: 'none' }}>
-                              <tbody>
-                                <tr>
-                                  {/* QR code kecil di kiri footer */}
-                                  <td className="align-middle" style={{ width: '80px', paddingRight: '8px' }}>
-                                    {qrCodeData && (
-                                      <QRCodeWithBMKGLogo
-                                        key={`qr-footer-p2-empty-${isSigned ? 'signed' : 'unsigned'}`}
-                                        value={qrCodeData}
-                                        size={70}
-                                        logoSize={20}
-                                        fgColor={isSigned ? '#000000' : '#B91C1C'}
-                                        onRendered={handleQRRendered}
-                                      />
-                                    )}
-                                  </td>
-                                  {/* Teks TTE + kode dokumen di kanan */}
-                                  <td className="align-middle">
-                                    <div className="text-center text-[10px] font-medium text-black mb-2" style={{ lineHeight: '1.4' }}>
-                                      Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
-                                      <br />
-                                      yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), BSSN, Badan Siber dan Sandi Negara
-                                    </div>
-                                    <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none' }}>
-                                      <tbody>
-                                        <tr>
-                                          <td className="align-bottom text-left text-[10px] font-bold">F/IKK 7.8.2</td>
-                                          <td className="align-bottom text-right text-[10px] font-bold">Edisi/Revisi : 11/1</td>
-                                        </tr>
-                                      </tbody>
-                                    </table>
-                                  </td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
+                  <div className="bsre-result-footer">
+                    <div className="bsre-footer-qr">
+                      {qrCodeData && (
+                        <FooterQRCode
+                          value={qrCodeData}
+                          fgColor={isSigned ? '#000000' : '#B91C1C'}
+                          onRendered={handleQRRendered}
+                        />
+                      )}
+                    </div>
+                    <div className="bsre-footer-content">
+                      <div className="bsre-footer-line"></div>
+                      <div className="bsre-footer-page">-2-</div>
+                      <div className="bsre-footer-text">
+                        Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
+                        <br />
+                        yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara (BSSN).
+                      </div>
+                    </div>
+                  </div>
                 </td>
               </tr>
             </tfoot>
@@ -1693,42 +1824,25 @@ const PrintCertificatePage: React.FC = () => {
               <tfoot className="print-repeat-footer">
                 <tr>
                   <td>
-                    <div className="w-full">
-                      <table className="w-full" style={{ borderCollapse: 'collapse', border: 'none' }}>
-                        <tbody>
-                          <tr>
-                            {/* QR code kecil di kiri footer */}
-                            <td className="align-middle" style={{ width: '80px', paddingRight: '8px' }}>
-                              {qrCodeData && (
-                                <QRCodeWithBMKGLogo
-                                  key={`qr-footer-p${idx + 2}-${isSigned ? 'signed' : 'unsigned'}`}
-                                  value={qrCodeData}
-                                  size={70}
-                                  logoSize={20}
-                                  fgColor={isSigned ? '#000000' : '#B91C1C'}
-                                  onRendered={handleQRRendered}
-                                />
-                              )}
-                            </td>
-                            {/* Teks TTE + kode dokumen di kanan */}
-                            <td className="align-middle">
-                              <div className="text-center text-[10px] font-medium text-black mb-2" style={{ lineHeight: '1.4' }}>
-                                Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
-                                <br />
-                                yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), BSSN, Badan Siber dan Sandi Negara
-                              </div>
-                              <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none' }}>
-                                <tbody>
-                                  <tr>
-                                    <td className="align-bottom text-left text-[10px] font-bold">F/IKK 7.8.2</td>
-                                    <td className="align-bottom text-right text-[10px] font-bold">Edisi/Revisi : 11/1</td>
-                                  </tr>
-                                </tbody>
-                              </table>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
+                    <div className="bsre-result-footer">
+                      <div className="bsre-footer-qr">
+                        {qrCodeData && (
+                          <FooterQRCode
+                            value={qrCodeData}
+                            fgColor={isSigned ? '#000000' : '#B91C1C'}
+                            onRendered={handleQRRendered}
+                          />
+                        )}
+                      </div>
+                      <div className="bsre-footer-content">
+                        <div className="bsre-footer-line"></div>
+                        <div className="bsre-footer-page">-{idx + 2}-</div>
+                        <div className="bsre-footer-text">
+                          Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
+                          <br />
+                          yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara (BSSN).
+                        </div>
+                      </div>
                     </div>
                   </td>
                 </tr>

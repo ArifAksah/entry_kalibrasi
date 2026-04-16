@@ -232,7 +232,45 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
           /* Sembunyikan no-print */
           .no-print { display: none !important; }
           .bg-gray-100 { background-color: white !important; }
-          .page-container { box-shadow: none !important; margin: 0 !important; }
+          .page-container {
+            box-shadow: none !important;
+            margin: 0 !important;
+            padding: 5mm !important;
+            padding-bottom: 25mm !important;
+          }
+
+          .cert-title-id {
+            font-size: 20px !important;
+            line-height: 1.15 !important;
+            font-weight: 700 !important;
+            letter-spacing: 0 !important;
+            color: #000 !important;
+          }
+
+          .cert-title-en {
+            font-size: 7px !important;
+            line-height: 1.2 !important;
+            font-weight: 700 !important;
+            font-style: italic !important;
+            color: #000 !important;
+          }
+
+          .cert-text-id,
+          .cert-info-text,
+          .cert-info-text td {
+            font-size: 11px !important;
+            line-height: 1.25 !important;
+            font-weight: 700 !important;
+            color: #000 !important;
+          }
+
+          .cert-text-en {
+            font-size: 7px !important;
+            line-height: 1.15 !important;
+            font-weight: 700 !important;
+            font-style: italic !important;
+            color: #000 !important;
+          }
 
           /* ── PERBAIKAN UTAMA: tfoot harus table-footer-group, BUKAN position:absolute ── */
           tfoot.print-repeat-footer {
@@ -271,6 +309,7 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
             position: relative !important;
             min-height: 297mm !important;
             height: 297mm !important;
+            padding: 0 5mm 25mm 5mm !important;
             box-sizing: border-box !important;
           }
           .page-container.cover-page {

@@ -2287,8 +2287,18 @@ const CertificatesCRUD: React.FC = () => {
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Tanggal Kalibrasi</label>
                       <DateRangePicker
-                        startDate={sessionDetails.start_date ? sessionDetails.start_date.split('T')[0] : ''}
-                        endDate={sessionDetails.end_date ? sessionDetails.end_date.split('T')[0] : ''}
+                        startDate={sessionDetails.start_date ? (() => {
+                          const d = new Date(sessionDetails.start_date);
+                          if (isNaN(d.getTime())) return sessionDetails.start_date.split('T')[0];
+                          const pad = (n: number) => n.toString().padStart(2, '0');
+                          return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                        })() : ''}
+                        endDate={sessionDetails.end_date ? (() => {
+                          const d = new Date(sessionDetails.end_date);
+                          if (isNaN(d.getTime())) return sessionDetails.end_date.split('T')[0];
+                          const pad = (n: number) => n.toString().padStart(2, '0');
+                          return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                        })() : ''}
                         onChange={(start, end) => {
                           setSessionDetails(s => ({
                             ...s,

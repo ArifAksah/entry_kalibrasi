@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import QRCodeStyling from 'qr-code-styling'
+import QRCode from 'react-qr-code'
 import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
 
 // --- TIPE DATA KOMPREHENSIF ---
@@ -180,6 +181,38 @@ const QRCodeWithBMKGLogo: React.FC<{
   }, [value, size, fgColor, logoSize, onRendered])
 
   return <div className={className} ref={containerRef} />
+}
+
+const FooterQRCode: React.FC<{
+  value: string;
+  size?: number;
+  fgColor?: string;
+  onRendered?: () => void;
+}> = ({ value, size = 52, fgColor = '#000000', onRendered }) => {
+  useEffect(() => {
+    const timer = window.setTimeout(() => onRendered?.(), 0)
+    return () => window.clearTimeout(timer)
+  }, [value, fgColor, onRendered])
+
+  return (
+    <div className="footer-qr-rendered" style={{ width: size, height: size, position: 'relative', background: '#fff' }}>
+      <QRCode value={value || ' '} size={size} bgColor="#FFFFFF" fgColor={fgColor} level="H" />
+      <img
+        src={bmkgLogo.src}
+        alt=""
+        style={{
+          position: 'absolute',
+          left: '50%',
+          top: '50%',
+          width: Math.round(size * 0.28),
+          height: Math.round(size * 0.28),
+          transform: 'translate(-50%, -50%)',
+          background: '#fff',
+          padding: 2,
+        }}
+      />
+    </div>
+  )
 }
 
 const ViewCertificatePage: React.FC = () => {
@@ -701,6 +734,82 @@ const ViewCertificatePage: React.FC = () => {
       display: none !important;
       visibility: hidden !important;
       opacity: 0 !important;
+    }
+
+    .bsre-result-footer {
+      display: grid;
+      grid-template-columns: 16mm minmax(0, 1fr);
+      column-gap: 10mm;
+      align-items: start;
+      width: 100%;
+      padding-top: 2mm;
+      color: #000;
+    }
+
+    .bsre-footer-qr {
+      width: 16mm;
+      height: 16mm;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      background: #fff;
+      transform: translateY(-4mm);
+    }
+
+    .bsre-footer-qr .qr-code-container {
+      width: 52px !important;
+      height: 52px !important;
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      overflow: visible !important;
+    }
+
+    .bsre-footer-qr .qr-code-container canvas,
+    .bsre-footer-qr .qr-code-container svg {
+      display: block !important;
+      width: 52px !important;
+      height: 52px !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
+
+    .bsre-footer-qr .footer-qr-rendered,
+    .bsre-footer-qr .footer-qr-rendered svg,
+    .bsre-footer-qr .footer-qr-rendered img {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    .bsre-footer-content {
+      padding-top: 2mm;
+      min-width: 0;
+    }
+
+    .bsre-footer-line {
+      border-top: 1px solid #000;
+      width: 100%;
+      height: 0;
+      margin: 0 0 1mm;
+    }
+
+    .bsre-footer-page {
+      text-align: center;
+      font-size: 11px;
+      line-height: 1;
+      margin-bottom: 2mm;
+      font-weight: 400;
+    }
+
+    .bsre-footer-text {
+      text-align: center;
+      font-size: 10px;
+      line-height: 1.25;
+      font-weight: 400;
+      color: #000;
     }
     
     /* Hapus aturan last-child; break diatur manual dengan kelas */
@@ -1391,44 +1500,25 @@ const ViewCertificatePage: React.FC = () => {
             <tfoot className="print-repeat-footer">
               <tr>
                 <td>
-                  <div className="h-2"></div>
-                  <div className="w-full mt-2">
-                    <div style={{ borderTop: '1px solid black', borderBottom: '2px solid black', height: '4px', marginBottom: '8px', width: '100%' }}></div>
-                    <table className="w-full" style={{ borderCollapse: 'collapse', border: 'none' }}>
-                      <tbody>
-                        <tr>
-                          {/* QR code kecil di kiri footer */}
-                          <td className="align-middle" style={{ width: '80px', paddingRight: '8px' }}>
-                            {qrCodeData && (
-                              <QRCodeWithBMKGLogo
-                                key={`qr-footer-p2-empty-${isSigned ? 'signed' : 'unsigned'}`}
-                                value={qrCodeData}
-                                size={70}
-                                logoSize={20}
-                                fgColor={isSigned ? '#000000' : '#B91C1C'}
-                                onRendered={handleQRRendered}
-                              />
-                            )}
-                          </td>
-                          {/* Teks TTE + kode dokumen di kanan */}
-                          <td className="align-middle">
-                            <div className="text-center text-[10px] font-medium text-black mb-2" style={{ lineHeight: '1.4' }}>
-                              Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
-                              <br />
-                              yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), BSSN, Badan Siber dan Sandi Negara
-                            </div>
-                            <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none' }}>
-                              <tbody>
-                                <tr>
-                                  <td className="align-bottom text-left text-[10px] font-bold">F/IKK 7.8.2</td>
-                                  <td className="align-bottom text-right text-[10px] font-bold">Edisi/Revisi : 11/1</td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
+                  <div className="bsre-result-footer">
+                    <div className="bsre-footer-qr">
+                      {qrCodeData && (
+                        <FooterQRCode
+                          value={qrCodeData}
+                          fgColor={isSigned ? '#000000' : '#B91C1C'}
+                          onRendered={handleQRRendered}
+                        />
+                      )}
+                    </div>
+                    <div className="bsre-footer-content">
+                      <div className="bsre-footer-line"></div>
+                      <div className="bsre-footer-page">-2-</div>
+                      <div className="bsre-footer-text">
+                        Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
+                        <br />
+                        yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara (BSSN).
+                      </div>
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -1818,44 +1908,25 @@ const ViewCertificatePage: React.FC = () => {
               <tfoot className="print-repeat-footer">
                 <tr>
                   <td>
-                    <div className="h-2"></div>
-                    <div className="w-full mt-2">
-                      <div style={{ borderTop: '1px solid black', borderBottom: '2px solid black', height: '4px', marginBottom: '8px', width: '100%' }}></div>
-                      <table className="w-full" style={{ borderCollapse: 'collapse', border: 'none' }}>
-                        <tbody>
-                          <tr>
-                            {/* QR code kecil di kiri footer */}
-                            <td className="align-middle" style={{ width: '80px', paddingRight: '8px' }}>
-                              {qrCodeData && (
-                                <QRCodeWithBMKGLogo
-                                  key={`qr-footer-p${idx + 2}-${isSigned ? 'signed' : 'unsigned'}`}
-                                  value={qrCodeData}
-                                  size={70}
-                                  logoSize={20}
-                                  fgColor={isSigned ? '#000000' : '#B91C1C'}
-                                  onRendered={handleQRRendered}
-                                />
-                              )}
-                            </td>
-                            {/* Teks TTE + kode dokumen di kanan */}
-                            <td className="align-middle">
-                              <div className="text-center text-[10px] font-medium text-black mb-2" style={{ lineHeight: '1.4' }}>
-                                Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
-                                <br />
-                                yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), BSSN, Badan Siber dan Sandi Negara
-                              </div>
-                              <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none' }}>
-                                <tbody>
-                                  <tr>
-                                    <td className="align-bottom text-left text-[10px] font-bold">F/IKK 7.8.2</td>
-                                    <td className="align-bottom text-right text-[10px] font-bold">Edisi/Revisi : 11/1</td>
-                                  </tr>
-                                </tbody>
-                              </table>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
+                    <div className="bsre-result-footer">
+                      <div className="bsre-footer-qr">
+                        {qrCodeData && (
+                          <FooterQRCode
+                            value={qrCodeData}
+                            fgColor={isSigned ? '#000000' : '#B91C1C'}
+                            onRendered={handleQRRendered}
+                          />
+                        )}
+                      </div>
+                      <div className="bsre-footer-content">
+                        <div className="bsre-footer-line"></div>
+                        <div className="bsre-footer-page">-{idx + 2}-</div>
+                        <div className="bsre-footer-text">
+                          Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
+                          <br />
+                          yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara (BSSN).
+                        </div>
+                      </div>
                     </div>
                   </td>
                 </tr>
