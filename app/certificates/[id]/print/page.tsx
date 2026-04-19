@@ -234,33 +234,33 @@ const PrintCertificatePage: React.FC = () => {
   const [allRawData, setAllRawData] = useState<any[]>([])
 
   const computeEnvCondition = useCallback((type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
-      const keywords = type === 'suhu'
-          ? ['suhu', 'temp', 'termometer', 'temperature', 'thermo']
-          : ['kelembab', 'hum', 'hygro', 'rh'];
+    const keywords = type === 'suhu'
+      ? ['suhu', 'temp', 'termometer', 'temperature', 'thermo']
+      : ['kelembab', 'hum', 'hygro', 'rh'];
 
-      const matchedRows = sensorRawData.filter(r => {
-          const name = (r.sheet_name || '').toLowerCase();
-          return keywords.some(k => name.includes(k));
-      });
+    const matchedRows = sensorRawData.filter(r => {
+      const name = (r.sheet_name || '').toLowerCase();
+      return keywords.some(k => name.includes(k));
+    });
 
-      if (matchedRows.length === 0) return '-';
+    if (matchedRows.length === 0) return '-';
 
-      const values = matchedRows
-          .map(r => r.std_corrected ?? (r.standard_data + (r.std_correction ?? 0)))
-          .filter(v => typeof v === 'number' && !isNaN(v));
+    const values = matchedRows
+      .map(r => r.std_corrected ?? (r.standard_data + (r.std_correction ?? 0)))
+      .filter(v => typeof v === 'number' && !isNaN(v));
 
-      if (values.length === 0) return '-';
+    if (values.length === 0) return '-';
 
-      const minV = Math.min(...values);
-      const maxV = Math.max(...values);
-      const mean = (minV + maxV) / 2;
-      const halfRange = maxV - mean;
+    const minV = Math.min(...values);
+    const maxV = Math.max(...values);
+    const mean = (minV + maxV) / 2;
+    const halfRange = maxV - mean;
 
-      const unit = type === 'suhu' ? '°C' : '%';
-      return `(${mean.toFixed(1)} ± ${halfRange.toFixed(1)}) ${unit}`;
+    const unit = type === 'suhu' ? '°C' : '%';
+    return `(${mean.toFixed(1)} ± ${halfRange.toFixed(1)}) ${unit}`;
   }, []);
 
-  
+
   // Helper to resolve canonical sensor name
   const resolveSensorName = useCallback((res: any, fallbackIndex: number) => {
     const sd = res?.sensorDetails || {}
@@ -367,7 +367,7 @@ const PrintCertificatePage: React.FC = () => {
             const parsedResults = typeof c.results === 'string' ? JSON.parse(c.results) : c.results;
             const sessionIds = parsedResults.map((r: any) => r.session_id).filter(Boolean);
             if (sessionIds.length > 0) {
-              const rawDataPromises = sessionIds.map((sid: string) => 
+              const rawDataPromises = sessionIds.map((sid: string) =>
                 fetch(`/api/raw-data?session_id=${sid}`).then(res => res.ok ? res.json() : { data: [] })
               );
               const allRawDataResp = await Promise.all(rawDataPromises);
@@ -1193,7 +1193,7 @@ const PrintCertificatePage: React.FC = () => {
         {/* Konten halaman dengan z-index lebih tinggi */}
         <div className="relative z-10">
           {/* Header Halaman 1 */}
-          <header className="flex flex-row items-center justify-between border-b-4 border-black pb-2">
+          <header className="flex flex-row items-center justify-between border-b-[3px] border-double border-black pb-2">
             <div className="flex items-start w-[100px]">
               <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
             </div>
@@ -1300,20 +1300,20 @@ const PrintCertificatePage: React.FC = () => {
             <tbody>
               <tr>
                 <td className="align-middle text-right pr-4" style={{ width: '15%' }}>
-                    {qrCodeData ? (
-                      <div className="inline-block w-[100px] h-[100px] bg-white qr-code-container" style={{ listStyle: 'none', display: 'inline-block' }}>
-                        <QRCodeWithBMKGLogo
-                          key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
-                          value={qrCodeData}
-                          size={100}
-                          logoSize={28}
-                          fgColor={isSigned ? '#000000' : '#B91C1C'}
-                          onRendered={handleQRRendered}
-                        />
-                      </div>
-                    ) : (
-                        <div className="inline-block w-[100px] h-[100px] bg-transparent" style={{ display: 'inline-block' }}></div>
-                    )}
+                  {qrCodeData ? (
+                    <div className="inline-block w-[100px] h-[100px] bg-white qr-code-container" style={{ listStyle: 'none', display: 'inline-block' }}>
+                      <QRCodeWithBMKGLogo
+                        key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
+                        value={qrCodeData}
+                        size={100}
+                        logoSize={28}
+                        fgColor={isSigned ? '#000000' : '#B91C1C'}
+                        onRendered={handleQRRendered}
+                      />
+                    </div>
+                  ) : (
+                    <div className="inline-block w-[100px] h-[100px] bg-transparent" style={{ display: 'inline-block' }}></div>
+                  )}
                 </td>
                 <td className="align-middle" style={{ width: '85%', textAlign: 'justify', lineHeight: '1.3' }}>
                   <div style={{ textJustify: 'inter-word', paddingBottom: '4px', display: 'block' }} className="text-xs font-bold leading-relaxed">
@@ -1326,7 +1326,7 @@ const PrintCertificatePage: React.FC = () => {
               </tr>
             </tbody>
           </table>
-          <hr className="my-1 border-t-[2px] border-black" style={{ borderTop: '2px solid black', borderColor: '#000' }} />
+          <hr className="my-1 border-t-[3px] border-double border-black" style={{ borderTop: '3px double black', borderColor: '#000' }} />
           <table className="w-full text-black mt-1" style={{ borderCollapse: 'collapse', border: 'none' }}>
             <tbody>
               <tr>
@@ -1406,25 +1406,36 @@ const PrintCertificatePage: React.FC = () => {
             <tfoot className="print-repeat-footer">
               <tr>
                 <td>
-                  <div className="bsre-result-footer">
-                    <div className="bsre-footer-qr">
-                      {qrCodeData && (
-                        <FooterQRCode
-                          value={qrCodeData}
-                          fgColor={isSigned ? '#000000' : '#B91C1C'}
-                          onRendered={handleQRRendered}
-                        />
-                      )}
-                    </div>
-                    <div className="bsre-footer-content">
-                      <div className="bsre-footer-line"></div>
-                      <div className="bsre-footer-page">-2-</div>
-                      <div className="bsre-footer-text">
-                        Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
-                        <br />
-                        yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara (BSSN).
-                      </div>
-                    </div>
+                  <div className="w-full pb-2 px-1">
+                    <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none' }}>
+                      <tbody>
+                        <tr>
+                          <td className="align-bottom text-left" style={{ width: '25%' }}>
+                            <div className="flex flex-col items-start gap-1">
+                              {qrCodeData ? (
+                                <div className="w-[40px] h-[40px]">
+                                  <FooterQRCode
+                                    value={qrCodeData}
+                                    fgColor={isSigned ? '#000000' : '#B91C1C'}
+                                    onRendered={handleQRRendered}
+                                    size={40}
+                                  />
+                                </div>
+                              ) : (
+                                <div className="w-[40px] h-[40px]"></div>
+                              )}
+                              <div className="text-[10px] font-bold mt-1">F/IKK 7.8.2</div>
+                            </div>
+                          </td>
+                          <td className="align-bottom text-center text-[10px] font-medium pb-[1px]" style={{ width: '50%', lineHeight: '1.4' }}>
+                            Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
+                          </td>
+                          <td className="align-bottom text-right text-[10px] font-bold pb-[1px]" style={{ width: '25%' }}>
+                            Edisi/Revisi : 11/1
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
                 </td>
               </tr>
@@ -1513,16 +1524,16 @@ const PrintCertificatePage: React.FC = () => {
                             const rawHum = computeEnvCondition('kelembaban', sensorRawData);
 
                             let envList = Array.isArray(res?.environment) ? [...res.environment] : [];
-                            
+
                             // Ensure Suhu and Kelembaban exist in envList if they have raw values
                             if (envList.length === 0) {
-                                if (rawSuhu !== '-') envList.push({ key: 'Suhu', value: '-' });
-                                if (rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
+                              if (rawSuhu !== '-') envList.push({ key: 'Suhu', value: '-' });
+                              if (rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
                             } else {
-                                const hasSuhu = envList.some(e => e.key.toLowerCase().includes('suhu'));
-                                const hasHum = envList.some(e => e.key.toLowerCase().includes('kelembaban') || e.key.toLowerCase().includes('rh'));
-                                if (!hasSuhu && rawSuhu !== '-') envList.push({ key: 'Suhu', value: '-' });
-                                if (!hasHum && rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
+                              const hasSuhu = envList.some(e => e.key.toLowerCase().includes('suhu'));
+                              const hasHum = envList.some(e => e.key.toLowerCase().includes('kelembaban') || e.key.toLowerCase().includes('rh'));
+                              if (!hasSuhu && rawSuhu !== '-') envList.push({ key: 'Suhu', value: '-' });
+                              if (!hasHum && rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
                             }
 
                             const envRows: Array<{ label: string; labelEng: string; value: React.ReactNode }> = envList.map((env: any) => {
@@ -1530,16 +1541,16 @@ const PrintCertificatePage: React.FC = () => {
                               const lower = key.toLowerCase()
                               const isSuhu = lower.includes('suhu')
                               const isHum = lower.includes('kelembaban') || lower.includes('rh')
-                              
+
                               const label = isSuhu
                                 ? 'Suhu / '
                                 : isHum
                                   ? 'Kelembaban / '
                                   : `${key} `
                               const eng = isSuhu ? 'Temperature' : isHum ? 'Relative Humidity' : ''
-                              
+
                               let finalValue = env?.value || '-'
-                              
+
                               // Override with computed QC data if available
                               if (isSuhu && rawSuhu !== '-') {
                                 finalValue = rawSuhu
@@ -1612,7 +1623,7 @@ const PrintCertificatePage: React.FC = () => {
                                             // Extract base header string without HTML tags if any, but since it's string just append
                                             return (
                                               <td key={i} className="p-1 border border-black text-center">
-                                                {h}<br/>{unit ? `(${unit})` : ''}
+                                                {h}<br />{unit ? `(${unit})` : ''}
                                               </td>
                                             );
                                           })
@@ -1689,16 +1700,16 @@ const PrintCertificatePage: React.FC = () => {
                           if (!hasAny) return null
                           return (
                             <div className="mt-6 avoid-break">
-                              <table className="w-full text-xs mt-2">
+                              <div className="text-sm font-bold underline leading-tight mb-0">Catatan / <span className="italic">Notes :</span></div>
+                              <table className="w-full text-xs mt-1">
                                 <tbody>
                                   {(nf.others || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)) && (
                                     <tr>
-                                      <td className="w-[35%] align-top text-left pr-2 py-0">
-                                        <div className="font-bold leading-tight">Standar Kalibrasi</div>
-                                        <div className="italic text-[10px] text-gray-700 leading-tight">Calibration Standard</div>
+                                      <td className="w-[40%] align-top text-left pr-2 py-0">
+                                        <div className="font-bold leading-tight">Standar Kalibrasi <span className="italic text-[10px] text-gray-900">/ Calibration Standard</span></div>
                                       </td>
                                       <td className="w-[5%] align-top py-0">:</td>
-                                      <td className="w-[60%] align-top whitespace-pre-line py-0">
+                                      <td className="w-[55%] align-top whitespace-pre-line py-0">
                                         {(() => {
                                           const parts = []
                                           // Removed nf.others from Standar Kalibrasi
@@ -1726,8 +1737,7 @@ const PrintCertificatePage: React.FC = () => {
                                   {nf.traceable_to_si_through && (
                                     <tr>
                                       <td className="align-top text-left pr-2 py-0">
-                                        <div className="font-bold leading-tight">Tertelusur ke SI melalui</div>
-                                        <div className="italic text-[10px] text-gray-700 leading-tight">Traceable to SI through</div>
+                                        <div className="font-bold leading-tight">Tertelusur Ke SI melalui <span className="italic text-[10px] text-gray-900">/ Traceable to SI through</span></div>
                                       </td>
                                       <td className="align-top py-0">:</td>
                                       <td className="align-top whitespace-pre-line py-0">{nf.traceable_to_si_through}</td>
@@ -1736,8 +1746,7 @@ const PrintCertificatePage: React.FC = () => {
                                   {nf.calibration_methode && (
                                     <tr>
                                       <td className="align-top text-left pr-2 py-0">
-                                        <div className="font-bold leading-tight">Metode Kalibrasi</div>
-                                        <div className="italic text-[10px] text-gray-700 leading-tight">Calibration Methode</div>
+                                        <div className="font-bold leading-tight">Metode Kalibrasi <span className="italic text-[10px] text-gray-900">/ Calibration Methode</span></div>
                                       </td>
                                       <td className="align-top py-0">:</td>
                                       <td className="align-top whitespace-pre-line py-0">{nf.calibration_methode}</td>
@@ -1746,8 +1755,7 @@ const PrintCertificatePage: React.FC = () => {
                                   {nf.reference_document && (
                                     <tr>
                                       <td className="align-top text-left pr-2 py-0">
-                                        <div className="font-bold leading-tight">Dokumen Acuan</div>
-                                        <div className="italic text-[10px] text-gray-700 leading-tight">Reference Document</div>
+                                        <div className="font-bold leading-tight">Dokumen Acuan <span className="italic text-[10px] text-gray-900">/ Reference Document</span></div>
                                       </td>
                                       <td className="align-top py-0">:</td>
                                       <td className="align-top whitespace-pre-line py-0">{nf.reference_document}</td>
@@ -1756,8 +1764,7 @@ const PrintCertificatePage: React.FC = () => {
                                   {nf.others && (
                                     <tr>
                                       <td className="align-top text-left pr-2 py-0">
-                                        <div className="font-bold leading-tight">Catatan Lainnya</div>
-                                        <div className="italic text-[10px] text-gray-700 leading-tight">Other Notes</div>
+                                        <div className="font-bold leading-tight">Catatan Lainnya <span className="italic text-[10px] text-gray-900">/ Other Notes</span></div>
                                       </td>
                                       <td className="align-top py-0">:</td>
                                       <td className="align-top whitespace-pre-line py-0">{nf.others}</td>
@@ -1793,23 +1800,24 @@ const PrintCertificatePage: React.FC = () => {
                                       <td className="w-[5%] align-top py-0">:</td>
                                       <td className="w-[60%] align-top py-0">
                                         {[verifikator1?.name, verifikator2?.name, verifikator3?.name].filter(Boolean).length > 0
-                                          ? [verifikator1?.name, verifikator2?.name, verifikator3?.name].filter(Boolean).map((name, idx) => (
-                                              <div key={idx}>{idx + 1}. {name}</div>
-                                            ))
+                                          ? [verifikator1?.name, verifikator2?.name, verifikator3?.name].filter(Boolean).map((name, idx2) => (
+                                            <div key={idx2}>{idx2 + 1}. {name}</div>
+                                          ))
                                           : <div>-</div>
                                         }
                                       </td>
                                     </tr>
                                   </tbody>
                                 </table>
+                                <div className="w-full border-t-[3px] border-double border-black mt-2"></div>
                               </div>
                             </div>
                           )
                         })()}
                         {/* End of Certificate on the last sensor page (always show on last page) */}
-                        {/* Positioned absolutely to not affect QR code position */}
+                        {/* Positioned directly following the content */}
                         {idx === results.length - 1 && (
-                          <div className="mt-8 mb-4">
+                          <div className="mt-2 mb-4">
                             <p className="text-center font-bold text-sm m-0">
                               --- Akhir dari Sertifikat / <span className="italic">End of Certificate</span> ---
                             </p>
@@ -1824,25 +1832,36 @@ const PrintCertificatePage: React.FC = () => {
               <tfoot className="print-repeat-footer">
                 <tr>
                   <td>
-                    <div className="bsre-result-footer">
-                      <div className="bsre-footer-qr">
-                        {qrCodeData && (
-                          <FooterQRCode
-                            value={qrCodeData}
-                            fgColor={isSigned ? '#000000' : '#B91C1C'}
-                            onRendered={handleQRRendered}
-                          />
-                        )}
-                      </div>
-                      <div className="bsre-footer-content">
-                        <div className="bsre-footer-line"></div>
-                        <div className="bsre-footer-page">-{idx + 2}-</div>
-                        <div className="bsre-footer-text">
-                          Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
-                          <br />
-                          yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara (BSSN).
-                        </div>
-                      </div>
+                    <div className="w-full pb-2 px-1">
+                      <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none' }}>
+                        <tbody>
+                          <tr>
+                            <td className="align-bottom text-left" style={{ width: '25%' }}>
+                              <div className="flex flex-col items-start gap-1">
+                                {qrCodeData ? (
+                                  <div className="w-[40px] h-[40px]">
+                                    <FooterQRCode
+                                      value={qrCodeData}
+                                      fgColor={isSigned ? '#000000' : '#B91C1C'}
+                                      onRendered={handleQRRendered}
+                                      size={40}
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="w-[40px] h-[40px]"></div>
+                                )}
+                                <div className="text-[10px] font-bold mt-1">F/IKK 7.8.2</div>
+                              </div>
+                            </td>
+                            <td className="align-bottom text-center text-[10px] font-medium pb-[1px]" style={{ width: '50%', lineHeight: '1.4' }}>
+                              Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
+                            </td>
+                            <td className="align-bottom text-right text-[10px] font-bold pb-[1px]" style={{ width: '25%' }}>
+                              Edisi/Revisi : 11/1
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
                   </td>
                 </tr>

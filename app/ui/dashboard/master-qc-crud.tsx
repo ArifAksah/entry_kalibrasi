@@ -40,6 +40,78 @@ const defaultForm: FormState = {
     catatan: '',
 }
 
+const SearchableDropdown = ({
+    value,
+    onChange,
+    options,
+    placeholder = 'Pilih...',
+    searchPlaceholder = 'Cari...',
+}: {
+    value: string | number | null
+    onChange: (value: string | number | null) => void
+    options: Array<{ id: string | number; name: string }>
+    placeholder?: string
+    searchPlaceholder?: string
+}) => {
+    const [isOpen, setIsOpen] = useState(false)
+    const [searchTerm, setSearchTerm] = useState('')
+    const selectedOption = options.find(option => String(option.id) === String(value))
+    const filteredOptions = options.filter(option => option.name.toLowerCase().includes(searchTerm.toLowerCase()))
+
+    return (
+        <div className="relative">
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm text-left"
+            >
+                <span className={selectedOption ? 'text-gray-900' : 'text-gray-500'}>
+                    {selectedOption?.name || placeholder}
+                </span>
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-xs">▼</span>
+            </button>
+
+            {isOpen && (
+                <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+                    <div className="absolute z-50 top-full mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-hidden">
+                        <div className="p-2 border-b border-gray-100">
+                            <input
+                                type="text"
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                                placeholder={searchPlaceholder}
+                                className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                autoFocus
+                            />
+                        </div>
+                        <div className="max-h-48 overflow-y-auto">
+                            {filteredOptions.length > 0 ? (
+                                filteredOptions.map(option => (
+                                    <button
+                                        key={option.id}
+                                        type="button"
+                                        onClick={() => {
+                                            onChange(option.id)
+                                            setIsOpen(false)
+                                            setSearchTerm('')
+                                        }}
+                                        className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                                    >
+                                        {option.name}
+                                    </button>
+                                ))
+                            ) : (
+                                <div className="px-3 py-4 text-center text-gray-500 text-sm">Tidak ada data ditemukan</div>
+                            )}
+                        </div>
+                    </div>
+                </>
+            )}
+        </div>
+    )
+}
+
 const MasterQCCRUD: React.FC = () => {
     usePermissions()
     const { alert, showSuccess, showError, hideAlert } = useAlert()
@@ -301,18 +373,13 @@ const MasterQCCRUD: React.FC = () => {
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
                                     Nama Instrumen <span className="text-red-500">*</span>
                                 </label>
-                                <select
-                                    name="instrument_name_id"
+                                <SearchableDropdown
                                     value={form.instrument_name_id}
-                                    onChange={handleChange}
-                                    required
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
-                                >
-                                    <option value="">-- Pilih Nama Instrumen --</option>
-                                    {instrumentNames.map(n => (
-                                        <option key={n.id} value={n.id}>{n.name}</option>
-                                    ))}
-                                </select>
+                                    onChange={val => setForm(prev => ({ ...prev, instrument_name_id: val ? String(val) : '' }))}
+                                    options={instrumentNames.map(n => ({ id: n.id, name: n.name }))}
+                                    placeholder="Pilih Nama Instrumen"
+                                    searchPlaceholder="Cari nama instrumen..."
+                                />
                             </div>
 
                             {/* Satuan */}
@@ -320,18 +387,13 @@ const MasterQCCRUD: React.FC = () => {
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
                                     Satuan (Unit) <span className="text-red-500">*</span>
                                 </label>
-                                <select
-                                    name="unit_id"
+                                <SearchableDropdown
                                     value={form.unit_id}
-                                    onChange={handleChange}
-                                    required
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
-                                >
-                                    <option value="">-- Pilih Satuan --</option>
-                                    {units.map(u => (
-                                        <option key={u.id} value={u.id}>{formatLatexUnit(u.unit)}</option>
-                                    ))}
-                                </select>
+                                    onChange={val => setForm(prev => ({ ...prev, unit_id: val ? String(val) : '' }))}
+                                    options={units.map(u => ({ id: u.id, name: formatLatexUnit(u.unit) }))}
+                                    placeholder="Pilih Satuan"
+                                    searchPlaceholder="Cari satuan..."
+                                />
                             </div>
 
                             {/* Nilai Batas Koreksi */}

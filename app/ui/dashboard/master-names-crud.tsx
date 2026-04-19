@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useAlert } from '../../../hooks/useAlert'
 import Alert from '../../../components/ui/Alert'
@@ -27,6 +27,8 @@ const MasterNamesCRUD: React.FC = () => {
     const [codeInput, setCodeInput] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [search, setSearch] = useState('')
+    const pageSize = 10
+    const [currentPage, setCurrentPage] = useState(1)
 
     const apiPath = activeTab === 'instrument_names' ? '/api/instrument-names' : '/api/sensor-names'
     const label = activeTab === 'instrument_names' ? 'Nama Instrumen' : 'Nama Sensor'
@@ -130,10 +132,27 @@ const MasterNamesCRUD: React.FC = () => {
         }
     }
 
-    const filtered = items.filter(i =>
+    const filtered = useMemo(() => items.filter(i =>
         i.name.toLowerCase().includes(search.toLowerCase())
+    ), [items, search])
+
+    const totalPages = useMemo(
+        () => Math.max(1, Math.ceil(filtered.length / pageSize)),
+        [filtered.length]
     )
 
+    const pagedItems = useMemo(() => {
+        const start = (currentPage - 1) * pageSize
+        return filtered.slice(start, start + pageSize)
+    }, [filtered, currentPage])
+
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [activeTab, search])
+
+    useEffect(() => {
+        if (currentPage > totalPages) setCurrentPage(totalPages)
+    }, [currentPage, totalPages])
 
     return (
         <div className="space-y-6">
@@ -198,9 +217,9 @@ const MasterNamesCRUD: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                                {filtered.map((item, idx) => (
+                                {pagedItems.map((item, idx) => (
                                     <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{((currentPage - 1) * pageSize) + idx + 1}</td>
                                         {activeTab === 'instrument_names' && (
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <span className="text-sm text-gray-700">{item.code_alat || '-'}</span>
@@ -238,6 +257,48 @@ const MasterNamesCRUD: React.FC = () => {
                                 ))}
                             </tbody>
                         </table>
+                    </div>
+                )}
+                {!loading && filtered.length > 0 && (
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-t border-gray-200 bg-white">
+                        <div className="text-sm text-gray-600">
+                            Showing <span className="font-medium">{((currentPage - 1) * pageSize) + 1}</span>
+                            {' '}to <span className="font-medium">{Math.min(currentPage * pageSize, filtered.length)}</span>
+                            {' '}of <span className="font-medium">{filtered.length}</span> entries
+                        </div>
+                        <div className="inline-flex items-center gap-2">
+                            <button
+                                className={`px-3 py-1 rounded border text-sm ${currentPage === 1 ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                                disabled={currentPage === 1}
+                                onClick={() => setCurrentPage(1)}
+                            >
+                                First
+                            </button>
+                            <button
+                                className={`px-3 py-1 rounded border text-sm ${currentPage === 1 ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                                disabled={currentPage === 1}
+                                onClick={() => setCurrentPage(page => Math.max(1, page - 1))}
+                            >
+                                Prev
+                            </button>
+                            <div className="text-sm text-gray-600 px-2">
+                                Page <span className="font-medium">{currentPage}</span> of <span className="font-medium">{totalPages}</span>
+                            </div>
+                            <button
+                                className={`px-3 py-1 rounded border text-sm ${currentPage === totalPages ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                                disabled={currentPage === totalPages}
+                                onClick={() => setCurrentPage(page => Math.min(totalPages, page + 1))}
+                            >
+                                Next
+                            </button>
+                            <button
+                                className={`px-3 py-1 rounded border text-sm ${currentPage === totalPages ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                                disabled={currentPage === totalPages}
+                                onClick={() => setCurrentPage(totalPages)}
+                            >
+                                Last
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>

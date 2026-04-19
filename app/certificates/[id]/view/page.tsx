@@ -234,33 +234,33 @@ const ViewCertificatePage: React.FC = () => {
   const [allRawData, setAllRawData] = useState<any[]>([])
 
   const computeEnvCondition = useCallback((type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
-      const keywords = type === 'suhu'
-          ? ['suhu', 'temp', 'termometer', 'temperature', 'thermo']
-          : ['kelembab', 'hum', 'hygro', 'rh'];
+    const keywords = type === 'suhu'
+      ? ['suhu', 'temp', 'termometer', 'temperature', 'thermo']
+      : ['kelembab', 'hum', 'hygro', 'rh'];
 
-      const matchedRows = sensorRawData.filter(r => {
-          const name = (r.sheet_name || '').toLowerCase();
-          return keywords.some(k => name.includes(k));
-      });
+    const matchedRows = sensorRawData.filter(r => {
+      const name = (r.sheet_name || '').toLowerCase();
+      return keywords.some(k => name.includes(k));
+    });
 
-      if (matchedRows.length === 0) return '-';
+    if (matchedRows.length === 0) return '-';
 
-      const values = matchedRows
-          .map(r => r.std_corrected ?? (r.standard_data + (r.std_correction ?? 0)))
-          .filter(v => typeof v === 'number' && !isNaN(v));
+    const values = matchedRows
+      .map(r => r.std_corrected ?? (r.standard_data + (r.std_correction ?? 0)))
+      .filter(v => typeof v === 'number' && !isNaN(v));
 
-      if (values.length === 0) return '-';
+    if (values.length === 0) return '-';
 
-      const minV = Math.min(...values);
-      const maxV = Math.max(...values);
-      const mean = (minV + maxV) / 2;
-      const halfRange = maxV - mean;
+    const minV = Math.min(...values);
+    const maxV = Math.max(...values);
+    const mean = (minV + maxV) / 2;
+    const halfRange = maxV - mean;
 
-      const unit = type === 'suhu' ? '°C' : '%';
-      return `(${mean.toFixed(1)} ± ${halfRange.toFixed(1)}) ${unit}`;
+    const unit = type === 'suhu' ? '°C' : '%';
+    return `(${mean.toFixed(1)} ± ${halfRange.toFixed(1)}) ${unit}`;
   }, []);
 
-  
+
   // Helper to resolve canonical sensor name
   const resolveSensorName = useCallback((res: any, fallbackIndex: number) => {
     const sd = res?.sensorDetails || {}
@@ -367,7 +367,7 @@ const ViewCertificatePage: React.FC = () => {
             const parsedResults = typeof c.results === 'string' ? JSON.parse(c.results) : c.results;
             const sessionIds = parsedResults.map((r: any) => r.session_id).filter(Boolean);
             if (sessionIds.length > 0) {
-              const rawDataPromises = sessionIds.map((sid: string) => 
+              const rawDataPromises = sessionIds.map((sid: string) =>
                 fetch(`/api/raw-data?session_id=${sid}`).then(res => res.ok ? res.json() : { data: [] })
               );
               const allRawDataResp = await Promise.all(rawDataPromises);
@@ -560,7 +560,7 @@ const ViewCertificatePage: React.FC = () => {
     }
   }, [])
 
-    // Auto-print logic removed for View mode
+  // Auto-print logic removed for View mode
 
   if (loading) return <div className="p-8 text-gray-600 text-center text-lg">Memuat data sertifikat untuk dicetak...</div>
   if (error || !cert) return <div className="p-8 text-red-600 text-center text-lg">Gagal memuat data: {error || 'Sertifikat tidak ditemukan'}</div>
@@ -1152,7 +1152,7 @@ const ViewCertificatePage: React.FC = () => {
       <div className="mt-20 w-full max-w-7xl mx-auto flex flex-col md:flex-row gap-6 px-4 sm:px-6 lg:px-8 items-start print:block print:m-0 print:p-0 print:px-0 print:mt-0">
         {/* Sidebar Linimasa Srikandi Style */}
         <div className="w-full md:w-80 flex-shrink-0 bg-white rounded-lg shadow-sm border border-gray-200 p-6 self-start sticky top-24 print:hidden">
-                   {/* Card Verifikator & Penandatangan */}
+          {/* Card Verifikator & Penandatangan */}
           <div className="mb-5 pb-5 border-b border-gray-200">
             <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2 mb-3">
               <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -1264,682 +1264,702 @@ const ViewCertificatePage: React.FC = () => {
             )
           })()}
         </div>
-        
+
         {/* Certificate A4 Container */}
         <div className="flex-1 overflow-auto bg-gray-200/50 p-6 flex justify-center items-start border rounded-lg shadow-inner print:block print:p-0 print:border-none print:shadow-none print:bg-white print:overflow-visible">
           <div className="print-container bg-white text-black shadow-xl print:shadow-none" suppressHydrationWarning>
             <style dangerouslySetInnerHTML={{ __html: A4Style }} />
 
-      {/* --- HALAMAN 1 (COVER) - TIDAK ADA QR CODE KECIL --- */}
-      <div className="page-container cover-page break-after-page bg-white shadow-lg my-4 print:shadow-none print:my-0 relative">
-        {/* Watermark Logo BMKG */}
-        <div
-          className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 watermark"
-          style={{
-            backgroundImage: `url(${bmkgLogo.src})`,
-            backgroundSize: '700px 700px',
-            backgroundRepeat: 'no-repeat',
-            backgroundPosition: 'center',
-            opacity: 0.3
-          }}
-        >
-        </div>
+            {/* --- HALAMAN 1 (COVER) - TIDAK ADA QR CODE KECIL --- */}
+            <div className="page-container cover-page break-after-page bg-white shadow-lg my-4 print:shadow-none print:my-0 relative">
+              {/* Watermark Logo BMKG */}
+              <div
+                className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 watermark"
+                style={{
+                  backgroundImage: `url(${bmkgLogo.src})`,
+                  backgroundSize: '700px 700px',
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'center',
+                  opacity: 0.3
+                }}
+              >
+              </div>
 
-        {/* Konten halaman dengan z-index lebih tinggi */}
-        <div className="relative z-10">
-          {/* Header Halaman 1 */}
-          <header className="flex flex-row items-center justify-between border-b-4 border-black pb-2">
-            <div className="flex items-start w-[100px]">
-              <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
-            </div>
-            <div className="text-center leading-tight">
-              <h1 className="text-base font-bold">BADAN METEOROLOGI KLIMATOLOGI DAN GEOFISIKA</h1>
-              <h2 className="text-base font-bold">LABORATORIUM KALIBRASI BMKG</h2>
-            </div>
-            <div className="w-[100px]"></div> {/* Spacer agar center */}
-          </header>
-
-          {/* Judul Sertifikat */}
-          <div className="text-center my-6">
-            <h1 className="text-xl font-bold tracking-wide">SERTIFIKAT KALIBRASI</h1>
-            <h2 className="text-base italic text-gray-700">CALIBRATION CERTIFICATE</h2>
-            <div className="text-sm font-semibold mt-2">{cert.no_certificate}</div>
-          </div>
-
-          {/* Identitas Alat */}
-          <div className="mb-4">
-            <h3 className="text-sm font-bold">IDENTITAS ALAT</h3>
-            <h4 className="text-xs italic text-gray-700 mb-1">Instrument Details</h4>
-            <table className="w-full text-xs">
-              <tbody>
-                <tr>
-                  <td className="w-[30%] align-top"><PdfLabel indo="Nama Alat" eng="Instrument Name" /></td>
-                  <td className="w-[5%] align-top">:</td>
-                  <td className="w-[65%] align-top font-semibold">{instrument?.name || '-'}</td>
-                </tr>
-                <tr>
-                  <td className="align-top"><PdfLabel indo="Merek Pabrik" eng="Manufacturer" /></td>
-                  <td className="align-top">:</td>
-                  <td className="align-top font-semibold">{instrument?.manufacturer || '-'}</td>
-                </tr>
-                <tr>
-                  <td className="align-top"><PdfLabel indo="Tipe / Nomor Seri" eng="Type / Serial Number" /></td>
-                  <td className="align-top">:</td>
-                  <td className="align-top font-semibold">{instrument?.type || '-'} / {instrument?.serial_number || '-'}</td>
-                </tr>
-                <tr>
-                  <td className="align-top"><PdfLabel indo="Lain-lain" eng="Others" /></td>
-                  <td className="align-top">:</td>
-                  <td className="align-top font-semibold whitespace-pre-line">{sensorsSummary || instrument?.others || '-'}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          {/* Identitas Pemilik */}
-          <div className="mb-4">
-            <h3 className="text-sm font-bold underline leading-tight mb-0">IDENTITAS PEMILIK</h3>
-            <h4 className="text-xs italic text-gray-700 leading-tight mb-1">Owner's Identification</h4>
-            <table className="w-full text-xs">
-              <tbody>
-                <tr>
-                  <td className="w-[30%] align-top"><PdfLabel indo="Nama" eng="Designation" /></td>
-                  <td className="w-[5%] align-top">:</td>
-                  <td className="w-[65%] align-top font-semibold whitespace-pre-line">{station?.name || '-'}</td>
-                </tr>
-                <tr>
-                  <td className="align-top"><PdfLabel indo="Alamat" eng="Address" /></td>
-                  <td className="align-top">:</td>
-                  <td className="align-top font-semibold">{resolvedStationAddress || '-'}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pengesahan */}
-          <div className="mb-8">
-            <h3 className="text-sm font-bold underline leading-tight mb-0">PENGESAHAN</h3>
-            <h4 className="text-[11px] italic text-gray-700 font-bold mb-2 leading-tight">Authorization</h4>
-            <table className="w-full text-xs">
-              <tbody>
-                <tr>
-                  <td className="w-[30%] align-top"><PdfLabel indo="Pejabat Pengesahan" eng="Authorizing officer" /></td>
-                  <td className="w-[5%] align-top">:</td>
-                  <td className="w-[65%] align-top font-bold">Direktur Instrumentasi dan Kalibrasi BMKG</td>
-                </tr>
-                <tr>
-                  <td className="align-top"><PdfLabel indo="Nama" eng="Name" /></td>
-                  <td className="align-top">:</td>
-                  <td className="align-top font-bold">{authorized?.name || '-'}</td>
-                </tr>
-                <tr>
-                  <td className="align-top"><PdfLabel indo="Tanggal Pengesahan" eng="Date of issue" /></td>
-                  <td className="align-top">:</td>
-                  <td className="align-top font-bold">
-                    {cert.issue_date ? new Date(cert.issue_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="align-top"><PdfLabel indo="Jumlah halaman" eng="Total number of pages" /></td>
-                  <td className="align-top">:</td>
-                  <td className="align-top font-bold">{totalPrintedPages}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <footer className="page-1-footer" style={{ listStyle: 'none', listStyleType: 'none', listStylePosition: 'outside' }}>
-          <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none', marginBottom: '4px' }}>
-            <tbody>
-              <tr>
-                <td className="align-middle text-right pr-4" style={{ width: '15%' }}>
-                    {qrCodeData ? (
-                      <div className="inline-block w-[100px] h-[100px] bg-white qr-code-container" style={{ listStyle: 'none', display: 'inline-block' }}>
-                        <QRCodeWithBMKGLogo
-                          key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
-                          value={qrCodeData}
-                          size={100}
-                          logoSize={28}
-                          fgColor={isSigned ? '#000000' : '#B91C1C'}
-                          onRendered={handleQRRendered}
-                        />
-                      </div>
-                    ) : (
-                        <div className="inline-block w-[100px] h-[100px] bg-transparent" style={{ display: 'inline-block' }}></div>
-                    )}
-                </td>
-                <td className="align-middle" style={{ width: '85%', textAlign: 'justify', lineHeight: '1.3' }}>
-                  <div style={{ textJustify: 'inter-word', paddingBottom: '4px', display: 'block' }} className="text-xs font-bold leading-relaxed">
-                    Dokumen ini telah ditandatangani secara elektronik menggunakan Sertifikat Elektronik yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), BSSN dan tidak memerlukan tanda tangan atau cap. Dokumen asli dapat diperoleh dengan memindai kode QR di samping ini.
+              {/* Konten halaman dengan z-index lebih tinggi */}
+              <div className="relative z-10">
+                {/* Header Halaman 1 */}
+                <header className="flex flex-row items-center justify-between border-b-[3px] border-double border-black pb-2">
+                  <div className="flex items-start w-[100px]">
+                    <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
                   </div>
-                  <div style={{ textJustify: 'inter-word', display: 'block' }} className="italic text-[10px] font-bold text-gray-800 leading-relaxed">
-                    This document is digitally signed. No signature or seal is required. The original document can be obtained by scanning the QR on the left.
+                  <div className="text-center leading-tight">
+                    <h1 className="text-base font-bold">BADAN METEOROLOGI KLIMATOLOGI DAN GEOFISIKA</h1>
+                    <h2 className="text-base font-bold">LABORATORIUM KALIBRASI BMKG</h2>
                   </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <hr className="my-1 border-t-[2px] border-black" style={{ borderTop: '2px solid black', borderColor: '#000' }} />
-          <table className="w-full text-black mt-1" style={{ borderCollapse: 'collapse', border: 'none' }}>
-            <tbody>
-              <tr>
-                <td className="align-top text-left text-[10px] font-bold" style={{ width: '25%' }}>F/IKK 7.8.1</td>
-                <td className="align-top text-center text-[10px] font-bold text-gray-800" style={{ width: '50%', lineHeight: '1.4' }}>
-                  JL. Angkasa I No. 02 Kemayoran Jakarta Pusat
-                  <br />
-                  Tlp. 021-4246321-ext 5125; P.O. Box 3540 Jkt; Website : http://www.bmkg.go.id
-                </td>
-                <td className="align-top text-right text-[10px] font-bold" style={{ width: '25%' }}>Edisi/Revisi : 11/1</td>
-              </tr>
-            </tbody>
-          </table>
-        </footer>
-      </div>
+                  <div className="w-[100px]"></div> {/* Spacer agar center */}
+                </header>
 
-      {/* --- HALAMAN 2..N: satu halaman per sensor --- */}
-      {results.length === 0 ? (
-        <div className="page-container bg-white shadow-lg my-4 print:shadow-none print:my-0">
-          <table className="repeatable-page-table">
-            <thead className="print-repeat-header">
-              <tr>
-                <td>
+                {/* Judul Sertifikat */}
+                <div className="text-center my-6">
+                  <h1 className="text-xl font-bold tracking-wide">SERTIFIKAT KALIBRASI</h1>
+                  <h2 className="text-base italic text-gray-700">CALIBRATION CERTIFICATE</h2>
+                  <div className="text-sm font-semibold mt-2">{cert.no_certificate}</div>
+                </div>
+
+                {/* Identitas Alat */}
+                <div className="mb-4">
+                  <h3 className="text-sm font-bold">IDENTITAS ALAT</h3>
+                  <h4 className="text-xs italic text-gray-700 mb-1">Instrument Details</h4>
                   <table className="w-full text-xs">
                     <tbody>
                       <tr>
-                        <td className="w-[100px] align-top">
-                          <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
+                        <td className="w-[30%] align-top"><PdfLabel indo="Nama Alat" eng="Instrument Name" /></td>
+                        <td className="w-[5%] align-top">:</td>
+                        <td className="w-[65%] align-top font-semibold">{instrument?.name || '-'}</td>
+                      </tr>
+                      <tr>
+                        <td className="align-top"><PdfLabel indo="Merek Pabrik" eng="Manufacturer" /></td>
+                        <td className="align-top">:</td>
+                        <td className="align-top font-semibold">{instrument?.manufacturer || '-'}</td>
+                      </tr>
+                      <tr>
+                        <td className="align-top"><PdfLabel indo="Tipe / Nomor Seri" eng="Type / Serial Number" /></td>
+                        <td className="align-top">:</td>
+                        <td className="align-top font-semibold">{instrument?.type || '-'} / {instrument?.serial_number || '-'}</td>
+                      </tr>
+                      <tr>
+                        <td className="align-top"><PdfLabel indo="Lain-lain" eng="Others" /></td>
+                        <td className="align-top">:</td>
+                        <td className="align-top font-semibold whitespace-pre-line">{sensorsSummary || instrument?.others || '-'}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Identitas Pemilik */}
+                <div className="mb-4">
+                  <h3 className="text-sm font-bold underline leading-tight mb-0">IDENTITAS PEMILIK</h3>
+                  <h4 className="text-xs italic text-gray-700 leading-tight mb-1">Owner's Identification</h4>
+                  <table className="w-full text-xs">
+                    <tbody>
+                      <tr>
+                        <td className="w-[30%] align-top"><PdfLabel indo="Nama" eng="Designation" /></td>
+                        <td className="w-[5%] align-top">:</td>
+                        <td className="w-[65%] align-top font-semibold whitespace-pre-line">{station?.name || '-'}</td>
+                      </tr>
+                      <tr>
+                        <td className="align-top"><PdfLabel indo="Alamat" eng="Address" /></td>
+                        <td className="align-top">:</td>
+                        <td className="align-top font-semibold">{resolvedStationAddress || '-'}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pengesahan */}
+                <div className="mb-8">
+                  <h3 className="text-sm font-bold underline leading-tight mb-0">PENGESAHAN</h3>
+                  <h4 className="text-[11px] italic text-gray-700 font-bold mb-2 leading-tight">Authorization</h4>
+                  <table className="w-full text-xs">
+                    <tbody>
+                      <tr>
+                        <td className="w-[30%] align-top"><PdfLabel indo="Pejabat Pengesahan" eng="Authorizing officer" /></td>
+                        <td className="w-[5%] align-top">:</td>
+                        <td className="w-[65%] align-top font-bold">Direktur Instrumentasi dan Kalibrasi BMKG</td>
+                      </tr>
+                      <tr>
+                        <td className="align-top"><PdfLabel indo="Nama" eng="Name" /></td>
+                        <td className="align-top">:</td>
+                        <td className="align-top font-bold">{authorized?.name || '-'}</td>
+                      </tr>
+                      <tr>
+                        <td className="align-top"><PdfLabel indo="Tanggal Pengesahan" eng="Date of issue" /></td>
+                        <td className="align-top">:</td>
+                        <td className="align-top font-bold">
+                          {cert.issue_date ? new Date(cert.issue_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
                         </td>
-                        <td className="align-top"></td>
-                        <td className="align-top">
-                          <table className="w-[360px] text-xs table-fixed ml-auto mr-0">
+                      </tr>
+                      <tr>
+                        <td className="align-top"><PdfLabel indo="Jumlah halaman" eng="Total number of pages" /></td>
+                        <td className="align-top">:</td>
+                        <td className="align-top font-bold">{totalPrintedPages}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <footer className="page-1-footer" style={{ listStyle: 'none', listStyleType: 'none', listStylePosition: 'outside' }}>
+                <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none', marginBottom: '4px' }}>
+                  <tbody>
+                    <tr>
+                      <td className="align-middle text-right pr-4" style={{ width: '15%' }}>
+                        {qrCodeData ? (
+                          <div className="inline-block w-[100px] h-[100px] bg-white qr-code-container" style={{ listStyle: 'none', display: 'inline-block' }}>
+                            <QRCodeWithBMKGLogo
+                              key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
+                              value={qrCodeData}
+                              size={100}
+                              logoSize={28}
+                              fgColor={isSigned ? '#000000' : '#B91C1C'}
+                              onRendered={handleQRRendered}
+                            />
+                          </div>
+                        ) : (
+                          <div className="inline-block w-[100px] h-[100px] bg-transparent" style={{ display: 'inline-block' }}></div>
+                        )}
+                      </td>
+                      <td className="align-middle" style={{ width: '85%', textAlign: 'justify', lineHeight: '1.3' }}>
+                        <div style={{ textJustify: 'inter-word', paddingBottom: '4px', display: 'block' }} className="text-xs font-bold leading-relaxed">
+                          Dokumen ini telah ditandatangani secara elektronik menggunakan Sertifikat Elektronik yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), BSSN dan tidak memerlukan tanda tangan atau cap. Dokumen asli dapat diperoleh dengan memindai kode QR di samping ini.
+                        </div>
+                        <div style={{ textJustify: 'inter-word', display: 'block' }} className="italic text-[10px] font-bold text-gray-800 leading-relaxed">
+                          This document is digitally signed. No signature or seal is required. The original document can be obtained by scanning the QR on the left.
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                <hr className="my-1 border-t-[3px] border-double border-black" style={{ borderTop: '3px double black', borderColor: '#000' }} />
+                <table className="w-full text-black mt-1" style={{ borderCollapse: 'collapse', border: 'none' }}>
+                  <tbody>
+                    <tr>
+                      <td className="align-top text-left text-[10px] font-bold" style={{ width: '25%' }}>F/IKK 7.8.1</td>
+                      <td className="align-top text-center text-[10px] font-bold text-gray-800" style={{ width: '50%', lineHeight: '1.4' }}>
+                        JL. Angkasa I No. 02 Kemayoran Jakarta Pusat
+                        <br />
+                        Tlp. 021-4246321-ext 5125; P.O. Box 3540 Jkt; Website : http://www.bmkg.go.id
+                      </td>
+                      <td className="align-top text-right text-[10px] font-bold" style={{ width: '25%' }}>Edisi/Revisi : 11/1</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </footer>
+            </div>
+
+            {/* --- HALAMAN 2..N: satu halaman per sensor --- */}
+            {results.length === 0 ? (
+              <div className="page-container bg-white shadow-lg my-4 print:shadow-none print:my-0">
+                <table className="repeatable-page-table">
+                  <thead className="print-repeat-header">
+                    <tr>
+                      <td>
+                        <table className="w-full text-xs">
+                          <tbody>
+                            <tr>
+                              <td className="w-[100px] align-top">
+                                <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
+                              </td>
+                              <td className="align-top"></td>
+                              <td className="align-top">
+                                <table className="w-[360px] text-xs table-fixed ml-auto mr-0">
+                                  <tbody>
+                                    <tr>
+                                      <td className="w-[48%] text-left font-bold leading-tight align-top">
+                                        No. Sertifikat / <span className="italic">Certificate</span><br />
+                                        <span className="italic">Number</span>
+                                      </td>
+                                      <td className="w-[4%] px-1 align-top">:</td>
+                                      <td className="w-[48%] align-top font-bold">{cert.no_certificate}</td>
+                                    </tr>
+                                    <tr>
+                                      <td className="text-left font-bold leading-tight align-top">
+                                        No. Order / <br />
+                                        <span className="italic">Order Number</span>
+                                      </td>
+                                      <td className="px-1 align-top">:</td>
+                                      <td className="align-top font-bold">{cert.no_order}</td>
+                                    </tr>
+                                    <tr>
+                                      <td className="text-left font-bold leading-tight align-top">
+                                        Halaman / <br />
+                                        <span className="italic">Page</span>
+                                      </td>
+                                      <td className="px-1 align-top">:</td>
+                                      <td className="align-top font-bold">2 dari {totalPrintedPages}</td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  </thead>
+                  <tbody className="print-content">
+                    <tr>
+                      <td>
+                        <div className="text-xs text-center text-gray-600">Tidak ada data hasil kalibrasi</div>
+                        <p className="text-center font-bold text-sm mt-8">
+                          --- Akhir dari Sertifikat / <span className="italic">End of Certificate</span> ---
+                        </p>
+                      </td>
+                    </tr>
+                  </tbody>
+                  <tfoot className="print-repeat-footer">
+                    <tr>
+                      <td>
+                        <div className="w-full pb-2 px-1">
+                          <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none' }}>
                             <tbody>
                               <tr>
-                                <td className="w-[48%] text-left font-bold leading-tight align-top">
-                                  No. Sertifikat / <span className="italic">Certificate</span><br />
-                                  <span className="italic">Number</span>
+                                <td className="align-bottom text-left" style={{ width: '25%' }}>
+                                  <div className="flex flex-col items-start gap-1">
+                                    {qrCodeData ? (
+                                      <div className="w-[40px] h-[40px]">
+                                        <FooterQRCode
+                                          value={qrCodeData}
+                                          fgColor={isSigned ? '#000000' : '#B91C1C'}
+                                          onRendered={handleQRRendered}
+                                          size={40}
+                                        />
+                                      </div>
+                                    ) : (
+                                      <div className="w-[40px] h-[40px]"></div>
+                                    )}
+                                    <div className="text-[10px] font-bold mt-1">F/IKK 7.8.2</div>
+                                  </div>
                                 </td>
-                                <td className="w-[4%] px-1 align-top">:</td>
-                                <td className="w-[48%] align-top font-bold">{cert.no_certificate}</td>
+                                <td className="align-bottom text-center text-[10px] font-medium pb-[1px]" style={{ width: '50%', lineHeight: '1.4' }}>
+                                  Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
+                                </td>
+                                <td className="align-bottom text-right text-[10px] font-bold pb-[1px]" style={{ width: '25%' }}>
+                                  Edisi/Revisi : 11/1
+                                </td>
                               </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            ) : (
+              results.map((res: any, idx: number) => (
+                <div key={idx} className={`page-container results-page bg-white shadow-lg my-4 print:shadow-none print:my-0 ${idx !== results.length - 1 ? 'break-after-page' : ''}`}>
+                  <table className="repeatable-page-table">
+                    <thead className="print-repeat-header">
+                      <tr>
+                        <td>
+                          <table className="w-full text-xs">
+                            <tbody>
                               <tr>
-                                <td className="text-left font-bold leading-tight align-top">
-                                  No. Order / <br />
-                                  <span className="italic">Order Number</span>
+                                <td className="w-[100px] align-top">
+                                  <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
                                 </td>
-                                <td className="px-1 align-top">:</td>
-                                <td className="align-top font-bold">{cert.no_order}</td>
-                              </tr>
-                              <tr>
-                                <td className="text-left font-bold leading-tight align-top">
-                                  Halaman / <br />
-                                  <span className="italic">Page</span>
+                                <td className="align-top"></td>
+                                <td className="align-top">
+                                  <table className="w-[360px] text-xs table-fixed ml-auto mr-0">
+                                    <tbody>
+                                      <tr>
+                                        <td className="w-[48%] text-left font-bold leading-tight align-top">
+                                          No. Sertifikat / <span className="italic">Certificate</span><br />
+                                          <span className="italic">Number</span>
+                                        </td>
+                                        <td className="w-[4%] px-1 align-top">:</td>
+                                        <td className="w-[48%] align-top font-bold">{cert.no_certificate}</td>
+                                      </tr>
+                                      <tr>
+                                        <td className="text-left font-bold leading-tight align-top">
+                                          No. Order / <br />
+                                          <span className="italic">Order Number</span>
+                                        </td>
+                                        <td className="px-1 align-top">:</td>
+                                        <td className="align-top font-bold">{cert.no_order}</td>
+                                      </tr>
+                                      <tr>
+                                        <td className="text-left font-bold leading-tight align-top">
+                                          Halaman / <br />
+                                          <span className="italic">Page</span>
+                                        </td>
+                                        <td className="px-1 align-top">:</td>
+                                        <td className="align-top font-bold">{idx + 2} dari {totalPrintedPages}</td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
                                 </td>
-                                <td className="px-1 align-top">:</td>
-                                <td className="align-top font-bold">2 dari {totalPrintedPages}</td>
                               </tr>
                             </tbody>
                           </table>
                         </td>
                       </tr>
+                    </thead>
+
+                    {/* Konten per sensor */}
+                    <tbody className="print-content">
+                      <tr>
+                        <td>
+                          <div className="text-xs">
+                            <section>
+                              {/* Header per Sensor: Detail Sensor & Environment */}
+                              <div className="grid grid-cols-1">
+                                {(() => {
+                                  const name = resolveSensorName(res, idx) || '-'
+                                  const manufacturer = res?.sensorDetails?.manufacturer || '-'
+                                  const type = res?.sensorDetails?.type || '-'
+                                  const serial = res?.sensorDetails?.serial_number || '-'
+                                  const start = res?.startDate ? new Date(res.startDate).toISOString().slice(0, 10) : '-'
+                                  const end = res?.endDate ? new Date(res.endDate).toISOString().slice(0, 10) : '-'
+                                  const place = res?.place || '-'
+                                  const sensorInfo: Array<{ label: string; labelEng: string; value: React.ReactNode; topGap?: boolean; bold?: boolean }> = [
+                                    { label: 'Nama Sensor / ', labelEng: 'Sensor Name', value: name, bold: true },
+                                    { label: 'Merek Sensor / ', labelEng: 'Manufacturer', value: manufacturer, bold: true },
+                                    { label: 'Tipe & No. Seri / ', labelEng: 'Type & Serial Number', value: `${type} / ${serial}`, bold: true },
+                                    { label: 'Tanggal Masuk / ', labelEng: 'Date of Entry', value: start, topGap: true },
+                                    { label: 'Tanggal Kalibrasi / ', labelEng: 'Calibration Date', value: end },
+                                    { label: 'Tempat Kalibrasi / ', labelEng: 'Calibration Place', value: place },
+                                  ]
+                                  const sensorSessionId = res?.session_id;
+                                  const sensorRawData = sensorSessionId ? allRawData.filter(rd => rd.session_id === sensorSessionId) : [];
+                                  const rawSuhu = computeEnvCondition('suhu', sensorRawData);
+                                  const rawHum = computeEnvCondition('kelembaban', sensorRawData);
+
+                                  let envList = Array.isArray(res?.environment) ? [...res.environment] : [];
+
+                                  // Ensure Suhu and Kelembaban exist in envList if they have raw values
+                                  if (envList.length === 0) {
+                                    if (rawSuhu !== '-') envList.push({ key: 'Suhu', value: '-' });
+                                    if (rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
+                                  } else {
+                                    const hasSuhu = envList.some(e => e.key.toLowerCase().includes('suhu'));
+                                    const hasHum = envList.some(e => e.key.toLowerCase().includes('kelembaban') || e.key.toLowerCase().includes('rh'));
+                                    if (!hasSuhu && rawSuhu !== '-') envList.push({ key: 'Suhu', value: '-' });
+                                    if (!hasHum && rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
+                                  }
+
+                                  const envRows: Array<{ label: string; labelEng: string; value: React.ReactNode }> = envList.map((env: any) => {
+                                    const key = String(env?.key || '')
+                                    const lower = key.toLowerCase()
+                                    const isSuhu = lower.includes('suhu')
+                                    const isHum = lower.includes('kelembaban') || lower.includes('rh')
+
+                                    const label = isSuhu
+                                      ? 'Suhu / '
+                                      : isHum
+                                        ? 'Kelembaban / '
+                                        : `${key} `
+                                    const eng = isSuhu ? 'Temperature' : isHum ? 'Relative Humidity' : ''
+
+                                    let finalValue = env?.value || '-'
+
+                                    // Override with computed QC data if available
+                                    if (isSuhu && rawSuhu !== '-') {
+                                      finalValue = rawSuhu
+                                    } else if (isHum && rawHum !== '-') {
+                                      finalValue = rawHum
+                                    }
+
+                                    return { label, labelEng: eng, value: finalValue }
+                                  })
+
+                                  return (
+                                    <table className="w-full text-xs avoid-break">
+                                      <tbody>
+                                        {sensorInfo.map((row, i) => (
+                                          <tr key={`info-${i}`}>
+                                            <td className={`w-[45%] align-top font-semibold ${row.topGap ? 'pt-2' : ''}`}>
+                                              {row.label}<span className="italic">{row.labelEng}</span>
+                                            </td>
+                                            <td className={`w-[5%] align-top ${row.topGap ? 'pt-2' : ''}`}>:</td>
+                                            <td className={`${row.topGap ? 'pt-2' : ''}`} colSpan={2}>
+                                              <span className={row.bold ? 'font-semibold' : undefined}>{row.value}</span>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                        {/* Environment as label-value lines (no table) */}
+                                        {envRows.length > 0 && (
+                                          <tr>
+                                            <td className="w-[45%]" />
+                                            <td className="w-[5%]" />
+                                            <td className="align-top" colSpan={2}>
+                                              <div className="text-sm font-bold mb-1">Kondisi Lingkungan / <span className="italic">Environment condition</span></div>
+                                              <div className="space-y-1">
+                                                {envRows.map((er, idx) => (
+                                                  <div key={idx} className="grid grid-cols-[45%_5%_1fr] text-[10px]">
+                                                    <div className="font-semibold">
+                                                      {er.label}<span className="italic">{er.labelEng}</span>
+                                                    </div>
+                                                    <div>:</div>
+                                                    <div>{er.value}</div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        )}
+                                      </tbody>
+                                    </table>
+                                  )
+                                })()}
+                              </div>
+
+                              {/* Hasil Kalibrasi per Sensor */}
+                              {Array.isArray(res?.table) && res.table.length > 0 && (
+                                <div className="mt-6 space-y-3 w-[85%] mx-auto">
+                                  <div className="text-[12px] font-bold text-center mb-1">Hasil Kalibrasi / <span className="italic font-normal">Calibration Result</span></div>
+                                  {res.table.map((sec: any, sIdx: number) => {
+                                    const rows = Array.isArray(sec?.rows) ? sec.rows : []
+                                    const isDuplicateTitle = sec?.title?.toLowerCase().includes('hasil Kalibrasi') || sec?.title?.toLowerCase().includes('calibration result') || sec?.title?.toLowerCase().includes('hasil kalibrasi');
+                                    return (
+                                      <div key={sIdx} className="mt-3 avoid-break">
+                                        {sec?.title && sec.title.trim() !== '' && !isDuplicateTitle && <div className="text-xs font-bold mb-1 text-center">{sec.title}</div>}
+                                        {(!sec?.title || sec.title.trim() === '') && <div className="text-xs font-bold mb-1 text-center">{`Tabel ${sIdx + 1}`}</div>}
+                                        <table className="w-full text-xs border-[2px] border-black text-center border-collapse">
+                                          <thead>
+                                            <tr className="font-bold">
+                                              {/* Use explicit headers if available, otherwise fallback to Key/Unit/Value logic */}
+                                              {sec.headers ? (
+                                                sec.headers.map((h: string, i: number) => (
+                                                  <td key={i} className="p-1 border border-black text-center">{h}</td>
+                                                ))
+                                              ) : (
+                                                // Fallback for old data without headers
+                                                rows.length > 0 && (
+                                                  <>
+                                                    <td className="p-1 border border-black text-center">Parameter</td>
+                                                    <td className="p-1 border border-black text-center">Unit</td>
+                                                    <td className="p-1 border border-black text-center">Nilai</td>
+                                                  </>
+                                                )
+                                              )}
+                                            </tr>
+                                            {/* Baris Unit Tambahan */}
+                                            {sec.headers && (
+                                              <tr className="font-bold bg-white">
+                                                {sec.headers.map((_: any, i: number) => {
+                                                  const unit = res?.unitUut || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit || '';
+                                                  return (
+                                                    <td key={`unit-${i}`} className="p-1 border border-black text-center">
+                                                      {unit || '-'}
+                                                    </td>
+                                                  );
+                                                })}
+                                              </tr>
+                                            )}
+                                          </thead>
+                                          <tbody>
+                                            {rows.map((row: any, rIdx: number) => {
+                                              const isBlank = (val: any) => !val || String(val).trim() === '' || String(val).trim() === '-';
+                                              const isFirstEmptyRow = rIdx === 0 && isBlank(row.key) && isBlank(row.unit) && isBlank(row.value);
+                                              let unitDisplay = res?.unitUut || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit || '-';
+                                              return (
+                                                <tr key={rIdx}>
+                                                  {/* If headers exist, map based on standard + extra values */}
+                                                  {sec.headers ? (
+                                                    <>
+                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
+                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.unit || '-')}</td>
+                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.value || '-')}</td>
+                                                      {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
+                                                        <td key={`extra-${vi}`} className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (v || '-')}</td>
+                                                      ))}
+                                                    </>
+                                                  ) : (
+                                                    // Fallback
+                                                    <>
+                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
+                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.unit || '-')}</td>
+                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.value || '-')}</td>
+                                                    </>
+                                                  )}
+                                                </tr>
+                                              );
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              )}
+
+                              {/* Images per sensor only for Geofisika - placed right after calibration table */}
+                              {station?.type?.toString().trim().toLowerCase() === 'geofisika' && Array.isArray(res?.images) && (res.images as any[]).length > 0 && (
+                                <div className="mt-4 avoid-break break-after-page">
+                                  <h4 className="text-xs font-semibold mb-2 text-center">Gambar</h4>
+                                  <div className="flex flex-wrap gap-3 justify-center">
+                                    {(res.images as any[]).map((img: any, i: number) => {
+                                      const src = typeof img === 'string' ? img : (img?.url || '')
+                                      if (!src) return null
+                                      return (
+                                        <figure key={i} className="m-0 p-0 text-center">
+                                          <img src={src} alt={`Gambar Sensor ${i + 1}`} className="block m-0 p-0 h-auto w-auto max-w-[400px] max-h-[400px]" />
+                                          {img?.caption ? (
+                                            <figcaption className="text-[10px] mt-0 text-center text-gray-700 leading-tight m-0 p-0">{img.caption}</figcaption>
+                                          ) : null}
+                                        </figure>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Catatan per Sensor */}
+                              {(() => {
+                                const nf = res?.notesForm || null
+                                if (!nf) return null
+                                const hasAny = nf.traceable_to_si_through || nf.reference_document || nf.calibration_methode || nf.others || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)
+                                if (!hasAny) return null
+                                return (
+                                  <div className="mt-6 avoid-break">
+                                    <div className="text-sm font-bold underline leading-tight mb-0">Catatan / <span className="italic">Notes :</span></div>
+                                    <table className="w-full text-xs mt-1">
+                                      <tbody>
+                                        {Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0 && (
+                                          <tr>
+                                            <td className="w-[40%] align-top text-left pr-2 py-0">
+                                              <div className="font-bold leading-tight">Standar Kalibrasi <span className="italic text-[10px] text-gray-900">/ Calibration Standard</span></div>
+                                            </td>
+                                            <td className="w-[5%] align-top py-0">:</td>
+                                            <td className="w-[55%] align-top whitespace-pre-line py-0">
+                                              {nf.standardInstruments.map((sid: number) => {
+                                                const s = sensors.find((sensor: any) => sensor.id === sid)
+                                                if (!s) return null
+                                                const name = s.sensor_name_id
+                                                  ? instrumentNames.find((n: any) => n.id === s.sensor_name_id)?.name || s.name || s.type || '-'
+                                                  : s.name || s.type || '-'
+                                                const manufacturer = s.manufacturer || '-'
+                                                const type = s.type || '-'
+                                                const sn = s.serial_number ? `SN ${s.serial_number}` : '-'
+                                                return <div key={sid}>{name} / {manufacturer} / {type} / {sn}</div>
+                                              })}
+                                            </td>
+                                          </tr>
+                                        )}
+                                        {nf.traceable_to_si_through && (
+                                          <tr>
+                                            <td className="align-top text-left pr-2 py-0">
+                                              <div className="font-bold leading-tight">Tertelusur Ke SI melalui <span className="italic text-[10px] text-gray-900">/ Traceable to SI through</span></div>
+                                            </td>
+                                            <td className="align-top py-0">:</td>
+                                            <td className="align-top whitespace-pre-line py-0">{nf.traceable_to_si_through}</td>
+                                          </tr>
+                                        )}
+                                        {nf.calibration_methode && (
+                                          <tr>
+                                            <td className="align-top text-left pr-2 py-0">
+                                              <div className="font-bold leading-tight">Metode Kalibrasi <span className="italic text-[10px] text-gray-900">/ Calibration Methode</span></div>
+                                            </td>
+                                            <td className="align-top py-0">:</td>
+                                            <td className="align-top whitespace-pre-line py-0">{nf.calibration_methode}</td>
+                                          </tr>
+                                        )}
+                                        {nf.reference_document && (
+                                          <tr>
+                                            <td className="align-top text-left pr-2 py-0">
+                                              <div className="font-bold leading-tight">Dokumen Acuan <span className="italic text-[10px] text-gray-900">/ Reference Document</span></div>
+                                            </td>
+                                            <td className="align-top py-0">:</td>
+                                            <td className="align-top whitespace-pre-line py-0">{nf.reference_document}</td>
+                                          </tr>
+                                        )}
+                                      </tbody>
+                                    </table>
+
+                                    {/* Paragraf penjelasan (bilingual) */}
+                                    <div className="mt-0 space-y-0 text-xs leading-tight">
+                                      <div>
+                                        <div className="font-bold m-0">Penunjukan nilai sebenarnya didapat dari penunjukan alat ditambah koreksi.</div>
+                                        <div className="text-[10px] italic text-gray-700 m-0">The true value is determined from the instrument reading added by its correction.</div>
+                                      </div>
+                                      <div>
+                                        <div className="font-bold m-0">Sertifikat ini hanya berlaku untuk peralatan dengan identitas yang dinyatakan di atas.</div>
+                                        <div className="text-[10px] italic text-gray-700 m-0">This certificate only applies to equipment with the identity stated above.</div>
+                                      </div>
+                                      <div>
+                                        <div className="font-bold m-0">Ketidakpastian pengukuran dinyatakan pada tingkat kepercayaan tidak kurang dari 95 % dengan faktor cakupan k = 2</div>
+                                        <div className="text-[10px] italic text-gray-700 m-0">Uncertainty of measurement is expressed at a confidence level of no less than 95 % with coverage factor k = 2</div>
+                                      </div>
+                                    </div>
+                                    {/* Verifikasi/Validasi di akhir catatan */}
+                                    <div className="mt-2">
+                                      <table className="w-full text-xs">
+                                        <tbody>
+                                          <tr>
+                                            <td className="w-[35%] align-top text-left pr-2 py-0">
+                                              <span className="font-bold leading-tight">Diverifikasi Oleh</span>
+                                              <span className="italic text-[10px] text-gray-700 leading-tight"> / Verified by</span>
+                                            </td>
+                                            <td className="w-[5%] align-top py-0">:</td>
+                                            <td className="w-[60%] align-top py-0">
+                                              {[verifikator1?.name, verifikator2?.name, verifikator3?.name].filter(Boolean).length > 0
+                                                ? [verifikator1?.name, verifikator2?.name, verifikator3?.name].filter(Boolean).map((name, idx2) => (
+                                                  <div key={idx2}>{idx2 + 1}. {name}</div>
+                                                ))
+                                                : <div>-</div>
+                                              }
+                                            </td>
+                                          </tr>
+                                        </tbody>
+                                      </table>
+                                      <div className="w-full border-t-[3px] border-double border-black mt-2"></div>
+                                    </div>
+                                  </div>
+                                )
+                              })()}
+                              {/* End of Certificate on the last sensor page (always show on last page) */}
+                              {/* Positioned immediately following the content to stay below the double line */}
+                              {idx === results.length - 1 && (
+                                <div className="mt-2 mb-4">
+                                  <p className="text-center font-bold text-sm m-0">
+                                    --- Akhir dari Sertifikat / <span className="italic">End of Certificate</span> ---
+                                  </p>
+                                </div>
+                              )}
+
+                            </section>
+                          </div>
+                        </td>
+                      </tr>
                     </tbody>
-                  </table>
-                </td>
-              </tr>
-            </thead>
-            <tbody className="print-content">
-              <tr>
-                <td>
-                  <div className="text-xs text-center text-gray-600">Tidak ada data hasil kalibrasi</div>
-                  <p className="text-center font-bold text-sm mt-8">
-                    --- Akhir dari Sertifikat / <span className="italic">End of Certificate</span> ---
-                  </p>
-                </td>
-              </tr>
-            </tbody>
-            <tfoot className="print-repeat-footer">
-              <tr>
-                <td>
-                  <div className="bsre-result-footer">
-                    <div className="bsre-footer-qr">
-                      {qrCodeData && (
-                        <FooterQRCode
-                          value={qrCodeData}
-                          fgColor={isSigned ? '#000000' : '#B91C1C'}
-                          onRendered={handleQRRendered}
-                        />
-                      )}
-                    </div>
-                    <div className="bsre-footer-content">
-                      <div className="bsre-footer-line"></div>
-                      <div className="bsre-footer-page">-2-</div>
-                      <div className="bsre-footer-text">
-                        Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
-                        <br />
-                        yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara (BSSN).
-                      </div>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      ) : (
-        results.map((res: any, idx: number) => (
-          <div key={idx} className={`page-container results-page bg-white shadow-lg my-4 print:shadow-none print:my-0 ${idx !== results.length - 1 ? 'break-after-page' : ''}`}>
-            <table className="repeatable-page-table">
-              <thead className="print-repeat-header">
-                <tr>
-                  <td>
-                    <table className="w-full text-xs">
-                      <tbody>
-                        <tr>
-                          <td className="w-[100px] align-top">
-                            <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
-                          </td>
-                          <td className="align-top"></td>
-                          <td className="align-top">
-                            <table className="w-[360px] text-xs table-fixed ml-auto mr-0">
+                    <tfoot className="print-repeat-footer">
+                      <tr>
+                        <td>
+                          <div className="w-full pb-2 px-1">
+                            <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none' }}>
                               <tbody>
                                 <tr>
-                                  <td className="w-[48%] text-left font-bold leading-tight align-top">
-                                    No. Sertifikat / <span className="italic">Certificate</span><br />
-                                    <span className="italic">Number</span>
+                                  <td className="align-bottom text-left" style={{ width: '25%' }}>
+                                    <div className="flex flex-col items-start gap-1">
+                                      {qrCodeData ? (
+                                        <div className="w-[40px] h-[40px]">
+                                          <FooterQRCode
+                                            value={qrCodeData}
+                                            fgColor={isSigned ? '#000000' : '#B91C1C'}
+                                            onRendered={handleQRRendered}
+                                            size={40}
+                                          />
+                                        </div>
+                                      ) : (
+                                        <div className="w-[40px] h-[40px]"></div>
+                                      )}
+                                      <div className="text-[10px] font-bold mt-1">F/IKK 7.8.2</div>
+                                    </div>
                                   </td>
-                                  <td className="w-[4%] px-1 align-top">:</td>
-                                  <td className="w-[48%] align-top font-bold">{cert.no_certificate}</td>
-                                </tr>
-                                <tr>
-                                  <td className="text-left font-bold leading-tight align-top">
-                                    No. Order / <br />
-                                    <span className="italic">Order Number</span>
+                                  <td className="align-bottom text-center text-[10px] font-medium pb-[1px]" style={{ width: '50%', lineHeight: '1.4' }}>
+                                    Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
                                   </td>
-                                  <td className="px-1 align-top">:</td>
-                                  <td className="align-top font-bold">{cert.no_order}</td>
-                                </tr>
-                                <tr>
-                                  <td className="text-left font-bold leading-tight align-top">
-                                    Halaman / <br />
-                                    <span className="italic">Page</span>
+                                  <td className="align-bottom text-right text-[10px] font-bold pb-[1px]" style={{ width: '25%' }}>
+                                    Edisi/Revisi : 11/1
                                   </td>
-                                  <td className="px-1 align-top">:</td>
-                                  <td className="align-top font-bold">{idx + 2} dari {totalPrintedPages}</td>
                                 </tr>
                               </tbody>
                             </table>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </td>
-                </tr>
-              </thead>
-
-              {/* Konten per sensor */}
-              <tbody className="print-content">
-                <tr>
-                  <td>
-                    <div className="text-xs">
-                      <section>
-                        {/* Header per Sensor: Detail Sensor & Environment */}
-                        <div className="grid grid-cols-1">
-                          {(() => {
-                            const name = resolveSensorName(res, idx) || '-'
-                            const manufacturer = res?.sensorDetails?.manufacturer || '-'
-                            const type = res?.sensorDetails?.type || '-'
-                            const serial = res?.sensorDetails?.serial_number || '-'
-                            const start = res?.startDate ? new Date(res.startDate).toISOString().slice(0, 10) : '-'
-                            const end = res?.endDate ? new Date(res.endDate).toISOString().slice(0, 10) : '-'
-                            const place = res?.place || '-'
-                            const sensorInfo: Array<{ label: string; labelEng: string; value: React.ReactNode; topGap?: boolean; bold?: boolean }> = [
-                              { label: 'Nama Sensor / ', labelEng: 'Sensor Name', value: name, bold: true },
-                              { label: 'Merek Sensor / ', labelEng: 'Manufacturer', value: manufacturer, bold: true },
-                              { label: 'Tipe & No. Seri / ', labelEng: 'Type & Serial Number', value: `${type} / ${serial}`, bold: true },
-                              { label: 'Tanggal Masuk / ', labelEng: 'Date of Entry', value: start, topGap: true },
-                              { label: 'Tanggal Kalibrasi / ', labelEng: 'Calibration Date', value: end },
-                              { label: 'Tempat Kalibrasi / ', labelEng: 'Calibration Place', value: place },
-                            ]
-                            const sensorSessionId = res?.session_id;
-                            const sensorRawData = sensorSessionId ? allRawData.filter(rd => rd.session_id === sensorSessionId) : [];
-                            const rawSuhu = computeEnvCondition('suhu', sensorRawData);
-                            const rawHum = computeEnvCondition('kelembaban', sensorRawData);
-
-                            let envList = Array.isArray(res?.environment) ? [...res.environment] : [];
-                            
-                            // Ensure Suhu and Kelembaban exist in envList if they have raw values
-                            if (envList.length === 0) {
-                                if (rawSuhu !== '-') envList.push({ key: 'Suhu', value: '-' });
-                                if (rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
-                            } else {
-                                const hasSuhu = envList.some(e => e.key.toLowerCase().includes('suhu'));
-                                const hasHum = envList.some(e => e.key.toLowerCase().includes('kelembaban') || e.key.toLowerCase().includes('rh'));
-                                if (!hasSuhu && rawSuhu !== '-') envList.push({ key: 'Suhu', value: '-' });
-                                if (!hasHum && rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
-                            }
-
-                            const envRows: Array<{ label: string; labelEng: string; value: React.ReactNode }> = envList.map((env: any) => {
-                              const key = String(env?.key || '')
-                              const lower = key.toLowerCase()
-                              const isSuhu = lower.includes('suhu')
-                              const isHum = lower.includes('kelembaban') || lower.includes('rh')
-                              
-                              const label = isSuhu
-                                ? 'Suhu / '
-                                : isHum
-                                  ? 'Kelembaban / '
-                                  : `${key} `
-                              const eng = isSuhu ? 'Temperature' : isHum ? 'Relative Humidity' : ''
-                              
-                              let finalValue = env?.value || '-'
-                              
-                              // Override with computed QC data if available
-                              if (isSuhu && rawSuhu !== '-') {
-                                finalValue = rawSuhu
-                              } else if (isHum && rawHum !== '-') {
-                                finalValue = rawHum
-                              }
-
-                              return { label, labelEng: eng, value: finalValue }
-                            })
-
-                            return (
-                              <table className="w-full text-xs avoid-break">
-                                <tbody>
-                                  {sensorInfo.map((row, i) => (
-                                    <tr key={`info-${i}`}>
-                                      <td className={`w-[45%] align-top font-semibold ${row.topGap ? 'pt-2' : ''}`}>
-                                        {row.label}<span className="italic">{row.labelEng}</span>
-                                      </td>
-                                      <td className={`w-[5%] align-top ${row.topGap ? 'pt-2' : ''}`}>:</td>
-                                      <td className={`${row.topGap ? 'pt-2' : ''}`} colSpan={2}>
-                                        <span className={row.bold ? 'font-semibold' : undefined}>{row.value}</span>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                  {/* Environment as label-value lines (no table) */}
-                                  {envRows.length > 0 && (
-                                    <tr>
-                                      <td className="w-[45%]" />
-                                      <td className="w-[5%]" />
-                                      <td className="align-top" colSpan={2}>
-                                        <div className="text-sm font-bold mb-1">Kondisi Lingkungan / <span className="italic">Environment condition</span></div>
-                                        <div className="space-y-1">
-                                          {envRows.map((er, idx) => (
-                                            <div key={idx} className="grid grid-cols-[45%_5%_1fr] text-[10px]">
-                                              <div className="font-semibold">
-                                                {er.label}<span className="italic">{er.labelEng}</span>
-                                              </div>
-                                              <div>:</div>
-                                              <div>{er.value}</div>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  )}
-                                </tbody>
-                              </table>
-                            )
-                          })()}
-                        </div>
-
-                        {/* Hasil Kalibrasi per Sensor */}
-                        {Array.isArray(res?.table) && res.table.length > 0 && (
-                          <div className="mt-6 space-y-3 w-[85%] mx-auto">
-                            <div className="text-[12px] font-bold text-center mb-1">Hasil Kalibrasi / <span className="italic font-normal">Calibration Result</span></div>
-                            {res.table.map((sec: any, sIdx: number) => {
-                              const rows = Array.isArray(sec?.rows) ? sec.rows : []
-                              const isDuplicateTitle = sec?.title?.toLowerCase().includes('hasil Kalibrasi') || sec?.title?.toLowerCase().includes('calibration result') || sec?.title?.toLowerCase().includes('hasil kalibrasi');
-                              return (
-                                <div key={sIdx} className="mt-3 avoid-break">
-                                  {sec?.title && sec.title.trim() !== '' && !isDuplicateTitle && <div className="text-xs font-bold mb-1 text-center">{sec.title}</div>}
-                                  {(!sec?.title || sec.title.trim() === '') && <div className="text-xs font-bold mb-1 text-center">{`Tabel ${sIdx + 1}`}</div>}
-                                  <table className="w-full text-xs border-[2px] border-black text-center border-collapse">
-                                    <thead>
-                                      <tr className="font-bold">
-                                        {/* Use explicit headers if available, otherwise fallback to Key/Unit/Value logic */}
-                                        {sec.headers ? (
-                                          sec.headers.map((h: string, i: number) => (
-                                            <td key={i} className="p-1 border border-black text-center">{h}</td>
-                                          ))
-                                        ) : (
-                                          // Fallback for old data without headers
-                                          rows.length > 0 && (
-                                            <>
-                                              <td className="p-1 border border-black text-center">Parameter</td>
-                                              <td className="p-1 border border-black text-center">Unit</td>
-                                              <td className="p-1 border border-black text-center">Nilai</td>
-                                            </>
-                                          )
-                                        )}
-                                      </tr>
-                                      {/* Baris Unit Tambahan */}
-                                      {sec.headers && (
-                                        <tr className="font-bold bg-white">
-                                          {sec.headers.map((_: any, i: number) => {
-                                            const unit = res?.unitUut || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit || '';
-                                            return (
-                                              <td key={`unit-${i}`} className="p-1 border border-black text-center">
-                                                {unit || '-'}
-                                              </td>
-                                            );
-                                          })}
-                                        </tr>
-                                      )}
-                                    </thead>
-                                    <tbody>
-                                      {rows.map((row: any, rIdx: number) => {
-                                        const isBlank = (val: any) => !val || String(val).trim() === '' || String(val).trim() === '-';
-                                        const isFirstEmptyRow = rIdx === 0 && isBlank(row.key) && isBlank(row.unit) && isBlank(row.value);
-                                        let unitDisplay = res?.unitUut || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit || '-';
-                                        return (
-                                          <tr key={rIdx}>
-                                            {/* If headers exist, map based on standard + extra values */}
-                                            {sec.headers ? (
-                                              <>
-                                                <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
-                                                <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.unit || '-')}</td>
-                                                <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.value || '-')}</td>
-                                                {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
-                                                  <td key={`extra-${vi}`} className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (v || '-')}</td>
-                                                ))}
-                                              </>
-                                            ) : (
-                                              // Fallback
-                                              <>
-                                                <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
-                                                <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.unit || '-')}</td>
-                                                <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.value || '-')}</td>
-                                              </>
-                                            )}
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              )
-                            })}
                           </div>
-                        )}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              ))
+            )}
 
-                        {/* Images per sensor only for Geofisika - placed right after calibration table */}
-                        {station?.type?.toString().trim().toLowerCase() === 'geofisika' && Array.isArray(res?.images) && (res.images as any[]).length > 0 && (
-                          <div className="mt-4 avoid-break break-after-page">
-                            <h4 className="text-xs font-semibold mb-2 text-center">Gambar</h4>
-                            <div className="flex flex-wrap gap-3 justify-center">
-                              {(res.images as any[]).map((img: any, i: number) => {
-                                const src = typeof img === 'string' ? img : (img?.url || '')
-                                if (!src) return null
-                                return (
-                                  <figure key={i} className="m-0 p-0 text-center">
-                                    <img src={src} alt={`Gambar Sensor ${i + 1}`} className="block m-0 p-0 h-auto w-auto max-w-[400px] max-h-[400px]" />
-                                    {img?.caption ? (
-                                      <figcaption className="text-[10px] mt-0 text-center text-gray-700 leading-tight m-0 p-0">{img.caption}</figcaption>
-                                    ) : null}
-                                  </figure>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        )}
 
-                        {/* Catatan per Sensor */}
-                        {(() => {
-                          const nf = res?.notesForm || null
-                          if (!nf) return null
-                          const hasAny = nf.traceable_to_si_through || nf.reference_document || nf.calibration_methode || nf.others || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)
-                          if (!hasAny) return null
-                          return (
-                            <div className="mt-6 avoid-break">
-                              <table className="w-full text-xs mt-2">
-                                <tbody>
-                                  {Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0 && (
-                                    <tr>
-                                      <td className="w-[35%] align-top text-left pr-2 py-0">
-                                        <div className="font-bold leading-tight">Standar Kalibrasi</div>
-                                        <div className="italic text-[10px] text-gray-700 leading-tight">Calibration Standard</div>
-                                      </td>
-                                      <td className="w-[5%] align-top py-0">:</td>
-                                      <td className="w-[60%] align-top whitespace-pre-line py-0">
-                                        {nf.standardInstruments.map((sid: number) => {
-                                          const s = sensors.find((sensor: any) => sensor.id === sid)
-                                          if (!s) return null
-                                          const name = s.sensor_name_id
-                                            ? instrumentNames.find((n: any) => n.id === s.sensor_name_id)?.name || s.name || s.type || '-'
-                                            : s.name || s.type || '-'
-                                          const manufacturer = s.manufacturer || '-'
-                                          const type = s.type || '-'
-                                          const sn = s.serial_number ? `SN ${s.serial_number}` : '-'
-                                          return <div key={sid}>{name} / {manufacturer} / {type} / {sn}</div>
-                                        })}
-                                      </td>
-                                    </tr>
-                                  )}
-                                  {nf.traceable_to_si_through && (
-                                    <tr>
-                                      <td className="align-top text-left pr-2 py-0">
-                                        <div className="font-bold leading-tight">Tertelusur ke SI melalui</div>
-                                        <div className="italic text-[10px] text-gray-700 leading-tight">Traceable to SI through</div>
-                                      </td>
-                                      <td className="align-top py-0">:</td>
-                                      <td className="align-top whitespace-pre-line py-0">{nf.traceable_to_si_through}</td>
-                                    </tr>
-                                  )}
-                                  {nf.calibration_methode && (
-                                    <tr>
-                                      <td className="align-top text-left pr-2 py-0">
-                                        <div className="font-bold leading-tight">Metode Kalibrasi</div>
-                                        <div className="italic text-[10px] text-gray-700 leading-tight">Calibration Methode</div>
-                                      </td>
-                                      <td className="align-top py-0">:</td>
-                                      <td className="align-top whitespace-pre-line py-0">{nf.calibration_methode}</td>
-                                    </tr>
-                                  )}
-                                  {nf.reference_document && (
-                                    <tr>
-                                      <td className="align-top text-left pr-2 py-0">
-                                        <div className="font-bold leading-tight">Dokumen Acuan</div>
-                                        <div className="italic text-[10px] text-gray-700 leading-tight">Reference Document</div>
-                                      </td>
-                                      <td className="align-top py-0">:</td>
-                                      <td className="align-top whitespace-pre-line py-0">{nf.reference_document}</td>
-                                    </tr>
-                                  )}
-                                </tbody>
-                              </table>
-
-                              {/* Paragraf penjelasan (bilingual) */}
-                              <div className="mt-0 space-y-0 text-xs leading-tight">
-                                <div>
-                                  <div className="font-bold m-0">Penunjukan nilai sebenarnya didapat dari penunjukan alat ditambah koreksi.</div>
-                                  <div className="text-[10px] italic text-gray-700 m-0">The true value is determined from the instrument reading added by its correction.</div>
-                                </div>
-                                <div>
-                                  <div className="font-bold m-0">Sertifikat ini hanya berlaku untuk peralatan dengan identitas yang dinyatakan di atas.</div>
-                                  <div className="text-[10px] italic text-gray-700 m-0">This certificate only applies to equipment with the identity stated above.</div>
-                                </div>
-                                <div>
-                                  <div className="font-bold m-0">Ketidakpastian pengukuran dinyatakan pada tingkat kepercayaan tidak kurang dari 95 % dengan faktor cakupan k = 2</div>
-                                  <div className="text-[10px] italic text-gray-700 m-0">Uncertainty of measurement is expressed at a confidence level of no less than 95 % with coverage factor k = 2</div>
-                                </div>
-                              </div>
-                              {/* Verifikasi/Validasi di akhir catatan */}
-                              <div className="mt-2">
-                                <table className="w-full text-xs">
-                                  <tbody>
-                                    <tr>
-                                      <td className="w-[35%] align-top text-left pr-2 py-0">
-                                        <span className="font-bold leading-tight">Diverifikasi Oleh</span>
-                                        <span className="italic text-[10px] text-gray-700 leading-tight"> / Verified by</span>
-                                      </td>
-                                      <td className="w-[5%] align-top py-0">:</td>
-                                      <td className="w-[60%] align-top py-0">
-                                        {[verifikator1?.name, verifikator2?.name, verifikator3?.name].filter(Boolean).length > 0
-                                          ? [verifikator1?.name, verifikator2?.name, verifikator3?.name].filter(Boolean).map((name, idx) => (
-                                              <div key={idx}>{idx + 1}. {name}</div>
-                                            ))
-                                          : <div>-</div>
-                                        }
-                                      </td>
-                                    </tr>
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          )
-                        })()}
-                        {/* End of Certificate on the last sensor page (always show on last page) */}
-                        {/* Positioned absolutely to not affect QR code position */}
-                        {idx === results.length - 1 && (
-                          <div className="absolute left-0 right-0" style={{ bottom: '30mm' }}>
-                            <p className="text-center font-bold text-sm m-0">
-                              --- Akhir dari Sertifikat / <span className="italic">End of Certificate</span> ---
-                            </p>
-                          </div>
-                        )}
-
-                      </section>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-              <tfoot className="print-repeat-footer">
-                <tr>
-                  <td>
-                    <div className="bsre-result-footer">
-                      <div className="bsre-footer-qr">
-                        {qrCodeData && (
-                          <FooterQRCode
-                            value={qrCodeData}
-                            fgColor={isSigned ? '#000000' : '#B91C1C'}
-                            onRendered={handleQRRendered}
-                          />
-                        )}
-                      </div>
-                      <div className="bsre-footer-content">
-                        <div className="bsre-footer-line"></div>
-                        <div className="bsre-footer-page">-{idx + 2}-</div>
-                        <div className="bsre-footer-text">
-                          Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik
-                          <br />
-                          yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara (BSSN).
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
           </div>
-        ))
-      )}
-
-
-    </div>
-    </div>
-    </div>
+        </div>
+      </div>
     </div>
   )
 }

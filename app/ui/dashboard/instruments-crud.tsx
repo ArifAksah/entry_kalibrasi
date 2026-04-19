@@ -10,7 +10,6 @@ import Alert from '../../../components/ui/Alert'
 import { useAlert } from '../../../hooks/useAlert'
 import Loading from '../../../components/ui/Loading'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
-import CustomSelect from '../../../components/ui/CustomSelect'
 import UnitSelect from '../../../components/ui/UnitSelect'
 import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
 import { useUnits } from '../../../hooks/useUnits'
@@ -84,6 +83,84 @@ function parseCorrectionData(cert: any): Array<{ setpoint: string; correction: s
   }
 
   return [];
+}
+
+const SearchableDropdown = ({
+  value,
+  onChange,
+  options,
+  placeholder = 'Pilih...',
+  searchPlaceholder = 'Cari...',
+  className = '',
+}: {
+  value: string | number | null
+  onChange: (value: string | number | null) => void
+  options: Array<{ id: string | number; name: string; description?: string }>
+  placeholder?: string
+  searchPlaceholder?: string
+  className?: string
+}) => {
+  const [isOpen, setIsOpen] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const selectedOption = options.find(option => option.id === value)
+  const filteredOptions = options.filter(option => {
+    const q = searchTerm.toLowerCase()
+    return option.name.toLowerCase().includes(q) || (option.description || '').toLowerCase().includes(q)
+  })
+
+  return (
+    <div className={`relative ${className}`}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-3 py-2 text-left border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+      >
+        <span className={selectedOption ? 'text-gray-900' : 'text-gray-500'}>
+          {selectedOption?.name || placeholder}
+        </span>
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">▼</span>
+      </button>
+
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+          <div className="absolute z-50 top-full mt-1 w-full min-w-[220px] bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-hidden">
+            <div className="p-2 border-b border-gray-100">
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                placeholder={searchPlaceholder}
+                className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-gray-50"
+                autoFocus
+              />
+            </div>
+            <div className="max-h-48 overflow-y-auto">
+              {filteredOptions.length > 0 ? (
+                filteredOptions.map(option => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => {
+                      onChange(option.id)
+                      setIsOpen(false)
+                      setSearchTerm('')
+                    }}
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                  >
+                    <div className="font-medium text-gray-900">{option.name}</div>
+                    {option.description && <div className="text-xs text-gray-500 mt-0.5">{option.description}</div>}
+                  </button>
+                ))
+              ) : (
+                <div className="px-3 py-4 text-center text-gray-500 text-sm">Tidak ada data ditemukan</div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 
@@ -720,15 +797,21 @@ const InstrumentsCRUD: React.FC = () => {
         <div className="flex items-center gap-4">
           <div className="flex items-center space-x-2">
             <span className="text-sm text-gray-500 font-medium">Filter:</span>
-            <select
+            <SearchableDropdown
               value={filterType}
-              onChange={(e) => { setFilterType(e.target.value as any); setCurrentPage(1); }}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="all">Semua Instrumen</option>
-              <option value="uut">Instrumen UUT</option>
-              <option value="standard">Instrumen Standar</option>
-            </select>
+              onChange={(val) => {
+                setFilterType((val || 'all') as 'all' | 'uut' | 'standard')
+                setCurrentPage(1)
+              }}
+              options={[
+                { id: 'all', name: 'Semua Instrumen' },
+                { id: 'uut', name: 'Instrumen UUT' },
+                { id: 'standard', name: 'Instrumen Standar' },
+              ]}
+              placeholder="Pilih filter"
+              searchPlaceholder="Cari filter..."
+              className="w-48"
+            />
           </div>
           <h2 className="text-xl font-bold text-gray-800 border-l border-gray-300 pl-4">
             Daftar Instrumen
@@ -903,12 +986,12 @@ const InstrumentsCRUD: React.FC = () => {
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             Instrument Name *
                           </label>
-                          <CustomSelect
-                            options={instrumentNames.map(n => ({ value: n.id, label: n.name }))}
-                            value={form.instrument_names_id}
+                          <SearchableDropdown
+                            options={instrumentNames.map(n => ({ id: n.id, name: n.name }))}
+                            value={form.instrument_names_id ?? null}
                             onChange={(val) => setForm({ ...form, instrument_names_id: val ? Number(val) : null })}
-                            placeholder="-- Pilih Nama Instrumen --"
-                            clearable={false}
+                            placeholder="Pilih Nama Instrumen"
+                            searchPlaceholder="Cari nama instrumen..."
                           />
                         </div>
                         {/* Instrument Type */}
@@ -1286,12 +1369,15 @@ const InstrumentsCRUD: React.FC = () => {
                                                 <div className="space-y-3">
                                                   <div>
                                                     <label className="block text-xs font-medium text-gray-600 mb-1">Nama Sensor</label>
-                                                    <CustomSelect
-                                                      options={instrumentNames.map(n => ({ value: n.id, label: n.name }))}
+                                                    <SearchableDropdown
+                                                      options={[
+                                                        { id: '', name: 'Tidak dipilih' },
+                                                        ...instrumentNames.map(n => ({ id: n.id, name: n.name })),
+                                                      ]}
                                                       value={sensor.sensor_name_id}
                                                       onChange={(val) => updateSensorIdentity('sensor_name_id', val ? Number(val) : null)}
-                                                      placeholder="-- Pilih Nama Sensor --"
-                                                      clearLabel="— Tidak dipilih"
+                                                      placeholder="Pilih Nama Sensor"
+                                                      searchPlaceholder="Cari nama sensor..."
                                                     />
                                                   </div>
                                                   <div>
@@ -1573,12 +1659,15 @@ const InstrumentsCRUD: React.FC = () => {
                                 <div className="space-y-4">
                                   <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">Nama Sensor</label>
-                                    <CustomSelect
-                                      options={instrumentNames.map(n => ({ value: n.id, label: n.name }))}
+                                    <SearchableDropdown
+                                      options={[
+                                        { id: '', name: 'Tidak dipilih' },
+                                        ...instrumentNames.map(n => ({ id: n.id, name: n.name })),
+                                      ]}
                                       value={sensor.sensor_name_id}
                                       onChange={(val) => updateSensor(sensor.id, 'sensor_name_id', val ? Number(val) : null)}
-                                      placeholder="-- Pilih Nama Sensor --"
-                                      clearLabel="— Tidak dipilih"
+                                      placeholder="Pilih Nama Sensor"
+                                      searchPlaceholder="Cari nama sensor..."
                                     />
                                   </div>
                                   <div>

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../../contexts/AuthContext'
 import { useCertificates } from '../../../hooks/useCertificates'
 import { useCertificateVerification } from '../../../hooks/useCertificateVerification'
@@ -184,6 +184,69 @@ const ModalBatikHeader = () => (
   </div>
 )
 
+// Dynamic KaTeX import to avoid SSR issues
+let katex: any = null
+
+// Detect if a string likely contains LaTeX syntax
+const hasLatexSyntax = (str: string): boolean => {
+    return /[\\^_{}]|\$/.test(str)
+}
+
+// LaTeX Preview Component
+const LaTeXPreview = ({ latex, className = '' }: { latex: string; className?: string }) => {
+    const ref = useRef<HTMLSpanElement>(null)
+    const [error, setError] = useState(false)
+
+    useEffect(() => {
+        if (!ref.current || !latex.trim()) return
+
+        const render = async () => {
+            try {
+                if (!katex) {
+                    katex = (await import('katex')).default
+                    if (!document.getElementById('katex-css')) {
+                        const link = document.createElement('link')
+                        link.id = 'katex-css'
+                        link.rel = 'stylesheet'
+                        link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css'
+                        document.head.appendChild(link)
+                    }
+                }
+                const html = katex.renderToString(latex, {
+                    throwOnError: false,
+                    displayMode: false,
+                    output: 'html',
+                })
+                if (ref.current) {
+                    ref.current.innerHTML = html
+                    setError(false)
+                }
+            } catch (e) {
+                setError(true)
+                if (ref.current) {
+                    ref.current.textContent = latex
+                }
+            }
+        }
+
+        render()
+    }, [latex])
+
+    if (!latex.trim()) return null
+    if (error || !hasLatexSyntax(latex)) {
+        return <span className={className}>{latex}</span>
+    }
+
+    return <span ref={ref} className={className} />
+}
+
+const SmartUnit = ({ value, className = '' }: { value: string; className?: string }) => {
+    if (!hasLatexSyntax(value)) {
+        return <span className={className}>{value}</span>
+    }
+    return <LaTeXPreview latex={value} className={className} />
+}
+
 // Searchable Dropdown Component
 const SearchableDropdown = ({
   value,
@@ -192,7 +255,8 @@ const SearchableDropdown = ({
   placeholder = "Pilih...",
   searchPlaceholder = "Cari...",
   className = "",
-  id = ""
+  id = "",
+  renderOptionName
 }: {
   value: string | number | null
   onChange: (value: string | number | null) => void
@@ -201,6 +265,7 @@ const SearchableDropdown = ({
   searchPlaceholder?: string
   className?: string
   id?: string
+  renderOptionName?: (name: string) => React.ReactNode
 }) => {
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -225,7 +290,10 @@ const SearchableDropdown = ({
         className="w-full px-3 py-2 text-left border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-[#1e377c] focus:border-transparent text-sm"
       >
         {selectedOption ? (
-          <span className="text-gray-900">{selectedOption.name} {selectedOption.station_id ? `(${selectedOption.station_id})` : ''}</span>
+          <span className="text-gray-900">
+            {renderOptionName ? renderOptionName(selectedOption.name) : selectedOption.name}
+            {selectedOption.station_id ? ` (${selectedOption.station_id})` : ''}
+          </span>
         ) : (
           <span className="text-gray-500">{placeholder}</span>
         )}
@@ -266,7 +334,9 @@ const SearchableDropdown = ({
                         }}
                         className="w-full px-3 py-2 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0 text-sm"
                       >
-                        <div className="font-medium text-gray-900">{option.name}</div>
+                        <div className="font-medium text-gray-900">
+                          {renderOptionName ? renderOptionName(option.name) : option.name}
+                        </div>
                         {option.station_id ? (
                           <div className="text-xs text-gray-500 mt-0.5">{option.station_id}</div>
                         ) : null}
@@ -294,6 +364,7 @@ const CertificatesCRUD: React.FC = () => {
   const { can, canEndpoint, role } = usePermissions()
   const { alert, showSuccess, showError, showWarning, hideAlert } = useAlert()
   const router = useRouter()
+  const isCalibrator = role === 'calibrator'
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [actionDropdownOpenId, setActionDropdownOpenId] = useState<number | null>(null)
@@ -320,6 +391,7 @@ const CertificatesCRUD: React.FC = () => {
   const [instrumentNames, setInstrumentNames] = useState<Array<{ id: number; name: string }>>([])
   const [standardCerts, setStandardCerts] = useState<CertStandard[]>([])
   const [personel, setPersonel] = useState<Array<{ id: string; name: string; nip?: string; role?: string }>>([])
+  const [units, setUnits] = useState<{ id: number; unit: string }[]>([])
 
   // QC Modal State
   const [showQCModal, setShowQCModal] = useState(false)
@@ -570,7 +642,7 @@ const CertificatesCRUD: React.FC = () => {
       // Auto-fill unit from sensor's graduating_unit or range_capacity_unit (user can override via dropdown)
       unitUut: sensor?.graduating_unit || sensor?.range_capacity_unit || null,
       // Auto-fill calibration place based on sensor location or default
-      place: sensor ? `Laboratorium Kalibrasi BMKG - ${sensor.name || sensor.type || 'Sensor'}` : '',
+      place: '',
     })
   }
 
@@ -1022,13 +1094,14 @@ const CertificatesCRUD: React.FC = () => {
           return { data: [...firstData, ...restData], total: (firstJson?.total ?? (firstData.length + restData.length)) as number, pageSize: 100, totalPages }
         }
 
-        const [stationsAll, instrumentsAll, sensorsAll, personelRes, certStandardsRes, instrNamesRes] = await Promise.all([
+        const [stationsAll, instrumentsAll, sensorsAll, personelRes, certStandardsRes, instrNamesRes, unitsRes] = await Promise.all([
           fetchAllStations(),
           fetchAllInstruments(),
           fetchAllSensors(),
           fetch('/api/personel'),
           fetch('/api/cert-standards'),
           fetch('/api/instrument-names'),
+          fetch('/api/units'),
         ])
 
         setStations(Array.isArray(stationsAll) ? stationsAll : (stationsAll as any)?.data ?? [])
@@ -1042,6 +1115,11 @@ const CertificatesCRUD: React.FC = () => {
         if (personelRes.ok) {
           const p = await personelRes.json()
           setPersonel(Array.isArray(p) ? p : [])
+        }
+
+        if (unitsRes.ok) {
+          const u = await unitsRes.json()
+          setUnits(Array.isArray(u) ? u : [])
         }
 
         // Handle standard certs
@@ -1295,6 +1373,15 @@ const CertificatesCRUD: React.FC = () => {
       }
     } else {
       setEditing(null)
+      setSessionDetails({
+        start_date: '',
+        end_date: '',
+        place: '',
+        notes: ''
+      })
+      setGlobalStandardInstrumentId(null)
+      setGlobalStandardCertificateNumber(null)
+      setInstrumentPreview({})
       setForm({
         no_certificate: 'Membuat nomor otomatis...',
         no_order: '...',
@@ -1873,13 +1960,15 @@ const CertificatesCRUD: React.FC = () => {
 
                           {/* DOWNLOADS / PRINT GROUP */}
                           <div className="py-1">
-                            <button
-                              onClick={() => handlePrintLHKS(item)}
-                              className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors"
-                            >
-                              <PrinterIcon className="w-4 h-4 text-purple-600" />
-                              Print LHKS
-                            </button>
+                            {!isCalibrator && (
+                              <button
+                                onClick={() => handlePrintLHKS(item)}
+                                className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors"
+                              >
+                                <PrinterIcon className="w-4 h-4 text-purple-600" />
+                                Print LHKS
+                              </button>
+                            )}
                             <button
                               onClick={async () => {
                                 try {
@@ -2040,7 +2129,7 @@ const CertificatesCRUD: React.FC = () => {
                               </button>
                             )}
 
-                            {can('certificate', 'delete') && canEndpoint('DELETE', `/api/certificates/${item.id}`) && item.status !== 'sent' && (
+                            {can('certificate', 'delete') && canEndpoint('DELETE', `/api/certificates/${item.id}`) && (isCalibrator ? (item.status || 'draft') === 'draft' : item.status !== 'sent') && (
                               <button
                                 onClick={() => {
                                   handleDelete(item.id);
@@ -2524,12 +2613,7 @@ const CertificatesCRUD: React.FC = () => {
                           <div className="text-xs text-center text-gray-400 py-4 italic">Belum ada data diupload</div>
                         ) : (
                           rawData.map((sheet, i) => {
-                            const unitOptions = [
-                              { id: 1, unit: 'hPa' }, { id: 2, unit: 'inHg' }, { id: 3, unit: 'mbar' },
-                              { id: 4, unit: 'mmHg' }, { id: 5, unit: 'm/s' }, { id: 6, unit: 'knot' },
-                              { id: 7, unit: 'fpm' }, { id: 8, unit: '°C' }, { id: 9, unit: '°F' },
-                              { id: 10, unit: '%RH' }, { id: 11, unit: 'mm' }, { id: 12, unit: 'W/m²' },
-                            ];
+                            const unitOptions = units;
                             return (
                               <div key={i} className="p-2 bg-white border border-gray-200 rounded shadow-sm space-y-2">
                                 {/* Sheet header row */}
@@ -2547,31 +2631,29 @@ const CertificatesCRUD: React.FC = () => {
                                       <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
                                         Unit kolom UUT
                                       </label>
-                                      <select
+                                      <SearchableDropdown
                                         value={results[i]?.unitUut || ''}
-                                        onChange={e => updateResult(i, { unitUut: e.target.value || null })}
-                                        className="w-full mt-0.5 px-2 py-1 text-xs border border-gray-300 rounded bg-white focus:ring-1 focus:ring-[#1e377c] focus:outline-none"
-                                      >
-                                        <option value="">— pilih unit —</option>
-                                        {unitOptions.map(u => (
-                                          <option key={u.id} value={u.unit}>{u.unit}</option>
-                                        ))}
-                                      </select>
+                                        onChange={val => updateResult(i, { unitUut: val ? String(val) : null })}
+                                        options={unitOptions.map(u => ({ id: u.unit, name: u.unit }))}
+                                        placeholder="Pilih unit"
+                                        searchPlaceholder="Cari unit..."
+                                        className="mt-0.5"
+                                        renderOptionName={(name) => <SmartUnit value={name} />}
+                                      />
                                     </div>
                                     <div>
                                       <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
                                         Unit kolom STD
                                       </label>
-                                      <select
+                                      <SearchableDropdown
                                         value={results[i]?.unitStd || ''}
-                                        onChange={e => updateResult(i, { unitStd: e.target.value || null })}
-                                        className="w-full mt-0.5 px-2 py-1 text-xs border border-gray-300 rounded bg-white focus:ring-1 focus:ring-[#1e377c] focus:outline-none"
-                                      >
-                                        <option value="">— pilih unit —</option>
-                                        {unitOptions.map(u => (
-                                          <option key={u.id} value={u.unit}>{u.unit}</option>
-                                        ))}
-                                      </select>
+                                        onChange={val => updateResult(i, { unitStd: val ? String(val) : null })}
+                                        options={unitOptions.map(u => ({ id: u.unit, name: u.unit }))}
+                                        placeholder="Pilih unit"
+                                        searchPlaceholder="Cari unit..."
+                                        className="mt-0.5"
+                                        renderOptionName={(name) => <SmartUnit value={name} />}
+                                      />
                                     </div>
                                   </div>
                                   {results[i]?.unitUut && results[i]?.unitStd && results[i]?.unitUut !== results[i]?.unitStd && (
@@ -2610,12 +2692,7 @@ const CertificatesCRUD: React.FC = () => {
                 {/* DYNAMIC SENSOR INPUTS LOOP */}
                 {results.map((result, resultIndex) => {
                   // Inline unitOptions for closure access inside map
-                  const unitOptions: { id: number; unit: string }[] = [
-                    { id: 1, unit: 'hPa' }, { id: 2, unit: 'inHg' }, { id: 3, unit: 'mbar' },
-                    { id: 4, unit: 'mmHg' }, { id: 5, unit: 'm/s' }, { id: 6, unit: 'knot' },
-                    { id: 7, unit: 'fpm' }, { id: 8, unit: '°C' }, { id: 9, unit: '°F' },
-                    { id: 10, unit: '%RH' }, { id: 11, unit: 'mm' }, { id: 12, unit: 'W/m²' },
-                  ];
+                  const unitOptions: { id: number; unit: string }[] = units;
                   return (<div key={resultIndex} className="bg-gray-50/50 rounded-xl border border-gray-200 p-4 mb-6 relative">
                     {/* Loop Header */}
                     <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-200">
@@ -2781,6 +2858,9 @@ const CertificatesCRUD: React.FC = () => {
                                 const certId = val as number;
                                 const selectedCert = standardCerts.find(c => c.id === certId);
                                 const sensorId = selectedCert?.sensor_id;
+                                
+                                const standardSensor = sensors.find((s: any) => s.id === sensorId);
+                                const traceValue = (standardSensor as any)?.tracebility || (standardSensor as any)?.traceability || '';
 
                                 updateResult(resultIndex, {
                                   // Sync global values into this result item ensures data integrity
@@ -2790,7 +2870,8 @@ const CertificatesCRUD: React.FC = () => {
                                   notesForm: {
                                     ...result.notesForm,
                                     // Store the SENSOR ID in notesForm, as that's what backend expects for "standardInstruments"
-                                    standardInstruments: sensorId ? [sensorId] : []
+                                    standardInstruments: sensorId ? [sensorId] : [],
+                                    ...(traceValue ? { traceable_to_si_through: String(traceValue) } : {})
                                   }
                                 });
                               }}
@@ -3007,19 +3088,20 @@ const CertificatesCRUD: React.FC = () => {
                             </div>
                             <div className="space-y-1">
                               <label className="block text-xs font-semibold text-gray-700">Metode Kalibrasi</label>
-                              <select
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] bg-white"
+                              <SearchableDropdown
                                 value={result.notesForm?.calibration_methode || ''}
-                                onChange={e => updateResult(resultIndex, { notesForm: { ...result.notesForm, calibration_methode: e.target.value } })}
-                              >
-                                <option value="">-- Pilih Metode Kalibrasi --</option>
-                                <option value="MK 01 - Suhu">MK 01 - Suhu</option>
-                                <option value="MK 03 - Kelembapan Udara Relatif">MK 03 - Kelembapan Udara Relatif</option>
-                                <option value="MK 02 - Tekanan Udara">MK 02 - Tekanan Udara</option>
-                                <option value="MK 04 - Anemometer (Kecepatan Angin)">MK 04 - Anemometer (Kecepatan Angin)</option>
-                                <option value="MK 05 - Anemometer (Arah Angin)">MK 05 - Anemometer (Arah Angin)</option>
-                                <option value="MK 06 - Penakar Hujan">MK 06 - Penakar Hujan</option>
-                              </select>
+                                onChange={val => updateResult(resultIndex, { notesForm: { ...result.notesForm, calibration_methode: val ? String(val) : '' } })}
+                                options={[
+                                  'MK 01 - Suhu',
+                                  'MK 03 - Kelembapan Udara Relatif',
+                                  'MK 02 - Tekanan Udara',
+                                  'MK 04 - Anemometer (Kecepatan Angin)',
+                                  'MK 05 - Anemometer (Arah Angin)',
+                                  'MK 06 - Penakar Hujan',
+                                ].map(method => ({ id: method, name: method }))}
+                                placeholder="Pilih Metode Kalibrasi"
+                                searchPlaceholder="Cari metode kalibrasi..."
+                              />
                             </div>
                             <div className="space-y-1">
                               <label className="block text-xs font-semibold text-gray-700">Dokumen Acuan</label>

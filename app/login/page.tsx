@@ -123,8 +123,8 @@ const LoginPage: React.FC = () => {
                 <div className="relative flex justify-center w-[120px] h-[120px]">
                   <div className="absolute inset-0 bg-blue-500/20 rounded-full blur-lg animate-pulse-gentle"></div>
                   <Image
-                    src="/silaki.png"
-                    alt="SILAKI Logo"
+                    src="/simkal_vertikal.png"
+                    alt="SIMKAL Logo"
                     fill
                     className="relative z-10 drop-shadow-2xl object-contain object-center"
                   />

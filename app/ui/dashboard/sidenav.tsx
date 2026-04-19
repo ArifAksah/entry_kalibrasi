@@ -236,8 +236,8 @@ const SideNav: React.FC = () => {
           {/* Logo tanpa background card */}
           <div className="mb-4 p-2 relative w-[180px] h-[60px] flex items-center justify-center">
             <Image
-              src="/silaki.png"
-              alt="SILAKI Logo"
+              src="/simkal_horizontal.png"
+              alt="SIMKAL Logo"
               fill
               className="drop-shadow-lg object-contain object-center"
               style={{ filter: 'none' }}
