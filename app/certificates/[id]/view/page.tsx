@@ -1939,7 +1939,7 @@ const ViewCertificatePage: React.FC = () => {
                                     </div>
                                   </td>
                                   <td className="align-bottom text-center text-[10px] font-medium pb-[1px]" style={{ width: '50%', lineHeight: '1.4' }}>
-                                    Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
+                                    Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara (BSSN)
                                   </td>
                                   <td className="align-bottom text-right text-[10px] font-bold pb-[1px]" style={{ width: '25%' }}>
                                     Edisi/Revisi : 11/1
