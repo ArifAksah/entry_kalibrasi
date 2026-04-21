@@ -2389,12 +2389,14 @@ const CertificatesCRUD: React.FC = () => {
                           return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
                         })() : ''}
                         onChange={(start, end) => {
+                          const start_date = start ? `${start}T00:00` : '';
+                          const end_date = end ? `${end}T23:59` : (start ? `${start}T23:59` : '');
                           setSessionDetails(s => ({
                             ...s,
-                            // Store as datetime: start of day for start, end of day for end
-                            start_date: start ? `${start}T00:00` : '',
-                            end_date: end ? `${end}T23:59` : (start ? `${start}T23:59` : '')
+                            start_date,
+                            end_date
                           }))
+                          setResults(prev => prev.map(r => ({ ...r, startDate: start_date, endDate: end_date })))
                         }}
                         placeholder="Pilih rentang tanggal kalibrasi"
                       />
@@ -2406,7 +2408,11 @@ const CertificatesCRUD: React.FC = () => {
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
                         placeholder="Laboratorium Kalibrasi BMKG..."
                         value={sessionDetails.place}
-                        onChange={e => setSessionDetails({ ...sessionDetails, place: e.target.value })}
+                        onChange={e => {
+                          const newPlace = e.target.value;
+                          setSessionDetails({ ...sessionDetails, place: newPlace });
+                          setResults(prev => prev.map(r => ({ ...r, place: newPlace })));
+                        }}
                       />
                     </div>
                   </div>
