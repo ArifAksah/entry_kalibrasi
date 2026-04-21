@@ -102,9 +102,9 @@ export default function StationsCRUD() {
     name: '',
     address: '',
     type: '' as any,
-    latitude: 0,
-    longitude: 0,
-    elevation: 0,
+    latitude: '',
+    longitude: '',
+    elevation: '',
     time_zone: '',
     region: '',
     province: '',
@@ -172,9 +172,9 @@ export default function StationsCRUD() {
       station_wmo_id: ref.station_wmo_id || ref.wigos_id || '', // Prefer WMO, fallback to WIGOS
       station_id: ref.station_id || '',
       name: ref.station_name,
-      latitude: ref.current_latitude || 0,
-      longitude: ref.current_longitude || 0,
-      elevation: ref.current_elevation || 0,
+      latitude: ref.current_latitude ?? '',
+      longitude: ref.current_longitude ?? '',
+      elevation: ref.current_elevation ?? '',
       time_zone: ref.timezone || '',
       region: ref.region_description || '',
       province: ref.propinsi_name || '',
@@ -302,9 +302,9 @@ export default function StationsCRUD() {
         name: (item as any).name ?? '',
         address: (item as any).address ?? '',
         type: ((item as any).type ?? '') as any,
-        latitude: typeof (item as any).latitude === 'number' ? (item as any).latitude : 0,
-        longitude: typeof (item as any).longitude === 'number' ? (item as any).longitude : 0,
-        elevation: typeof (item as any).elevation === 'number' ? (item as any).elevation : 0,
+        latitude: (item as any).latitude ?? '',
+        longitude: (item as any).longitude ?? '',
+        elevation: (item as any).elevation ?? '',
         time_zone: (item as any).time_zone ?? '',
         region: (item as any).region ?? '',
         province: (item as any).province ?? '',
@@ -319,9 +319,9 @@ export default function StationsCRUD() {
         name: '',
         address: '',
         type: '' as any,
-        latitude: 0,
-        longitude: 0,
-        elevation: 0,
+        latitude: '',
+        longitude: '',
+        elevation: '',
         time_zone: '',
         region: '',
         province: '',
@@ -343,9 +343,7 @@ export default function StationsCRUD() {
 
     // Ensure created_by is set to current user
     // Ensure created_by is set to current user
-    const { station_id, ...validPayload } = form
-    // Cast to StationInsert to satisfy TS since station_id is optional/removed
-    const finalPayload = { ...validPayload, created_by: currentUserId || form.created_by } as unknown as StationInsert
+    const finalPayload = { ...form, created_by: currentUserId || form.created_by } as StationInsert
 
     if (!finalPayload.created_by) {
       alert('Please log in to create a station')
@@ -758,16 +756,15 @@ export default function StationsCRUD() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {[
-                      { label: 'Latitude *', value: form.latitude, onChange: (e: any) => setForm({ ...form, latitude: parseFloat(e.target.value) || 0 }), type: 'number', step: "any", required: true },
-                      { label: 'Longitude *', value: form.longitude, onChange: (e: any) => setForm({ ...form, longitude: parseFloat(e.target.value) || 0 }), type: 'number', step: "any", required: true },
-                      { label: 'Elevation (m) *', value: form.elevation, onChange: (e: any) => setForm({ ...form, elevation: parseFloat(e.target.value) || 0 }), type: 'number', step: "any", required: true },
+                      { label: 'Latitude', value: form.latitude || '', onChange: (e: any) => setForm({ ...form, latitude: e.target.value }), type: 'text', required: false },
+                      { label: 'Longitude', value: form.longitude || '', onChange: (e: any) => setForm({ ...form, longitude: e.target.value }), type: 'text', required: false },
+                      { label: 'Elevation (m)', value: form.elevation || '', onChange: (e: any) => setForm({ ...form, elevation: e.target.value }), type: 'text', required: false },
                     ].map((field, index) => (
                       <div key={index} className="space-y-1">
                         <label className="block text-xs font-semibold text-gray-700">{field.label}</label>
                         <input
                           required={field.required}
                           type={field.type}
-                          step={field.step}
                           value={field.value}
                           onChange={field.onChange}
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] focus:border-transparent transition-all duration-200 bg-white text-sm"

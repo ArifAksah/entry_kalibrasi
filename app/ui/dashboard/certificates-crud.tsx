@@ -469,7 +469,7 @@ const CertificatesCRUD: React.FC = () => {
   const [instrumentPreview, setInstrumentPreview] = useState<{ manufacturer?: string; type?: string; serial?: string; other?: string }>({})
 
   // Local UI state for calibration results blocks
-  type KV = { key: string; value: string }
+  type KV = { key: string; value: string; enabled?: boolean }
   type TableRow = { key: string; unit: string; value: string; extraValues?: string[] }
   type TableSection = { title: string; headers?: string[]; rows: TableRow[] }
   type ResultItem = {
@@ -639,10 +639,10 @@ const CertificatesCRUD: React.FC = () => {
         name: sensor.name,
         created_at: sensor.created_at,
       } : undefined,
-      // Auto-fill unit from sensor's graduating_unit or range_capacity_unit (user can override via dropdown)
-      unitUut: sensor?.graduating_unit || sensor?.range_capacity_unit || null,
-      // Auto-fill calibration place based on sensor location or default
-      place: '',
+      // Auto-fill unit from sensor's graduating_unit or range_capacity_unit (fallback to existing unit)
+      unitUut: sensor?.graduating_unit || sensor?.range_capacity_unit || results[idx]?.unitUut || null,
+      // Preserve existing calibration place instead of clearing it
+      place: sessionDetails.place || results[idx]?.place || '',
     })
   }
 
@@ -1969,50 +1969,50 @@ const CertificatesCRUD: React.FC = () => {
                                 Print LHKS
                               </button>
                             )}
-                            <button
-                              onClick={async () => {
-                                try {
-                                  const pdfEndpoint = item.pdf_path
-                                    ? `/api/certificates/${item.id}/pdf`
-                                    : `/api/certificates/${item.id}/download-pdf`
+                            {item.pdf_path && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const pdfEndpoint = `/api/certificates/${item.id}/pdf`
 
-                                  const response = await fetch(pdfEndpoint)
-                                  if (!response.ok) throw new Error('Failed to get PDF')
+                                    const response = await fetch(pdfEndpoint)
+                                    if (!response.ok) throw new Error('Failed to get PDF')
 
-                                  const contentDisposition = response.headers.get('Content-Disposition')
-                                  let filename = `Certificate_${item.no_certificate || item.id}.pdf`
-                                  if (contentDisposition) {
-                                    const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i)
-                                    if (filenameMatch && filenameMatch[1]) {
-                                      filename = filenameMatch[1].replace(/['"]/g, '')
-                                      if (filename.includes('%')) filename = decodeURIComponent(filename)
+                                    const contentDisposition = response.headers.get('Content-Disposition')
+                                    let filename = `Certificate_${item.no_certificate || item.id}.pdf`
+                                    if (contentDisposition) {
+                                      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i)
+                                      if (filenameMatch && filenameMatch[1]) {
+                                        filename = filenameMatch[1].replace(/['"]/g, '')
+                                        if (filename.includes('%')) filename = decodeURIComponent(filename)
+                                      }
                                     }
+
+                                    if (!filename.toLowerCase().endsWith('.pdf')) filename = `${filename}.pdf`
+
+                                    const blob = await response.blob()
+                                    const url = window.URL.createObjectURL(blob)
+                                    const a = document.createElement('a')
+                                    a.href = url
+                                    a.download = filename
+                                    a.type = 'application/pdf'
+                                    document.body.appendChild(a)
+                                    a.click()
+                                    window.URL.revokeObjectURL(url)
+                                    document.body.removeChild(a)
+                                  } catch (err) {
+                                    console.error('Error downloading PDF:', err)
+                                    showError('Failed to download PDF. Please try again.')
                                   }
-
-                                  if (!filename.toLowerCase().endsWith('.pdf')) filename = `${filename}.pdf`
-
-                                  const blob = await response.blob()
-                                  const url = window.URL.createObjectURL(blob)
-                                  const a = document.createElement('a')
-                                  a.href = url
-                                  a.download = filename
-                                  a.type = 'application/pdf'
-                                  document.body.appendChild(a)
-                                  a.click()
-                                  window.URL.revokeObjectURL(url)
-                                  document.body.removeChild(a)
-                                } catch (err) {
-                                  console.error('Error downloading PDF:', err)
-                                  showError('Failed to download PDF. Please try again.')
-                                }
-                              }}
-                              className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
-                            >
-                              <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                              </svg>
-                              {item.pdf_path ? "Download Signed PDF" : "Download PDF"}
-                            </button>
+                                }}
+                                className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
+                              >
+                                <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                Download Signed PDF
+                              </button>
+                            )}
                             <a
                               href={`/certificates/${item.id}/print`}
                               target="_blank"
@@ -2992,26 +2992,47 @@ const CertificatesCRUD: React.FC = () => {
                           <h5 className="text-xs font-bold text-gray-700 mb-2 uppercase tracking-wide">Kondisi Lingkungan</h5>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {result.environment.length > 0 ? (
-                              result.environment.map((env, envIdx) => (
-                                <div key={envIdx} className="space-y-1">
-                                  <label className="block text-xs font-semibold text-gray-600">{env.key}</label>
-                                  <input
-                                    value={env.value}
-                                    onChange={e => {
-                                      const newEnv = [...result.environment];
-                                      newEnv[envIdx] = { ...newEnv[envIdx], value: e.target.value };
-                                      updateResult(resultIndex, { environment: newEnv });
-                                    }}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
-                                  />
-                                </div>
-                              ))
+                              result.environment.map((env, envIdx) => {
+                                const isEnabled = env.enabled !== false;
+                                return (
+                                  <div key={envIdx} className="space-y-1">
+                                    <div className="flex items-center justify-between">
+                                      <label className={`block text-xs font-semibold ${isEnabled ? 'text-gray-600' : 'text-gray-400'}`}>
+                                        {env.key}
+                                      </label>
+                                      <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          className="sr-only peer"
+                                          checked={isEnabled}
+                                          onChange={e => {
+                                            const newEnv = [...result.environment];
+                                            newEnv[envIdx] = { ...newEnv[envIdx], enabled: e.target.checked };
+                                            updateResult(resultIndex, { environment: newEnv });
+                                          }}
+                                        />
+                                        <div className="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#1e377c]"></div>
+                                      </label>
+                                    </div>
+                                    <input
+                                      value={env.value}
+                                      disabled={!isEnabled}
+                                      onChange={e => {
+                                        const newEnv = [...result.environment];
+                                        newEnv[envIdx] = { ...newEnv[envIdx], value: e.target.value };
+                                        updateResult(resultIndex, { environment: newEnv });
+                                      }}
+                                      className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] ${!isEnabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
+                                    />
+                                  </div>
+                                );
+                              })
                             ) : (
                               <div className="col-span-2 text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-300">
                                 <p className="text-xs text-gray-500 italic">Belum ada data kondisi lingkungan. Upload Data Mentah untuk auto-generate atau tambah manual.</p>
                                 <button
                                   type="button"
-                                  onClick={() => updateResult(resultIndex, { environment: [{ key: 'Suhu', value: '' }, { key: 'Kelembaban', value: '' }] })}
+                                  onClick={() => updateResult(resultIndex, { environment: [{ key: 'Suhu', value: '', enabled: false }, { key: 'Kelembaban', value: '', enabled: false }] })}
                                   className="mt-2 text-xs text-blue-600 hover:underline"
                                 >
                                   + Tambah Manual Default (Suhu/Kelembaban)

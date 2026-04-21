@@ -139,9 +139,9 @@ export interface Station {
   station_id?: string // Legacy or alias
   name: string
   address: string
-  latitude: number
-  longitude: number
-  elevation: number
+  latitude: number | string | null
+  longitude: number | string | null
+  elevation: number | string | null
   time_zone: string
   region: string
   province: string

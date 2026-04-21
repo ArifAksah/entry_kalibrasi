@@ -116,11 +116,11 @@ const LoginPage: React.FC = () => {
       <div className="relative sm:mx-auto sm:w-full sm:max-w-md">
         {/* Elegant Colored Card */}
         <div className="bg-gradient-to-br from-slate-800/90 to-blue-900/90 backdrop-blur-xl rounded-3xl shadow-2xl border border-slate-700/50 transform transition-all duration-500 hover:shadow-3xl">
-          <div className="py-12 px-8">
-            {/* Logo Section - Larger */}
-            <div className="flex flex-col items-center mb-8">
-              <div className="mb-6 transform transition-all duration-500 hover:scale-110 hover:rotate-3">
-                <div className="relative flex justify-center w-[160px] h-[160px]">
+          <div className="py-8 px-8">
+            {/* Logo Section - Larger but tighter margins */}
+            <div className="flex flex-col items-center mb-4">
+              <div className="transform transition-all duration-500 hover:scale-110 hover:rotate-3">
+                <div className="relative flex justify-center w-[200px] h-[200px]">
                   <div className="absolute inset-0 bg-blue-500/20 rounded-full blur-lg animate-pulse-gentle"></div>
                   <Image
                     src="/simkal_vertikal.png"
@@ -131,8 +131,8 @@ const LoginPage: React.FC = () => {
                 </div>
               </div>
 
-              <p className="text-blue-200 text-lg font-semibold text-center">
-                Sistem Informasi Kalibrasi
+              <p className="text-blue-200 text-lg font-semibold text-center -mt-6">
+                Sistem Informasi Manajemen Kalibrasi
               </p>
               <p className="text-slate-400 text-sm text-center mt-1">
                 Badan Meteorologi, Klimatologi, dan Geofisika

@@ -28,7 +28,8 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
     const { 
-      station_id, 
+      station_id,
+      station_wmo_id,
       name, 
       address, 
       latitude, 
@@ -42,9 +43,19 @@ export async function PUT(
       created_by 
     } = body
 
-    if (!station_id || !name || !address || !latitude || !longitude || !elevation || !time_zone || !region || !province || !regency || !type || !created_by) {
+    const missingFields = []
+    if (!name) missingFields.push('name')
+    if (!address) missingFields.push('address')
+    if (!time_zone) missingFields.push('time_zone')
+    if (!region) missingFields.push('region')
+    if (!province) missingFields.push('province')
+    if (!regency) missingFields.push('regency')
+    if (!type) missingFields.push('type')
+    if (!created_by) missingFields.push('created_by')
+
+    if (missingFields.length > 0) {
       return NextResponse.json({
-        error: 'All fields are required',
+        error: `Required fields are missing: ${missingFields.join(', ')}`,
       }, { status: 400 })
     }
 
@@ -64,12 +75,13 @@ export async function PUT(
     const { data, error } = await supabase
       .from('station')
       .update({ 
-        station_id, 
+        station_id: station_id === '' ? null : station_id, 
+        station_wmo_id: station_wmo_id === '' ? null : station_wmo_id,
         name, 
         address, 
-        latitude: parseFloat(latitude), 
-        longitude: parseFloat(longitude), 
-        elevation: parseFloat(elevation), 
+        latitude: latitude === '' ? null : latitude, 
+        longitude: longitude === '' ? null : longitude, 
+        elevation: elevation === '' ? null : elevation, 
         time_zone, 
         region, 
         province, 

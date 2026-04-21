@@ -98,9 +98,18 @@ export async function POST(request: NextRequest) {
       type
     } = body
 
-    if (!name || !address || !latitude || !longitude || !elevation || !time_zone || !region || !province || !regency || !type) {
+    const missingFields = []
+    if (!name) missingFields.push('name')
+    if (!address) missingFields.push('address')
+    if (!time_zone) missingFields.push('time_zone')
+    if (!region) missingFields.push('region')
+    if (!province) missingFields.push('province')
+    if (!regency) missingFields.push('regency')
+    if (!type) missingFields.push('type')
+
+    if (missingFields.length > 0) {
       return NextResponse.json({
-        error: 'All fields are required',
+        error: `Required fields are missing: ${missingFields.join(', ')}`,
       }, { status: 400 })
     }
 
@@ -123,9 +132,9 @@ export async function POST(request: NextRequest) {
         station_wmo_id,
         name,
         address,
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
-        elevation: parseFloat(elevation),
+        latitude: latitude === '' ? null : latitude,
+        longitude: longitude === '' ? null : longitude,
+        elevation: elevation === '' ? null : elevation,
         time_zone,
         region,
         province,

@@ -117,9 +117,9 @@ export const usePermissions = () => {
 
     const m = method.toUpperCase()
 
-    // Calibrator can POST/PUT to certificates
+    // Calibrator can POST/PUT to certificates and master data
     if (role === 'calibrator') {
-      if (path.startsWith('/api/certificates') || path.startsWith('/api/instruments') || path.startsWith('/api/sensors')) {
+      if (path.startsWith('/api/certificates') || path.startsWith('/api/instruments') || path.startsWith('/api/sensors') || path.startsWith('/api/units') || path.startsWith('/api/master-names') || path.startsWith('/api/master-qc')) {
         return ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(m)
       }
     }
