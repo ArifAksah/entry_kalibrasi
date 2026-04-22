@@ -588,8 +588,6 @@ const PrintCertificatePage: React.FC = () => {
   // Ini adalah bagian penting untuk membuat layout A4
   // Kita menggunakan <style> agar bisa mengatur @page dan print media queries
   const A4Style = `
-    @import url('https://fonts.googleapis.com/css2?family=Arial:wght@400;700&display=swap');
-    
     /* Global reset for all list styles */
     * {
       list-style: none !important;
@@ -634,7 +632,7 @@ const PrintCertificatePage: React.FC = () => {
     }
 
     .cert-title-id {
-      font-size: 20px !important;
+      font-size: 20pt !important;
       line-height: 1.15 !important;
       font-weight: 700 !important;
       letter-spacing: 0 !important;
@@ -642,35 +640,37 @@ const PrintCertificatePage: React.FC = () => {
     }
 
     .cert-title-en {
-      font-size: 7px !important;
-      line-height: 1.2 !important;
+      font-size: 9pt !important;
+      line-height: 1.05 !important;
       font-weight: 700 !important;
       font-style: italic !important;
-      color: #000 !important;
+      letter-spacing: 0.02em !important;
+      color: #222 !important;
     }
 
     .cert-text-id,
     .cert-info-text,
     .cert-info-text td {
-      font-size: 11px !important;
+      font-size: 11pt !important;
       line-height: 1.25 !important;
       font-weight: 700 !important;
       color: #000 !important;
     }
 
     .cert-text-en {
-      font-size: 7px !important;
-      line-height: 1.15 !important;
+      font-size: 9pt !important;
+      line-height: 1.05 !important;
       font-weight: 700 !important;
       font-style: italic !important;
-      color: #000 !important;
+      letter-spacing: 0.01em !important;
+      color: #222 !important;
     }
     
     .page-container {
       width: 210mm;
       /* Jangan pakai min-height tetap agar tidak melebihi tinggi A4 saat ditambah padding */
       min-height: auto;
-      padding: 5mm; /* Batas tepi kerja sesuai rujukan */
+      padding: 5mm; /* Batas kiri/kanan/atas/bawah 0.5 cm dari tepi lembar kerja */
       padding-bottom: 35mm; /* Ruang untuk footer static (halaman cover) */
       margin: 0 auto;
       box-sizing: border-box;
@@ -680,18 +680,24 @@ const PrintCertificatePage: React.FC = () => {
     
     /* Halaman hasil kalibrasi (dengan QR footer) butuh padding konsisten */
     .page-container.results-page {
-      padding: 0 5mm 25mm 5mm;
+      padding: 0 5mm 18mm 5mm;
       min-height: 297mm;
       box-sizing: border-box;
       position: relative;
     }
-    /* Remove default cell padding from thead, handle spacing inside */
-    .page-container.results-page thead.print-repeat-header > tr > td {
-      padding: 5mm 0 0 0 !important;
+    .page-container.results-page table.repeatable-page-table {
+      width: 100%;
+      height: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+      border-spacing: 0;
     }
-    /* Minimal top padding for tbody content */
+    .page-container.results-page thead.print-repeat-header > tr > td {
+      padding: 4mm 0 0 0 !important;
+    }
     .page-container.results-page tbody.print-content > tr > td {
-      padding-top: 2mm !important;
+      padding-top: 3mm !important;
+      vertical-align: top;
     }
     
     /* Footer khusus untuk halaman 1 saja */
@@ -795,80 +801,71 @@ const PrintCertificatePage: React.FC = () => {
       opacity: 0 !important;
     }
 
-    .bsre-result-footer {
-      display: grid;
-      grid-template-columns: 16mm minmax(0, 1fr);
-      column-gap: 10mm;
-      align-items: start;
+    .results-header-table td {
+      vertical-align: top;
+    }
+
+    .results-footer-shell {
       width: 100%;
       padding-top: 2mm;
-      color: #000;
     }
 
-    .bsre-footer-qr {
-      width: 16mm;
-      height: 16mm;
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      background: #fff;
-      transform: translateY(-4mm);
-    }
-
-    .bsre-footer-qr .qr-code-container {
-      width: 52px !important;
-      height: 52px !important;
-      display: block !important;
-      visibility: visible !important;
-      opacity: 1 !important;
-      overflow: visible !important;
-    }
-
-    .bsre-footer-qr .qr-code-container canvas,
-    .bsre-footer-qr .qr-code-container svg {
-      display: block !important;
-      width: 52px !important;
-      height: 52px !important;
-      visibility: visible !important;
-      opacity: 1 !important;
-    }
-
-    .bsre-footer-qr .footer-qr-rendered,
-    .bsre-footer-qr .footer-qr-rendered svg,
-    .bsre-footer-qr .footer-qr-rendered img {
-      display: block !important;
-      visibility: visible !important;
-      opacity: 1 !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
-
-    .bsre-footer-content {
-      padding-top: 2mm;
-      min-width: 0;
-    }
-
-    .bsre-footer-line {
-      border-top: 1px solid #000;
+    .results-footer-line {
+      border-top: 2px double #000;
       width: 100%;
       height: 0;
-      margin: 0 0 1mm;
+      margin: 0 0 2mm;
     }
 
-    .bsre-footer-page {
-      text-align: center;
-      font-size: 11px;
-      line-height: 1;
-      margin-bottom: 2mm;
-      font-weight: 400;
+    .results-footer-grid {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
     }
 
-    .bsre-footer-text {
-      text-align: center;
-      font-size: 10px;
-      line-height: 1.25;
-      font-weight: 400;
+    .results-footer-grid td {
+      vertical-align: top;
       color: #000;
+      font-size: 10px;
+      line-height: 1.3;
+      padding: 0;
+    }
+
+    .results-footer-qr-cell {
+      width: 18%;
+    }
+
+    .results-footer-note-cell {
+      width: 58%;
+      text-align: center;
+      font-weight: 600;
+      padding: 0 3mm !important;
+    }
+
+    .results-footer-meta-cell {
+      width: 24%;
+      text-align: right;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .results-footer-qr-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 1mm;
+    }
+
+    .results-footer-qr-box {
+      width: 40px;
+      height: 40px;
+      flex: 0 0 40px;
+    }
+
+    .results-footer-form-code {
+      font-size: 10px;
+      line-height: 1.1;
+      font-weight: 700;
     }
     
     /* Hapus aturan last-child; break diatur manual dengan kelas */
@@ -914,8 +911,8 @@ const PrintCertificatePage: React.FC = () => {
       }
       .page-container {
         margin: 0;
-        padding: 5mm; /* Batas tepi kerja sesuai rujukan */
-        padding-bottom: 25mm; /* Ruang footer halaman cover */
+        padding: 5mm; /* Batas kiri/kanan/atas/bawah 0.5 cm dari tepi lembar kerja */
+        padding-bottom: 18mm; /* Ruang footer halaman hasil */
         border: none !important;
         box-shadow: none !important;
         page-break-after: auto; /* Jangan paksa break di akhir container */
@@ -926,7 +923,7 @@ const PrintCertificatePage: React.FC = () => {
       .page-container.results-page {
         min-height: 297mm !important;
         height: 297mm !important;
-        padding: 0 5mm 25mm 5mm !important;
+        padding: 0 5mm 18mm 5mm !important;
         box-sizing: border-box !important;
         position: relative !important;
       }
@@ -936,11 +933,11 @@ const PrintCertificatePage: React.FC = () => {
       }
       /* thead td handles top margin itself */
       .page-container.results-page thead.print-repeat-header > tr > td {
-        padding: 5mm 0 0 0 !important;
+        padding: 4mm 0 0 0 !important;
       }
-      /* Remove top padding from first tbody cell */
       .page-container.results-page tbody.print-content > tr > td {
-        padding-top: 2mm !important;
+        padding-top: 3mm !important;
+        vertical-align: top !important;
       }
       
       .page-container.cover-page {
@@ -1167,17 +1164,52 @@ const PrintCertificatePage: React.FC = () => {
         height: 100% !important;
       }
       thead.print-repeat-header > tr > td {
-        padding: 5mm 0 0 0 !important;
+        padding: 4mm 0 0 0 !important;
       }
       tbody.print-content > tr > td {
-        padding-top: 2mm !important;
+        padding-top: 3mm !important;
       }
       .page-container.results-page {
-        padding-bottom: 25mm !important; 
+        padding-bottom: 18mm !important; 
         min-height: 297mm !important;
       }
     }
   `
+
+  const renderResultsFooter = () => (
+    <div className="results-footer-shell">
+      <div className="results-footer-line" />
+      <table className="results-footer-grid">
+        <tbody>
+          <tr>
+            <td className="results-footer-qr-cell">
+              <div className="results-footer-qr-wrap">
+                {qrCodeData ? (
+                  <div className="results-footer-qr-box">
+                    <FooterQRCode
+                      value={qrCodeData}
+                      fgColor={isSigned ? '#000000' : '#B91C1C'}
+                      onRendered={handleQRRendered}
+                      size={40}
+                    />
+                  </div>
+                ) : (
+                  <div className="results-footer-qr-box" />
+                )}
+                <div className="results-footer-form-code">F/IKK 7.8.2</div>
+              </div>
+            </td>
+            <td className="results-footer-note-cell">
+              Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara.
+            </td>
+            <td className="results-footer-meta-cell">
+              Edisi/Revisi : 11/1
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  )
 
   return (
     <div className="print-container bg-gray-100 print:bg-white text-black" suppressHydrationWarning>
@@ -1367,7 +1399,7 @@ const PrintCertificatePage: React.FC = () => {
             <thead className="print-repeat-header">
               <tr>
                 <td>
-                  <table className="w-full text-xs">
+                  <table className="w-full text-xs results-header-table">
                     <tbody>
                       <tr>
                         <td className="w-[100px] align-top">
@@ -1423,37 +1455,7 @@ const PrintCertificatePage: React.FC = () => {
             <tfoot className="print-repeat-footer">
               <tr>
                 <td>
-                  <div className="w-full pb-2 px-1">
-                    <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none' }}>
-                      <tbody>
-                        <tr>
-                          <td className="align-bottom text-left" style={{ width: '25%' }}>
-                            <div className="flex flex-col items-start gap-1">
-                              {qrCodeData ? (
-                                <div className="w-[40px] h-[40px]">
-                                  <FooterQRCode
-                                    value={qrCodeData}
-                                    fgColor={isSigned ? '#000000' : '#B91C1C'}
-                                    onRendered={handleQRRendered}
-                                    size={40}
-                                  />
-                                </div>
-                              ) : (
-                                <div className="w-[40px] h-[40px]"></div>
-                              )}
-                              <div className="text-[10px] font-bold mt-1">F/IKK 7.8.2</div>
-                            </div>
-                          </td>
-                          <td className="align-bottom text-center text-[10px] font-medium pb-[1px]" style={{ width: '50%', lineHeight: '1.4' }}>
-                            Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara (BSSN)
-                          </td>
-                          <td className="align-bottom text-right text-[10px] font-bold pb-[1px]" style={{ width: '25%' }}>
-                            Edisi/Revisi : 11/1
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
+                  {renderResultsFooter()}
                 </td>
               </tr>
             </tfoot>
@@ -1466,7 +1468,7 @@ const PrintCertificatePage: React.FC = () => {
               <thead className="print-repeat-header">
                 <tr>
                   <td>
-                    <table className="w-full text-xs">
+                    <table className="w-full text-xs results-header-table">
                       <tbody>
                         <tr>
                           <td className="w-[100px] align-top">
@@ -1839,37 +1841,7 @@ const PrintCertificatePage: React.FC = () => {
               <tfoot className="print-repeat-footer">
                 <tr>
                   <td>
-                    <div className="w-full pb-2 px-1">
-                      <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none' }}>
-                        <tbody>
-                          <tr>
-                            <td className="align-bottom text-left" style={{ width: '25%' }}>
-                              <div className="flex flex-col items-start gap-1">
-                                {qrCodeData ? (
-                                  <div className="w-[40px] h-[40px]">
-                                    <FooterQRCode
-                                      value={qrCodeData}
-                                      fgColor={isSigned ? '#000000' : '#B91C1C'}
-                                      onRendered={handleQRRendered}
-                                      size={40}
-                                    />
-                                  </div>
-                                ) : (
-                                  <div className="w-[40px] h-[40px]"></div>
-                                )}
-                                <div className="text-[10px] font-bold mt-1">F/IKK 7.8.2</div>
-                              </div>
-                            </td>
-                            <td className="align-bottom text-center text-[10px] font-medium pb-[1px]" style={{ width: '50%', lineHeight: '1.4' }}>
-                              Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
-                            </td>
-                            <td className="align-bottom text-right text-[10px] font-bold pb-[1px]" style={{ width: '25%' }}>
-                              Edisi/Revisi : 11/1
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
+                    {renderResultsFooter()}
                   </td>
                 </tr>
               </tfoot>

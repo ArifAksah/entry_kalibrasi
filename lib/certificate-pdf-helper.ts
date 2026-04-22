@@ -309,7 +309,7 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
           .page-container {
             margin: 0 !important;
             padding: 5mm !important;
-            padding-bottom: 25mm !important;
+            padding-bottom: 18mm !important;
             border: none !important;
             box-shadow: none !important;
             page-break-after: auto !important;
@@ -317,7 +317,7 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
           }
 
           .cert-title-id {
-            font-size: 20px !important;
+            font-size: 20pt !important;
             line-height: 1.15 !important;
             font-weight: 700 !important;
             letter-spacing: 0 !important;
@@ -325,28 +325,30 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
           }
 
           .cert-title-en {
-            font-size: 7px !important;
-            line-height: 1.2 !important;
+            font-size: 9pt !important;
+            line-height: 1.05 !important;
             font-weight: 700 !important;
             font-style: italic !important;
-            color: #000 !important;
+            letter-spacing: 0.02em !important;
+            color: #222 !important;
           }
 
           .cert-text-id,
           .cert-info-text,
           .cert-info-text td {
-            font-size: 11px !important;
+            font-size: 11pt !important;
             line-height: 1.25 !important;
             font-weight: 700 !important;
             color: #000 !important;
           }
 
           .cert-text-en {
-            font-size: 7px !important;
-            line-height: 1.15 !important;
+            font-size: 9pt !important;
+            line-height: 1.05 !important;
             font-weight: 700 !important;
             font-style: italic !important;
-            color: #000 !important;
+            letter-spacing: 0.01em !important;
+            color: #222 !important;
           }
 
           /* ── Page-1 footer (cover page footer masking) ── */
@@ -424,7 +426,7 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
             position: relative !important;
             min-height: 297mm !important;
             height: 297mm !important;
-            padding: 0 5mm 25mm 5mm !important;
+            padding: 0 5mm 18mm 5mm !important;
             box-sizing: border-box !important;
           }
           .page-container.cover-page {
@@ -435,8 +437,19 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
           }
           
           /* Thead padding top handle */
-          .page-container.results-page thead.print-repeat-header > tr > td { padding: 5mm 0 0 0 !important; }
-          .page-container.results-page tbody.print-content > tr > td { padding-top: 2mm !important; }
+          .page-container.results-page thead.print-repeat-header > tr > td { padding: 4mm 0 0 0 !important; }
+          .page-container.results-page tbody.print-content > tr > td { padding-top: 3mm !important; vertical-align: top !important; }
+          .results-header-table td { vertical-align: top !important; }
+          .results-footer-shell { width: 100% !important; padding-top: 2mm !important; }
+          .results-footer-line { border-top: 2px double #000 !important; width: 100% !important; height: 0 !important; margin: 0 0 2mm !important; }
+          .results-footer-grid { width: 100% !important; border-collapse: collapse !important; table-layout: fixed !important; }
+          .results-footer-grid td { padding: 0 !important; vertical-align: top !important; color: #000 !important; font-size: 10px !important; line-height: 1.3 !important; }
+          .results-footer-qr-cell { width: 18% !important; }
+          .results-footer-note-cell { width: 58% !important; text-align: center !important; font-weight: 600 !important; padding: 0 3mm !important; }
+          .results-footer-meta-cell { width: 24% !important; text-align: right !important; font-weight: 700 !important; white-space: nowrap !important; }
+          .results-footer-qr-wrap { display: flex !important; flex-direction: column !important; align-items: flex-start !important; gap: 1mm !important; }
+          .results-footer-qr-box { width: 40px !important; height: 40px !important; }
+          .results-footer-form-code { font-size: 10px !important; line-height: 1.1 !important; font-weight: 700 !important; }
 
           /* ── Avoid page break after last container ── */
           .page-container:last-of-type { page-break-after: avoid !important; break-after: avoid !important; }
