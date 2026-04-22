@@ -223,9 +223,10 @@ const CertificateVerificationCRUD: React.FC = () => {
   const filteredCertificates = useMemo(() => {
     if (!pendingCertificates) return []
     const query = searchQuery.trim().toLowerCase()
-    if (!query) return pendingCertificates
+    const visibleCertificates = pendingCertificates.filter((cert: any) => cert.status !== 'draft')
+    if (!query) return visibleCertificates
 
-    return pendingCertificates.filter((cert) => {
+    return visibleCertificates.filter((cert) => {
       const searchText = [
         cert.no_certificate || '',
         cert.no_order || '',

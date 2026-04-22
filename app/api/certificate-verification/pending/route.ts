@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
       .or(
         `verifikator_1.eq.${user.id},verifikator_2.eq.${user.id},verifikator_3.eq.${user.id},authorized_by.eq.${user.id}`,
       )
+      .neq("status", "draft")
       .order("created_at", { ascending: false });
 
     if (certError)
