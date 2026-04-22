@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../../../contexts/AuthContext'
 import { useCertificateVerification, PendingCertificate } from '../../../hooks/useCertificateVerification'
-import { useCertificates } from '../../../hooks/useCertificates'
 import { useStations } from '../../../hooks/useStations'
 import { useInstruments } from '../../../hooks/useInstruments'
 import { useSensors } from '../../../hooks/useSensors'
@@ -11,12 +10,11 @@ import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
 import Alert from '../../../components/ui/Alert'
-import { usePermissions } from '../../../hooks/usePermissions'
 import { useAlert } from '../../../hooks/useAlert'
 import { useCertificateRejection } from '../../../hooks/useCertificateRejection'
 import LHKSReport from '../../../components/features/LHKSReport'
 import UncertaintyModal from '../../../components/features/UncertaintyModal'
-import { Certificate, CertificateInsert, Station, Instrument, Sensor } from '../../../lib/supabase'
+import { Certificate } from '../../../lib/supabase'
 import { ViewIcon, CloseIcon, CheckIcon } from '../../../components/ui/ActionIcons'
 import Dropdown, { DropdownItem } from '../../../components/ui/Dropdown'
 import { supabase } from '../../../lib/supabase'
@@ -31,13 +29,11 @@ interface RejectionOption {
 
 const CertificateVerificationCRUD: React.FC = () => {
   const { pendingCertificates, loading, error, createVerification, updateVerification } = useCertificateVerification()
-  const { updateCertificate } = useCertificates()
   const { stations, refetch: fetchStations } = useStations()
   const { instruments, fetchInstruments } = useInstruments()
   const { sensors, fetchSensors } = useSensors()
   const [instrumentNames, setInstrumentNames] = useState<any[]>([])
   const { user } = useAuth()
-  const { can, canEndpoint } = usePermissions()
   const { alert, showError, showSuccess, showWarning, hideAlert } = useAlert()
 
   // Fetch instruments & stations on mount (hooks don't auto-fetch)
@@ -62,7 +58,6 @@ const CertificateVerificationCRUD: React.FC = () => {
   const { rejectCertificate } = useCertificateRejection()
   const [verificationForm, setVerificationForm] = useState({
     status: 'approved' as 'approved' | 'rejected',
-    notes: '',
     rejection_reason: '',
     rejection_category: 'administrative',
     approval_notes: ''
@@ -116,7 +111,6 @@ const CertificateVerificationCRUD: React.FC = () => {
     return () => { isMounted = false }
   }, [verificationForm.status, selectedCertificate, showError])
 
-  const [personel, setPersonel] = useState<Array<{ id: string; name: string }>>([])
   const [isPassphraseModalOpen, setIsPassphraseModalOpen] = useState(false)
   const [passphrase, setPassphrase] = useState('')
   const [isSigning, setIsSigning] = useState(false)
@@ -317,27 +311,10 @@ const CertificateVerificationCRUD: React.FC = () => {
     setCurrentPage(Math.max(1, Math.min(pageNumber, totalPages)))
   }
 
-  // Fetch personel data
-  useEffect(() => {
-    const fetchPersonel = async () => {
-      try {
-        const response = await fetch('/api/personel')
-        if (response.ok) {
-          const data = await response.json()
-          setPersonel(Array.isArray(data) ? data : [])
-        }
-      } catch (e) {
-        console.error('Failed to fetch personel:', e)
-      }
-    }
-    fetchPersonel()
-  }, [])
-
   const openModal = (certificate: PendingCertificate) => {
     setSelectedCertificate(certificate)
     setVerificationForm({
       status: 'approved',
-      notes: '',
       rejection_reason: '',
       rejection_category: 'administrative',
       approval_notes: ''
@@ -356,7 +333,6 @@ const CertificateVerificationCRUD: React.FC = () => {
     const existingStatus = certificate.verification_status.user_verification_status
     setVerificationForm({
       status: existingStatus === 'approved' ? 'approved' : 'rejected',
-      notes: '',
       rejection_reason: '',
       rejection_category: 'administrative',
       approval_notes: ''

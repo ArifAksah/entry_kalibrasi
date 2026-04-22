@@ -1,465 +1,420 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
   { auth: { autoRefreshToken: false, persistSession: false } }
-);
+)
+
+type DashboardTone = 'slate' | 'blue' | 'green' | 'amber' | 'red' | 'purple'
+
+type DashboardCard = {
+  label: string
+  value: number
+  hint: string
+  tone: DashboardTone
+}
+
+type QueueItem = {
+  label: string
+  value: number
+}
+
+type ActionItem = {
+  id: number
+  no_certificate: string
+  subtitle: string
+  status: string
+  href: string
+  priority?: 'high' | 'medium' | 'low'
+}
+
+type RejectItem = {
+  id: number
+  no_certificate: string
+  category: string
+  level: string
+  reason: string
+  timestamp: string | null
+}
+
+type CertificateRow = {
+  id: number
+  no_certificate: string | null
+  no_order: string | null
+  no_identification: string | null
+  created_at: string
+  issue_date: string | null
+  status: string | null
+  version?: number | null
+  verifikator_1?: string | null
+  verifikator_2?: string | null
+  verifikator_3?: string | null
+  authorized_by?: string | null
+  rejection_history?: any[] | null
+  results?: any[] | null
+}
+
+type VerificationRow = {
+  certificate_id: number
+  verification_level: number
+  status: string
+  certificate_version?: number | null
+  updated_at?: string | null
+}
+
+const levelLabel = (level: number) => {
+  switch (level) {
+    case 1:
+      return 'Verifikator 1'
+    case 2:
+      return 'Verifikator 2'
+    case 3:
+      return 'Verifikator 3'
+    case 4:
+      return 'Penandatangan'
+    default:
+      return 'Verifier'
+  }
+}
+
+const latestRejection = (certificate: CertificateRow) => {
+  const history = Array.isArray(certificate.rejection_history) ? [...certificate.rejection_history] : []
+  return history.sort((a, b) => {
+    const aTime = new Date(a?.rejection_timestamp || 0).getTime()
+    const bTime = new Date(b?.rejection_timestamp || 0).getTime()
+    return bTime - aTime
+  })[0] || null
+}
+
+const getVerificationForLevel = (
+  verifications: VerificationRow[],
+  certificateId: number,
+  verificationLevel: number,
+  certificateVersion: number
+) => verifications.find(
+  (verification) =>
+    verification.certificate_id === certificateId &&
+    verification.verification_level === verificationLevel &&
+    (verification.certificate_version ?? 1) === certificateVersion
+)
+
+const canUserAct = (
+  certificate: CertificateRow,
+  verifications: VerificationRow[],
+  userId: string
+) => {
+  if (certificate.status !== 'sent') return false
+
+  const version = certificate.version ?? 1
+  const verif1 = getVerificationForLevel(verifications, certificate.id, 1, version)
+  const verif2 = getVerificationForLevel(verifications, certificate.id, 2, version)
+  const verif3 = getVerificationForLevel(verifications, certificate.id, 3, version)
+
+  if (certificate.verifikator_1 === userId) return true
+  if (certificate.verifikator_2 === userId) return verif1?.status === 'approved'
+  if (certificate.verifikator_3 === userId) return verif2?.status === 'approved'
+  if (certificate.authorized_by === userId) return verif3?.status === 'approved'
+  return false
+}
+
+const formatCertificateCode = (certificate: CertificateRow) => {
+  const parts = [certificate.no_order, certificate.no_identification].filter(Boolean)
+  return parts.length > 0 ? parts.join(' / ') : 'Tanpa nomor order'
+}
+
+const buildRejectItems = (certificates: CertificateRow[]): RejectItem[] => {
+  return certificates
+    .map((certificate) => {
+      const rejection = latestRejection(certificate)
+      if (!rejection) return null
+
+      return {
+        id: certificate.id,
+        no_certificate: certificate.no_certificate || `Sertifikat #${certificate.id}`,
+        category: rejection.rejection_category_label || rejection.rejection_category || 'Reject',
+        level: levelLabel(Number(rejection.verification_level || 0)),
+        reason: rejection.rejection_reason || 'Tidak ada catatan penolakan.',
+        timestamp: rejection.rejection_timestamp || null
+      }
+    })
+    .filter(Boolean)
+    .sort((a: any, b: any) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime())
+    .slice(0, 6) as RejectItem[]
+}
+
+async function getCertificates() {
+  const { data, error } = await supabaseAdmin
+    .from('certificate')
+    .select('id, no_certificate, no_order, no_identification, created_at, issue_date, status, version, verifikator_1, verifikator_2, verifikator_3, authorized_by, rejection_history, results')
+    .order('created_at', { ascending: false })
+
+  if (error) throw new Error(error.message)
+  return (data || []) as CertificateRow[]
+}
+
+async function getVerifications(certificateIds: number[]) {
+  if (certificateIds.length === 0) return []
+  const { data, error } = await supabaseAdmin
+    .from('certificate_verification')
+    .select('certificate_id, verification_level, status, certificate_version, updated_at')
+    .in('certificate_id', certificateIds)
+
+  if (error) throw new Error(error.message)
+  return (data || []) as VerificationRow[]
+}
 
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) return NextResponse.json({ error: 'Authorization header required' }, { status: 401 });
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader) return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
-    if (authError || !user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+    if (authError || !user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
 
-    // Get user role
     const { data: roleData, error: roleError } = await supabaseAdmin
       .from('user_roles')
       .select('role')
       .eq('user_id', user.id)
-      .single();
+      .single()
 
     if (roleError || !roleData) {
-      return NextResponse.json({ error: 'User role not found' }, { status: 404 });
+      return NextResponse.json({ error: 'User role not found' }, { status: 404 })
     }
 
-    const userRole = roleData.role;
+    const role = roleData.role
+    const certificates = await getCertificates()
+    const verifications = await getVerifications(certificates.map((certificate) => certificate.id))
 
-    if (userRole === 'verifikator') {
-      // Get certificates assigned to this verifikator
-      const { data: certificates, error: certError } = await supabaseAdmin
-        .from('certificate')
-        .select('*')
-        .or(`verifikator_1.eq.${user.id},verifikator_2.eq.${user.id},authorized_by.eq.${user.id}`)
-        .order('created_at', { ascending: false });
+    if (role === 'verifikator') {
+      const assignedCertificates = certificates.filter((certificate) =>
+        [certificate.verifikator_1, certificate.verifikator_2, certificate.verifikator_3, certificate.authorized_by].includes(user.id)
+      )
 
-      if (certError) return NextResponse.json({ error: certError.message }, { status: 500 });
+      const actionItems: ActionItem[] = assignedCertificates
+        .filter((certificate) => canUserAct(certificate, verifications, user.id))
+        .map((certificate) => {
+          const version = certificate.version ?? 1
+          let level = 0
+          let userStatus = 'pending'
 
-      // Get verification status for these certificates
-      const certificateIds = certificates?.map(c => c.id) || [];
-      let verifications: Array<{ certificate_id: number; verification_level: number; status: string; certificate_version?: number }> = [];
-
-      if (certificateIds.length) {
-        try {
-          const { data: v, error: verifError } = await supabaseAdmin
-            .from('certificate_verification')
-            .select('certificate_id, verification_level, status, certificate_version')
-            .in('certificate_id', certificateIds);
-
-          if (!verifError && v) verifications = v;
-        } catch { }
-      }
-
-      // Calculate stats for verifikator
-      const assignedCertificates = certificates?.length || 0;
-      let pendingVerifications = 0;
-      let completedVerifications = 0;
-      let rejectedVerifications = 0;
-
-      // Calculate verification level stats
-      const verificationStats = {
-        level1: { pending: 0, approved: 0, rejected: 0 },
-        level2: { pending: 0, approved: 0, rejected: 0 },
-        level3: { pending: 0, approved: 0, rejected: 0 }
-      };
-
-      certificates?.forEach(cert => {
-        const certVersion = (cert as any).version ?? 1;
-        const isVerifikator1 = cert.verifikator_1 === user.id;
-        const isVerifikator2 = cert.verifikator_2 === user.id;
-        const isAuthorizedBy = cert.authorized_by === user.id;
-
-        let userVerificationStatus = null;
-        let userVerificationLevel = null;
-
-        if (isVerifikator1) {
-          const verif1 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 1 && (v.certificate_version ?? 1) === certVersion);
-          userVerificationStatus = verif1?.status || 'pending';
-          userVerificationLevel = 1;
-        } else if (isVerifikator2) {
-          const verif2 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 2 && (v.certificate_version ?? 1) === certVersion);
-          userVerificationStatus = verif2?.status || 'pending';
-          userVerificationLevel = 2;
-        } else if (isAuthorizedBy) {
-          const verif3 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 3 && (v.certificate_version ?? 1) === certVersion);
-          userVerificationStatus = verif3?.status || 'pending';
-          userVerificationLevel = 3;
-        }
-
-        if (userVerificationStatus === 'pending') {
-          pendingVerifications++;
-        } else if (userVerificationStatus === 'approved') {
-          completedVerifications++;
-        } else if (userVerificationStatus === 'rejected') {
-          rejectedVerifications++;
-        }
-
-        // Update verification level stats
-        if (userVerificationLevel === 1) {
-          if (userVerificationStatus === 'pending') verificationStats.level1.pending++;
-          else if (userVerificationStatus === 'approved') verificationStats.level1.approved++;
-          else if (userVerificationStatus === 'rejected') verificationStats.level1.rejected++;
-        } else if (userVerificationLevel === 2) {
-          if (userVerificationStatus === 'pending') verificationStats.level2.pending++;
-          else if (userVerificationStatus === 'approved') verificationStats.level2.approved++;
-          else if (userVerificationStatus === 'rejected') verificationStats.level2.rejected++;
-        } else if (userVerificationLevel === 3) {
-          if (userVerificationStatus === 'pending') verificationStats.level3.pending++;
-          else if (userVerificationStatus === 'approved') verificationStats.level3.approved++;
-          else if (userVerificationStatus === 'rejected') verificationStats.level3.rejected++;
-        }
-      });
-
-      // Calculate certificate stats
-      const certificateStats = {
-        total: assignedCertificates || 0,
-        pending: pendingVerifications || 0,
-        approved: completedVerifications || 0,
-        rejected: rejectedVerifications || 0
-      };
-
-      // If no data, provide sample data for testing
-      if (assignedCertificates === 0) {
-        const sampleData = {
-          role: userRole,
-          assignedCertificates: 5,
-          pendingVerifications: 2,
-          completedVerifications: 2,
-          rejectedVerifications: 1,
-          certificateStats: {
-            total: 5,
-            pending: 2,
-            approved: 2,
-            rejected: 1
-          },
-          verificationStats: {
-            level1: { pending: 1, approved: 1, rejected: 0 },
-            level2: { pending: 1, approved: 1, rejected: 1 },
-            level3: { pending: 0, approved: 0, rejected: 0 }
-          },
-          recentCertificates: [
-            { id: 1, no_certificate: 'CERT-001', no_order: 'ORD-001', created_at: new Date().toISOString() },
-            { id: 2, no_certificate: 'CERT-002', no_order: 'ORD-002', created_at: new Date().toISOString() }
-          ]
-        };
-
-        console.log('Verifikator API response (sample data):', sampleData);
-        return NextResponse.json(sampleData);
-      }
-
-      const responseData = {
-        role: userRole,
-        assignedCertificates,
-        pendingVerifications,
-        completedVerifications,
-        certificateStats,
-        verificationStats,
-        recentCertificates: certificates?.slice(0, 5) || []
-      };
-
-      console.log('Verifikator API response:', responseData);
-      return NextResponse.json(responseData);
-
-    } else if (userRole === 'admin') {
-      // Admin gets limited view - total count only
-      const { data: certificates, error: certError } = await supabaseAdmin
-        .from('certificate')
-        .select('id, created_at, no_certificate, no_order, instrument')
-        .order('created_at', { ascending: false });
-
-      if (certError) return NextResponse.json({ error: certError.message }, { status: 500 });
-
-      // Get verification status for all certificates
-      const certificateIds = certificates?.map(c => c.id) || [];
-      let verifications: Array<{ certificate_id: number; verification_level: number; status: string; certificate_version?: number }> = [];
-
-      if (certificateIds.length) {
-        try {
-          const { data: v, error: verifError } = await supabaseAdmin
-            .from('certificate_verification')
-            .select('certificate_id, verification_level, status, certificate_version')
-            .in('certificate_id', certificateIds);
-
-          if (!verifError && v) {
-            verifications = v;
+          if (certificate.verifikator_1 === user.id) {
+            level = 1
+            userStatus = getVerificationForLevel(verifications, certificate.id, 1, version)?.status || 'pending'
+          } else if (certificate.verifikator_2 === user.id) {
+            level = 2
+            userStatus = getVerificationForLevel(verifications, certificate.id, 2, version)?.status || 'pending'
+          } else if (certificate.verifikator_3 === user.id) {
+            level = 3
+            userStatus = getVerificationForLevel(verifications, certificate.id, 3, version)?.status || 'pending'
+          } else if (certificate.authorized_by === user.id) {
+            level = 4
+            userStatus = getVerificationForLevel(verifications, certificate.id, 4, version)?.status || 'pending'
           }
-        } catch { }
-      }
 
-      // Calculate overall certificate stats
-      let pendingCount = 0;
-      let approvedCount = 0;
-      let rejectedCount = 0;
-
-      certificates?.forEach(cert => {
-        const certVersion = (cert as any).version ?? 1;
-        const verif1 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 1 && (v.certificate_version ?? 1) === certVersion);
-        const verif2 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 2 && (v.certificate_version ?? 1) === certVersion);
-        const verif3 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 3 && (v.certificate_version ?? 1) === certVersion);
-
-        // Determine overall status based on verification levels
-        if (verif3?.status === 'approved') {
-          approvedCount++;
-        } else if (verif1?.status === 'rejected' || verif2?.status === 'rejected' || verif3?.status === 'rejected') {
-          rejectedCount++;
-        } else {
-          pendingCount++;
-        }
-      });
-
-      const certificateStats = {
-        total: certificates?.length || 0,
-        pending: pendingCount,
-        approved: approvedCount,
-        rejected: rejectedCount
-      };
-
-      // If no data, provide sample data for testing
-      if ((certificates?.length || 0) === 0) {
-        const sampleData = {
-          role: userRole,
-          totalCertificates: 10,
-          certificateStats: {
-            total: 10,
-            pending: 3,
-            approved: 5,
-            rejected: 2
-          },
-          recentCertificates: [
-            { id: 1, instrument_name: 'Sample Admin Instrument 1', created_at: new Date().toISOString() },
-            { id: 2, instrument_name: 'Sample Admin Instrument 2', created_at: new Date().toISOString() }
-          ],
-          adminLimited: true
-        };
-
-        console.log('Admin API response (sample data):', sampleData);
-        return NextResponse.json(sampleData);
-      }
-
-      const responseData = {
-        role: userRole,
-        totalCertificates: certificates?.length || 0,
-        certificateStats,
-        recentCertificates: certificates?.slice(0, 5) || [],
-        adminLimited: true
-      };
-
-      console.log('Admin API response:', responseData);
-      return NextResponse.json(responseData);
-
-    } else if (userRole === 'assignor') {
-      // Assignor role - limited to assignment functions
-      const { data: certificates, error: certError } = await supabaseAdmin
-        .from('certificate')
-        .select('id, created_at, no_certificate, no_order, instrument, verifikator_1, verifikator_2, authorized_by, status')
-        .eq('authorized_by', user.id)
-        .order('created_at', { ascending: false });
-
-      if (certError) return NextResponse.json({ error: certError.message }, { status: 500 });
-
-      // Get verification status for all certificates to determine "Ready for Signature"
-      const certificateIds = certificates?.map(c => c.id) || [];
-      let verifications: Array<{ certificate_id: number; verification_level: number; status: string; certificate_version?: number }> = [];
-
-      if (certificateIds.length) {
-        try {
-          const { data: v, error: verifError } = await supabaseAdmin
-            .from('certificate_verification')
-            .select('certificate_id, verification_level, status, certificate_version')
-            .in('certificate_id', certificateIds);
-
-          if (!verifError && v) {
-            verifications = v;
+          return {
+            id: certificate.id,
+            no_certificate: certificate.no_certificate || `Sertifikat #${certificate.id}`,
+            subtitle: `${levelLabel(level)} • ${formatCertificateCode(certificate)}`,
+            status: userStatus === 'pending' ? 'Butuh review' : userStatus,
+            href: '/certificate-verification',
+            priority: certificate.status === 'sent' ? 'high' as const : 'medium' as const
           }
-        } catch { }
-      }
+        })
+        .slice(0, 8)
 
-      let pendingAssignmentCount = 0;
-      let readyForSignatureCount = 0;
-      let signedCount = 0;
+      const approvedByUser = assignedCertificates.filter((certificate) => {
+        const version = certificate.version ?? 1
+        if (certificate.verifikator_1 === user.id) return getVerificationForLevel(verifications, certificate.id, 1, version)?.status === 'approved'
+        if (certificate.verifikator_2 === user.id) return getVerificationForLevel(verifications, certificate.id, 2, version)?.status === 'approved'
+        if (certificate.verifikator_3 === user.id) return getVerificationForLevel(verifications, certificate.id, 3, version)?.status === 'approved'
+        if (certificate.authorized_by === user.id) return getVerificationForLevel(verifications, certificate.id, 4, version)?.status === 'approved'
+        return false
+      }).length
 
-      certificates?.forEach(cert => {
-        // Check pending assignment
-        if (!cert.verifikator_1 || !cert.verifikator_2) {
-          pendingAssignmentCount++;
-        }
+      const returnedForRevision = assignedCertificates.filter((certificate) => certificate.status === 'draft' && latestRejection(certificate)).length
 
-        // Check ready for signature (Level 1 & 2 Approved, Level 3 Pending)
-        // We assume version 1 for simplicity in dashboard overview, or take the latest if available
-        const certVersion = (cert as any).version ?? 1;
-        const verif1 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 1 && (v.certificate_version ?? 1) === certVersion);
-        const verif2 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 2 && (v.certificate_version ?? 1) === certVersion);
-        const verif3 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 3 && (v.certificate_version ?? 1) === certVersion);
+      const waitingOthers = assignedCertificates.filter((certificate) => certificate.status === 'sent' && !canUserAct(certificate, verifications, user.id)).length
 
-        if (verif1?.status === 'approved' && verif2?.status === 'approved' && (!verif3 || verif3.status === 'pending')) {
-          readyForSignatureCount++;
-        }
+      const queue: QueueItem[] = [
+        { label: 'Verifikator 1', value: assignedCertificates.filter((certificate) => certificate.verifikator_1 === user.id).length },
+        { label: 'Verifikator 2', value: assignedCertificates.filter((certificate) => certificate.verifikator_2 === user.id).length },
+        { label: 'Verifikator 3', value: assignedCertificates.filter((certificate) => certificate.verifikator_3 === user.id).length },
+        { label: 'Penandatangan', value: assignedCertificates.filter((certificate) => certificate.authorized_by === user.id).length }
+      ]
 
-        if (verif3?.status === 'approved') {
-          signedCount++;
-        }
-      });
+      return NextResponse.json({
+        role,
+        title: 'Dashboard Verifikasi',
+        subtitle: 'Ringkasan pekerjaan verifikasi yang membutuhkan perhatian Anda.',
+        cards: [
+          { label: 'Butuh Aksi Saya', value: actionItems.length, hint: 'Sertifikat siap Anda review saat ini', tone: 'amber' },
+          { label: 'Sudah Saya Setujui', value: approvedByUser, hint: 'Approval pada versi aktif sertifikat', tone: 'green' },
+          { label: 'Menunggu Tahap Lain', value: waitingOthers, hint: 'Masih tertahan di level lain', tone: 'blue' },
+          { label: 'Kembali untuk Revisi', value: returnedForRevision, hint: 'Draft hasil reject yang masih dipantau', tone: 'red' }
+        ] as DashboardCard[],
+        queue,
+        actionItems,
+        recentRejects: buildRejectItems(assignedCertificates)
+      })
+    }
 
-      const totalCertificates = certificates?.length || 0;
-      const certificateStats = {
-        total: totalCertificates,
-        pending: pendingAssignmentCount, // Reusing pending for "Pending Assignment"
-        approved: signedCount,
-        rejected: 0 // Not primarily tracked for assignor overview
-      };
+    if (role === 'assignor') {
+      const ownedCertificates = certificates.filter((certificate) => certificate.authorized_by === user.id)
+      const readyForSignature = ownedCertificates.filter((certificate) => canUserAct(certificate, verifications, user.id))
+      const signedCount = ownedCertificates.filter((certificate) => certificate.status === 'completed').length
+      const returnedCount = ownedCertificates.filter((certificate) => certificate.status === 'draft' && latestRejection(certificate)).length
+      const waitingFinal = ownedCertificates.filter((certificate) => certificate.status === 'sent' && !canUserAct(certificate, verifications, user.id)).length
 
-      const responseData = {
-        role: userRole,
-        totalCertificates: totalCertificates,
-        certificateStats,
-        pendingAssignment: pendingAssignmentCount,
-        readyForSignature: readyForSignatureCount,
-        recentCertificates: certificates?.slice(0, 5) || [],
-        assignorLimited: true
-      };
+      return NextResponse.json({
+        role,
+        title: 'Dashboard Penandatangan',
+        subtitle: 'Pantau dokumen yang siap ditandatangani dan yang masih menunggu tahapan sebelumnya.',
+        cards: [
+          { label: 'Siap Ditandatangani', value: readyForSignature.length, hint: 'Level verifikasi sebelumnya sudah lengkap', tone: 'green' },
+          { label: 'Selesai Ditandatangani', value: signedCount, hint: 'Dokumen completed pada sistem', tone: 'blue' },
+          { label: 'Menunggu Tahap Sebelumnya', value: waitingFinal, hint: 'Belum bisa ditandatangani saat ini', tone: 'amber' },
+          { label: 'Kembali untuk Revisi', value: returnedCount, hint: 'Menunggu revisi dari petugas kalibrasi', tone: 'red' }
+        ] as DashboardCard[],
+        queue: [
+          { label: 'Siap Sign', value: readyForSignature.length },
+          { label: 'Menunggu V3', value: waitingFinal },
+          { label: 'Selesai', value: signedCount }
+        ],
+        actionItems: readyForSignature.slice(0, 8).map((certificate) => ({
+          id: certificate.id,
+          no_certificate: certificate.no_certificate || `Sertifikat #${certificate.id}`,
+          subtitle: `Penandatangan • ${formatCertificateCode(certificate)}`,
+          status: 'Siap tanda tangan',
+          href: '/certificate-verification',
+          priority: 'high'
+        })),
+        recentRejects: buildRejectItems(ownedCertificates)
+      })
+    }
 
-      console.log('Assignor API response:', responseData);
-      return NextResponse.json(responseData);
-
-    } else if (userRole === 'user_station' || userRole === 'calibrator') {
-      // User station and calibrator roles - access to certificates, instruments, sensors
-      const { data: certificates, error: certError } = await supabaseAdmin
-        .from('certificate')
-        .select('id, created_at, no_certificate, no_order, instrument, status')
-        .order('created_at', { ascending: false });
-
-      if (certError) return NextResponse.json({ error: certError.message }, { status: 500 });
-
-      // Get instruments count
-      const { count: instrumentCount, error: instrError } = await supabaseAdmin
+    if (role === 'calibrator' || role === 'user_station') {
+      const totalCertificates = certificates.length
+      const draftCertificates = certificates.filter((certificate) => certificate.status === 'draft')
+      const returnedCertificates = certificates.filter((certificate) => certificate.status === 'draft' && latestRejection(certificate))
+      const completedCertificates = certificates.filter((certificate) => certificate.status === 'completed' || certificate.status === 'verified')
+      const readyToSend = draftCertificates.filter((certificate) =>
+        certificate.verifikator_1 &&
+        certificate.verifikator_2 &&
+        certificate.verifikator_3 &&
+        certificate.authorized_by
+      )
+      const { count: instrumentCount } = await supabaseAdmin
         .from('instrument')
-        .select('*', { count: 'exact', head: true });
+        .select('*', { count: 'exact', head: true })
 
-      const totalCertificates = certificates?.length || 0;
-
-      let draftsCount = 0;
-      let returnedCount = 0;
-      let completedCount = 0;
-
-      certificates?.forEach(cert => {
-        if (cert.status === 'draft') draftsCount++;
-        else if (cert.status === 'rejected') returnedCount++;
-        else if (cert.status === 'completed' || cert.status === 'verified') completedCount++;
-      });
-
-      const certificateStats = {
-        total: totalCertificates,
-        pending: draftsCount, // Using pending for Drafts
-        approved: completedCount,
-        rejected: returnedCount
-      };
-
-      const responseData = {
-        role: userRole,
-        totalCertificates: totalCertificates,
-        activeInstruments: instrumentCount || 0,
-        certificateStats,
-        drafts: draftsCount,
-        returned: returnedCount,
-        recentCertificates: certificates?.slice(0, 5) || [],
-        stationAccess: true
-      };
-
-      console.log(`${userRole} API response:`, responseData);
-      return NextResponse.json(responseData);
-
-    } else {
-      // Other roles get general stats
-      const { data: certificates, error: certError } = await supabaseAdmin
-        .from('certificate')
-        .select('id, created_at, no_certificate, no_order, instrument')
-        .order('created_at', { ascending: false });
-
-      if (certError) return NextResponse.json({ error: certError.message }, { status: 500 });
-
-      // Get verification status for all certificates
-      const certificateIds = certificates?.map(c => c.id) || [];
-      let verifications: Array<{ certificate_id: number; verification_level: number; status: string; certificate_version?: number }> = [];
-
-      if (certificateIds.length) {
-        try {
-          const { data: v, error: verifError } = await supabaseAdmin
-            .from('certificate_verification')
-            .select('certificate_id, verification_level, status, certificate_version')
-            .in('certificate_id', certificateIds);
-
-          if (!verifError && v) {
-            verifications = v;
+      const prioritizedDrafts = [...returnedCertificates, ...draftCertificates.filter((certificate) => !latestRejection(certificate))]
+        .slice(0, 8)
+        .map((certificate) => {
+          const rejection = latestRejection(certificate)
+          return {
+            id: certificate.id,
+            no_certificate: certificate.no_certificate || `Sertifikat #${certificate.id}`,
+            subtitle: rejection
+              ? `${rejection.rejection_category_label || rejection.rejection_category || 'Revisi'} • ${formatCertificateCode(certificate)}`
+              : `Draft • ${formatCertificateCode(certificate)}`,
+            status: rejection ? 'Perlu revisi' : 'Draft aktif',
+            href: '/certificates',
+            priority: rejection ? 'high' as const : 'medium' as const
           }
-        } catch { }
-      }
+        })
 
-      // Calculate overall certificate stats
-      let pendingCount = 0;
-      let approvedCount = 0;
-      let rejectedCount = 0;
-
-      certificates?.forEach(cert => {
-        const certVersion = (cert as any).version ?? 1;
-        const verif1 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 1 && (v.certificate_version ?? 1) === certVersion);
-        const verif2 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 2 && (v.certificate_version ?? 1) === certVersion);
-        const verif3 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 3 && (v.certificate_version ?? 1) === certVersion);
-
-        // Determine overall status based on verification levels
-        if (verif3?.status === 'approved') {
-          approvedCount++;
-        } else if (verif1?.status === 'rejected' || verif2?.status === 'rejected' || verif3?.status === 'rejected') {
-          rejectedCount++;
-        } else {
-          pendingCount++;
-        }
-      });
-
-      const certificateStats = {
-        total: certificates?.length || 0,
-        pending: pendingCount,
-        approved: approvedCount,
-        rejected: rejectedCount
-      };
-
-      // If no data, provide sample data for testing
-      if ((certificates?.length || 0) === 0) {
-        const sampleData = {
-          role: userRole,
-          totalCertificates: 8,
-          certificateStats: {
-            total: 8,
-            pending: 2,
-            approved: 4,
-            rejected: 2
-          },
-          recentCertificates: [
-            { id: 1, no_certificate: 'CERT-001', no_order: 'ORD-001', created_at: new Date().toISOString() },
-            { id: 2, no_certificate: 'CERT-002', no_order: 'ORD-002', created_at: new Date().toISOString() }
-          ]
-        };
-
-        console.log('Default role API response (sample data):', sampleData);
-        return NextResponse.json(sampleData);
-      }
-
-      const responseData = {
-        role: userRole,
-        totalCertificates: certificates?.length || 0,
-        certificateStats,
-        recentCertificates: certificates?.slice(0, 5) || []
-      };
-
-      console.log('Default role API response:', responseData);
-      return NextResponse.json(responseData);
+      return NextResponse.json({
+        role,
+        title: role === 'calibrator' ? 'Dashboard Petugas Kalibrasi' : 'Dashboard Stasiun',
+        subtitle: role === 'calibrator'
+          ? 'Pantau draft, revisi, dan sertifikat yang siap dikirim ke verifikator.'
+          : 'Pantau instrumen aktif dan progres sertifikat di stasiun Anda.',
+        cards: [
+          { label: 'Draft Aktif', value: draftCertificates.length, hint: 'Dokumen yang masih dalam pengerjaan', tone: 'slate' },
+          { label: 'Kembali untuk Revisi', value: returnedCertificates.length, hint: 'Prioritas utama untuk diperbaiki', tone: 'red' },
+          { label: 'Siap Dikirim', value: readyToSend.length, hint: 'Draft dengan penugasan reviewer lengkap', tone: 'amber' },
+          { label: role === 'calibrator' ? 'Instrumen Aktif' : 'Total Sertifikat', value: role === 'calibrator' ? (instrumentCount || 0) : totalCertificates, hint: role === 'calibrator' ? 'Instrumen terdaftar di sistem' : 'Dokumen yang terpantau', tone: 'blue' }
+        ] as DashboardCard[],
+        queue: [
+          { label: 'Draft', value: draftCertificates.length },
+          { label: 'Revisi', value: returnedCertificates.length },
+          { label: 'Siap Kirim', value: readyToSend.length },
+          { label: 'Selesai', value: completedCertificates.length }
+        ],
+        actionItems: prioritizedDrafts,
+        recentRejects: buildRejectItems(certificates)
+      })
     }
 
+    if (role === 'admin') {
+      const pendingLevel1 = certificates.filter((certificate) => {
+        const version = certificate.version ?? 1
+        return getVerificationForLevel(verifications, certificate.id, 1, version)?.status === 'pending'
+      }).length
+      const pendingLevel2 = certificates.filter((certificate) => {
+        const version = certificate.version ?? 1
+        return getVerificationForLevel(verifications, certificate.id, 2, version)?.status === 'pending'
+      }).length
+      const pendingLevel3 = certificates.filter((certificate) => {
+        const version = certificate.version ?? 1
+        return getVerificationForLevel(verifications, certificate.id, 3, version)?.status === 'pending'
+      }).length
+      const pendingSignature = certificates.filter((certificate) => {
+        const version = certificate.version ?? 1
+        return getVerificationForLevel(verifications, certificate.id, 4, version)?.status === 'pending'
+      }).length
+
+      const draftCount = certificates.filter((certificate) => certificate.status === 'draft').length
+      const sentCount = certificates.filter((certificate) => certificate.status === 'sent').length
+      const completedCount = certificates.filter((certificate) => certificate.status === 'completed').length
+
+      return NextResponse.json({
+        role,
+        title: 'Dashboard Manajemen',
+        subtitle: 'Pantau antrean lintas role, bottleneck proses, dan reject terbaru.',
+        cards: [
+          { label: 'Total Sertifikat', value: certificates.length, hint: 'Semua dokumen pada sistem', tone: 'blue' },
+          { label: 'Dalam Proses', value: sentCount, hint: 'Sedang berada di alur verifikasi', tone: 'amber' },
+          { label: 'Selesai', value: completedCount, hint: 'Dokumen completed', tone: 'green' },
+          { label: 'Draft / Revisi', value: draftCount, hint: 'Butuh perhatian petugas kalibrasi', tone: 'red' }
+        ] as DashboardCard[],
+        queue: [
+          { label: 'Antrian V1', value: pendingLevel1 },
+          { label: 'Antrian V2', value: pendingLevel2 },
+          { label: 'Antrian V3', value: pendingLevel3 },
+          { label: 'Antrian Sign', value: pendingSignature }
+        ],
+        actionItems: certificates
+          .filter((certificate) => certificate.status === 'sent')
+          .slice(0, 8)
+          .map((certificate) => ({
+            id: certificate.id,
+            no_certificate: certificate.no_certificate || `Sertifikat #${certificate.id}`,
+            subtitle: `${certificate.status || 'sent'} • ${formatCertificateCode(certificate)}`,
+            status: 'Sedang diproses',
+            href: '/certificates',
+            priority: 'medium'
+          })),
+        recentRejects: buildRejectItems(certificates)
+      })
+    }
+
+    return NextResponse.json({
+      role,
+      title: 'Dashboard',
+      subtitle: 'Ringkasan aktivitas terbaru pada sistem sertifikat.',
+      cards: [
+        { label: 'Total Sertifikat', value: certificates.length, hint: 'Dokumen pada sistem', tone: 'blue' }
+      ] as DashboardCard[],
+      queue: [],
+      actionItems: [],
+      recentRejects: buildRejectItems(certificates)
+    })
   } catch (error) {
-    console.error('Dashboard API error:', error);
-    return NextResponse.json({ error: 'Failed to fetch dashboard data' }, { status: 500 });
+    console.error('Dashboard API error:', error)
+    return NextResponse.json({ error: 'Failed to fetch dashboard data' }, { status: 500 })
   }
 }
