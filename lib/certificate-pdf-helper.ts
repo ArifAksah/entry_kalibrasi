@@ -93,12 +93,17 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
     //   2. NEXT_PUBLIC_SITE_URL - public site URL set in .env
     //   3. VERCEL_URL - auto-set by Vercel deployments
     //   4. localhost:3000  - last-resort fallback (dev only)
-    let baseUrl = (
-      process.env.INTERNAL_APP_URL
-      || process.env.NEXT_PUBLIC_SITE_URL
-      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
-      || 'http://localhost:3000'
-    ).replace(/\/$/, '')
+    const baseUrlCandidates = [
+      process.env.INTERNAL_APP_URL,
+      process.env.NEXT_PUBLIC_SITE_URL,
+      process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+      'http://localhost:3000'
+    ]
+      .filter((value): value is string => Boolean(value))
+      .map(value => value.replace(/\/$/, ''))
+      .filter((value, index, arr) => arr.indexOf(value) === index)
+
+    let baseUrl = baseUrlCandidates[0]
 
     // Public URL for QR codes embedded in PDF (must be accessible from outside server)
     // Uses NEXT_PUBLIC_SITE_URL (public), falls back to baseUrl if not set
@@ -110,12 +115,6 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
 
     console.log(`[PDF Helper] Internal baseUrl (Playwright): ${baseUrl}`)
     console.log(`[PDF Helper] Public baseUrl (QR codes): ${publicBaseUrl}`)
-
-    let printUrl = `${baseUrl}/certificates/${certificateId}/print?pdf=true`
-    if (simulateSigned) {
-      printUrl += '&signed=true'
-    }
-
 
     // Launch browser with Playwright
     const browser = await playwright.chromium.launch({
@@ -167,31 +166,57 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
       await page.emulateMedia({ media: 'print' })
       // ─────────────────────────────────────────────────────────────────────────
 
-      console.log(`[PDF Helper] Navigating (print media): ${printUrl}`)
-      const printResponse = await page.goto(printUrl, {
-        waitUntil: 'domcontentloaded',
-        timeout: 60000
-      })
+      const expectedPath = `/certificates/${certificateId}/print`
+
+      let printResponse: any = null
+      let lastPrintError = ''
+
+      for (const candidateBaseUrl of baseUrlCandidates) {
+        let candidatePrintUrl = `${candidateBaseUrl}/certificates/${certificateId}/print?pdf=true`
+        if (simulateSigned) {
+          candidatePrintUrl += '&signed=true'
+        }
+
+        console.log(`[PDF Helper] Navigating (print media): ${candidatePrintUrl}`)
+
+        try {
+          const response = await page.goto(candidatePrintUrl, {
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
+          })
+          const candidateFinalUrl = page.url()
+          const bodyPreview = await page.evaluate(() => document.body?.innerText?.slice(0, 500) || '')
+
+          if (!candidateFinalUrl.includes(expectedPath)) {
+            lastPrintError = `PRINT_RENDER_FAILED: Halaman print tidak terbuka dengan benar. Final URL: ${candidateFinalUrl}. Preview: ${bodyPreview.substring(0, 180)}`
+            console.error(`[PDF Helper] Unexpected final URL after navigation via ${candidateBaseUrl}: ${candidateFinalUrl}`)
+            continue
+          }
+
+          if (response && !response.ok()) {
+            lastPrintError = `PRINT_RENDER_FAILED: Halaman print mengembalikan HTTP ${response.status()}. Preview: ${bodyPreview.substring(0, 180)}`
+            console.error(`[PDF Helper] Print page returned HTTP ${response.status()} via ${candidateBaseUrl} - URL: ${candidateFinalUrl}`)
+            continue
+          }
+
+          baseUrl = candidateBaseUrl
+          printResponse = response
+          console.log(`[PDF Helper] Print page loaded successfully via ${candidateBaseUrl}`)
+          break
+        } catch (navigationError: any) {
+          lastPrintError = `PRINT_RENDER_FAILED: Gagal membuka halaman print melalui ${candidateBaseUrl}. ${navigationError?.message || 'Unknown navigation error'}`
+          console.error(`[PDF Helper] Navigation failed via ${candidateBaseUrl}:`, navigationError)
+        }
+      }
+
+      if (!printResponse) {
+        return {
+          success: false,
+          error: lastPrintError || 'PRINT_RENDER_FAILED: Tidak ada URL internal yang berhasil membuka halaman print.'
+        }
+      }
 
       const finalUrl = page.url()
-      const expectedPath = `/certificates/${certificateId}/print`
-      if (!finalUrl.includes(expectedPath)) {
-        const bodyPreview = await page.evaluate(() => document.body?.innerText?.slice(0, 500) || '')
-        console.error(`[PDF Helper] Unexpected final URL after navigation: ${finalUrl}`)
-        return {
-          success: false,
-          error: `PRINT_RENDER_FAILED: Halaman print tidak terbuka dengan benar. Final URL: ${finalUrl}. Preview: ${bodyPreview.substring(0, 180)}`
-        }
-      }
-
-      if (printResponse && !printResponse.ok()) {
-        const bodyPreview = await page.evaluate(() => document.body?.innerText?.slice(0, 500) || '')
-        console.error(`[PDF Helper] Print page returned HTTP ${printResponse.status()} - URL: ${finalUrl}`)
-        return {
-          success: false,
-          error: `PRINT_RENDER_FAILED: Halaman print mengembalikan HTTP ${printResponse.status()}. Preview: ${bodyPreview.substring(0, 180)}`
-        }
-      }
 
       // Tunggu data API selesai dimuat (maks 15 detik)
       await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {
