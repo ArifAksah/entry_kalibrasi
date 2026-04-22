@@ -32,7 +32,6 @@ export async function GET(request: NextRequest) {
       .or(
         `verifikator_1.eq.${user.id},verifikator_2.eq.${user.id},verifikator_3.eq.${user.id},authorized_by.eq.${user.id}`,
       )
-      .neq("status", "draft")
       .order("created_at", { ascending: false });
 
     if (certError)
@@ -113,12 +112,17 @@ export async function GET(request: NextRequest) {
 
         // Gate: Sequential verification - each level must wait for previous approval
         const canUserAct = (() => {
+          if (cert.status !== "sent") return false;
           if (isVerifikator1) return true;
           if (isVerifikator2) return verif1?.status === "approved";
           if (isVerifikator3) return verif2?.status === "approved";
           if (isAuthorizedBy) return verif3?.status === "approved";
           return false;
         })();
+
+        const hasRejectedVerification = [verif1, verif2, verif3, verif4].some(
+          (verification) => verification?.status === "rejected",
+        );
 
         return {
           ...cert,
@@ -148,8 +152,9 @@ export async function GET(request: NextRequest) {
             verif3_status_for_auth: verif3?.status || "pending",
             user_can_act: canUserAct,
           },
+          has_rejected_verification: hasRejectedVerification,
         };
-      }) || [];
+      }).filter((cert) => cert.status !== "draft" || cert.has_rejected_verification) || [];
 
     return NextResponse.json(certificatesWithStatus);
   } catch (e) {

@@ -223,7 +223,7 @@ const CertificateVerificationCRUD: React.FC = () => {
   const filteredCertificates = useMemo(() => {
     if (!pendingCertificates) return []
     const query = searchQuery.trim().toLowerCase()
-    const visibleCertificates = pendingCertificates.filter((cert: any) => cert.status !== 'draft')
+    const visibleCertificates = pendingCertificates
     if (!query) return visibleCertificates
 
     return visibleCertificates.filter((cert) => {
@@ -381,13 +381,17 @@ const CertificateVerificationCRUD: React.FC = () => {
         result = await rejectCertificate(selectedCertificate.id, rejectionData)
       } else {
         if (existingId) {
-          result = await updateVerification(existingId, verificationForm)
+          result = await updateVerification(existingId, {
+            status: verificationForm.status,
+            approval_notes: verificationForm.approval_notes || undefined,
+            rejection_reason: undefined
+          })
         } else {
           result = await createVerification({
             certificate_id: selectedCertificate.id,
             verification_level: verificationLevel,
             status: verificationForm.status,
-            notes: verificationForm.notes || undefined,
+            notes: undefined,
             rejection_reason: undefined,
             approval_notes: verificationForm.approval_notes || undefined
           })
@@ -464,7 +468,11 @@ const CertificateVerificationCRUD: React.FC = () => {
         }
         result = await rejectCertificate(selectedCertificate.id, rejectionData)
       } else {
-        result = await updateVerification(existingId, verificationForm)
+        result = await updateVerification(existingId, {
+          status: verificationForm.status,
+          approval_notes: verificationForm.approval_notes || undefined,
+          rejection_reason: undefined
+        })
       }
 
       if (result.success) {
@@ -509,6 +517,141 @@ const CertificateVerificationCRUD: React.FC = () => {
     }
   }
 
+  const getWorkflowStatusBadge = (cert: PendingCertificate) => {
+    const baseClasses = "px-2 py-1 text-xs font-medium rounded-full"
+
+    if (cert.status === 'draft' && cert.has_rejected_verification) {
+      return `${baseClasses} bg-amber-100 text-amber-800`
+    }
+
+    switch (cert.status) {
+      case 'sent':
+        return `${baseClasses} bg-blue-100 text-blue-800`
+      case 'approved':
+        return `${baseClasses} bg-green-100 text-green-800`
+      case 'rejected':
+        return `${baseClasses} bg-red-100 text-red-800`
+      case 'draft':
+        return `${baseClasses} bg-gray-100 text-gray-800`
+      default:
+        return `${baseClasses} bg-slate-100 text-slate-800`
+    }
+  }
+
+  const getWorkflowStatusLabel = (cert: PendingCertificate) => {
+    if (cert.status === 'draft' && cert.has_rejected_verification) {
+      return 'Menunggu Perbaikan'
+    }
+
+    switch (cert.status) {
+      case 'sent':
+        return 'Terkirim'
+      case 'approved':
+        return 'Disetujui'
+      case 'rejected':
+        return 'Ditolak'
+      case 'draft':
+        return 'Draft'
+      default:
+        return cert.status
+    }
+  }
+
+  const getWorkflowStatusHint = (cert: PendingCertificate) => {
+    if (cert.status === 'draft' && cert.has_rejected_verification) {
+      return 'Tampil karena pernah ditolak dan menunggu revisi'
+    }
+
+    if (cert.status === 'sent') {
+      return 'Sedang berada di alur verifikasi'
+    }
+
+    if (cert.status === 'approved') {
+      return 'Sertifikat selesai diverifikasi'
+    }
+
+    return null
+  }
+
+  const canEditOwnVerification = (cert: PendingCertificate) => {
+    const hasExistingVerification = Boolean(cert.verification_status.user_verification_id)
+    if (!hasExistingVerification) return false
+
+    const userLevel = cert.verification_status.user_verification_level
+    const userStatus = cert.verification_status.user_verification_status
+
+    // Verifikator 3 may still revise their verification while final signing is still pending.
+    return userLevel === 3 && userStatus === 'approved' && cert.verification_status.authorized_by !== 'approved'
+  }
+
+  const canShowPrimaryAction = (cert: PendingCertificate) => {
+    return cert.verification_status.user_can_act || canEditOwnVerification(cert)
+  }
+
+  const isPrimaryActionDisabled = (cert: PendingCertificate) => {
+    if (cert.verification_status.user_verification_status === 'rejected') return true
+    if (cert.verification_status.user_verification_status === 'approved') {
+      return !canEditOwnVerification(cert)
+    }
+    return false
+  }
+
+  const handlePrimaryAction = (cert: PendingCertificate) => {
+    if (cert.verification_status.user_verification_id) {
+      openEditModal(cert)
+      return
+    }
+
+    openModal(cert)
+  }
+
+  const getPrimaryActionLabel = (cert: PendingCertificate) => {
+    if (canEditOwnVerification(cert)) {
+      return 'Ubah'
+    }
+
+    if (cert.verification_status.user_verification_level === 3 && cert.verification_status.user_can_act) {
+      return 'Ubah'
+    }
+
+    return cert.verification_status.user_verification_id ? 'Ubah' : 'Verifikasi'
+  }
+
+  const renderVerificationProgress = (verificationStatus: PendingCertificate['verification_status']) => (
+    <div className="space-y-2 mt-1">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs text-gray-500">Verifikator 1</span>
+        <span className={getStatusBadge(verificationStatus.verifikator_1 || 'pending')}>
+          {verificationStatus.verifikator_1 || 'pending'}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs text-gray-500">Verifikator 2</span>
+        <span className={getStatusBadge(verificationStatus.verifikator_2 || 'pending')}>
+          {verificationStatus.verifikator_2 || 'pending'}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs text-gray-500">Verifikator 3</span>
+        <span className={getStatusBadge(verificationStatus.verifikator_3 || 'pending')}>
+          {verificationStatus.verifikator_3 || 'pending'}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs text-gray-500">Penandatangan</span>
+        <span className={getStatusBadge(verificationStatus.authorized_by || 'pending')}>
+          {verificationStatus.authorized_by || 'pending'}
+        </span>
+      </div>
+    </div>
+  )
+
+  const getRoleBadgeClass = (role: string) => {
+    if (role.includes('Penandatangan')) return 'inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-purple-100 text-purple-800'
+    if (role.includes('Verifikator')) return 'inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800'
+    return 'inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800'
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -531,7 +674,7 @@ const CertificateVerificationCRUD: React.FC = () => {
       )}
 
       <div className="flex justify-between items-center">
-        <Breadcrumb items={[{ label: 'Verification', href: '#' }, { label: 'Certificate Verification' }]} />
+        <Breadcrumb items={[{ label: 'Verifikasi', href: '#' }, { label: 'Verifikasi Sertifikat' }]} />
       </div>
 
       {error && (
@@ -542,17 +685,17 @@ const CertificateVerificationCRUD: React.FC = () => {
 
       <Card>
         <div className="mb-4">
-          <h2 className="text-lg font-semibold text-gray-900 mb-2">Certificates Assigned to You</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">Sertifikat yang Ditugaskan kepada Anda</h2>
           <p className="text-sm text-gray-600 mb-3">
-            You are assigned as a verifikator for the following certificates. Click "Verify" to review and approve/reject.
+            Anda ditugaskan sebagai verifikator untuk sertifikat berikut. Klik tombol verifikasi untuk meninjau dan memberikan keputusan.
           </p>
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-            <h4 className="text-sm font-semibold text-blue-900 mb-2">📋 Verification Instructions:</h4>
+            <h4 className="text-sm font-semibold text-blue-900 mb-2">Panduan Verifikasi:</h4>
             <ul className="text-xs text-blue-800 space-y-1">
-              <li>• <span className="font-medium">Review:</span> Periksa semua data certificate dengan teliti</li>
-              <li>• <span className="font-medium">Approve:</span> Jika data sudah benar dan lengkap</li>
-              <li>• <span className="font-medium">Reject:</span> Jika ada kesalahan yang perlu diperbaiki</li>
-              <li>• <span className="font-medium">Notes:</span> Berikan catatan untuk setiap keputusan</li>
+              <li>â€¢ <span className="font-medium">Tinjau:</span> Periksa seluruh data sertifikat dengan teliti</li>
+              <li>â€¢ <span className="font-medium">Setujui:</span> Jika data sudah benar dan lengkap</li>
+              <li>â€¢ <span className="font-medium">Tolak:</span> Jika ada kesalahan yang perlu diperbaiki</li>
+              <li>â€¢ <span className="font-medium">Catatan:</span> Berikan catatan yang relevan untuk setiap keputusan</li>
             </ul>
           </div>
 
@@ -561,7 +704,7 @@ const CertificateVerificationCRUD: React.FC = () => {
             <div className="relative">
               <input
                 type="text"
-                placeholder="Search by certificate number, order, station, instrument, status..."
+                placeholder="Cari berdasarkan nomor sertifikat, order, stasiun, instrumen, atau status..."
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value)
@@ -576,7 +719,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                     setCurrentPage(1)
                   }}
                   className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                  title="Clear search"
+                  title="Hapus pencarian"
                 >
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -586,9 +729,9 @@ const CertificateVerificationCRUD: React.FC = () => {
             </div>
             {searchQuery && (
               <div className="mt-2 text-sm text-gray-600">
-                Found <span className="font-medium">{filteredCertificates.length}</span> certificate{filteredCertificates.length !== 1 ? 's' : ''} matching "{searchQuery}"
+                Ditemukan <span className="font-medium">{filteredCertificates.length}</span> sertifikat yang cocok dengan "{searchQuery}"
                 {filteredCertificates.length === 0 && (
-                  <span className="text-red-500 ml-2">- No certificates found</span>
+                  <span className="text-red-500 ml-2">- Tidak ada sertifikat yang ditemukan</span>
                 )}
               </div>
             )}
@@ -596,16 +739,16 @@ const CertificateVerificationCRUD: React.FC = () => {
         </div>
 
         <Table headers={[
-          'Certificate No',
-          'Station',
-          'Your Role & Status',
-          'Overall Status',
-          'Actions'
+          'Nomor Sertifikat',
+          'Stasiun',
+          'Peran & Status Anda',
+          'Status Keseluruhan',
+          'Aksi'
         ]}>
           {currentCertificates.length === 0 ? (
             <tr>
               <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">
-                {searchQuery ? 'No certificates found matching your search' : 'No certificates assigned to you'}
+                {searchQuery ? 'Tidak ada sertifikat yang sesuai dengan pencarian Anda' : 'Tidak ada sertifikat yang ditugaskan kepada Anda'}
               </td>
             </tr>
           ) : (
@@ -617,7 +760,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                       {cert.no_certificate}
                     </span>
                     <span className="text-xs text-gray-500">
-                      {cert.no_order} • {cert.no_identification}
+                      {cert.no_order} / {cert.no_identification}
                     </span>
                     <span className="text-xs text-gray-400">
                       {new Date(cert.issue_date).toLocaleDateString()}
@@ -653,14 +796,24 @@ const CertificateVerificationCRUD: React.FC = () => {
                       </span>
                     )}
                     {cert.verification_status.user_verification_status === 'approved' && (
-                      <span className="text-[10px] text-green-600">
-                        Edit terkunci
+                      <span className={`text-[10px] ${canEditOwnVerification(cert) ? 'text-blue-600' : 'text-green-600'}`}>
+                        {canEditOwnVerification(cert) ? 'Masih dapat diubah sebelum penandatangan verifikasi' : 'Edit terkunci'}
                       </span>
                     )}
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <div className="flex flex-col space-y-1">
+                  <div className="flex flex-col space-y-1.5">
+                    <div className="flex flex-col items-start space-y-1">
+                      <span className={getWorkflowStatusBadge(cert)}>
+                        {getWorkflowStatusLabel(cert)}
+                      </span>
+                      {getWorkflowStatusHint(cert) && (
+                        <span className="text-[10px] text-gray-500">
+                          {getWorkflowStatusHint(cert)}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center space-x-2">
                       <span className="text-xs text-gray-500">Verifikator 1:</span>
                       <span className={getStatusBadge(cert.verification_status.verifikator_1)}>
@@ -690,18 +843,18 @@ const CertificateVerificationCRUD: React.FC = () => {
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                   <div className="flex items-center space-x-2">
                     {/* Primary Action */}
-                    {cert.verification_status.user_can_act ? (
+                    {canShowPrimaryAction(cert) ? (
                       <button
-                        onClick={() => openModal(cert)}
-                        disabled={cert.verification_status.user_verification_status === 'approved' || cert.verification_status.user_verification_status === 'rejected'}
+                        onClick={() => handlePrimaryAction(cert)}
+                        disabled={isPrimaryActionDisabled(cert)}
                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white rounded-lg transition-all duration-200 shadow-sm ${
-                          cert.verification_status.user_verification_status === 'approved' || cert.verification_status.user_verification_status === 'rejected'
+                          isPrimaryActionDisabled(cert)
                             ? 'bg-gray-400 cursor-not-allowed opacity-60'
                             : 'bg-blue-600 hover:bg-blue-700'
                         }`}
                       >
                         <CheckIcon className="w-4 h-4" />
-                        <span>{cert.verification_status.user_verification_id ? 'Update' : 'Verify'}</span>
+                        <span>{getPrimaryActionLabel(cert)}</span>
                       </button>
                     ) : (
                       <a
@@ -710,11 +863,11 @@ const CertificateVerificationCRUD: React.FC = () => {
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-all duration-200 shadow-sm"
                       >
                         <ViewIcon className="w-4 h-4" />
-                        <span>View</span>
+                        <span>Lihat</span>
                       </a>
                     )}
 
-                    {/* Secondary Actions Dropdown */}
+                    {/* Dropdown aksi tambahan */}
                     <Dropdown
                       trigger={
                         <button className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
@@ -724,18 +877,18 @@ const CertificateVerificationCRUD: React.FC = () => {
                         </button>
                       }
                     >
-                      {/* View (if not primary) */}
-                      {cert.verification_status.user_can_act && (
+                      {/* Lihat sertifikat jika bukan aksi utama */}
+                      {canShowPrimaryAction(cert) && (
                         <DropdownItem
                           href={`/certificates/${cert.id}/view?from=verification`}
                           target="_blank"
                           icon={<ViewIcon className="w-4 h-4" />}
                         >
-                          View Certificate
+                          Lihat Sertifikat
                         </DropdownItem>
                       )}
 
-                      {/* Preview LHKS */}
+                      {/* Pratinjau LHKS */}
                       <DropdownItem
                         onClick={() => handlePreviewLHKS(cert)}
                         icon={
@@ -744,7 +897,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                           </svg>
                         }
                       >
-                        Preview LHKS
+                        Pratinjau LHKS
                       </DropdownItem>
 
                       {cert.verification_status.authorized_by === 'approved' && (cert as any).pdf_path && (
@@ -758,14 +911,14 @@ const CertificateVerificationCRUD: React.FC = () => {
                               </svg>
                             }
                           >
-                            View Saved PDF
+                            Lihat PDF Tersimpan
                           </DropdownItem>
                           <DropdownItem
                             onClick={async () => {
                               try {
                                 const response = await fetch(`/api/certificates/${cert.id}/pdf?download=true&t=${Date.now()}`, { cache: 'no-store' })
                                 if (!response.ok) {
-                                  const errorData = await response.json().catch(() => ({ error: 'Failed to download PDF' }))
+                                  const errorData = await response.json().catch(() => ({ error: 'Gagal mengunduh PDF' }))
                                   showError(errorData.error || 'Gagal mengunduh PDF.')
                                   return
                                 }
@@ -810,12 +963,12 @@ const CertificateVerificationCRUD: React.FC = () => {
                               </svg>
                             }
                           >
-                            Download Signed PDF
+                            Unduh PDF Bertanda Tangan
                           </DropdownItem>
                         </>
                       )}
 
-                      {/* Verify BSrE */}
+                      {/* Verifikasi BSrE */}
                       {cert.verification_status.authorized_by === 'approved' && (cert as any).pdf_path && (
                         <DropdownItem
                           onClick={() => handleVerifyBSrE(cert)}
@@ -825,7 +978,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                             </svg>
                           }
                         >
-                          Verify BSrE
+                          Verifikasi BSrE
                         </DropdownItem>
                       )}
                     </Dropdown>
@@ -852,7 +1005,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                 <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
-                Previous
+                Sebelumnya
               </button>
 
               <div className="flex items-center space-x-1">
@@ -869,7 +1022,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                   : 'text-gray-700 hover:bg-white hover:text-gray-900'
                   }`}
               >
-                Next
+                Berikutnya
                 <svg className="h-4 w-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
@@ -878,11 +1031,11 @@ const CertificateVerificationCRUD: React.FC = () => {
             <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm text-gray-700">
-                  Showing <span className="font-medium">{indexOfFirstCertificate + 1}</span> to{' '}
+                  Menampilkan <span className="font-medium">{indexOfFirstCertificate + 1}</span> sampai{' '}
                   <span className="font-medium">
                     {Math.min(indexOfLastCertificate, filteredCertificates.length)}
                   </span>{' '}
-                  of <span className="font-medium">{filteredCertificates.length}</span> results
+                  dari <span className="font-medium">{filteredCertificates.length}</span> hasil
                 </p>
               </div>
               <div>
@@ -1042,7 +1195,7 @@ const CertificateVerificationCRUD: React.FC = () => {
           <div className="w-full max-w-2xl max-h-[90vh] flex flex-col bg-white rounded-lg shadow-xl">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">
-                Verify Certificate - {selectedCertificate.no_certificate}
+                Verifikasi Sertifikat - {selectedCertificate.no_certificate}
               </h3>
               <button
                 onClick={closeModal}
@@ -1054,47 +1207,64 @@ const CertificateVerificationCRUD: React.FC = () => {
             <div className="flex-1 overflow-y-auto p-6">
               <form id="verification-form" onSubmit={handleSubmit} className="space-y-6">
                 <div className="bg-gray-50 p-4 rounded-lg">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Certificate Details</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Detail Sertifikat</h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <span className="font-medium text-gray-700">Certificate No:</span>
+                      <span className="font-medium text-gray-700">Nomor Sertifikat:</span>
                       <p className="text-gray-900">{selectedCertificate.no_certificate}</p>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">Order No:</span>
+                      <span className="font-medium text-gray-700">Nomor Order:</span>
                       <p className="text-gray-900">{selectedCertificate.no_order}</p>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">Identification:</span>
+                      <span className="font-medium text-gray-700">Identifikasi:</span>
                       <p className="text-gray-900">{selectedCertificate.no_identification}</p>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">Issue Date:</span>
+                      <span className="font-medium text-gray-700">Tanggal Terbit:</span>
                       <p className="text-gray-900">{new Date(selectedCertificate.issue_date).toISOString().slice(0, 10)}</p>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">Station:</span>
+                      <span className="font-medium text-gray-700">Stasiun:</span>
                       <p className="text-gray-900">{selectedCertificate.station?.name || '-'}</p>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">Instrument:</span>
+                      <span className="font-medium text-gray-700">Instrumen:</span>
                       <p className="text-gray-900">{selectedCertificate.instrument?.name || '-'}</p>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">Your Role:</span>
-                      <p className="text-gray-900">{getVerificationLevel(selectedCertificate)}</p>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Current Status:</span>
-                      <p className="text-gray-900">{selectedCertificate.verification_status.user_verification_status || 'pending'}</p>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Verification Progress:</span>
-                      <div className="text-sm text-gray-600 mt-1">
-                        <div>Verifikator 1: {selectedCertificate.verification_status.verifikator_1 || 'pending'}</div>
-                        <div>Verifikator 2: {selectedCertificate.verification_status.verifikator_2 || 'pending'}</div>
-                        <div>Penandatangan: {selectedCertificate.verification_status.authorized_by || 'pending'}</div>
+                      <span className="font-medium text-gray-700">Peran Anda:</span>
+                      <div className="mt-1">
+                        <span className={getRoleBadgeClass(getVerificationLevel(selectedCertificate))}>
+                          {getVerificationLevel(selectedCertificate)}
+                        </span>
                       </div>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Status Saat Ini:</span>
+                      <div className="mt-1">
+                        <span className={getStatusBadge(selectedCertificate.verification_status.user_verification_status || 'pending')}>
+                          {selectedCertificate.verification_status.user_verification_status || 'pending'}
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Status Alur:</span>
+                      <div className="mt-1 space-y-1">
+                        <span className={getWorkflowStatusBadge(selectedCertificate)}>
+                          {getWorkflowStatusLabel(selectedCertificate)}
+                        </span>
+                        {getWorkflowStatusHint(selectedCertificate) && (
+                          <p className="text-[11px] text-gray-500">
+                            {getWorkflowStatusHint(selectedCertificate)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Progres Verifikasi:</span>
+                      {renderVerificationProgress(selectedCertificate.verification_status)}
                     </div>
                   </div>
                 </div>
@@ -1102,7 +1272,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Verification Decision
+                      Keputusan Verifikasi
                     </label>
                     <div className="space-y-2">
                       <label className="flex items-center">
@@ -1114,7 +1284,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                           onChange={(e) => setVerificationForm({ ...verificationForm, status: e.target.value as 'approved' | 'rejected' })}
                           className="mr-2"
                         />
-                        <span className="text-green-700 font-medium">Approve</span>
+                        <span className="text-green-700 font-medium">Setujui</span>
                       </label>
                       <label className="flex items-center">
                         <input
@@ -1125,36 +1295,23 @@ const CertificateVerificationCRUD: React.FC = () => {
                           onChange={(e) => setVerificationForm({ ...verificationForm, status: e.target.value as 'approved' | 'rejected' })}
                           className="mr-2"
                         />
-                        <span className="text-red-700 font-medium">Reject</span>
+                        <span className="text-red-700 font-medium">Tolak</span>
                       </label>
                     </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      General Notes (Optional)
-                    </label>
-                    <textarea
-                      value={verificationForm.notes}
-                      onChange={(e) => setVerificationForm({ ...verificationForm, notes: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      rows={3}
-                      placeholder="Add any general notes about your verification decision..."
-                    />
                   </div>
 
                   {verificationForm.status === 'rejected' && (
                     <div className="space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-red-700 mb-2">
-                          Rejection Reason *
+                          Catatan Penolakan *
                         </label>
                         <textarea
                           value={verificationForm.rejection_reason}
                           onChange={(e) => setVerificationForm({ ...verificationForm, rejection_reason: e.target.value })}
                           className="w-full px-3 py-2 border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
                           rows={3}
-                          placeholder="Please provide a detailed reason for rejection..."
+                          placeholder="Tuliskan alasan penolakan secara rinci..."
                           required
                         />
                       </div>
@@ -1225,14 +1382,14 @@ const CertificateVerificationCRUD: React.FC = () => {
                   {verificationForm.status === 'approved' && (
                     <div>
                       <label className="block text-sm font-medium text-green-700 mb-2">
-                        Approval Notes (Optional)
+                        Catatan Persetujuan (Opsional)
                       </label>
                       <textarea
                         value={verificationForm.approval_notes}
                         onChange={(e) => setVerificationForm({ ...verificationForm, approval_notes: e.target.value })}
                         className="w-full px-3 py-2 border border-green-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                         rows={3}
-                        placeholder="Add any notes about the approval..."
+                        placeholder="Tambahkan catatan persetujuan jika diperlukan..."
                       />
                     </div>
                   )}
@@ -1270,7 +1427,7 @@ const CertificateVerificationCRUD: React.FC = () => {
           <div className="w-full max-w-2xl max-h-[90vh] flex flex-col bg-white rounded-lg shadow-xl">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">
-                Edit Verification - {selectedCertificate.no_certificate}
+                Ubah Verifikasi - {selectedCertificate.no_certificate}
               </h3>
               <button
                 onClick={closeEditModal}
@@ -1282,39 +1439,64 @@ const CertificateVerificationCRUD: React.FC = () => {
             <div className="flex-1 overflow-y-auto p-6">
               <form id="edit-verification-form" onSubmit={handleEditSubmit} className="space-y-6">
                 <div className="bg-gray-50 p-4 rounded-lg">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Certificate Details</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Detail Sertifikat</h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <span className="font-medium text-gray-700">Certificate No:</span>
+                      <span className="font-medium text-gray-700">Nomor Sertifikat:</span>
                       <p className="text-gray-900">{selectedCertificate.no_certificate}</p>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">Order No:</span>
+                      <span className="font-medium text-gray-700">Nomor Order:</span>
                       <p className="text-gray-900">{selectedCertificate.no_order}</p>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">Identification:</span>
+                      <span className="font-medium text-gray-700">Identifikasi:</span>
                       <p className="text-gray-900">{selectedCertificate.no_identification}</p>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">Issue Date:</span>
+                      <span className="font-medium text-gray-700">Tanggal Terbit:</span>
                       <p className="text-gray-900">{new Date(selectedCertificate.issue_date).toLocaleDateString()}</p>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">Station:</span>
+                      <span className="font-medium text-gray-700">Stasiun:</span>
                       <p className="text-gray-900">{selectedCertificate.station?.name || '-'}</p>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">Instrument:</span>
+                      <span className="font-medium text-gray-700">Instrumen:</span>
                       <p className="text-gray-900">{selectedCertificate.instrument?.name || '-'}</p>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">Your Role:</span>
-                      <p className="text-gray-900">{getVerificationLevel(selectedCertificate)}</p>
+                      <span className="font-medium text-gray-700">Peran Anda:</span>
+                      <div className="mt-1">
+                        <span className={getRoleBadgeClass(getVerificationLevel(selectedCertificate))}>
+                          {getVerificationLevel(selectedCertificate)}
+                        </span>
+                      </div>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">Current Status:</span>
-                      <p className="text-gray-900">{selectedCertificate.verification_status.user_verification_status || 'pending'}</p>
+                      <span className="font-medium text-gray-700">Status Saat Ini:</span>
+                      <div className="mt-1">
+                        <span className={getStatusBadge(selectedCertificate.verification_status.user_verification_status || 'pending')}>
+                          {selectedCertificate.verification_status.user_verification_status || 'pending'}
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Status Alur:</span>
+                      <div className="mt-1 space-y-1">
+                        <span className={getWorkflowStatusBadge(selectedCertificate)}>
+                          {getWorkflowStatusLabel(selectedCertificate)}
+                        </span>
+                        {getWorkflowStatusHint(selectedCertificate) && (
+                          <p className="text-[11px] text-gray-500">
+                            {getWorkflowStatusHint(selectedCertificate)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Progres Verifikasi:</span>
+                      {renderVerificationProgress(selectedCertificate.verification_status)}
                     </div>
                   </div>
                 </div>
@@ -1322,7 +1504,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Verification Decision
+                      Keputusan Verifikasi
                     </label>
                     <div className="space-y-2">
                       <label className="flex items-center">
@@ -1334,7 +1516,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                           onChange={(e) => setVerificationForm({ ...verificationForm, status: e.target.value as 'approved' | 'rejected' })}
                           className="mr-2"
                         />
-                        <span className="text-green-700 font-medium">Approve</span>
+                        <span className="text-green-700 font-medium">Setujui</span>
                       </label>
                       <label className="flex items-center">
                         <input
@@ -1345,36 +1527,23 @@ const CertificateVerificationCRUD: React.FC = () => {
                           onChange={(e) => setVerificationForm({ ...verificationForm, status: e.target.value as 'approved' | 'rejected' })}
                           className="mr-2"
                         />
-                        <span className="text-red-700 font-medium">Reject</span>
+                        <span className="text-red-700 font-medium">Tolak</span>
                       </label>
                     </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      General Notes (Optional)
-                    </label>
-                    <textarea
-                      value={verificationForm.notes}
-                      onChange={(e) => setVerificationForm({ ...verificationForm, notes: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      rows={3}
-                      placeholder="Add any general notes about your verification decision..."
-                    />
                   </div>
 
                   {verificationForm.status === 'rejected' && (
                     <div className="space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-red-700 mb-2">
-                          Rejection Reason *
+                          Catatan Penolakan *
                         </label>
                         <textarea
                           value={verificationForm.rejection_reason}
                           onChange={(e) => setVerificationForm({ ...verificationForm, rejection_reason: e.target.value })}
                           className="w-full px-3 py-2 border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
                           rows={3}
-                          placeholder="Please provide a detailed reason for rejection..."
+                          placeholder="Tuliskan alasan penolakan secara rinci..."
                           required
                         />
                       </div>
@@ -1429,14 +1598,14 @@ const CertificateVerificationCRUD: React.FC = () => {
                   {verificationForm.status === 'approved' && (
                     <div>
                       <label className="block text-sm font-medium text-green-700 mb-2">
-                        Approval Notes (Optional)
+                        Catatan Persetujuan (Opsional)
                       </label>
                       <textarea
                         value={verificationForm.approval_notes}
                         onChange={(e) => setVerificationForm({ ...verificationForm, approval_notes: e.target.value })}
                         className="w-full px-3 py-2 border border-green-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                         rows={3}
-                        placeholder="Add any notes about the approval..."
+                        placeholder="Tambahkan catatan persetujuan jika diperlukan..."
                       />
                     </div>
                   )}
@@ -1461,7 +1630,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                   : 'bg-red-600 hover:bg-red-700'
                   }`}
               >
-                {isSubmitting ? 'Mengirim...' : `Update ${verificationForm.status === 'approved' ? 'Approval' : 'Rejection'}`}
+                {isSubmitting ? 'Mengirim...' : `${verificationForm.status === 'approved' ? 'Perbarui Persetujuan' : 'Perbarui Penolakan'}`}
               </button>
             </div>
           </div>
@@ -1689,7 +1858,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                           return
                         }
 
-                        // Passphrase salah (HTTP 400) — hanya jika bukan error NIK
+                        // Passphrase salah (HTTP 400) - hanya jika bukan error NIK
                         if (res.status === 400) {
                           if (
                             errorMsgLower.includes('passphrase') ||
@@ -1733,7 +1902,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                       }))
                       // Tampilkan notifikasi sukses menggunakan useAlert (bukan window.alert)
                       // window.alert() bisa di-suppress browser saat async handler sebelum reload
-                      showSuccess('✅ Dokumen berhasil ditandatangani! Halaman akan diperbarui...')
+                      showSuccess('Dokumen berhasil ditandatangani. Halaman akan diperbarui...')
                       // Tunggu 3 detik agar notifikasi terlihat sebelum reload
                       setTimeout(() => {
                         window.location.reload()
@@ -1899,3 +2068,4 @@ const CertificateVerificationCRUD: React.FC = () => {
 }
 
 export default CertificateVerificationCRUD
+

@@ -170,7 +170,7 @@ export async function POST(
     // Get certificate info
     const { data: certificate, error: certError } = await supabaseAdmin
       .from('certificate')
-      .select('id, no_certificate, verifikator_1, verifikator_2, verifikator_3, sent_by, status')
+      .select('id, no_certificate, verifikator_1, verifikator_2, verifikator_3, sent_by, status, version')
       .eq('id', certificateId)
       .single()
 
@@ -196,20 +196,23 @@ export async function POST(
       }, { status: 403 })
     }
 
-    // Get current verification
+    const certificateVersion = certificate.version || 1
+
+    // Get current verification for the active certificate version
     const { data: verification, error: verifError } = await supabaseAdmin
       .from('certificate_verification')
       .select('*')
       .eq('certificate_id', certificateId)
       .eq('verification_level', verification_level)
-      .single()
+      .eq('certificate_version', certificateVersion)
+      .maybeSingle()
 
-    if (verifError || !verification) {
-      return NextResponse.json({ error: 'Verification not found' }, { status: 404 })
+    if (verifError) {
+      return NextResponse.json({ error: 'Failed to load verification data' }, { status: 500 })
     }
 
     // Check if verification is already processed
-    if (verification.status !== 'pending') {
+    if (verification && verification.status !== 'pending') {
       return NextResponse.json({ 
         error: 'This verification has already been processed' 
       }, { status: 400 })
@@ -238,22 +241,49 @@ export async function POST(
     const rejectionHistory = currentCert.rejection_history || []
     const newRejectionHistory = [...rejectionHistory, rejectionEntry]
 
-    // Update verification record
-    const { error: updateVerifError } = await supabaseAdmin
-      .from('certificate_verification')
-      .update({
-        status: 'rejected',
-        rejection_reason_detailed: rejection_reason,
-        rejection_destination: actualDestination,
-        rejection_timestamp: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', verification.id)
+    const rejectionTimestamp = new Date().toISOString()
 
-    if (updateVerifError) {
-      return NextResponse.json({ 
-        error: 'Failed to update verification record' 
-      }, { status: 500 })
+    // Update existing verification if present; otherwise create a new rejection record.
+    if (verification) {
+      const { error: updateVerifError } = await supabaseAdmin
+        .from('certificate_verification')
+        .update({
+          status: 'rejected',
+          rejection_reason: rejection_reason,
+          rejection_reason_detailed: rejection_reason,
+          rejection_destination: actualDestination,
+          rejection_timestamp: rejectionTimestamp,
+          updated_at: rejectionTimestamp
+        })
+        .eq('id', verification.id)
+
+      if (updateVerifError) {
+        return NextResponse.json({ 
+          error: 'Failed to update verification record' 
+        }, { status: 500 })
+      }
+    } else {
+      const { error: insertVerifError } = await supabaseAdmin
+        .from('certificate_verification')
+        .insert({
+          certificate_id: certificateId,
+          verification_level,
+          certificate_version: certificateVersion,
+          verified_by: user.id,
+          status: 'rejected',
+          rejection_reason: rejection_reason,
+          rejection_reason_detailed: rejection_reason,
+          rejection_destination: actualDestination,
+          rejection_timestamp: rejectionTimestamp,
+          created_at: rejectionTimestamp,
+          updated_at: rejectionTimestamp
+        })
+
+      if (insertVerifError) {
+        return NextResponse.json({ 
+          error: 'Failed to create rejection verification record' 
+        }, { status: 500 })
+      }
     }
 
     // Update certificate status and rejection info
@@ -282,7 +312,7 @@ export async function POST(
       const actionMap: Record<number, string> = {
         1: 'rejected_v1',
         2: 'rejected_v2',
-        3: 'rejected_assignor'
+        3: 'rejected_v3'
       }
       const logAction = actionMap[verification_level] || 'rejected_v1'
       
@@ -340,7 +370,6 @@ export async function POST(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-
 
 
 

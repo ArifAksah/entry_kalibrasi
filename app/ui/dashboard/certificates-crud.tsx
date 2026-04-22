@@ -370,6 +370,8 @@ const CertificatesCRUD: React.FC = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [actionDropdownOpenId, setActionDropdownOpenId] = useState<number | null>(null)
+  const [isRejectionNotesModalOpen, setIsRejectionNotesModalOpen] = useState(false)
+  const [selectedRejectionCertificate, setSelectedRejectionCertificate] = useState<Certificate | null>(null)
 
   // Menutup dropdown action saat klik di luar
   useEffect(() => {
@@ -408,6 +410,40 @@ const CertificatesCRUD: React.FC = () => {
   const [showLHKSModal, setShowLHKSModal] = useState(false)
   const [lhksCertificate, setLhksCertificate] = useState<Certificate | null>(null)
   const [lhksRawData, setLhksRawData] = useState<any[]>([])
+
+  const getVerificationLevelLabel = (level: number | null | undefined) => {
+    switch (level) {
+      case 1:
+        return 'Verifikator 1'
+      case 2:
+        return 'Verifikator 2'
+      case 3:
+        return 'Verifikator 3'
+      case 4:
+        return 'Penandatangan'
+      default:
+        return 'Verifier'
+    }
+  }
+
+  const getLatestRejectionEntry = (certificate: Certificate) => {
+    const history = Array.isArray((certificate as any).rejection_history)
+      ? [...(certificate as any).rejection_history]
+      : []
+
+    if (history.length === 0) return null
+
+    return history.sort((a: any, b: any) => {
+      const timeA = new Date(a?.rejection_timestamp || 0).getTime()
+      const timeB = new Date(b?.rejection_timestamp || 0).getTime()
+      return timeB - timeA
+    })[0]
+  }
+
+  const handleOpenRejectionNotes = (certificate: Certificate) => {
+    setSelectedRejectionCertificate(certificate)
+    setIsRejectionNotesModalOpen(true)
+  }
 
   const handlePreviewLHKS = async (cert: Certificate) => {
     setLhksCertificate(cert)
@@ -2050,6 +2086,19 @@ type ResultItem = {
 
                           {/* ACTION / MODIFY GROUP */}
                           <div className="py-1">
+                            {getLatestRejectionEntry(item) && (
+                              <button
+                                onClick={() => {
+                                  handleOpenRejectionNotes(item);
+                                  setActionDropdownOpenId(null);
+                                }}
+                                className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-red-50 hover:text-red-700 transition-colors"
+                              >
+                                <FileTextIcon className="w-4 h-4 text-red-600" />
+                                Lihat Catatan Reject
+                              </button>
+                            )}
+
                             {item.status === 'draft' && can('certificate', 'update') && (
                               <button
                                 onClick={() => {
@@ -2063,7 +2112,9 @@ type ResultItem = {
                               </button>
                             )}
 
-                            {((item as any).repair_status === 'none' && ((item as any).verifikator_1_status === 'rejected' || (item as any).verifikator_2_status === 'rejected' || (item as any).verifikator_3_status === 'rejected')) && (
+                            {((item as any).repair_status === 'none' &&
+                              item.status !== 'draft' &&
+                              ((item as any).verifikator_1_status === 'rejected' || (item as any).verifikator_2_status === 'rejected' || (item as any).verifikator_3_status === 'rejected')) && (
                               <button
                                 onClick={() => {
                                   openModal(item);
@@ -4150,6 +4201,88 @@ type ResultItem = {
           </div>
         )
       }
+
+      {isRejectionNotesModalOpen && selectedRejectionCertificate && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="bg-red-600 p-4 flex justify-between items-center">
+              <div>
+                <h3 className="text-white font-bold text-lg">Catatan Reject</h3>
+                <p className="text-red-100 text-xs">
+                  {selectedRejectionCertificate.no_certificate}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsRejectionNotesModalOpen(false)
+                  setSelectedRejectionCertificate(null)
+                }}
+                className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors"
+              >
+                <CloseIcon className="w-5 h-5" />
+              </button>
+            </div>
+
+            {(() => {
+              const latestRejection = getLatestRejectionEntry(selectedRejectionCertificate)
+              const rejectedBy = latestRejection?.rejected_by
+                ? personel.find((p) => p.id === latestRejection.rejected_by)?.name || latestRejection.rejected_by
+                : null
+
+              return (
+                <div className="p-5 space-y-4">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="font-medium text-gray-700">Level Penolakan:</span>
+                      <p className="text-gray-900 mt-1">
+                        {getVerificationLevelLabel(latestRejection?.verification_level)}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Waktu:</span>
+                      <p className="text-gray-900 mt-1">
+                        {latestRejection?.rejection_timestamp
+                          ? new Date(latestRejection.rejection_timestamp).toLocaleString('id-ID')
+                          : '-'}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Ditolak Oleh:</span>
+                      <p className="text-gray-900 mt-1">{rejectedBy || '-'}</p>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Tujuan Pengembalian:</span>
+                      <p className="text-gray-900 mt-1">
+                        {latestRejection?.rejection_destination || 'Pembuat Sertifikat'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                    <p className="text-sm font-medium text-red-800 mb-2">Alasan Penolakan</p>
+                    <p className="text-sm text-red-900 whitespace-pre-wrap">
+                      {latestRejection?.rejection_reason || (selectedRejectionCertificate as any).rejection_reason || 'Catatan penolakan tidak tersedia.'}
+                    </p>
+                  </div>
+                </div>
+              )
+            })()}
+
+            <div className="p-4 bg-gray-50 border-t border-gray-100 text-right">
+              <button
+                onClick={() => {
+                  setIsRejectionNotesModalOpen(false)
+                  setSelectedRejectionCertificate(null)
+                }}
+                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 font-medium transition-colors shadow-sm"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* QC Modal */}
       {
         qcModalCertificate && (

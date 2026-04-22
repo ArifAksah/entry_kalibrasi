@@ -35,6 +35,7 @@ export interface CertificateVerification {
 
 export interface PendingCertificate {
   id: number
+  status: string
   no_certificate: string
   no_order: string
   no_identification: string
@@ -56,6 +57,7 @@ export interface PendingCertificate {
     manufacturer?: string
     serial_number?: string
   } | null
+  has_rejected_verification?: boolean
   verification_status: {
     verifikator_1: string
     verifikator_2: string
