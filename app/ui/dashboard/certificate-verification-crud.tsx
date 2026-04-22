@@ -15,6 +15,7 @@ import { usePermissions } from '../../../hooks/usePermissions'
 import { useAlert } from '../../../hooks/useAlert'
 import { useCertificateRejection } from '../../../hooks/useCertificateRejection'
 import LHKSReport from '../../../components/features/LHKSReport'
+import UncertaintyModal from '../../../components/features/UncertaintyModal'
 import { Certificate, CertificateInsert, Station, Instrument, Sensor } from '../../../lib/supabase'
 import { ViewIcon, CloseIcon, CheckIcon } from '../../../components/ui/ActionIcons'
 import Dropdown, { DropdownItem } from '../../../components/ui/Dropdown'
@@ -134,6 +135,10 @@ const CertificateVerificationCRUD: React.FC = () => {
   const [lhksCertificate, setLhksCertificate] = useState<Certificate | null>(null)
   const [lhksRawData, setLhksRawData] = useState<any[]>([])
   const [lhksStandardCerts, setLhksStandardCerts] = useState<any[]>([])
+  const [showUncertaintyModal, setShowUncertaintyModal] = useState(false)
+  const [uncertaintyCertificate, setUncertaintyCertificate] = useState<Certificate | null>(null)
+  const [uncertaintyRawData, setUncertaintyRawData] = useState<any[]>([])
+  const [uncertaintyStandardCerts, setUncertaintyStandardCerts] = useState<any[]>([])
 
   const handlePreviewLHKS = async (cert: PendingCertificate) => {
     const fullCert = cert as unknown as Certificate
@@ -191,6 +196,46 @@ const CertificateVerificationCRUD: React.FC = () => {
       setVerificationResult({ error: error.message || 'Failed to verify with BSrE' })
     } finally {
       setIsVerifying(false)
+    }
+  }
+
+  const handleOpenUncertainty = async (cert: PendingCertificate) => {
+    const fullCert = cert as unknown as Certificate
+    const sessionId = Array.isArray(fullCert.results) && fullCert.results.length > 0
+      ? (fullCert.results[0] as any).session_id
+      : null
+
+    if (!sessionId) {
+      showError('Data QC tidak tersedia. Pastikan sertifikat ini memiliki data mentah yang tersimpan (session_id).')
+      return
+    }
+
+    setUncertaintyCertificate(fullCert)
+    setUncertaintyRawData([])
+    setUncertaintyStandardCerts([])
+
+    try {
+      const [rawRes, stdRes] = await Promise.all([
+        fetch(`/api/raw-data?session_id=${sessionId}`),
+        fetch('/api/cert-standards')
+      ])
+
+      if (!rawRes.ok) {
+        throw new Error('Gagal mengambil data mentah untuk uncertainty')
+      }
+
+      const rawJson = await rawRes.json()
+      setUncertaintyRawData(rawJson.data || [])
+
+      if (stdRes.ok) {
+        const stdJson = await stdRes.json()
+        setUncertaintyStandardCerts(Array.isArray(stdJson) ? stdJson : [])
+      }
+
+      setShowUncertaintyModal(true)
+    } catch (e) {
+      console.error('Failed to fetch raw data for Uncertainty', e)
+      showError('Gagal mengambil data mentah untuk perhitungan ketidakpastian')
     }
   }
 
@@ -895,6 +940,17 @@ const CertificateVerificationCRUD: React.FC = () => {
                         }
                       >
                         Pratinjau LHKS
+                      </DropdownItem>
+
+                      <DropdownItem
+                        onClick={() => handleOpenUncertainty(cert)}
+                        icon={
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                          </svg>
+                        }
+                      >
+                        Uncertainty
                       </DropdownItem>
 
                       {cert.verification_status.authorized_by === 'approved' && (cert as any).pdf_path && (
@@ -2048,6 +2104,22 @@ const CertificateVerificationCRUD: React.FC = () => {
           sessionResults={(lhksCertificate.results as any) || []}
           allInstruments={instruments}
           allSensors={sensors}
+          instrumentNames={instrumentNames}
+        />
+      )}
+
+      {showUncertaintyModal && uncertaintyCertificate && (
+        <UncertaintyModal
+          isOpen={showUncertaintyModal}
+          onClose={() => {
+            setShowUncertaintyModal(false)
+            setUncertaintyCertificate(null)
+          }}
+          certificate={uncertaintyCertificate}
+          instruments={instruments}
+          sensors={sensors}
+          standardCerts={uncertaintyStandardCerts}
+          rawData={uncertaintyRawData}
           instrumentNames={instrumentNames}
         />
       )}
