@@ -20,6 +20,7 @@ import LHKSReport from '../../../components/features/LHKSReport'
 import { calculateCalibrationResult } from '../../../lib/uncertainty-utils'
 import DateRangePicker from '../../../components/ui/DateRangePicker'
 import RichTextEditor from '../../../components/ui/RichTextEditor'
+import { DEFAULT_NOTES_OTHERS_HTML } from '../../../lib/rich-text'
 
 // Keep TrashIcon for backward compatibility in this file
 
@@ -496,15 +497,6 @@ type ResultItem = {
     unitUut?: string | null   // unit override for UUT data on this sheet
   unitStd?: string | null   // unit override for STD data on this sheet
   }
-
-  const DEFAULT_NOTES_OTHERS_HTML = [
-    '<p><strong>Penunjukan nilai sebenarnya didapat dari penunjukan alat ditambah koreksi.</strong></p>',
-    '<p><em>The true value is determined from the instrument reading added by its correction.</em></p>',
-    '<p><strong>Sertifikat ini hanya berlaku untuk peralatan dengan identitas yang dinyatakan di atas.</strong></p>',
-    '<p><em>This certificate only applies to equipment with the identity stated above.</em></p>',
-    '<p><strong>Ketidakpastian pengukuran dinyatakan pada tingkat kepercayaan tidak kurang dari 95 % dengan faktor cakupan k = 2</strong></p>',
-    '<p><em>Uncertainty of measurement is expressed at a confidence level of no less than 95 % with coverage factor k = 2</em></p>',
-  ].join('')
 
   const createDefaultNotesForm = () => ({
     traceable_to_si_through: '',

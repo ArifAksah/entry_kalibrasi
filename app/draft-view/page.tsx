@@ -13,7 +13,7 @@ import { Certificate, Station, Instrument, Personel } from '../../lib/supabase'
 import { useAlert } from '../../hooks/useAlert'
 import { supabase } from '../../lib/supabase'
 import QCDataModal from '../../components/features/QCDataModal'
-import { normalizeRichTextValue, richTextContentClassName } from '../../lib/rich-text'
+import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClassName } from '../../lib/rich-text'
 
 const RichTextCell: React.FC<{ value: string; className?: string }> = ({ value, className = '' }) => (
   <div
@@ -805,21 +805,22 @@ const CertificatePreview: React.FC<{
                       const nf = res?.notesForm || null
                       if (!nf) return null
                       const othersEnabled = isOthersEnabled(nf)
-                      const hasAny = nf.traceable_to_si_through || nf.reference_document || nf.calibration_methode || (othersEnabled && nf.others) || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)
+                      const shouldAlwaysShowDefaultOthers = isDefaultNotesOthersValue(nf.others)
+                      const showOthers = Boolean(nf.others) && (shouldAlwaysShowDefaultOthers || othersEnabled)
+                      const hasAny = nf.traceable_to_si_through || nf.reference_document || nf.calibration_methode || showOthers || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)
                       if (!hasAny) return null
                       return (
                         <div className="mt-6">
-                          <h5 className="text-sm font-bold">Catatan / <span className="italic">Notes</span> :</h5>
-                          <table className="w-full text-xs mt-2">
+                          <div className="text-sm font-bold underline leading-tight mb-0">Catatan / <span className="italic">Notes :</span></div>
+                          <table className="w-full text-xs mt-1">
                             <tbody>
                               {Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0 && (
                                 <tr>
-                                  <td className="w-[35%] align-top text-left pr-2">
-                                    <div className="font-bold leading-tight">Standar Kalibrasi</div>
-                                    <div className="italic text-[10px] text-gray-700 leading-tight">Calibration Standard</div>
+                                  <td className="w-[40%] align-top text-left pr-2 py-0">
+                                    <div className="font-bold leading-tight">Standar Kalibrasi <span className="italic text-[10px] text-gray-900">/ Calibration Standard</span></div>
                                   </td>
-                                  <td className="w-[5%] align-top">:</td>
-                                  <td className="w-[60%] align-top whitespace-pre-line">
+                                  <td className="w-[5%] align-top py-0">:</td>
+                                  <td className="w-[55%] align-top whitespace-pre-line py-0">
                                     {(() => {
                                       const parts = []
 
@@ -845,43 +846,35 @@ const CertificatePreview: React.FC<{
                               )}
                               {nf.traceable_to_si_through && (
                                 <tr>
-                                  <td className="align-top text-left pr-2">
-                                    <div className="font-bold leading-tight">Tertelusur ke SI melalui</div>
-                                    <div className="italic text-[10px] text-gray-700 leading-tight">Traceable to SI through</div>
+                                  <td className="align-top text-left pr-2 py-0">
+                                    <div className="font-bold leading-tight">Tertelusur Ke SI melalui <span className="italic text-[10px] text-gray-900">/ Traceable to SI through</span></div>
                                   </td>
-                                  <td className="align-top">:</td>
-                                  <td className="align-top whitespace-pre-line">{nf.traceable_to_si_through}</td>
+                                  <td className="align-top py-0">:</td>
+                                  <td className="align-top whitespace-pre-line py-0">{nf.traceable_to_si_through}</td>
                                 </tr>
                               )}
                               {nf.calibration_methode && (
                                 <tr>
-                                  <td className="align-top text-left pr-2">
-                                    <div className="font-bold leading-tight">Metode Kalibrasi</div>
-                                    <div className="italic text-[10px] text-gray-700 leading-tight">Calibration Methode</div>
+                                  <td className="align-top text-left pr-2 py-0">
+                                    <div className="font-bold leading-tight">Metode Kalibrasi <span className="italic text-[10px] text-gray-900">/ Calibration Methode</span></div>
                                   </td>
-                                  <td className="align-top">:</td>
-                                  <td className="align-top whitespace-pre-line">{nf.calibration_methode}</td>
+                                  <td className="align-top py-0">:</td>
+                                  <td className="align-top whitespace-pre-line py-0">{nf.calibration_methode}</td>
                                 </tr>
                               )}
                               {nf.reference_document && (
                                 <tr>
-                                  <td className="align-top text-left pr-2">
-                                    <div className="font-bold leading-tight">Dokumen Acuan</div>
-                                    <div className="italic text-[10px] text-gray-700 leading-tight">Reference Document</div>
+                                  <td className="align-top text-left pr-2 py-0">
+                                    <div className="font-bold leading-tight">Dokumen Acuan <span className="italic text-[10px] text-gray-900">/ Reference Document</span></div>
                                   </td>
-                                  <td className="align-top">:</td>
-                                  <td className="align-top whitespace-pre-line">{nf.reference_document}</td>
+                                  <td className="align-top py-0">:</td>
+                                  <td className="align-top whitespace-pre-line py-0">{nf.reference_document}</td>
                                 </tr>
                               )}
-                              {othersEnabled && nf.others && (
+                              {showOthers && (
                                 <tr>
-                                  <td className="align-top text-left pr-2">
-                                    <div className="font-bold leading-tight">Catatan Lainnya</div>
-                                    <div className="italic text-[10px] text-gray-700 leading-tight">Other Notes</div>
-                                  </td>
-                                  <td className="align-top">:</td>
-                                  <td className="align-top">
-                                    <RichTextCell value={nf.others} />
+                                  <td colSpan={3} className="align-top py-1">
+                                    <RichTextCell value={nf.others} className="leading-tight text-[11px] [&_p]:m-0 [&_p+*]:mt-0.5 [&_ul]:mt-0 [&_ol]:mt-0 [&_li]:my-0" />
                                   </td>
                                 </tr>
                               )}

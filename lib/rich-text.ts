@@ -112,3 +112,15 @@ export const isRichTextEmpty = (value: string | null | undefined) => {
 
 export const richTextContentClassName =
   '[&_p]:my-0 [&_p+*]:mt-1 [&_ul]:my-0 [&_ol]:my-0 [&_ul]:pl-5 [&_ol]:pl-5 [&_li]:my-0.5 [&_a]:text-blue-700 [&_a]:underline'
+
+export const DEFAULT_NOTES_OTHERS_HTML = [
+  '<p><strong>Penunjukan nilai sebenarnya didapat dari penunjukan alat ditambah koreksi.</strong></p>',
+  '<p><em>The true value is determined from the instrument reading added by its correction.</em></p>',
+  '<p><strong>Sertifikat ini hanya berlaku untuk peralatan dengan identitas yang dinyatakan di atas.</strong></p>',
+  '<p><em>This certificate only applies to equipment with the identity stated above.</em></p>',
+  '<p><strong>Ketidakpastian pengukuran dinyatakan pada tingkat kepercayaan tidak kurang dari 95 % dengan faktor cakupan k = 2</strong></p>',
+  '<p><em>Uncertainty of measurement is expressed at a confidence level of no less than 95 % with coverage factor k = 2</em></p>',
+].join('')
+
+export const isDefaultNotesOthersValue = (value: string | null | undefined) =>
+  normalizeRichTextValue(value) === normalizeRichTextValue(DEFAULT_NOTES_OTHERS_HTML)

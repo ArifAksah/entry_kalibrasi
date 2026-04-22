@@ -7,7 +7,7 @@ import QRCodeStyling from 'qr-code-styling'
 import QRCode from 'react-qr-code'
 import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
 import { formatUnit, needsConversion } from '../../../../lib/unitConversion'
-import { normalizeRichTextValue, richTextContentClassName } from '../../../../lib/rich-text'
+import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClassName } from '../../../../lib/rich-text'
 
 // --- TIPE DATA KOMPREHENSIF ---
 // Saya gabungkan tipe dari ViewCertificatePage.tsx Anda ke sini
@@ -1719,7 +1719,9 @@ const PrintCertificatePage: React.FC = () => {
                           const nf = res?.notesForm || null
                           if (!nf) return null
                           const othersEnabled = isOthersEnabled(nf)
-                          const hasAny = nf.traceable_to_si_through || nf.reference_document || nf.calibration_methode || (othersEnabled && nf.others) || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)
+                          const shouldAlwaysShowDefaultOthers = isDefaultNotesOthersValue(nf.others)
+                          const showOthers = Boolean(nf.others) && (shouldAlwaysShowDefaultOthers || othersEnabled)
+                          const hasAny = nf.traceable_to_si_through || nf.reference_document || nf.calibration_methode || showOthers || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)
                           if (!hasAny) return null
                           return (
                             <div className="mt-6 avoid-break">
@@ -1784,14 +1786,10 @@ const PrintCertificatePage: React.FC = () => {
                                       <td className="align-top whitespace-pre-line py-0">{nf.reference_document}</td>
                                     </tr>
                                   )}
-                                  {othersEnabled && nf.others && (
+                                  {showOthers && (
                                     <tr>
-                                      <td className="align-top text-left pr-2 py-0">
-                                        <div className="font-bold leading-tight">Catatan Lainnya <span className="italic text-[10px] text-gray-900">/ Other Notes</span></div>
-                                      </td>
-                                      <td className="align-top py-0">:</td>
-                                      <td className="align-top py-0">
-                                        <RichTextCell value={nf.others} />
+                                      <td colSpan={3} className="align-top py-1">
+                                        <RichTextCell value={nf.others} className="leading-tight text-[11px] [&_p]:m-0 [&_p+*]:mt-0.5 [&_ul]:mt-0 [&_ol]:mt-0 [&_li]:my-0" />
                                       </td>
                                     </tr>
                                   )}
