@@ -673,8 +673,8 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
                 errorDetail = errJson.message || errJson.error || errJson.pesan || errorText
               } catch { /* not JSON */ }
 
-              // If passphrase is wrong (401 or 400 or 403), fail immediately
-              // BUT: cek dulu apakah error dari BSrE terkait NIK, bukan passphrase
+              // HTTP 400/401/403 from BSrE is not always a wrong passphrase.
+              // Only classify it as passphrase-related when the message actually indicates that.
               if (signResponse.status === 401 || signResponse.status === 400 || signResponse.status === 403) {
 
                 // ── Cek BSrE status_code terlebih dahulu ────────────────────────
@@ -714,6 +714,22 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
                   return {
                     success: false,
                     error: `NIK_INVALID_IN_BSRE: ${errorDetail}`
+                  }
+                }
+
+                const isPassphraseError =
+                  errorDetailLower.includes('passphrase') ||
+                  errorDetailLower.includes('password') ||
+                  errorDetailLower.includes('salah') ||
+                  errorDetailLower.includes('wrong') ||
+                  errorDetailLower.includes('invalid passphrase')
+
+                if (!isPassphraseError) {
+                  console.error(`[PDF Helper] ❌ BSrE returned HTTP ${signResponse.status} for a non-passphrase reason: ${errorDetail}`)
+                  if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
+                  return {
+                    success: false,
+                    error: `BSRE_SIGN_FAILED_HTTP_${signResponse.status}: ${errorDetail || 'BSrE menolak permintaan penandatanganan.'}`
                   }
                 }
 
