@@ -13,6 +13,19 @@ import { Certificate, Station, Instrument, Personel } from '../../lib/supabase'
 import { useAlert } from '../../hooks/useAlert'
 import { supabase } from '../../lib/supabase'
 import QCDataModal from '../../components/features/QCDataModal'
+import { normalizeRichTextValue, richTextContentClassName } from '../../lib/rich-text'
+
+const RichTextCell: React.FC<{ value: string; className?: string }> = ({ value, className = '' }) => (
+  <div
+    className={`${richTextContentClassName} whitespace-normal ${className}`}
+    dangerouslySetInnerHTML={{ __html: normalizeRichTextValue(value) }}
+  />
+)
+
+const isOthersEnabled = (notesForm: { others?: string | null; others_enabled?: boolean | null } | null | undefined) =>
+  typeof notesForm?.others_enabled === 'boolean'
+    ? notesForm.others_enabled
+    : Boolean(notesForm?.others)
 
 // Modal Kirim Naskah Component
 const KirimNaskahModal: React.FC<{
@@ -791,21 +804,43 @@ const CertificatePreview: React.FC<{
                     {(() => {
                       const nf = res?.notesForm || null
                       if (!nf) return null
-                      const hasAny = nf.traceable_to_si_through || nf.reference_document || nf.calibration_methode || nf.others || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)
+                      const othersEnabled = isOthersEnabled(nf)
+                      const hasAny = nf.traceable_to_si_through || nf.reference_document || nf.calibration_methode || (othersEnabled && nf.others) || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)
                       if (!hasAny) return null
                       return (
                         <div className="mt-6">
                           <h5 className="text-sm font-bold">Catatan / <span className="italic">Notes</span> :</h5>
                           <table className="w-full text-xs mt-2">
                             <tbody>
-                              {(nf.others || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)) && (
+                              {Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0 && (
                                 <tr>
                                   <td className="w-[35%] align-top text-left pr-2">
                                     <div className="font-bold leading-tight">Standar Kalibrasi</div>
                                     <div className="italic text-[10px] text-gray-700 leading-tight">Calibration Standard</div>
                                   </td>
                                   <td className="w-[5%] align-top">:</td>
-                                  <td className="w-[60%] align-top whitespace-pre-line">{nf.others || '-'}</td>
+                                  <td className="w-[60%] align-top whitespace-pre-line">
+                                    {(() => {
+                                      const parts = []
+
+                                      if (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0) {
+                                        const standards = nf.standardInstruments.map((sid: number) => {
+                                          const s = instruments.find((instrument: any) => instrument.id === sid) as any
+                                          if (!s) return null
+
+                                          const name = s.name || s.type || 'Sensor'
+                                          const sn = s.serial_number ? `SN ${s.serial_number}` : ''
+                                          return sn ? `${name} - ${sn}` : name
+                                        }).filter(Boolean)
+
+                                        if (standards.length > 0) {
+                                          parts.push(standards.join('\n'))
+                                        }
+                                      }
+
+                                      return parts.join('\n') || '-'
+                                    })()}
+                                  </td>
                                 </tr>
                               )}
                               {nf.traceable_to_si_through && (
@@ -838,22 +873,20 @@ const CertificatePreview: React.FC<{
                                   <td className="align-top whitespace-pre-line">{nf.reference_document}</td>
                                 </tr>
                               )}
+                              {othersEnabled && nf.others && (
+                                <tr>
+                                  <td className="align-top text-left pr-2">
+                                    <div className="font-bold leading-tight">Catatan Lainnya</div>
+                                    <div className="italic text-[10px] text-gray-700 leading-tight">Other Notes</div>
+                                  </td>
+                                  <td className="align-top">:</td>
+                                  <td className="align-top">
+                                    <RichTextCell value={nf.others} />
+                                  </td>
+                                </tr>
+                              )}
                             </tbody>
                           </table>
-                          <div className="mt-2 space-y-1 text-xs">
-                            <div>
-                              <div className="font-bold">Penunjukan nilai sebenarnya didapat dari penunjukan alat ditambah koreksi.</div>
-                              <div className="text-[10px] italic text-gray-700">The true value is determined from the instrument reading added by its correction.</div>
-                            </div>
-                            <div>
-                              <div className="font-bold">Sertifikat ini hanya berlaku untuk peralatan dengan identitas yang dinyatakan di atas.</div>
-                              <div className="text-[10px] italic text-gray-700">This certificate only applies to equipment with the identity stated above.</div>
-                            </div>
-                            <div>
-                              <div className="font-bold">Ketidakpastian pengukuran dinyatakan pada tingkat kepercayaan tidak kurang dari 95 % dengan faktor cakupan k = 2</div>
-                              <div className="text-[10px] italic text-gray-700">Uncertainty of measurement is expressed at a confidence level of no less than 95 % with coverage factor k = 2</div>
-                            </div>
-                          </div>
                         </div>
                       )
                     })()}

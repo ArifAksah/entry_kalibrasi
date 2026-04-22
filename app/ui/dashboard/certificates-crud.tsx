@@ -19,6 +19,7 @@ import UncertaintyModal from '../../../components/features/UncertaintyModal'
 import LHKSReport from '../../../components/features/LHKSReport'
 import { calculateCalibrationResult } from '../../../lib/uncertainty-utils'
 import DateRangePicker from '../../../components/ui/DateRangePicker'
+import RichTextEditor from '../../../components/ui/RichTextEditor'
 
 // Keep TrashIcon for backward compatibility in this file
 
@@ -472,7 +473,7 @@ const CertificatesCRUD: React.FC = () => {
   type KV = { key: string; value: string; enabled?: boolean }
   type TableRow = { key: string; unit: string; value: string; extraValues?: string[] }
   type TableSection = { title: string; headers?: string[]; rows: TableRow[] }
-  type ResultItem = {
+type ResultItem = {
     sensorId: number | null
     startDate: string
     endDate: string
@@ -485,6 +486,7 @@ const CertificatesCRUD: React.FC = () => {
       reference_document: string;
       calibration_methode: string;
       others: string;
+      others_enabled?: boolean;
       standardInstruments: number[]
     }
     sensorDetails?: Partial<Sensor>
@@ -492,8 +494,26 @@ const CertificatesCRUD: React.FC = () => {
     standardCertificateNumber?: string | null
     standardCertificateId?: number | null
     unitUut?: string | null   // unit override for UUT data on this sheet
-    unitStd?: string | null   // unit override for STD data on this sheet
+  unitStd?: string | null   // unit override for STD data on this sheet
   }
+
+  const DEFAULT_NOTES_OTHERS_HTML = [
+    '<p><strong>Penunjukan nilai sebenarnya didapat dari penunjukan alat ditambah koreksi.</strong></p>',
+    '<p><em>The true value is determined from the instrument reading added by its correction.</em></p>',
+    '<p><strong>Sertifikat ini hanya berlaku untuk peralatan dengan identitas yang dinyatakan di atas.</strong></p>',
+    '<p><em>This certificate only applies to equipment with the identity stated above.</em></p>',
+    '<p><strong>Ketidakpastian pengukuran dinyatakan pada tingkat kepercayaan tidak kurang dari 95 % dengan faktor cakupan k = 2</strong></p>',
+    '<p><em>Uncertainty of measurement is expressed at a confidence level of no less than 95 % with coverage factor k = 2</em></p>',
+  ].join('')
+
+  const createDefaultNotesForm = () => ({
+    traceable_to_si_through: '',
+    reference_document: '',
+    calibration_methode: '',
+    others: DEFAULT_NOTES_OTHERS_HTML,
+    others_enabled: false,
+    standardInstruments: [] as number[],
+  })
 
   const [results, setResults] = useState<ResultItem[]>([
     {
@@ -508,13 +528,7 @@ const CertificatesCRUD: React.FC = () => {
       environment: [],
       table: [],
       images: [],
-      notesForm: {
-        traceable_to_si_through: '',
-        reference_document: '',
-        calibration_methode: '',
-        others: '',
-        standardInstruments: []
-      },
+      notesForm: createDefaultNotesForm(),
       unitUut: null,
       unitStd: null
     },
@@ -528,13 +542,7 @@ const CertificatesCRUD: React.FC = () => {
     environment: [],
     table: [],
     images: [],
-    notesForm: {
-      traceable_to_si_through: '',
-      reference_document: '',
-      calibration_methode: '',
-      others: '',
-      standardInstruments: []
-    },
+    notesForm: createDefaultNotesForm(),
     unitUut: null,
     unitStd: null
   }])
@@ -593,13 +601,7 @@ const CertificatesCRUD: React.FC = () => {
           environment: [],
           table: [],
           images: [],
-          notesForm: {
-            traceable_to_si_through: '',
-            reference_document: '',
-            calibration_methode: '',
-            others: '',
-            standardInstruments: []
-          },
+          notesForm: createDefaultNotesForm(),
           unitUut: null,
           unitStd: null
         })
@@ -650,11 +652,12 @@ const CertificatesCRUD: React.FC = () => {
   const [pickerIndex, setPickerIndex] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [noteEditIndex, setNoteEditIndex] = useState<number | null>(null)
-  const [noteDraft, setNoteDraft] = useState<{ traceable_to_si_through: string; reference_document: string; calibration_methode: string; others: string; standardInstruments: number[] }>({
+  const [noteDraft, setNoteDraft] = useState<{ traceable_to_si_through: string; reference_document: string; calibration_methode: string; others: string; others_enabled?: boolean; standardInstruments: number[] }>({
     traceable_to_si_through: '',
     reference_document: '',
     calibration_methode: '',
-    others: '',
+    others: DEFAULT_NOTES_OTHERS_HTML,
+    others_enabled: false,
     standardInstruments: []
   })
   const [standardPickerIndex, setStandardPickerIndex] = useState<number | null>(null)
@@ -976,13 +979,7 @@ const CertificatesCRUD: React.FC = () => {
               environment: envConditions,
               table: [],
               images: [],
-              notesForm: {
-                traceable_to_si_through: '',
-                reference_document: '',
-                calibration_methode: '',
-                others: '',
-                standardInstruments: []
-              },
+              notesForm: createDefaultNotesForm(),
               unitUut: null,
               unitStd: null
             }
@@ -1263,13 +1260,7 @@ const CertificatesCRUD: React.FC = () => {
         environment: [],
         table: [],
         images: [],
-        notesForm: {
-          traceable_to_si_through: '',
-          reference_document: '',
-          calibration_methode: '',
-          others: '',
-          standardInstruments: []
-        },
+        notesForm: createDefaultNotesForm(),
         unitUut: null,
         unitStd: null
       }]
@@ -1422,13 +1413,7 @@ const CertificatesCRUD: React.FC = () => {
         environment: [],
         table: [{ title: '', rows: [{ key: '', unit: '', value: '', extraValues: [] }] }], // Initialize with extraValues
         images: [],
-        notesForm: {
-          traceable_to_si_through: '',
-          reference_document: '',
-          calibration_methode: '',
-          others: '',
-          standardInstruments: []
-        }
+        notesForm: createDefaultNotesForm()
       }])
     }
     setIsModalOpen(true)
@@ -3135,13 +3120,27 @@ const CertificatesCRUD: React.FC = () => {
                               </datalist>
                             </div>
                             <div className="space-y-1 md:col-span-2">
-                              <label className="block text-xs font-semibold text-gray-700">Lainnya / Komentar</label>
-                              <textarea
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] resize-y min-h-[80px]"
+                              <div className="flex items-center justify-between">
+                                <label className={`block text-xs font-semibold ${result.notesForm?.others_enabled ? 'text-gray-700' : 'text-gray-400'}`}>Lainnya / Komentar</label>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    className="sr-only peer"
+                                    checked={Boolean(result.notesForm?.others_enabled)}
+                                    onChange={e => updateResult(resultIndex, { notesForm: { ...result.notesForm, others_enabled: e.target.checked } })}
+                                  />
+                                  <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-[#1e377c] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
+                                  <span className="ml-2 text-[11px] font-medium text-gray-600">
+                                    {result.notesForm?.others_enabled ? 'Enabled' : 'Disabled'}
+                                  </span>
+                                </label>
+                              </div>
+                              <RichTextEditor
                                 value={result.notesForm?.others || ''}
-                                onChange={e => updateResult(resultIndex, { notesForm: { ...result.notesForm, others: e.target.value } })}
+                                onChange={value => updateResult(resultIndex, { notesForm: { ...result.notesForm, others: value } })}
                                 placeholder="Keterangan tambahan, catatan khusus, atau komentar lainnya..."
-                                rows={3}
+                                minHeightClassName="min-h-[110px]"
+                                disabled={!result.notesForm?.others_enabled}
                               />
                             </div>
                           </div>
@@ -3819,13 +3818,27 @@ const CertificatesCRUD: React.FC = () => {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-gray-700">Others</label>
-                    <textarea
-                      rows={2}
+                    <div className="flex items-center justify-between">
+                      <label className={`block text-xs font-semibold ${noteDraft.others_enabled ? 'text-gray-700' : 'text-gray-400'}`}>Others</label>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={Boolean(noteDraft.others_enabled)}
+                          onChange={e => setNoteDraft(prev => ({ ...prev, others_enabled: e.target.checked }))}
+                        />
+                        <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-[#1e377c] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4"></div>
+                        <span className="ml-2 text-[11px] font-medium text-gray-600">
+                          {noteDraft.others_enabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                      </label>
+                    </div>
+                    <RichTextEditor
                       value={noteDraft.others}
-                      onChange={e => setNoteDraft(prev => ({ ...prev, others: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
+                      onChange={value => setNoteDraft(prev => ({ ...prev, others: value }))}
                       placeholder="Other notes..."
+                      minHeightClassName="min-h-[96px]"
+                      disabled={!noteDraft.others_enabled}
                     />
                   </div>
 

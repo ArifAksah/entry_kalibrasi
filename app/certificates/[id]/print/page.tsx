@@ -7,6 +7,7 @@ import QRCodeStyling from 'qr-code-styling'
 import QRCode from 'react-qr-code'
 import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
 import { formatUnit, needsConversion } from '../../../../lib/unitConversion'
+import { normalizeRichTextValue, richTextContentClassName } from '../../../../lib/rich-text'
 
 // --- TIPE DATA KOMPREHENSIF ---
 // Saya gabungkan tipe dari ViewCertificatePage.tsx Anda ke sini
@@ -27,6 +28,7 @@ type ResultItem = {
     reference_document: string;
     calibration_methode: string;
     others: string;
+    others_enabled?: boolean;
     standardInstruments: number[]
   }
   sensorDetails?: any
@@ -82,6 +84,18 @@ const PdfLabel: React.FC<{ indo: string; eng: string; className?: string }> = ({
     <div className="cert-text-en">{eng}</div>
   </div>
 )
+
+const RichTextCell: React.FC<{ value: string; className?: string }> = ({ value, className = '' }) => (
+  <div
+    className={`${richTextContentClassName} whitespace-normal ${className}`}
+    dangerouslySetInnerHTML={{ __html: normalizeRichTextValue(value) }}
+  />
+)
+
+const isOthersEnabled = (notesForm: { others?: string | null; others_enabled?: boolean | null } | null | undefined) =>
+  typeof notesForm?.others_enabled === 'boolean'
+    ? notesForm.others_enabled
+    : Boolean(notesForm?.others)
 
 // --- Komponen QR Code dengan styling (modules/finder) dan logo BMKG di tengah ---
 const QRCodeWithBMKGLogo: React.FC<{
@@ -1704,14 +1718,15 @@ const PrintCertificatePage: React.FC = () => {
                         {(() => {
                           const nf = res?.notesForm || null
                           if (!nf) return null
-                          const hasAny = nf.traceable_to_si_through || nf.reference_document || nf.calibration_methode || nf.others || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)
+                          const othersEnabled = isOthersEnabled(nf)
+                          const hasAny = nf.traceable_to_si_through || nf.reference_document || nf.calibration_methode || (othersEnabled && nf.others) || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)
                           if (!hasAny) return null
                           return (
                             <div className="mt-6 avoid-break">
                               <div className="text-sm font-bold underline leading-tight mb-0">Catatan / <span className="italic">Notes :</span></div>
                               <table className="w-full text-xs mt-1">
                                 <tbody>
-                                  {(nf.others || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)) && (
+                                  {Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0 && (
                                     <tr>
                                       <td className="w-[40%] align-top text-left pr-2 py-0">
                                         <div className="font-bold leading-tight">Standar Kalibrasi <span className="italic text-[10px] text-gray-900">/ Calibration Standard</span></div>
@@ -1769,33 +1784,19 @@ const PrintCertificatePage: React.FC = () => {
                                       <td className="align-top whitespace-pre-line py-0">{nf.reference_document}</td>
                                     </tr>
                                   )}
-                                  {nf.others && (
+                                  {othersEnabled && nf.others && (
                                     <tr>
                                       <td className="align-top text-left pr-2 py-0">
                                         <div className="font-bold leading-tight">Catatan Lainnya <span className="italic text-[10px] text-gray-900">/ Other Notes</span></div>
                                       </td>
                                       <td className="align-top py-0">:</td>
-                                      <td className="align-top whitespace-pre-line py-0">{nf.others}</td>
+                                      <td className="align-top py-0">
+                                        <RichTextCell value={nf.others} />
+                                      </td>
                                     </tr>
                                   )}
                                 </tbody>
                               </table>
-
-                              {/* Paragraf penjelasan (bilingual) */}
-                              <div className="mt-0 space-y-0 text-xs leading-tight">
-                                <div>
-                                  <div className="font-bold m-0">Penunjukan nilai sebenarnya didapat dari penunjukan alat ditambah koreksi.</div>
-                                  <div className="text-[10px] italic text-gray-700 m-0">The true value is determined from the instrument reading added by its correction.</div>
-                                </div>
-                                <div>
-                                  <div className="font-bold m-0">Sertifikat ini hanya berlaku untuk peralatan dengan identitas yang dinyatakan di atas.</div>
-                                  <div className="text-[10px] italic text-gray-700 m-0">This certificate only applies to equipment with the identity stated above.</div>
-                                </div>
-                                <div>
-                                  <div className="font-bold m-0">Ketidakpastian pengukuran dinyatakan pada tingkat kepercayaan tidak kurang dari 95 % dengan faktor cakupan k = 2,01</div>
-                                  <div className="text-[10px] italic text-gray-700 m-0">Uncertainty of measurement is expressed at a confidence level of no less than 95 % with coverage factor k = 2.01</div>
-                                </div>
-                              </div>
                               {/* Verifikasi/Validasi di akhir catatan */}
                               <div className="mt-2">
                                 <table className="w-full text-xs">
