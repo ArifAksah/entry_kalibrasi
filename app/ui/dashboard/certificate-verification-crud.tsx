@@ -16,7 +16,7 @@ import { useAlert } from '../../../hooks/useAlert'
 import { useCertificateRejection } from '../../../hooks/useCertificateRejection'
 import LHKSReport from '../../../components/features/LHKSReport'
 import { Certificate, CertificateInsert, Station, Instrument, Sensor } from '../../../lib/supabase'
-import { EditIcon, DeleteIcon, ViewIcon, CloseIcon, CheckIcon, XIcon, EditButton, ViewButton, VerifyButton, RejectButton } from '../../../components/ui/ActionIcons'
+import { ViewIcon, CloseIcon, CheckIcon } from '../../../components/ui/ActionIcons'
 import Dropdown, { DropdownItem } from '../../../components/ui/Dropdown'
 import { supabase } from '../../../lib/supabase'
 
@@ -705,7 +705,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                       </button>
                     ) : (
                       <a
-                        href={`/certificates/${cert.id}/view`}
+                        href={`/certificates/${cert.id}/view?from=verification`}
                         target="_blank"
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-all duration-200 shadow-sm"
                       >
@@ -727,7 +727,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                       {/* View (if not primary) */}
                       {cert.verification_status.user_can_act && (
                         <DropdownItem
-                          href={`/certificates/${cert.id}/view`}
+                          href={`/certificates/${cert.id}/view?from=verification`}
                           target="_blank"
                           icon={<ViewIcon className="w-4 h-4" />}
                         >
@@ -746,16 +746,6 @@ const CertificateVerificationCRUD: React.FC = () => {
                       >
                         Preview LHKS
                       </DropdownItem>
-
-                      {/* Edit Certificate (if pending) */}
-                      {cert.verification_status.user_verification_status === 'pending' && (
-                        <DropdownItem
-                          href={`/certificates?edit=${cert.id}&from=verification`}
-                          icon={<EditIcon className="w-4 h-4" />}
-                        >
-                          Edit Data
-                        </DropdownItem>
-                      )}
 
                       {cert.verification_status.authorized_by === 'approved' && (cert as any).pdf_path && (
                         <>
@@ -777,6 +767,13 @@ const CertificateVerificationCRUD: React.FC = () => {
                                 if (!response.ok) {
                                   const errorData = await response.json().catch(() => ({ error: 'Failed to download PDF' }))
                                   showError(errorData.error || 'Gagal mengunduh PDF.')
+                                  return
+                                }
+
+                                const contentType = response.headers.get('Content-Type') || ''
+                                if (!contentType.toLowerCase().includes('application/pdf')) {
+                                  const errorText = await response.text().catch(() => '')
+                                  showError(`Response download bukan PDF yang valid.${errorText ? ` ${errorText.slice(0, 160)}` : ''}`)
                                   return
                                 }
                                 

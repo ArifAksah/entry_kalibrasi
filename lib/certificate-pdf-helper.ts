@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import fs from 'fs'
 import path from 'path'
+import { buildLocalPdfPath, isStoragePdfPath, uploadPdfToStorage } from './certificate-pdf-storage'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -62,8 +63,13 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
     // If passphrase IS provided, we must ALWAYS go through BSrE signing to validate it.
     // Skipping when passphrase exists would allow any passphrase (including wrong ones) to succeed.
     if (!passphrase && existingCert?.pdf_path) {
+      if (isStoragePdfPath(existingCert.pdf_path)) {
+        console.log(`[PDF Helper] PDF already exists in storage for certificate ${certificateId}: ${existingCert.pdf_path}`)
+        return { success: true, pdfPath: existingCert.pdf_path }
+      }
+
       // Check if file exists in local filesystem
-      const localPath = path.join(process.cwd(), 'e-certificate-signed', path.basename(existingCert.pdf_path))
+      const localPath = buildLocalPdfPath(existingCert.pdf_path)
       if (fs.existsSync(localPath)) {
         console.log(`[PDF Helper] PDF already exists for certificate ${certificateId}: ${existingCert.pdf_path}`)
         return { success: true, pdfPath: existingCert.pdf_path }
@@ -878,12 +884,19 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
         return { success: false, error: `Failed to write signed PDF file: ${writeError.message}` }
       }
 
-      // Update certificate with PDF path (relative path for reference)
-      const relativePath = `e-certificate-signed/${fileName}`
+      let persistedPdfPath = `e-certificate-signed/${fileName}`
+      try {
+        persistedPdfPath = await uploadPdfToStorage(supabaseAdmin as any, signedPdf, fileName)
+        console.log(`[PDF Helper] Signed PDF uploaded to storage: ${persistedPdfPath}`)
+      } catch (storageError: any) {
+        console.error('[PDF Helper] Failed to upload signed PDF to storage, falling back to local path:', storageError)
+      }
+
+      // Update certificate with PDF path (storage path in production, local relative path as fallback)
       const { error: updateError } = await supabaseAdmin
         .from('certificate')
         .update({
-          pdf_path: relativePath,
+          pdf_path: persistedPdfPath,
           pdf_generated_at: new Date().toISOString()
         })
         .eq('id', certificateId)
@@ -893,8 +906,8 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
         return { success: false, error: updateError.message }
       }
 
-      console.log(`[PDF Helper] PDF generated and saved successfully: ${relativePath}${signedPdf ? ' (Signed by BSrE)' : ' (Not signed - BSrE unavailable)'}`)
-      return { success: true, pdfPath: relativePath, signed: signedPdf !== null }
+      console.log(`[PDF Helper] PDF generated and saved successfully: ${persistedPdfPath}${signedPdf ? ' (Signed by BSrE)' : ' (Not signed - BSrE unavailable)'}`)
+      return { success: true, pdfPath: persistedPdfPath, signed: signedPdf !== null }
 
     } finally {
       await browser.close()

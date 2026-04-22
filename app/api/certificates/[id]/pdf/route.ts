@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import fs from 'fs'
-import path from 'path'
+import { isStoragePdfPath, tryDownloadPdfByFileNameFromStorage, tryReadLocalPdf } from '../../../../../lib/certificate-pdf-storage'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -44,28 +43,50 @@ export async function GET(
       }, { status: 404 })
     }
 
-    // Build local file path from e-certificate-signed folder
-    const fileName = path.basename(cert.pdf_path)
-    const filePath = path.join(process.cwd(), 'e-certificate-signed', fileName)
+    const fileName = cert.pdf_path.split('/').pop() || `certificate_${certificateId}.pdf`
 
     console.log(`[PDF Download] Certificate ID: ${certificateId}`)
     console.log(`[PDF Download] PDF path from DB: ${cert.pdf_path}`)
-    console.log(`[PDF Download] Full file path: ${filePath}`)
-    console.log(`[PDF Download] File exists: ${fs.existsSync(filePath)}`)
 
-    // Check if file exists in e-certificate-signed folder
-    if (!fs.existsSync(filePath)) {
-      console.error('[PDF Download] File not found in e-certificate-signed folder:', filePath)
+    let buffer: Buffer | null = null
+    if (isStoragePdfPath(cert.pdf_path)) {
+      try {
+        const { downloadPdfFromStorage } = await import('../../../../../lib/certificate-pdf-storage')
+        buffer = await downloadPdfFromStorage(supabaseAdmin as any, cert.pdf_path)
+        console.log('[PDF Download] Loaded PDF from Supabase Storage')
+      } catch (storageError) {
+        console.error('[PDF Download] Failed to load PDF from storage path:', storageError)
+      }
+    } else {
+      buffer = tryReadLocalPdf(cert.pdf_path)
+      if (!buffer) {
+        buffer = await tryDownloadPdfByFileNameFromStorage(supabaseAdmin as any, fileName)
+        if (buffer) {
+          console.log('[PDF Download] Local file missing, recovered PDF from Supabase Storage fallback')
+        }
+      } else {
+        console.log('[PDF Download] Loaded PDF from local filesystem')
+      }
+    }
+
+    if (!buffer) {
       return NextResponse.json({ 
-        error: 'PDF yang ditandatangani tidak ditemukan. Pastikan approval Level 3 sudah selesai dan PDF sudah ditandatangani.',
+        error: 'PDF yang ditandatangani tidak ditemukan di storage production maupun filesystem lokal.',
         pdf_path: cert.pdf_path,
-        file_path: filePath
+        file_name: fileName
       }, { status: 404 })
     }
 
-    // Read PDF file from e-certificate-signed folder
-    const buffer = fs.readFileSync(filePath)
     console.log(`[PDF Download] File read successfully - Size: ${buffer.length} bytes`)
+
+    if (buffer.slice(0, 5).toString('ascii') !== '%PDF-') {
+      console.error('[PDF Download] Retrieved file is not a valid PDF')
+      return NextResponse.json({
+        error: 'File yang tersimpan bukan PDF yang valid.',
+        pdf_path: cert.pdf_path,
+        file_name: fileName
+      }, { status: 500 })
+    }
 
     // Get filename from certificate number
     const certificateNumber = cert.no_certificate || String(certificateId)
@@ -77,7 +98,7 @@ export async function GET(
     const searchParams = request.nextUrl.searchParams
     const isDownload = searchParams.get('download') === 'true'
     
-    return new NextResponse(buffer, {
+    return new NextResponse(new Uint8Array(buffer), {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `${isDownload ? 'attachment' : 'inline'}; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,

@@ -1953,6 +1953,12 @@ type ResultItem = {
                                     const response = await fetch(pdfEndpoint)
                                     if (!response.ok) throw new Error('Failed to get PDF')
 
+                                    const contentType = response.headers.get('Content-Type') || ''
+                                    if (!contentType.toLowerCase().includes('application/pdf')) {
+                                      const errorText = await response.text().catch(() => '')
+                                      throw new Error(`Response download bukan PDF yang valid.${errorText ? ` ${errorText.slice(0, 160)}` : ''}`)
+                                    }
+
                                     const contentDisposition = response.headers.get('Content-Disposition')
                                     let filename = `Certificate_${item.no_certificate || item.id}.pdf`
                                     if (contentDisposition) {

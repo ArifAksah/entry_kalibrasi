@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import QRCodeStyling from 'qr-code-styling'
 import QRCode from 'react-qr-code'
@@ -235,6 +235,7 @@ const FooterQRCode: React.FC<{
 const ViewCertificatePage: React.FC = () => {
   const params = useParams<{ id: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [cert, setCert] = useState<Cert | null>(null)
@@ -1152,7 +1153,10 @@ const ViewCertificatePage: React.FC = () => {
               </button>
               <button
                 onClick={() => {
-                  if (window.history.length > 1) {
+                  const from = searchParams.get('from')
+                  if (from === 'verification') {
+                    router.push('/certificate-verification')
+                  } else if (window.history.length > 1) {
                     router.back()
                   } else {
                     router.push('/certificates')

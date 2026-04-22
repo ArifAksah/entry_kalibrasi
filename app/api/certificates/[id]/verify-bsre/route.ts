@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import fs from 'fs'
-import path from 'path'
+import { isStoragePdfPath, tryDownloadPdfByFileNameFromStorage, tryReadLocalPdf } from '../../../../../lib/certificate-pdf-storage'
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -36,12 +35,25 @@ export async function POST(
             return NextResponse.json({ error: 'Certificate has not been signed yet (No PDF)' }, { status: 400 })
         }
 
-        // 2. Locate the file
-        const fileName = path.basename(cert.pdf_path)
-        const filePath = path.join(process.cwd(), 'e-certificate-signed', fileName)
+        const fileName = cert.pdf_path.split('/').pop() || `certificate_${certificateId}.pdf`
 
-        if (!fs.existsSync(filePath)) {
-            return NextResponse.json({ error: 'Signed PDF file not found on server' }, { status: 404 })
+        let fileBuffer: Buffer | null = null
+        if (isStoragePdfPath(cert.pdf_path)) {
+            try {
+                const { downloadPdfFromStorage } = await import('../../../../../lib/certificate-pdf-storage')
+                fileBuffer = await downloadPdfFromStorage(supabaseAdmin as any, cert.pdf_path)
+            } catch (storageError) {
+                console.error('[BSrE Verify] Failed to load storage PDF:', storageError)
+            }
+        } else {
+            fileBuffer = tryReadLocalPdf(cert.pdf_path)
+            if (!fileBuffer) {
+                fileBuffer = await tryDownloadPdfByFileNameFromStorage(supabaseAdmin as any, fileName)
+            }
+        }
+
+        if (!fileBuffer) {
+            return NextResponse.json({ error: 'Signed PDF file not found on server or storage' }, { status: 404 })
         }
 
         // 4. Send to BSrE
@@ -56,9 +68,6 @@ export async function POST(
             const credentials = Buffer.from(`${bsreUsername}:${bsrePassword}`).toString('base64')
             authHeader = `Basic ${credentials}`
         }
-
-        // Read file
-        const fileBuffer = fs.readFileSync(filePath)
 
         // Create boundary
         const boundary = `----WebKitFormBoundary${Date.now().toString(16)}`
