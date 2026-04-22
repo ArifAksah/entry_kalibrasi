@@ -407,7 +407,7 @@ const CertificatesCRUD: React.FC = () => {
   const [lhksCertificate, setLhksCertificate] = useState<Certificate | null>(null)
   const [lhksRawData, setLhksRawData] = useState<any[]>([])
 
-  const handlePrintLHKS = async (cert: Certificate) => {
+  const handlePreviewLHKS = async (cert: Certificate) => {
     setLhksCertificate(cert)
     setLhksRawData([])
 
@@ -1960,15 +1960,13 @@ const CertificatesCRUD: React.FC = () => {
 
                           {/* DOWNLOADS / PRINT GROUP */}
                           <div className="py-1">
-                            {!isCalibrator && (
-                              <button
-                                onClick={() => handlePrintLHKS(item)}
-                                className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors"
-                              >
-                                <PrinterIcon className="w-4 h-4 text-purple-600" />
-                                Print LHKS
-                              </button>
-                            )}
+                            <button
+                              onClick={() => handlePreviewLHKS(item)}
+                              className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors"
+                            >
+                              <PrinterIcon className="w-4 h-4 text-purple-600" />
+                              Preview LHKS
+                            </button>
                             {item.pdf_path && (
                               <button
                                 onClick={async () => {
@@ -2013,15 +2011,7 @@ const CertificatesCRUD: React.FC = () => {
                                 Download Signed PDF
                               </button>
                             )}
-                            <a
-                              href={`/certificates/${item.id}/print`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
-                            >
-                              <PrinterIcon className="w-4 h-4 text-gray-600" />
-                              Preview LHKS
-                            </a>
+
                             <button
                               onClick={() => {
                                 const sessionId = Array.isArray(item.results) && item.results.length > 0
