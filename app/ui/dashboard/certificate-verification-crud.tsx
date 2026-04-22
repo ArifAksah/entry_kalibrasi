@@ -501,6 +501,15 @@ const CertificateVerificationCRUD: React.FC = () => {
         return
       }
 
+      if (verificationForm.status === 'approved' && verificationLevel === 4) {
+        setIsSubmitting(false)
+        setPassphrase('')
+        setPassphraseError(null)
+        signingCertificateIdRef.current = String(selectedCertificate.id)
+        setIsPassphraseModalOpen(true)
+        return
+      }
+
       let result;
       if (verificationForm.status === 'rejected') {
         const rejectionData = {
@@ -639,6 +648,11 @@ const CertificateVerificationCRUD: React.FC = () => {
   }
 
   const handlePrimaryAction = (cert: PendingCertificate) => {
+    if (cert.verification_status.user_verification_status === 'pending') {
+      openModal(cert)
+      return
+    }
+
     if (cert.verification_status.user_verification_id) {
       openEditModal(cert)
       return
@@ -654,6 +668,10 @@ const CertificateVerificationCRUD: React.FC = () => {
 
     if (cert.verification_status.user_verification_level === 3 && cert.verification_status.user_can_act) {
       return 'Ubah'
+    }
+
+    if (cert.verification_status.user_verification_status === 'pending') {
+      return 'Verifikasi'
     }
 
     return cert.verification_status.user_verification_id ? 'Ubah' : 'Verifikasi'
@@ -734,10 +752,10 @@ const CertificateVerificationCRUD: React.FC = () => {
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
             <h4 className="text-sm font-semibold text-blue-900 mb-2">Panduan Verifikasi:</h4>
             <ul className="text-xs text-blue-800 space-y-1">
-              <li>â€¢ <span className="font-medium">Tinjau:</span> Periksa seluruh data sertifikat dengan teliti</li>
-              <li>â€¢ <span className="font-medium">Setujui:</span> Jika data sudah benar dan lengkap</li>
-              <li>â€¢ <span className="font-medium">Tolak:</span> Jika ada kesalahan yang perlu diperbaiki</li>
-              <li>â€¢ <span className="font-medium">Catatan:</span> Berikan catatan yang relevan untuk setiap keputusan</li>
+              <li><span className="font-medium">Tinjau:</span> Periksa seluruh data sertifikat dengan teliti</li>
+              <li><span className="font-medium">Setujui:</span> Jika data sudah benar dan lengkap</li>
+              <li><span className="font-medium">Tolak:</span> Jika ada kesalahan yang perlu diperbaiki</li>
+              <li><span className="font-medium">Catatan:</span> Berikan catatan yang relevan untuk setiap keputusan</li>
             </ul>
           </div>
 
