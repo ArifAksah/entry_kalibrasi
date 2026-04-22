@@ -6,6 +6,7 @@ import Image from 'next/image'
 import QRCodeStyling from 'qr-code-styling'
 import QRCode from 'react-qr-code'
 import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
+import { formatUnit, needsConversion } from '../../../../lib/unitConversion'
 
 // --- TIPE DATA KOMPREHENSIF ---
 // Saya gabungkan tipe dari ViewCertificatePage.tsx Anda ke sini
@@ -29,6 +30,8 @@ type ResultItem = {
     standardInstruments: number[]
   }
   sensorDetails?: any
+  unitStd?: string | null
+  unitUut?: string | null
 }
 
 type Cert = {
@@ -1619,7 +1622,7 @@ const PrintCertificatePage: React.FC = () => {
                                         {/* Use explicit headers if available, otherwise fallback to Key/Unit/Value logic */}
                                         {sec.headers ? (
                                           sec.headers.map((h: string, i: number) => {
-                                            const unit = res?.unitUut || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit;
+                                            const unit = formatUnit(res?.unitUut || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit);
                                             // Extract base header string without HTML tags if any, but since it's string just append
                                             return (
                                               <td key={i} className="p-1 border border-black text-center">
@@ -1647,7 +1650,7 @@ const PrintCertificatePage: React.FC = () => {
                                           {sec.headers ? (
                                             <>
                                               <td className="p-1 border border-black text-center">{row.key || '-'}</td>
-                                              <td className="p-1 border border-black text-center">{row.unit || '-'}</td>
+                                              <td className="p-1 border border-black text-center">{formatUnit(row.unit || '-')}</td>
                                               <td className="p-1 border border-black text-center">{row.value || '-'}</td>
                                               {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
                                                 <td key={`extra-${vi}`} className="p-1 border border-black text-center">{v || '-'}</td>
@@ -1657,7 +1660,7 @@ const PrintCertificatePage: React.FC = () => {
                                             // Fallback
                                             <>
                                               <td className="p-1 border border-black text-center">{row.key || '-'}</td>
-                                              <td className="p-1 border border-black text-center">{row.unit || '-'}</td>
+                                              <td className="p-1 border border-black text-center">{formatUnit(row.unit || '-')}</td>
                                               <td className="p-1 border border-black text-center">{row.value || '-'}</td>
                                             </>
                                           )}
@@ -1668,6 +1671,11 @@ const PrintCertificatePage: React.FC = () => {
                                 </div>
                               )
                             })}
+                            {res?.unitStd && res?.unitUut && needsConversion(res.unitStd, res.unitUut) && (
+                              <div className="mt-1 text-[10px] text-gray-500 italic text-right">
+                                * Nilai Pembacaan Standar telah dikonversi dari <strong>{formatUnit(res.unitStd)}</strong> ke <strong>{formatUnit(res.unitUut)}</strong> sebelum penghitungan koreksi.
+                              </div>
+                            )}
                           </div>
                         )}
 

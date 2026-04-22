@@ -2,7 +2,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Certificate, Instrument, Sensor, Station, CertStandard } from '../../lib/supabase';
 import { fetchQCLimitForSensor, checkQCResult, QCLimit } from '../../lib/qc-utils';
-import { convertUnit, needsConversion } from '../../lib/unitConversion';
+import { convertUnit, needsConversion, formatUnit } from '../../lib/unitConversion';
 import bmkgLogo from '../../app/bmkg.png';
 
 // Define RawDataRow interface locally if not exported, or match what's used in QCDataModal
@@ -689,7 +689,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                             }
 
                             // All column values displayed in UUT unit (UUT is the reference for the report)
-                            const unitDisplay = rowUnitUut || qcLimit?.unit || sensor?.graduating_unit || sensor?.range_capacity_unit || '';
+                            const unitDisplay = formatUnit(rowUnitUut || qcLimit?.unit || sensor?.graduating_unit || sensor?.range_capacity_unit || '');
 
                             return (
                                 <div key={sensorKey} className={`no-break mb-8 w-full ${pageIdx > 0 ? 'page-break' : ''}`}>
@@ -862,7 +862,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                     )}
                                     {hasUnitMismatch && (
                                         <div className="mt-1 text-[10px] text-gray-500 italic text-right">
-                                            * Nilai UUT telah dikonversi dari <strong>{rowUnitUut}</strong> ke <strong>{rowUnitStd}</strong> sebelum penghitungan koreksi.
+                                            * Nilai Pembacaan Standar telah dikonversi dari <strong>{formatUnit(rowUnitStd)}</strong> ke <strong>{formatUnit(rowUnitUut)}</strong> sebelum penghitungan koreksi.
                                         </div>
                                     )}
                                 </div>

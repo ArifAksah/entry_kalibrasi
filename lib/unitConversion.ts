@@ -56,3 +56,46 @@ export function convertUnit(value: number, fromUnit: string, toUnit: string): nu
 export function needsConversion(unitA: string, unitB: string): boolean {
     return normaliseUnit(unitA) !== normaliseUnit(unitB);
 }
+
+/**
+ * Format raw LaTeX units to plain text for display.
+ * e.g., "^\circ C" -> "°C", "m/s^2" -> "m/s²", "\mu m" -> "µm"
+ */
+export function formatUnit(unit: string): string {
+    if (!unit) return '';
+    let formatted = String(unit);
+    
+    // Replace degree symbols
+    formatted = formatted.replace(/\\degree/g, '°');
+    formatted = formatted.replace(/\\circ/g, '°');
+    formatted = formatted.replace(/\^\{\\circ\}/g, '°');
+    formatted = formatted.replace(/\^\circ/g, '°');
+    formatted = formatted.replace(/\^\\circ/g, '°');
+    
+    // Replace superscript numbers
+    formatted = formatted.replace(/\^2/g, '²');
+    formatted = formatted.replace(/\^\{2\}/g, '²');
+    formatted = formatted.replace(/\^3/g, '³');
+    formatted = formatted.replace(/\^\{3\}/g, '³');
+    
+    // Replace Greek letters
+    formatted = formatted.replace(/\\mu\b/g, 'µ');
+    formatted = formatted.replace(/\\Omega\b/g, 'Ω');
+    
+    // Replace \mathrm and \text
+    formatted = formatted.replace(/\\mathrm\{([^}]+)\}/g, '$1');
+    formatted = formatted.replace(/\\text\{([^}]+)\}/g, '$1');
+    formatted = formatted.replace(/\\mathrm\b/g, '');
+    formatted = formatted.replace(/\\text\b/g, '');
+    
+    // Remove curly braces that might be left over from LaTeX
+    formatted = formatted.replace(/[{}]/g, '');
+    
+    // Clean up spaces
+    formatted = formatted.replace(/\s+/g, ' ').trim();
+    
+    // Clean up standalone ^ if any
+    formatted = formatted.replace(/^\^/, '');
+    
+    return formatted;
+}

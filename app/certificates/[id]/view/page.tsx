@@ -6,6 +6,7 @@ import Image from 'next/image'
 import QRCodeStyling from 'qr-code-styling'
 import QRCode from 'react-qr-code'
 import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
+import { formatUnit, needsConversion } from '../../../../lib/unitConversion'
 
 // --- TIPE DATA KOMPREHENSIF ---
 // Saya gabungkan tipe dari ViewCertificatePage.tsx Anda ke sini
@@ -29,6 +30,8 @@ type ResultItem = {
     standardInstruments: number[]
   }
   sensorDetails?: any
+  unitStd?: string | null
+  unitUut?: string | null
 }
 
 type Cert = {
@@ -1729,7 +1732,7 @@ const ViewCertificatePage: React.FC = () => {
                                             {sec.headers && (
                                               <tr className="font-bold bg-white">
                                                 {sec.headers.map((_: any, i: number) => {
-                                                  const unit = res?.unitUut || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit || '';
+                                                  const unit = formatUnit(res?.unitUut || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit || '');
                                                   return (
                                                     <td key={`unit-${i}`} className="p-1 border border-black text-center">
                                                       {unit || '-'}
@@ -1743,14 +1746,14 @@ const ViewCertificatePage: React.FC = () => {
                                             {rows.map((row: any, rIdx: number) => {
                                               const isBlank = (val: any) => !val || String(val).trim() === '' || String(val).trim() === '-';
                                               const isFirstEmptyRow = rIdx === 0 && isBlank(row.key) && isBlank(row.unit) && isBlank(row.value);
-                                              let unitDisplay = res?.unitUut || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit || '-';
+                                              let unitDisplay = formatUnit(res?.unitUut || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit || '-');
                                               return (
                                                 <tr key={rIdx}>
                                                   {/* If headers exist, map based on standard + extra values */}
                                                   {sec.headers ? (
                                                     <>
                                                       <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
-                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.unit || '-')}</td>
+                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : formatUnit(row.unit || '-')}</td>
                                                       <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.value || '-')}</td>
                                                       {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
                                                         <td key={`extra-${vi}`} className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (v || '-')}</td>
@@ -1760,7 +1763,7 @@ const ViewCertificatePage: React.FC = () => {
                                                     // Fallback
                                                     <>
                                                       <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
-                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.unit || '-')}</td>
+                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : formatUnit(row.unit || '-')}</td>
                                                       <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.value || '-')}</td>
                                                     </>
                                                   )}
@@ -1772,6 +1775,11 @@ const ViewCertificatePage: React.FC = () => {
                                       </div>
                                     )
                                   })}
+                                  {res?.unitStd && res?.unitUut && needsConversion(res.unitStd, res.unitUut) && (
+                                    <div className="mt-1 text-[10px] text-gray-500 italic text-right">
+                                      * Nilai Pembacaan Standar telah dikonversi dari <strong>{formatUnit(res.unitStd)}</strong> ke <strong>{formatUnit(res.unitUut)}</strong> sebelum penghitungan koreksi.
+                                    </div>
+                                  )}
                                 </div>
                               )}
 
