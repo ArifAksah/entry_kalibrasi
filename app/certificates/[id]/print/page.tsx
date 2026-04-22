@@ -807,14 +807,7 @@ const PrintCertificatePage: React.FC = () => {
 
     .results-footer-shell {
       width: 100%;
-      padding-top: 2mm;
-    }
-
-    .results-footer-line {
-      border-top: 2px double #000;
-      width: 100%;
-      height: 0;
-      margin: 0 0 2mm;
+      padding-top: 4.5mm;
     }
 
     .results-footer-grid {
@@ -824,48 +817,57 @@ const PrintCertificatePage: React.FC = () => {
     }
 
     .results-footer-grid td {
-      vertical-align: top;
+      vertical-align: middle;
       color: #000;
-      font-size: 10px;
-      line-height: 1.3;
+      font-size: 9.5px;
+      line-height: 1.22;
       padding: 0;
     }
 
     .results-footer-qr-cell {
-      width: 18%;
+      width: 15%;
     }
 
     .results-footer-note-cell {
-      width: 58%;
+      width: 63%;
       text-align: center;
       font-weight: 600;
-      padding: 0 3mm !important;
+      padding: 0 2mm !important;
+      vertical-align: middle !important;
     }
 
     .results-footer-meta-cell {
-      width: 24%;
+      width: 22%;
       text-align: right;
       font-weight: 700;
       white-space: nowrap;
+      vertical-align: middle !important;
+      padding-top: 2mm !important;
     }
 
     .results-footer-qr-wrap {
       display: flex;
       flex-direction: column;
       align-items: flex-start;
-      gap: 1mm;
+      gap: 0.6mm;
     }
 
     .results-footer-qr-box {
-      width: 40px;
-      height: 40px;
-      flex: 0 0 40px;
+      width: 36px;
+      height: 36px;
+      flex: 0 0 36px;
     }
 
     .results-footer-form-code {
-      font-size: 10px;
+      font-size: 9.5px;
       line-height: 1.1;
       font-weight: 700;
+    }
+
+    .results-footer-note-copy {
+      max-width: 88mm;
+      margin: 0 auto;
+      text-align: center;
     }
     
     /* Hapus aturan last-child; break diatur manual dengan kelas */
@@ -1178,7 +1180,6 @@ const PrintCertificatePage: React.FC = () => {
 
   const renderResultsFooter = () => (
     <div className="results-footer-shell">
-      <div className="results-footer-line" />
       <table className="results-footer-grid">
         <tbody>
           <tr>
@@ -1200,7 +1201,9 @@ const PrintCertificatePage: React.FC = () => {
               </div>
             </td>
             <td className="results-footer-note-cell">
-              Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara.
+              <div className="results-footer-note-copy">
+                Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara (BSSN)
+              </div>
             </td>
             <td className="results-footer-meta-cell">
               Edisi/Revisi : 11/1

@@ -440,16 +440,16 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
           .page-container.results-page thead.print-repeat-header > tr > td { padding: 4mm 0 0 0 !important; }
           .page-container.results-page tbody.print-content > tr > td { padding-top: 3mm !important; vertical-align: top !important; }
           .results-header-table td { vertical-align: top !important; }
-          .results-footer-shell { width: 100% !important; padding-top: 2mm !important; }
-          .results-footer-line { border-top: 2px double #000 !important; width: 100% !important; height: 0 !important; margin: 0 0 2mm !important; }
+          .results-footer-shell { width: 100% !important; padding-top: 4.5mm !important; }
           .results-footer-grid { width: 100% !important; border-collapse: collapse !important; table-layout: fixed !important; }
-          .results-footer-grid td { padding: 0 !important; vertical-align: top !important; color: #000 !important; font-size: 10px !important; line-height: 1.3 !important; }
-          .results-footer-qr-cell { width: 18% !important; }
-          .results-footer-note-cell { width: 58% !important; text-align: center !important; font-weight: 600 !important; padding: 0 3mm !important; }
-          .results-footer-meta-cell { width: 24% !important; text-align: right !important; font-weight: 700 !important; white-space: nowrap !important; }
-          .results-footer-qr-wrap { display: flex !important; flex-direction: column !important; align-items: flex-start !important; gap: 1mm !important; }
-          .results-footer-qr-box { width: 40px !important; height: 40px !important; }
-          .results-footer-form-code { font-size: 10px !important; line-height: 1.1 !important; font-weight: 700 !important; }
+          .results-footer-grid td { padding: 0 !important; vertical-align: middle !important; color: #000 !important; font-size: 9.5px !important; line-height: 1.22 !important; }
+          .results-footer-qr-cell { width: 15% !important; }
+          .results-footer-note-cell { width: 63% !important; text-align: center !important; font-weight: 600 !important; padding: 0 2mm !important; vertical-align: middle !important; }
+          .results-footer-meta-cell { width: 22% !important; text-align: right !important; font-weight: 700 !important; white-space: nowrap !important; vertical-align: middle !important; padding-top: 2mm !important; }
+          .results-footer-qr-wrap { display: flex !important; flex-direction: column !important; align-items: flex-start !important; gap: 0.6mm !important; }
+          .results-footer-qr-box { width: 36px !important; height: 36px !important; }
+          .results-footer-form-code { font-size: 9.5px !important; line-height: 1.1 !important; font-weight: 700 !important; }
+          .results-footer-note-copy { max-width: 88mm !important; margin: 0 auto !important; text-align: center !important; }
 
           /* ── Avoid page break after last container ── */
           .page-container:last-of-type { page-break-after: avoid !important; break-after: avoid !important; }
