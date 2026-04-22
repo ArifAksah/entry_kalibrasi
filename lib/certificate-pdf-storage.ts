@@ -28,8 +28,14 @@ export const parseStoragePdfPath = (pdfPath: string) => {
 export async function ensurePdfBucketExists(supabaseAdmin: SupabaseClient) {
   try {
     const { data: bucketInfo, error: getErr } = await (supabaseAdmin as any).storage.getBucket(CERTIFICATE_PDF_BUCKET)
-    if (!getErr && bucketInfo) return
-  } catch {}
+    if (!getErr && bucketInfo) {
+      // Bucket sudah ada
+      return
+    }
+    console.log(`[Storage] Bucket '${CERTIFICATE_PDF_BUCKET}' belum ada (error: ${getErr?.message}), mencoba membuat...`)
+  } catch (checkEx: any) {
+    console.log(`[Storage] Gagal mengecek bucket: ${checkEx?.message}, mencoba membuat...`)
+  }
 
   try {
     const { error: createErr } = await (supabaseAdmin as any).storage.createBucket(CERTIFICATE_PDF_BUCKET, {
@@ -39,9 +45,18 @@ export async function ensurePdfBucketExists(supabaseAdmin: SupabaseClient) {
     })
 
     if (createErr && !String(createErr.message || '').toLowerCase().includes('already exists')) {
+      console.error(`[Storage] ❌ Gagal membuat bucket '${CERTIFICATE_PDF_BUCKET}':`, createErr.message)
       throw createErr
     }
-  } catch {}
+
+    if (!createErr) {
+      console.log(`[Storage] ✅ Bucket '${CERTIFICATE_PDF_BUCKET}' berhasil dibuat`)
+    }
+  } catch (createEx: any) {
+    // Jika sudah ada (race condition), abaikan
+    if (String(createEx?.message || '').toLowerCase().includes('already exists')) return
+    throw createEx
+  }
 }
 
 export async function uploadPdfToStorage(

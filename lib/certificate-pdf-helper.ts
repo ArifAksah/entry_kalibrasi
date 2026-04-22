@@ -274,11 +274,21 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
           /* Sembunyikan no-print */
           .no-print { display: none !important; }
           .bg-gray-100 { background-color: white !important; }
+
+          /* Reset list style global (sama dengan A4Style di print page) */
+          * { list-style: none !important; list-style-type: none !important; list-style-position: outside !important; list-style-image: none !important; }
+          ul, ol, li { list-style: none !important; padding-left: 0 !important; margin-left: 0 !important; text-indent: 0 !important; }
+          *::marker { display: none !important; content: none !important; color: transparent !important; }
+
+          /* Page container - sync dengan @media print di print/page.tsx */
           .page-container {
-            box-shadow: none !important;
             margin: 0 !important;
             padding: 5mm !important;
             padding-bottom: 25mm !important;
+            border: none !important;
+            box-shadow: none !important;
+            page-break-after: auto !important;
+            break-after: auto !important;
           }
 
           .cert-title-id {
@@ -314,6 +324,44 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
             color: #000 !important;
           }
 
+          /* ── Page-1 footer (cover page footer masking) ── */
+          .page-1-footer {
+            position: absolute !important;
+            bottom: 5mm !important;
+            left: 5mm !important;
+            right: 5mm !important;
+            z-index: 1000 !important;
+            background-color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            padding-top: 20px !important;
+            padding-bottom: 20px !important;
+            margin-bottom: -10px !important;
+            list-style-type: none !important;
+            list-style: none !important;
+            list-style-position: outside !important;
+          }
+          .page-1-footer, .page-1-footer * {
+            list-style: none !important; list-style-type: none !important; list-style-position: outside !important; list-style-image: none !important;
+            background: transparent !important; background-image: none !important; outline: none !important; text-indent: 0 !important; padding-left: 0 !important; margin-left: 0 !important;
+          }
+          .page-1-footer { background-color: white !important; }
+          .page-1-footer *::marker { display: none !important; content: none !important; color: transparent !important; }
+          .page-1-footer *::before, .page-1-footer *::after { content: none !important; display: none !important; background: transparent !important; background-image: none !important; width: 0 !important; height: 0 !important; visibility: hidden !important; }
+          .page-1-footer span, .page-1-footer div { position: relative !important; display: inline-block !important; }
+
+          /* ── QR code footer halaman 2+ ── */
+          .footer-qr-small { display: none !important; visibility: hidden !important; }
+          .page-container.results-page .footer-qr-small.results-page-qr {
+            position: absolute !important; bottom: 4mm !important; left: 4mm !important;
+            width: 100px !important; height: 100px !important; z-index: 999 !important;
+            display: block !important; visibility: visible !important; opacity: 1 !important;
+            -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+          }
+          .page-container:not(.results-page) .footer-qr-small, .page-container:not(.results-page) .results-page-qr {
+            display: none !important; visibility: hidden !important; opacity: 0 !important;
+          }
+
           /* ── PERBAIKAN UTAMA: tfoot harus table-footer-group, BUKAN position:absolute ── */
           tfoot.print-repeat-footer {
             display: table-footer-group !important;
@@ -346,7 +394,7 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
           thead.print-repeat-header { display: table-header-group !important; }
           tbody.print-content { display: table-row-group !important; }
 
-          /* Page container */
+          /* Page container heights */
           .page-container.results-page {
             position: relative !important;
             min-height: 297mm !important;
@@ -360,10 +408,13 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
             position: relative !important;
             box-sizing: border-box !important;
           }
+          
+          /* Thead padding top handle */
+          .page-container.results-page thead.print-repeat-header > tr > td { padding: 5mm 0 0 0 !important; }
+          .page-container.results-page tbody.print-content > tr > td { padding-top: 2mm !important; }
 
-          /* List cleanup - hanya untuk ul/ol/li, tidak untuk semua elemen */
-          ul, ol, li { list-style: none !important; padding-left: 0 !important; }
-          *::marker { display: none !important; content: "" !important; font-size: 0 !important; }
+          /* ── Avoid page break after last container ── */
+          .page-container:last-of-type { page-break-after: avoid !important; break-after: avoid !important; }
         `
       })
 

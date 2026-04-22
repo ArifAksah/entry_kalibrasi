@@ -47,25 +47,43 @@ export async function GET(
 
     console.log(`[PDF Download] Certificate ID: ${certificateId}`)
     console.log(`[PDF Download] PDF path from DB: ${cert.pdf_path}`)
+    console.log(`[PDF Download] Is storage path: ${isStoragePdfPath(cert.pdf_path)}`)
 
     let buffer: Buffer | null = null
     if (isStoragePdfPath(cert.pdf_path)) {
+      // Path storage - coba download dari Supabase Storage
       try {
         const { downloadPdfFromStorage } = await import('../../../../../lib/certificate-pdf-storage')
         buffer = await downloadPdfFromStorage(supabaseAdmin as any, cert.pdf_path)
-        console.log('[PDF Download] Loaded PDF from Supabase Storage')
-      } catch (storageError) {
-        console.error('[PDF Download] Failed to load PDF from storage path:', storageError)
+        console.log('[PDF Download] ✅ Loaded PDF from Supabase Storage')
+      } catch (storageError: any) {
+        console.error('[PDF Download] ❌ Failed to load PDF from storage path:', storageError?.message || storageError)
+        console.log('[PDF Download] Trying local filesystem fallback for storage-path PDF...')
+        // Fallback: coba baca dari local filesystem menggunakan filename
+        buffer = tryReadLocalPdf(cert.pdf_path)
+        if (buffer) {
+          console.log('[PDF Download] ✅ Recovered PDF from local filesystem (storage path fallback)')
+        } else {
+          // Fallback kedua: coba download by filename dari storage
+          buffer = await tryDownloadPdfByFileNameFromStorage(supabaseAdmin as any, fileName)
+          if (buffer) {
+            console.log('[PDF Download] ✅ Recovered PDF from storage by filename (fallback 2)')
+          }
+        }
       }
     } else {
+      // Path lokal - baca dari filesystem dulu, lalu fallback ke storage
       buffer = tryReadLocalPdf(cert.pdf_path)
-      if (!buffer) {
+      if (buffer) {
+        console.log('[PDF Download] ✅ Loaded PDF from local filesystem')
+      } else {
+        console.log('[PDF Download] Local file not found, trying Supabase Storage...')
         buffer = await tryDownloadPdfByFileNameFromStorage(supabaseAdmin as any, fileName)
         if (buffer) {
-          console.log('[PDF Download] Local file missing, recovered PDF from Supabase Storage fallback')
+          console.log('[PDF Download] ✅ Recovered PDF from Supabase Storage fallback')
+        } else {
+          console.error(`[PDF Download] ❌ PDF tidak ditemukan di local maupun storage. Path: ${cert.pdf_path}, File: ${fileName}`)
         }
-      } else {
-        console.log('[PDF Download] Loaded PDF from local filesystem')
       }
     }
 
