@@ -750,7 +750,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                       {cert.verification_status.authorized_by === 'approved' && (cert as any).pdf_path && (
                         <>
                           <DropdownItem
-                            href={`/api/certificates/${cert.id}/pdf`}
+                            href={`/api/certificates/${cert.id}/pdf?t=${encodeURIComponent(String((cert as any).pdf_generated_at || Date.now()))}`}
                             target="_blank"
                             icon={
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -763,7 +763,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                           <DropdownItem
                             onClick={async () => {
                               try {
-                                const response = await fetch(`/api/certificates/${cert.id}/pdf`)
+                                const response = await fetch(`/api/certificates/${cert.id}/pdf?download=true&t=${Date.now()}`, { cache: 'no-store' })
                                 if (!response.ok) {
                                   const errorData = await response.json().catch(() => ({ error: 'Failed to download PDF' }))
                                   showError(errorData.error || 'Gagal mengunduh PDF.')

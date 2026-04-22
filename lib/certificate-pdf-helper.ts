@@ -168,10 +168,30 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
       // ─────────────────────────────────────────────────────────────────────────
 
       console.log(`[PDF Helper] Navigating (print media): ${printUrl}`)
-      await page.goto(printUrl, {
+      const printResponse = await page.goto(printUrl, {
         waitUntil: 'domcontentloaded',
         timeout: 60000
       })
+
+      const finalUrl = page.url()
+      const expectedPath = `/certificates/${certificateId}/print`
+      if (!finalUrl.includes(expectedPath)) {
+        const bodyPreview = await page.evaluate(() => document.body?.innerText?.slice(0, 500) || '')
+        console.error(`[PDF Helper] Unexpected final URL after navigation: ${finalUrl}`)
+        return {
+          success: false,
+          error: `PRINT_RENDER_FAILED: Halaman print tidak terbuka dengan benar. Final URL: ${finalUrl}. Preview: ${bodyPreview.substring(0, 180)}`
+        }
+      }
+
+      if (printResponse && !printResponse.ok()) {
+        const bodyPreview = await page.evaluate(() => document.body?.innerText?.slice(0, 500) || '')
+        console.error(`[PDF Helper] Print page returned HTTP ${printResponse.status()} - URL: ${finalUrl}`)
+        return {
+          success: false,
+          error: `PRINT_RENDER_FAILED: Halaman print mengembalikan HTTP ${printResponse.status()}. Preview: ${bodyPreview.substring(0, 180)}`
+        }
+      }
 
       // Tunggu data API selesai dimuat (maks 15 detik)
       await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {
@@ -179,7 +199,7 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
       })
 
       // Tunggu React render selesai
-      await page.waitForFunction(() => {
+      const contentReady = await page.waitForFunction(() => {
         // Cek apakah masih ada loading state
         const hasLoading = Array.from(document.querySelectorAll('*')).some(el =>
           el.textContent?.trim() === 'Memuat data sertifikat untuk dicetak...'
@@ -192,9 +212,25 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
         const hasResultsFooter = !!document.querySelector('.print-repeat-footer')
         if (!hasCoverFooter && !hasResultsFooter) return false
         return true
-      }, { timeout: 30000 }).catch(() => {
-        console.log('[PDF Helper] Content readiness timeout, continuing...')
+      }, { timeout: 30000 }).then(() => true).catch(() => {
+        console.log('[PDF Helper] Content readiness timeout')
+        return false
       })
+
+      if (!contentReady) {
+        const debugInfo = await page.evaluate(() => ({
+          title: document.title || '',
+          bodyPreview: document.body?.innerText?.slice(0, 500) || '',
+          hasPageContainer: !!document.querySelector('.page-container'),
+          hasCoverFooter: !!document.querySelector('.page-1-footer'),
+          hasResultsFooter: !!document.querySelector('.print-repeat-footer')
+        }))
+        console.error('[PDF Helper] Print page content was not ready:', { finalUrl, ...debugInfo })
+        return {
+          success: false,
+          error: `PRINT_RENDER_FAILED: Konten print tidak siap dirender. URL: ${finalUrl}. Preview: ${debugInfo.bodyPreview.substring(0, 180)}`
+        }
+      }
 
       // ─── STOP SEMUA INTERVAL & TIMEOUT ────────────────────────────────────────
       // Print page memiliki setInterval(checkVerificationStatus, 5000) yang

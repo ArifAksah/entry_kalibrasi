@@ -1922,7 +1922,7 @@ type ResultItem = {
                             </a>
                             {item.pdf_path && (
                               <a
-                                href={`/api/certificates/${item.id}/pdf`}
+                                href={`/api/certificates/${item.id}/pdf?t=${encodeURIComponent(String((item as any).pdf_generated_at || Date.now()))}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
@@ -1948,9 +1948,9 @@ type ResultItem = {
                               <button
                                 onClick={async () => {
                                   try {
-                                    const pdfEndpoint = `/api/certificates/${item.id}/pdf`
+                                    const pdfEndpoint = `/api/certificates/${item.id}/pdf?download=true&t=${Date.now()}`
 
-                                    const response = await fetch(pdfEndpoint)
+                                    const response = await fetch(pdfEndpoint, { cache: 'no-store' })
                                     if (!response.ok) throw new Error('Failed to get PDF')
 
                                     const contentType = response.headers.get('Content-Type') || ''
