@@ -65,7 +65,7 @@ export async function PUT(
     // Get current certificate data before updating
     const { data: currentCertificate, error: currentError } = await supabaseAdmin
       .from('certificate')
-      .select('authorized_by, verifikator_1, verifikator_2, verifikator_3, version, no_certificate, no_order, no_identification, issue_date, station, instrument, station_address, results')
+      .select('authorized_by, verifikator_1, verifikator_2, verifikator_3, version, status, rejection_history, no_certificate, no_order, no_identification, issue_date, station, instrument, station_address, results')
       .eq('id', id)
       .single();
 
@@ -200,8 +200,11 @@ export async function PUT(
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+    const hasRejectionHistory = Array.isArray((currentCertificate as any)?.rejection_history) && (currentCertificate as any).rejection_history.length > 0
+    const shouldDeferVerificationReset = (currentCertificate as any)?.status === 'draft' && hasRejectionHistory
+
     // If certificate was revised (version increased), reset verification status
-    if (nextVersion > (currentCertificate?.version ?? 1)) {
+    if (nextVersion > (currentCertificate?.version ?? 1) && !shouldDeferVerificationReset) {
       try {
         // Delete existing verification records and create new ones with updated version
         const { error: deleteError } = await supabaseAdmin

@@ -427,17 +427,21 @@ const CertificatesCRUD: React.FC = () => {
   }
 
   const getLatestRejectionEntry = (certificate: Certificate) => {
+    const history = getSortedRejectionHistory(certificate)
+    if (history.length === 0) return null
+    return history[0]
+  }
+
+  const getSortedRejectionHistory = (certificate: Certificate) => {
     const history = Array.isArray((certificate as any).rejection_history)
       ? [...(certificate as any).rejection_history]
       : []
-
-    if (history.length === 0) return null
 
     return history.sort((a: any, b: any) => {
       const timeA = new Date(a?.rejection_timestamp || 0).getTime()
       const timeB = new Date(b?.rejection_timestamp || 0).getTime()
       return timeB - timeA
-    })[0]
+    })
   }
 
   const handleOpenRejectionNotes = (certificate: Certificate) => {
@@ -4225,6 +4229,7 @@ type ResultItem = {
 
             {(() => {
               const latestRejection = getLatestRejectionEntry(selectedRejectionCertificate)
+              const rejectionHistory = getSortedRejectionHistory(selectedRejectionCertificate)
               const rejectedBy = latestRejection?.rejected_by
                 ? personel.find((p) => p.id === latestRejection.rejected_by)?.name || latestRejection.rejected_by
                 : null
@@ -4251,9 +4256,17 @@ type ResultItem = {
                       <p className="text-gray-900 mt-1">{rejectedBy || '-'}</p>
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700">Tujuan Pengembalian:</span>
+                      <span className="font-medium text-gray-700">Kategori Penolakan:</span>
                       <p className="text-gray-900 mt-1">
-                        {latestRejection?.rejection_destination || 'Pembuat Sertifikat'}
+                        {latestRejection?.rejection_category_label || latestRejection?.rejection_category || '-'}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">Ulang Verifikasi Dari:</span>
+                      <p className="text-gray-900 mt-1">
+                        {latestRejection?.reset_from_level
+                          ? getVerificationLevelLabel(latestRejection.reset_from_level)
+                          : '-'}
                       </p>
                     </div>
                   </div>
@@ -4264,6 +4277,60 @@ type ResultItem = {
                       {latestRejection?.rejection_reason || (selectedRejectionCertificate as any).rejection_reason || 'Catatan penolakan tidak tersedia.'}
                     </p>
                   </div>
+
+                  {rejectionHistory.length > 1 && (
+                    <div className="rounded-lg border border-gray-200 bg-white p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-sm font-medium text-gray-900">Linimasa Reject</p>
+                        <span className="text-xs text-gray-500">
+                          {rejectionHistory.length} riwayat
+                        </span>
+                      </div>
+
+                      <div className="space-y-4">
+                        {rejectionHistory.map((entry: any, index: number) => {
+                          const entryRejectedBy = entry?.rejected_by
+                            ? personel.find((p) => p.id === entry.rejected_by)?.name || entry.rejected_by
+                            : null
+
+                          return (
+                            <div key={`${entry.rejection_timestamp || index}-${entry.verification_level || 0}`} className="flex gap-3">
+                              <div className="flex flex-col items-center pt-1">
+                                <div className={`w-2.5 h-2.5 rounded-full ${index === 0 ? 'bg-red-600' : 'bg-red-300'}`}></div>
+                                {index < rejectionHistory.length - 1 && (
+                                  <div className="w-px flex-1 bg-red-200 mt-1"></div>
+                                )}
+                              </div>
+                              <div className="flex-1 pb-1">
+                                <div className="flex flex-wrap items-center gap-2 mb-1">
+                                  <span className="text-sm font-medium text-gray-900">
+                                    {getVerificationLevelLabel(entry?.verification_level)}
+                                  </span>
+                                  <span className="px-2 py-0.5 text-[11px] font-medium rounded-full bg-red-50 text-red-700 border border-red-200">
+                                    {entry?.rejection_category_label || entry?.rejection_category || 'Reject'}
+                                  </span>
+                                  {entry?.reset_from_level && (
+                                    <span className="px-2 py-0.5 text-[11px] font-medium rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                                      Ulang dari {getVerificationLevelLabel(entry.reset_from_level)}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-gray-500 mb-1">
+                                  {entry?.rejection_timestamp
+                                    ? new Date(entry.rejection_timestamp).toLocaleString('id-ID')
+                                    : '-'}
+                                  {entryRejectedBy ? ` • ${entryRejectedBy}` : ''}
+                                </p>
+                                <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                                  {entry?.rejection_reason || 'Catatan penolakan tidak tersedia.'}
+                                </p>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })()}

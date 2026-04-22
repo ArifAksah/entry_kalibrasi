@@ -6,6 +6,13 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+const VERIFICATION_ASSIGNMENTS = [
+  { level: 1, field: 'verifikator_1' },
+  { level: 2, field: 'verifikator_2' },
+  { level: 3, field: 'verifikator_3' },
+  { level: 4, field: 'authorized_by' }
+] as const
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -16,20 +23,13 @@ export async function POST(
     const { sent_by } = await request.json()
 
     if (!certificateId || isNaN(certificateId)) {
-      return NextResponse.json(
-        { error: 'Invalid certificate ID' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Invalid certificate ID' }, { status: 400 })
     }
 
     if (!sent_by) {
-      return NextResponse.json(
-        { error: 'sent_by is required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'sent_by is required' }, { status: 400 })
     }
 
-    // Get certificate details
     const { data: certificate, error: certError } = await supabase
       .from('certificate')
       .select('*')
@@ -37,166 +37,129 @@ export async function POST(
       .single()
 
     if (certError || !certificate) {
-      return NextResponse.json(
-        { error: 'Certificate not found' },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: 'Certificate not found' }, { status: 404 })
     }
 
-    // Check if certificate is in draft status
     if (certificate.status !== 'draft') {
-      return NextResponse.json(
-        { error: 'Certificate is not in draft status' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Certificate is not in draft status' }, { status: 400 })
     }
 
-    // Check if verifikator_1, verifikator_2, and assignor are assigned
-    if (!certificate.verifikator_1 || !certificate.verifikator_2 || !certificate.assignor) {
-      return NextResponse.json(
-        { error: 'Verifikator 1, Verifikator 2, and Assignor must be assigned before sending' },
-        { status: 400 }
-      )
+    if (!certificate.verifikator_1 || !certificate.verifikator_2 || !certificate.verifikator_3 || !certificate.authorized_by) {
+      return NextResponse.json({
+        error: 'Verifikator 1, Verifikator 2, Verifikator 3, and Penandatangan must be assigned before sending'
+      }, { status: 400 })
     }
 
-    // Validate that verifikator_1 and verifikator_2 exist in personel table
-    const { data: verifikator1Data, error: verifikator1Error } = await supabase
-      .from('personel')
-      .select('id')
-      .eq('id', certificate.verifikator_1)
-      .single()
-
-    if (verifikator1Error || !verifikator1Data) {
-      return NextResponse.json(
-        { error: 'Verifikator 1 does not exist in personel table' },
-        { status: 400 }
-      )
-    }
-
-    const { data: verifikator2Data, error: verifikator2Error } = await supabase
-      .from('personel')
-      .select('id')
-      .eq('id', certificate.verifikator_2)
-      .single()
-
-    if (verifikator2Error || !verifikator2Data) {
-      return NextResponse.json(
-        { error: 'Verifikator 2 does not exist in personel table' },
-        { status: 400 }
-      )
-    }
-
-    // Update certificate status to 'sent' and set sent timestamp
-    const { error: updateError } = await supabase
-      .from('certificate')
-      .update({
-        status: 'sent',
-        sent_to_verifiers_at: new Date().toISOString(),
-        sent_by: sent_by
-      })
-      .eq('id', certificateId)
-
-    if (updateError) {
-      console.error('Error updating certificate:', updateError)
-      return NextResponse.json(
-        { error: 'Failed to update certificate status' },
-        { status: 500 }
-      )
-    }
-
-    // Create verification records for verifikator 1 and 2
-    const verificationRecords = [
-      {
-        certificate_id: certificateId,
-        verification_level: 1,
-        status: 'pending',
-        verified_by: certificate.verifikator_1,
-        certificate_version: certificate.version || 1
-      },
-      {
-        certificate_id: certificateId,
-        verification_level: 2,
-        status: 'pending',
-        verified_by: certificate.verifikator_2,
-        certificate_version: certificate.version || 1
-      }
+    const assignedIds = [
+      certificate.verifikator_1,
+      certificate.verifikator_2,
+      certificate.verifikator_3,
+      certificate.authorized_by
     ]
 
-    // Debug logging
-    console.log('=== Creating Verification Records ===')
-    console.log('Certificate ID:', certificateId)
-    console.log('Verifikator 1:', certificate.verifikator_1)
-    console.log('Verifikator 2:', certificate.verifikator_2)
-    console.log('Certificate Version:', certificate.version || 1)
-    console.log('Verification Records:', verificationRecords)
-    console.log('=====================================')
+    const { data: assignedPersonel, error: personelError } = await supabase
+      .from('personel')
+      .select('id')
+      .in('id', assignedIds)
 
-    // Use a more aggressive approach: delete all verification records first
-    // This ensures we start with a completely clean state
-    console.log('=== Deleting existing verification records ===')
-    const { error: deleteError } = await supabase
-      .from('certificate_verification')
-      .delete()
-      .eq('certificate_id', certificateId)
-    
-    if (deleteError) {
-      console.error('Error deleting existing verification records:', deleteError)
-      // Rollback certificate status
-      await supabase
-        .from('certificate')
-        .update({
-          status: 'draft',
-          sent_to_verifiers_at: null,
-          sent_by: null
-        })
-        .eq('id', certificateId)
-      
-      return NextResponse.json(
-        { error: `Failed to reset verification records: ${deleteError.message}` },
-        { status: 500 }
-      )
+    if (personelError || !assignedPersonel || assignedPersonel.length !== assignedIds.length) {
+      return NextResponse.json({
+        error: 'One or more assigned verifiers/signers do not exist in personel table'
+      }, { status: 400 })
     }
-    
-    console.log('Existing verification records deleted successfully')
 
-    // Now insert fresh verification records using a single insert operation
-    console.log('=== Creating new verification records ===')
-    const { error: insertError } = await supabase
+    const currentVersion = certificate.version || 1
+    const rejectionHistory = Array.isArray(certificate.rejection_history) ? [...certificate.rejection_history] : []
+    const latestRejection = rejectionHistory
+      .sort((a: any, b: any) => new Date(b?.rejection_timestamp || 0).getTime() - new Date(a?.rejection_timestamp || 0).getTime())[0] || null
+    const resetFromLevel = Number(latestRejection?.reset_from_level || 1)
+
+    const { data: allVerifications, error: verificationsError } = await supabase
       .from('certificate_verification')
-      .insert(verificationRecords.map(record => ({
-        ...record,
-        status: 'pending',
+      .select('*')
+      .eq('certificate_id', certificateId)
+
+    if (verificationsError) {
+      return NextResponse.json({ error: 'Failed to load verification history' }, { status: 500 })
+    }
+
+    const getPreservedApproval = (level: number) => {
+      return (allVerifications || [])
+        .filter((verification: any) =>
+          verification.verification_level === level &&
+          verification.status === 'approved' &&
+          (verification.certificate_version ?? 1) <= currentVersion
+        )
+        .sort((a: any, b: any) => {
+          const versionA = a.certificate_version ?? 1
+          const versionB = b.certificate_version ?? 1
+          if (versionA !== versionB) return versionB - versionA
+          return new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime()
+        })[0] || null
+    }
+
+    const now = new Date().toISOString()
+    const verificationRecords = VERIFICATION_ASSIGNMENTS.map(({ level, field }) => {
+      const assignedUserId = certificate[field]
+      const preservedApprovalCandidate = level < resetFromLevel ? getPreservedApproval(level) : null
+      const preservedApproval = preservedApprovalCandidate?.verified_by === assignedUserId
+        ? preservedApprovalCandidate
+        : null
+
+      return {
+        certificate_id: certificateId,
+        verification_level: level,
+        verified_by: assignedUserId,
+        certificate_version: currentVersion,
+        status: preservedApproval ? 'approved' : 'pending',
         notes: null,
         rejection_reason: null,
         rejection_reason_detailed: null,
         rejection_destination: null,
         rejection_timestamp: null,
-        approval_notes: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })))
-    
-    if (insertError) {
-      console.error('Error creating verification records:', insertError)
-      // Rollback certificate status
-      await supabase
-        .from('certificate')
-        .update({
-          status: 'draft',
-          sent_to_verifiers_at: null,
-          sent_by: null
-        })
-        .eq('id', certificateId)
-      
-      return NextResponse.json(
-        { error: `Failed to create verification records: ${insertError.message}` },
-        { status: 500 }
-      )
-    }
-    
-    console.log('New verification records created successfully')
+        approval_notes: preservedApproval?.approval_notes || null,
+        created_at: preservedApproval?.created_at || now,
+        updated_at: now
+      }
+    })
 
-    // Create log entry for sending certificate
+    const { error: deleteCurrentVersionError } = await supabase
+      .from('certificate_verification')
+      .delete()
+      .eq('certificate_id', certificateId)
+      .eq('certificate_version', currentVersion)
+
+    if (deleteCurrentVersionError) {
+      return NextResponse.json({
+        error: `Failed to reset current verification records: ${deleteCurrentVersionError.message}`
+      }, { status: 500 })
+    }
+
+    const { error: insertError } = await supabase
+      .from('certificate_verification')
+      .insert(verificationRecords)
+
+    if (insertError) {
+      return NextResponse.json({
+        error: `Failed to create verification records: ${insertError.message}`
+      }, { status: 500 })
+    }
+
+    const sentAt = new Date().toISOString()
+    const { error: updateError } = await supabase
+      .from('certificate')
+      .update({
+        status: 'sent',
+        sent_to_verifiers_at: sentAt,
+        sent_by: sent_by,
+        repair_status: 'none'
+      })
+      .eq('id', certificateId)
+
+    if (updateError) {
+      return NextResponse.json({ error: 'Failed to update certificate status' }, { status: 500 })
+    }
+
     try {
       const { createCertificateLog } = await import('../../../../../lib/certificate-log-helper')
       await createCertificateLog({
@@ -205,15 +168,13 @@ export async function POST(
         performed_by: sent_by,
         previous_status: 'draft',
         new_status: 'sent',
-        notes: 'Certificate sent to verifiers for verification'
+        notes: latestRejection
+          ? `Certificate resubmitted after rejection. Review resumes from level ${resetFromLevel}.`
+          : 'Certificate sent to verifiers for verification'
       })
     } catch (logError) {
       console.error('Failed to create certificate log:', logError)
-      // Don't fail the request if logging fails
     }
-
-    // TODO: Send notifications to verifikator 1, verifikator 2, and assignor
-    // This could be implemented with email notifications or in-app notifications
 
     return NextResponse.json({
       success: true,
@@ -221,16 +182,13 @@ export async function POST(
       certificate: {
         id: certificateId,
         status: 'sent',
-        sent_to_verifiers_at: new Date().toISOString(),
-        sent_by: sent_by
+        sent_to_verifiers_at: sentAt,
+        sent_by: sent_by,
+        reset_from_level: resetFromLevel
       }
     })
-
   } catch (error) {
     console.error('Error in send-to-verifiers API:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

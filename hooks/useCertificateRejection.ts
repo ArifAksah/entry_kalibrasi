@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 interface RejectionData {
   verification_level: number
   rejection_reason: string
-  rejection_destination?: string
+  rejection_category?: string
 }
 
 interface RejectionOptions {

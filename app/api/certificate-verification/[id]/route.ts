@@ -320,7 +320,7 @@ export async function PUT(
       const verificationLevel = currentVerification.verification_level
       const actionMap: Record<string, string> = {
         'approved': verificationLevel === 1 ? 'approved_v1' : verificationLevel === 2 ? 'approved_v2' : 'approved_assignor',
-        'rejected': verificationLevel === 1 ? 'rejected_v1' : verificationLevel === 2 ? 'rejected_v2' : 'rejected_assignor'
+        'rejected': verificationLevel === 1 ? 'rejected_v1' : verificationLevel === 2 ? 'rejected_v2' : 'rejected_v3'
       }
       const logAction = actionMap[status] || 'updated'
       

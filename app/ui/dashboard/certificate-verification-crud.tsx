@@ -25,6 +25,7 @@ interface RejectionOption {
   label: string
   description: string
   icon: string
+  reset_from_level?: number
 }
 
 const CertificateVerificationCRUD: React.FC = () => {
@@ -62,7 +63,7 @@ const CertificateVerificationCRUD: React.FC = () => {
     status: 'approved' as 'approved' | 'rejected',
     notes: '',
     rejection_reason: '',
-    rejection_destination: 'creator',
+    rejection_category: 'administrative',
     approval_notes: ''
   })
 
@@ -76,9 +77,6 @@ const CertificateVerificationCRUD: React.FC = () => {
     const fetchOptions = async () => {
       if (verificationForm.status !== 'rejected' || !selectedCertificate) return
       
-      const verificationLevel = selectedCertificate.verification_status.user_verification_level
-      if (![2, 3].includes(verificationLevel || 0)) return
-
       setLoadingRejectionOptions(true)
       try {
         const { data: { session } } = await supabase.auth.getSession()
@@ -99,9 +97,8 @@ const CertificateVerificationCRUD: React.FC = () => {
         const data = await response.json()
         if (isMounted) {
           setRejectionOptions(data.options || [])
-          // set default destination if currently selected is not in options or if it's the first time loaded
-          if (data.options?.length && !data.options.find((o: any) => o.value === verificationForm.rejection_destination)) {
-            setVerificationForm(prev => ({ ...prev, rejection_destination: data.options[0].value }))
+          if (data.options?.length && !data.options.find((o: any) => o.value === verificationForm.rejection_category)) {
+            setVerificationForm(prev => ({ ...prev, rejection_category: data.options[0].value }))
           }
         }
       } catch (error) {
@@ -297,7 +294,7 @@ const CertificateVerificationCRUD: React.FC = () => {
       status: 'approved',
       notes: '',
       rejection_reason: '',
-      rejection_destination: 'creator',
+      rejection_category: 'administrative',
       approval_notes: ''
     })
     setIsModalOpen(true)
@@ -316,7 +313,7 @@ const CertificateVerificationCRUD: React.FC = () => {
       status: existingStatus === 'approved' ? 'approved' : 'rejected',
       notes: '',
       rejection_reason: '',
-      rejection_destination: 'creator',
+      rejection_category: 'administrative',
       approval_notes: ''
     })
     setIsEditModalOpen(true)
@@ -376,7 +373,7 @@ const CertificateVerificationCRUD: React.FC = () => {
         const rejectionData = {
           verification_level: verificationLevel,
           rejection_reason: verificationForm.rejection_reason,
-          rejection_destination: verificationForm.rejection_destination || 'creator'
+          rejection_category: verificationForm.rejection_category || 'administrative'
         }
         result = await rejectCertificate(selectedCertificate.id, rejectionData)
       } else {
@@ -464,7 +461,7 @@ const CertificateVerificationCRUD: React.FC = () => {
         const rejectionData = {
           verification_level: verificationLevel,
           rejection_reason: verificationForm.rejection_reason,
-          rejection_destination: verificationForm.rejection_destination || 'creator'
+          rejection_category: verificationForm.rejection_category || 'administrative'
         }
         result = await rejectCertificate(selectedCertificate.id, rejectionData)
       } else {
@@ -1316,50 +1313,47 @@ const CertificateVerificationCRUD: React.FC = () => {
                         />
                       </div>
 
-                      {/* Rejection Destination for V2 and V3 */}
-                      {[2, 3].includes(selectedCertificate.verification_status.user_verification_level || 0) && (
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-3">
-                            Tujuan Pengembalian *
-                          </label>
-                          
-                          {loadingRejectionOptions ? (
-                            <div className="flex items-center justify-center py-4">
-                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
-                              <span className="ml-3 text-sm text-gray-600">Memuat opsi...</span>
-                            </div>
-                          ) : (
-                            <div className="space-y-2">
-                              {rejectionOptions.map((option) => (
-                                <label
-                                  key={option.value}
-                                  className={`flex items-start p-3 border rounded-lg cursor-pointer transition-all ${
-                                    verificationForm.rejection_destination === option.value
-                                      ? 'border-red-500 bg-red-50'
-                                      : 'border-gray-200 hover:border-gray-300'
-                                  }`}
-                                >
-                                  <input
-                                    type="radio"
-                                    name="rejection_destination"
-                                    value={option.value}
-                                    checked={verificationForm.rejection_destination === option.value}
-                                    onChange={(e) => setVerificationForm({ ...verificationForm, rejection_destination: e.target.value })}
-                                    className="mt-1 mr-3 text-red-600 focus:ring-red-500"
-                                  />
-                                  <div className="flex-1">
-                                    <div className="flex items-center space-x-2">
-                                      <span className="text-base">{option.icon}</span>
-                                      <span className="font-medium text-sm text-gray-900">{option.label}</span>
-                                    </div>
-                                    <p className="text-xs text-gray-600 mt-1">{option.description}</p>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-3">
+                          Kategori Penolakan *
+                        </label>
+
+                        {loadingRejectionOptions ? (
+                          <div className="flex items-center justify-center py-4">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
+                            <span className="ml-3 text-sm text-gray-600">Memuat opsi...</span>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {rejectionOptions.map((option) => (
+                              <label
+                                key={option.value}
+                                className={`flex items-start p-3 border rounded-lg cursor-pointer transition-all ${
+                                  verificationForm.rejection_category === option.value
+                                    ? 'border-red-500 bg-red-50'
+                                    : 'border-gray-200 hover:border-gray-300'
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="rejection_category"
+                                  value={option.value}
+                                  checked={verificationForm.rejection_category === option.value}
+                                  onChange={(e) => setVerificationForm({ ...verificationForm, rejection_category: e.target.value })}
+                                  className="mt-1 mr-3 text-red-600 focus:ring-red-500"
+                                />
+                                <div className="flex-1">
+                                  <div className="flex items-center space-x-2">
+                                    <span className="text-base">{option.icon}</span>
+                                    <span className="font-medium text-sm text-gray-900">{option.label}</span>
                                   </div>
-                                </label>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                                  <p className="text-xs text-gray-600 mt-1">{option.description}</p>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       
                       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                         <div className="flex items-start space-x-2">
@@ -1368,10 +1362,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                           </svg>
                           <div>
                             <p className="text-xs text-yellow-700">
-                              {selectedCertificate.verification_status.user_verification_level === 1 
-                                ? 'Sertifikat akan dikembalikan langsung ke pembuat untuk diperbaiki.'
-                                : 'Sertifikat akan dikembalikan sesuai tujuan pilihan Anda.'
-                              }
+                              Sertifikat akan dikembalikan ke pembuat untuk direvisi. Sistem akan otomatis menentukan verifikasi ulang mulai level yang sesuai dengan kategori penolakan.
                             </p>
                           </div>
                         </div>
@@ -1548,50 +1539,47 @@ const CertificateVerificationCRUD: React.FC = () => {
                         />
                       </div>
 
-                      {/* Rejection Destination for V2 and V3 */}
-                      {[2, 3].includes(selectedCertificate.verification_status.user_verification_level || 0) && (
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-3">
-                            Tujuan Pengembalian *
-                          </label>
-                          
-                          {loadingRejectionOptions ? (
-                            <div className="flex items-center justify-center py-4">
-                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
-                              <span className="ml-3 text-sm text-gray-600">Memuat opsi...</span>
-                            </div>
-                          ) : (
-                            <div className="space-y-2">
-                              {rejectionOptions.map((option) => (
-                                <label
-                                  key={option.value}
-                                  className={`flex items-start p-3 border rounded-lg cursor-pointer transition-all ${
-                                    verificationForm.rejection_destination === option.value
-                                      ? 'border-red-500 bg-red-50'
-                                      : 'border-gray-200 hover:border-gray-300'
-                                  }`}
-                                >
-                                  <input
-                                    type="radio"
-                                    name="edit_rejection_destination"
-                                    value={option.value}
-                                    checked={verificationForm.rejection_destination === option.value}
-                                    onChange={(e) => setVerificationForm({ ...verificationForm, rejection_destination: e.target.value })}
-                                    className="mt-1 mr-3 text-red-600 focus:ring-red-500"
-                                  />
-                                  <div className="flex-1">
-                                    <div className="flex items-center space-x-2">
-                                      <span className="text-base">{option.icon}</span>
-                                      <span className="font-medium text-sm text-gray-900">{option.label}</span>
-                                    </div>
-                                    <p className="text-xs text-gray-600 mt-1">{option.description}</p>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-3">
+                          Kategori Penolakan *
+                        </label>
+
+                        {loadingRejectionOptions ? (
+                          <div className="flex items-center justify-center py-4">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
+                            <span className="ml-3 text-sm text-gray-600">Memuat opsi...</span>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {rejectionOptions.map((option) => (
+                              <label
+                                key={option.value}
+                                className={`flex items-start p-3 border rounded-lg cursor-pointer transition-all ${
+                                  verificationForm.rejection_category === option.value
+                                    ? 'border-red-500 bg-red-50'
+                                    : 'border-gray-200 hover:border-gray-300'
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="edit_rejection_category"
+                                  value={option.value}
+                                  checked={verificationForm.rejection_category === option.value}
+                                  onChange={(e) => setVerificationForm({ ...verificationForm, rejection_category: e.target.value })}
+                                  className="mt-1 mr-3 text-red-600 focus:ring-red-500"
+                                />
+                                <div className="flex-1">
+                                  <div className="flex items-center space-x-2">
+                                    <span className="text-base">{option.icon}</span>
+                                    <span className="font-medium text-sm text-gray-900">{option.label}</span>
                                   </div>
-                                </label>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                                  <p className="text-xs text-gray-600 mt-1">{option.description}</p>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 
