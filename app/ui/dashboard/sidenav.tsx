@@ -2,14 +2,12 @@
 
 import React, { useMemo } from 'react';
 import Image from 'next/image';
-import bmkgLogo from '../../logo-bmkg-w.png';
 import { usePathname } from 'next/navigation';
 import { usePermissions } from '../../../hooks/usePermissions';
 
 type NavItem = { name: string; href: string; icon: React.ReactNode };
 type NavSection = { title: string; items: NavItem[] };
 
-// Icons dengan warna yang match theme
 const Icon = {
   dashboard: (
     <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -69,41 +67,40 @@ const Icon = {
   ),
 };
 
-// Sections configuration
 const sections: NavSection[] = [
   {
-    title: 'Overview',
+    title: 'Ringkasan',
     items: [
       { name: 'Dashboard', href: '/', icon: Icon.dashboard },
     ],
   },
   {
-    title: 'Instruments',
+    title: 'Instrumen',
     items: [
-      { name: 'Instruments', href: '/instruments', icon: Icon.tool },
+      { name: 'Instrumen', href: '/instruments', icon: Icon.tool },
     ],
   },
   {
-    title: 'Stations',
+    title: 'Stasiun',
     items: [
-      { name: 'Stations', href: '/stations', icon: Icon.building },
+      { name: 'Stasiun', href: '/stations', icon: Icon.building },
     ],
   },
   {
-    title: 'Documents',
+    title: 'Dokumen',
     items: [
-      { name: 'Certificates', href: '/certificates', icon: Icon.doc },
-      { name: 'Certificate Logs', href: '/certificate-logs', icon: Icon.clock },
-      { name: 'Letters', href: '/letters', icon: Icon.mail },
+      { name: 'Sertifikat', href: '/certificates', icon: Icon.doc },
+      { name: 'Log Sertifikat', href: '/certificate-logs', icon: Icon.clock },
+      { name: 'Surat', href: '/letters', icon: Icon.mail },
     ],
   },
   {
-    title: 'Administration',
+    title: 'Administrasi',
     items: [
-      { name: 'Role Permissions', href: '/role-permissions', icon: Icon.check },
-      { name: 'Endpoint Permissions', href: '/endpoint-permissions', icon: Icon.list },
+      { name: 'Hak Akses Peran', href: '/role-permissions', icon: Icon.check },
+      { name: 'Hak Akses Endpoint', href: '/endpoint-permissions', icon: Icon.list },
       { name: 'Manajemen Personel', href: '/personel', icon: Icon.doc },
-      { name: 'Assign Stations', href: '/user-stations', icon: Icon.building },
+      { name: 'Penugasan Stasiun', href: '/user-stations', icon: Icon.building },
     ],
   },
   {
@@ -118,7 +115,7 @@ const sections: NavSection[] = [
 
 const SideNav: React.FC = () => {
   const pathname = usePathname();
-  const { canEndpoint, loading, role } = usePermissions();
+  const { loading, role } = usePermissions();
 
   const isActive = (href: string) =>
     href === '/' ? pathname === '/' : pathname.startsWith(href);
@@ -126,16 +123,12 @@ const SideNav: React.FC = () => {
   const filteredSections = useMemo(() => {
     if (loading) return [];
 
-    console.log('Current role:', role);
-
-    // Filter sections based on user role
     const roleBasedSections = sections.map(section => {
-      if (section.title === 'Overview') {
-        return section; // Dashboard always available
+      if (section.title === 'Ringkasan') {
+        return section;
       }
 
-      if (section.title === 'Administration') {
-        // Only admin can see administration section
+      if (section.title === 'Administrasi') {
         if (role === 'admin') {
           return section;
         }
@@ -143,37 +136,29 @@ const SideNav: React.FC = () => {
       }
 
       if (section.title === 'Master Data') {
-        // Admin and calibrator can see Master Data
         if (role === 'admin' || role === 'calibrator') {
           return section;
         }
         return { ...section, items: [] };
       }
 
-      if (section.title === 'Documents') {
-        // Show Certificates to all roles (list is personalized on the page)
+      if (section.title === 'Dokumen') {
         const filteredItems = section.items.filter(item => {
-          if (item.name === 'Letters') {
-            // Only admin and assignor can see letters
+          if (item.href === '/letters') {
             return role === 'admin' || role === 'assignor';
           }
-          if (item.name === 'Certificate Logs') {
-            // Certificate Logs visible to admin and assignor only
+          if (item.href === '/certificate-logs') {
             return role === 'admin' || role === 'assignor';
           }
-          if (item.name === 'Certificates') {
-            // Hide Certificates for verifikator and assignor
+          if (item.href === '/certificates') {
             return role !== 'verifikator' && role !== 'assignor';
           }
-          return true; // Draft View already removed above
+          return true;
         });
 
-
-
-        // Keep Certificate Verification for verifikator and assignor roles
         if (role === 'verifikator' || role === 'assignor') {
           filteredItems.push({
-            name: 'Certificate Verification',
+            name: 'Verifikasi Sertifikat',
             href: '/certificate-verification',
             icon: Icon.check
           });
@@ -182,10 +167,8 @@ const SideNav: React.FC = () => {
         return { ...section, items: filteredItems };
       }
 
-      // For other sections, check permissions
       const filteredItems = section.items.filter(item => {
-        // Instruments, Stations - hidden for verifikator and assignor
-        if (['Instruments', 'Stations'].includes(item.name)) {
+        if (['/instruments', '/stations'].includes(item.href)) {
           if (role === 'verifikator' || role === 'assignor') {
             return false;
           }
@@ -230,14 +213,12 @@ const SideNav: React.FC = () => {
 
   return (
     <aside id="sidenav-container" className="h-screen sticky top-0 bg-gradient-to-b from-slate-800 to-blue-900 border-r border-slate-700 flex flex-col w-64 shadow-2xl">
-      {/* Logo Section - Flat Design */}
       <div className="px-4 py-4 border-b border-slate-700">
         <div className="flex flex-col items-center text-center">
-          {/* Logo tanpa background card */}
           <div className="mb-4 p-2 relative w-[180px] h-[60px] flex items-center justify-center">
             <Image
               src="/simkal_horizontal.png"
-              alt="SIMKAL Logo"
+              alt="Logo SIMKAL"
               fill
               className="drop-shadow-lg object-contain object-center"
               style={{ filter: 'none' }}
@@ -245,16 +226,15 @@ const SideNav: React.FC = () => {
             />
           </div>
 
-          <p className="text-blue-200 text-xs font-medium">BMKG Calibration System</p>
+          <p className="text-blue-200 text-xs font-medium">Sistem Kalibrasi BMKG</p>
         </div>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 p-4 overflow-y-auto space-y-6">
         {filteredSections.length === 0 ? (
           <div className="text-center text-slate-400 py-8">
-            <p>No menus available</p>
-            <p className="text-sm">Check your permissions</p>
+            <p>Tidak ada menu yang tersedia</p>
+            <p className="text-sm">Periksa hak akses akun Anda</p>
           </div>
         ) : (
           filteredSections.map((section) => (
@@ -291,9 +271,8 @@ const SideNav: React.FC = () => {
         )}
       </nav>
 
-      {/* Footer */}
       <div className="p-4 border-t border-slate-700">
-        <p className="text-xs text-slate-400 text-center font-medium">v1.0 • BMKG Calibration</p>
+        <p className="text-xs text-slate-400 text-center font-medium">v1.0 • Kalibrasi BMKG</p>
       </div>
     </aside>
   );

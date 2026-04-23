@@ -66,6 +66,28 @@ const formatDateTime = (value: string | null | undefined) => {
   return new Date(value).toLocaleString('id-ID')
 }
 
+const getGreetingByHour = (date: Date) => {
+  const hour = date.getHours()
+
+  if (hour >= 4 && hour < 11) return 'Selamat pagi'
+  if (hour >= 11 && hour < 15) return 'Selamat siang'
+  if (hour >= 15 && hour < 18) return 'Selamat sore'
+  return 'Selamat malam'
+}
+
+const getDisplayName = (email?: string | null) => {
+  if (!email) return 'Pengguna'
+
+  const baseName = email.split('@')[0]?.replace(/[._-]+/g, ' ').trim()
+  if (!baseName) return 'Pengguna'
+
+  return baseName
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
 const EmptyState: React.FC<{ title: string; description: string }> = ({ title, description }) => (
   <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
     <p className="text-sm font-semibold text-slate-900">{title}</p>
@@ -79,6 +101,8 @@ const RoleBasedDashboard: React.FC = () => {
   const [dashboardData, setDashboardData] = useState<DashboardData>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const greeting = getGreetingByHour(new Date())
+  const displayName = getDisplayName(user?.email)
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -89,7 +113,7 @@ const RoleBasedDashboard: React.FC = () => {
 
         const { data: { session } } = await import('../../../lib/supabase').then((module) => module.supabase.auth.getSession())
         if (!session) {
-          setError('No active session')
+          setError('Sesi aktif tidak ditemukan')
           return
         }
 
@@ -101,14 +125,14 @@ const RoleBasedDashboard: React.FC = () => {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}))
-          throw new Error(errorData.error || 'Failed to load dashboard data')
+          throw new Error(errorData.error || 'Gagal memuat data dashboard')
         }
 
         const data = await response.json()
         setDashboardData(data)
         setError(null)
       } catch (fetchError: any) {
-        setError(fetchError?.message || 'Failed to load dashboard data')
+        setError(fetchError?.message || 'Gagal memuat data dashboard')
       } finally {
         setLoading(false)
       }
@@ -148,9 +172,9 @@ const RoleBasedDashboard: React.FC = () => {
   return (
     <div className="space-y-6">
       <section className="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-blue-50 p-8 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Dashboard Personal</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Ringkasan Kerja</p>
         <h2 className="mt-3 text-2xl font-semibold text-slate-950">
-          {dashboardData.title || 'Dashboard'}
+          {greeting}, {displayName}
         </h2>
         <p className="mt-2 max-w-3xl text-sm text-slate-600">
           {dashboardData.subtitle || 'Ringkasan informasi yang paling relevan untuk akun Anda.'}

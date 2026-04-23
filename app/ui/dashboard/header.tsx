@@ -14,6 +14,36 @@ interface Notification {
   created_at: string;
 }
 
+const formatDisplayName = (email?: string | null) => {
+  if (!email) return 'Pengguna';
+
+  const baseName = email.split('@')[0]?.replace(/[._-]+/g, ' ').trim();
+  if (!baseName) return 'Pengguna';
+
+  return baseName
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+};
+
+const formatRoleLabel = (role?: string | null) => {
+  switch (role) {
+    case 'admin':
+      return 'Admin';
+    case 'calibrator':
+      return 'Petugas Kalibrasi';
+    case 'verifikator':
+      return 'Verifikator';
+    case 'assignor':
+      return 'Penandatangan';
+    case 'user_station':
+      return 'User Stasiun';
+    default:
+      return 'Pengguna';
+  }
+};
+
 const Header: React.FC = () => {
   const { user, signOut } = useAuth();
   const { role } = usePermissions();
@@ -22,6 +52,14 @@ const Header: React.FC = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(true);
+  const displayName = formatDisplayName(user?.email);
+  const roleLabel = formatRoleLabel(role);
+  const todayLabel = new Date().toLocaleDateString('id-ID', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
@@ -97,18 +135,21 @@ const Header: React.FC = () => {
   };
 
   return (
-    <header className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
-      <div className="flex items-center justify-between">
-        {/* Page Title */}
-        <div className="flex-1">
-          {/* <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-sm text-gray-600 mt-1">Welcome back, {user?.email?.split('@')[0] || 'User'}</p> */}
+    <header className="border-b border-slate-200 bg-white/95 px-6 py-4 shadow-sm backdrop-blur">
+      <div className="flex items-center justify-between gap-6">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Area Kerja</p>
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <h1 className="text-lg font-semibold text-slate-900">SIMKAL</h1>
+            <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-medium text-cyan-700">
+              {roleLabel}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-slate-500">{todayLabel}</p>
         </div>
 
-        {/* Right Side Actions */}
         <div className="flex items-center space-x-4">
-          {/* Search Bar */}
-          <div className="relative">
+          <div className="relative hidden md:block">
             <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
               <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -116,16 +157,15 @@ const Header: React.FC = () => {
             </div>
             <input
               type="text"
-              placeholder="Search..."
-              className="block w-64 pl-4 pr-10 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-gray-900 placeholder-gray-500"
+              placeholder="Cari..."
+              className="block w-72 rounded-xl border border-slate-300 bg-slate-50 pl-4 pr-10 py-2 text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
             />
           </div>
 
-          {/* Notifications */}
           <div className="relative">
             <button
               onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-300 border border-transparent hover:border-cyan-500/50"
+              className="rounded-xl border border-slate-200 p-2 text-slate-600 transition-all duration-300 hover:border-cyan-500/50 hover:bg-slate-50 hover:text-slate-900"
             >
               <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-5 5v-5zM12 2a7 7 0 00-7 7v3.586l-1.293 1.293A1 1 0 004 15h16a1 1 0 00.707-1.707L19 12.586V9a7 7 0 00-7-7z" />
@@ -141,18 +181,18 @@ const Header: React.FC = () => {
             {isNotificationOpen && (
               <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
                 <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-                  <h3 className="text-lg font-semibold text-gray-900">Notifications</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Notifikasi</h3>
                   {unreadCount > 0 && (
                     <button onClick={handleMarkAllAsRead} className="text-xs text-blue-600 hover:underline">
-                      Mark all as read
+                      Tandai semua dibaca
                     </button>
                   )}
                 </div>
                 <div className="max-h-80 overflow-y-auto">
                     {loadingNotifications ? (
-                        <div className="p-4 text-center text-gray-500">Loading...</div>
+                        <div className="p-4 text-center text-gray-500">Memuat...</div>
                     ) : notifications.length === 0 ? (
-                        <div className="p-4 text-center text-gray-500">No new notifications.</div>
+                        <div className="p-4 text-center text-gray-500">Belum ada notifikasi baru.</div>
                     ) : (
                         notifications.map(notification => (
                             <div 
@@ -177,11 +217,10 @@ const Header: React.FC = () => {
             )}
           </div>
 
-          {/* Profile */}
           <div className="relative">
             <button
               onClick={() => setIsProfileOpen(!isProfileOpen)}
-              className="flex items-center space-x-3 p-2 hover:bg-gray-100 rounded-lg transition-all duration-300 border border-transparent hover:border-cyan-500 group"
+              className="group flex items-center space-x-3 rounded-xl border border-slate-200 bg-white px-3 py-2 transition-all duration-300 hover:border-cyan-500 hover:bg-slate-50"
             >
               <div className="relative">
                 <div className="w-9 h-9 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center shadow-lg">
@@ -189,14 +228,13 @@ const Header: React.FC = () => {
                     {user?.email?.charAt(0).toUpperCase() || 'U'}
                   </span>
                 </div>
-                {/* Ambient Light Effect */}
                 <div className="absolute -inset-1 bg-cyan-500/20 rounded-full blur-sm group-hover:bg-cyan-500/30 transition-all duration-300"></div>
               </div>
               <div className="text-left">
                 <p className="text-sm font-medium text-gray-900">
-                  {user?.email?.split('@')[0] || 'User'}
+                  {displayName}
                 </p>
-                <p className="text-xs text-gray-500 capitalize">{role ? role.replace('_', ' ') : 'User'}</p>
+                <p className="text-xs text-gray-500">{roleLabel}</p>
               </div>
               <svg className="h-4 w-4 text-gray-500 group-hover:text-gray-700 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -206,7 +244,6 @@ const Header: React.FC = () => {
             {/* Profile Dropdown */}
             {isProfileOpen && (
               <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
-                {/* User Info */}
                 <div className="p-4 border-b border-gray-200">
                   <div className="flex items-center space-x-3">
                     <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center">
@@ -216,7 +253,7 @@ const Header: React.FC = () => {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-900">
-                        {user?.email?.split('@')[0] || 'User'}
+                        {displayName}
                       </p>
                       <p className="text-xs text-gray-500">{user?.email}</p>
                     </div>
@@ -228,14 +265,14 @@ const Header: React.FC = () => {
                     <svg className="h-4 w-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
-                    Profile Settings
+                    Pengaturan Profil
                   </a>
                   <a href="/account-settings" className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors">
                     <svg className="h-4 w-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
-                    Account Settings
+                    Pengaturan Akun
                   </a>
 
                   
@@ -248,7 +285,7 @@ const Header: React.FC = () => {
                     <svg className="h-4 w-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                     </svg>
-                    Sign out
+                    Keluar
                   </button>
                 </div>
               </div>

@@ -9,10 +9,42 @@ import { supabase } from '../../lib/supabase'
 import { useAlert } from '../../hooks/useAlert'
 import Alert from '../../components/ui/Alert'
 import { EditButton, DeleteButton } from '../../components/ui/ActionIcons'
+import SearchableDropdown from '../../components/ui/SearchableDropdown'
 
+const roleOptions = [
+  { id: '', name: 'Tidak ada role' },
+  { id: 'admin', name: 'Admin' },
+  { id: 'calibrator', name: 'Petugas Kalibrasi' },
+  { id: 'verifikator', name: 'Verifikator' },
+  { id: 'assignor', name: 'Penandatangan' },
+  { id: 'user_station', name: 'User Stasiun' },
+]
 
+const formatRoleLabel = (role?: string | null) => {
+  if (!role) return '-'
 
-const roles: Person['role'][] = ['admin', 'calibrator', 'verifikator', 'assignor', 'user_station']
+  const foundRole = roleOptions.find((option) => option.id === role)
+  if (foundRole) return foundRole.name
+
+  return role.split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+}
+
+const getRoleBadgeClass = (role?: string | null) => {
+  switch (role) {
+    case 'admin':
+      return 'border-red-200 bg-red-50 text-red-700'
+    case 'calibrator':
+      return 'border-blue-200 bg-blue-50 text-blue-700'
+    case 'verifikator':
+      return 'border-amber-200 bg-amber-50 text-amber-700'
+    case 'assignor':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+    case 'user_station':
+      return 'border-cyan-200 bg-cyan-50 text-cyan-700'
+    default:
+      return 'border-slate-200 bg-slate-50 text-slate-600'
+  }
+}
 
 const PersonelPage: React.FC = () => {
   const {
@@ -73,21 +105,13 @@ const PersonelPage: React.FC = () => {
     if (!isRegisterOpen) return
     const loadStations = async () => {
       try {
-        const r = await fetch('/api/stations?page=1&pageSize=100')
-        const d = await r.json()
-        if (r.ok) {
-          const first = Array.isArray(d) ? d : (d?.data ?? [])
-          const totalPages = (Array.isArray(d) ? 1 : (d?.totalPages ?? 1)) as number
-          if (totalPages > 1) {
-            const rest = await Promise.all(Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-              .map(p => fetch(`/api/stations?page=${p}&pageSize=100`).then(res => res.ok ? res.json() : { data: [] })))
-            const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
-            setStations([...first, ...restData])
-          } else {
-            setStations(first)
-          }
-        }
-      } catch { }
+        const response = await fetch('/api/stations/all')
+        const data = await response.json().catch(() => [])
+        if (!response.ok) throw new Error('Gagal memuat data stasiun')
+        setStations(Array.isArray(data) ? data : [])
+      } catch {
+        setStations([])
+      }
     }
     loadStations()
   }, [isRegisterOpen])
@@ -118,49 +142,31 @@ const PersonelPage: React.FC = () => {
     setRegError(null)
     setRegSuccess(null)
     try {
-      const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/confirm-email` : undefined
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: regForm.email,
-        password: regForm.password,
-        options: {
-          emailRedirectTo: redirectTo,
-          data: { name: regForm.name, phone: regForm.phone, nip: regForm.nip, nik: regForm.nik },
-        },
-      })
-      if (signUpError) throw new Error(signUpError.message)
-      const userId = signUpData.user?.id
-      if (!userId) throw new Error('Failed to get user id')
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Sesi admin tidak ditemukan')
 
-      const res = await fetch('/api/personel', {
+      const res = await fetch('/api/personel/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
         body: JSON.stringify({
-          id: userId,
           name: regForm.name,
           nip: regForm.nip,
           nik: regForm.nik,
           phone: regForm.phone,
           email: regForm.email,
+          password: regForm.password,
+          role: regForm.role || null,
+          station_id: regForm.station_id || null,
         }),
       })
       const body = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(body?.error || 'Failed to save personel profile')
+      if (!res.ok) throw new Error(body?.error || 'Gagal mendaftarkan personel')
 
-      if (regForm.role) {
-        if (regForm.role === 'user_station' && !regForm.station_id) {
-          throw new Error('Untuk role user_station, wajib memilih Station.')
-        }
-        const roleRes = await fetch('/api/user-roles', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_id: userId, role: regForm.role, station_id: regForm.station_id ? parseInt(regForm.station_id as any) : null })
-        })
-        const roleBody = await roleRes.json().catch(() => ({}))
-        if (!roleRes.ok) throw new Error(roleBody?.error || 'Gagal menyimpan role user')
-      }
-
-      setRegSuccess('Registrasi berhasil. Cek email untuk konfirmasi.')
-      showSuccess('Personel berhasil didaftarkan! Cek email untuk konfirmasi.')
+      setRegSuccess('Registrasi berhasil dibuat.')
+      showSuccess('Personel baru berhasil dibuat tanpa mengubah sesi admin.')
       setRegForm({ name: '', nip: '', nik: '', phone: '', email: '', password: '', role: '' as any, station_id: '' as any })
       await refresh()
       setTimeout(() => setIsRegisterOpen(false), 800)
@@ -222,7 +228,7 @@ const PersonelPage: React.FC = () => {
     }
   }
 
-  const saveRole = async (user_id: string, role: Person['role']) => {
+  const saveRole = async (user_id: string, role: Person['role'] | '') => {
     setSavingRole(user_id)
     try {
       const response = await fetch('/api/user-roles', {
@@ -234,8 +240,8 @@ const PersonelPage: React.FC = () => {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Failed to save role')
       }
-      setRoleLocal(user_id, role)
-      showSuccess(`Role berhasil diperbarui menjadi: ${role || 'Tidak ada role'}`)
+      setRoleLocal(user_id, (role || undefined) as Person['role'] | undefined)
+      showSuccess(`Role berhasil diperbarui menjadi: ${formatRoleLabel(role)}`)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to save role'
       showError(errorMessage)
@@ -273,6 +279,8 @@ const PersonelPage: React.FC = () => {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Cari berdasarkan nama atau email..."
+                    autoComplete="off"
+                    name="personel-search"
                     className="w-full max-w-sm px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                   />
                 </div>
@@ -314,18 +322,20 @@ const PersonelPage: React.FC = () => {
                               <div className="text-xs text-gray-500">{p.phone}</div>
                             </td>
                             <td className="px-6 py-4">
-                              {p.role ? p.role.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') : '-'}
+                              <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${getRoleBadgeClass(p.role)}`}>
+                                {formatRoleLabel(p.role)}
+                              </span>
                             </td>
                             <td className="px-6 py-4">
-                              <select
+                              <SearchableDropdown
                                 value={p.role || ''}
-                                onChange={(e) => saveRole(p.id, e.target.value as any)}
-                                className="px-2 py-1 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
-                                disabled={savingRole === p.id}
-                              >
-                                <option value="">- Pilih Role -</option>
-                                {roles.map(r => <option key={r} value={r}>{r}</option>)}
-                              </select>
+                                onChange={(value) => saveRole(p.id, (value || '') as Person['role'] | '')}
+                                options={roleOptions}
+                                placeholder="Pilih role"
+                                searchPlaceholder="Cari role..."
+                                emptyLabel="Role tidak ditemukan"
+                                className="min-w-[220px]"
+                              />
                               {savingRole === p.id && <span className="ml-2 text-xs text-gray-500">Menyimpan...</span>}
                             </td>
                             <td className="px-6 py-4 text-center space-x-2">
@@ -365,26 +375,26 @@ const PersonelPage: React.FC = () => {
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
           <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl p-6 m-4">
             <h3 className="text-xl font-semibold mb-6 text-gray-800">Edit Personel</h3>
-            <form onSubmit={savePerson} className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+            <form onSubmit={savePerson} autoComplete="off" className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nama</label>
-                <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                <input autoComplete="off" name="edit-personel-name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                <input autoComplete="off" name="edit-personel-email" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                <input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                <input autoComplete="off" name="edit-personel-phone" value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">NIP</label>
-                <input value={form.nip || ''} onChange={e => setForm({ ...form, nip: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                <input autoComplete="off" name="edit-personel-nip" value={form.nip || ''} onChange={e => setForm({ ...form, nip: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">NIK</label>
-                <input value={(form as any).nik || ''} onChange={e => setForm({ ...form, nik: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="Nomor Induk Kependudukan" />
+                <input autoComplete="off" name="edit-personel-nik" value={(form as any).nik || ''} onChange={e => setForm({ ...form, nik: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="Nomor Induk Kependudukan" />
               </div>
               <div className="sm:col-span-2 flex justify-end gap-3 pt-4 mt-2 border-t">
                 <button type="button" onClick={closeModal} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors">Batal</button>
@@ -401,25 +411,25 @@ const PersonelPage: React.FC = () => {
             <h3 className="text-xl font-semibold mb-6 text-gray-800">Registrasi Personel Baru</h3>
             {regError && <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{regError}</div>}
             {regSuccess && <div className="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">{regSuccess}</div>}
-            <form onSubmit={submitRegistration} className="space-y-8">
+            <form onSubmit={submitRegistration} autoComplete="off" className="space-y-8">
               <div>
                 <h4 className="text-base font-semibold text-gray-900 mb-3">Informasi Personel</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                    <input required value={regForm.name} onChange={e => setRegForm({ ...regForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input required autoComplete="off" name="register-personel-name" value={regForm.name} onChange={e => setRegForm({ ...regForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">NIP</label>
-                    <input value={regForm.nip} onChange={e => setRegForm({ ...regForm, nip: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input autoComplete="off" name="register-personel-nip" value={regForm.nip} onChange={e => setRegForm({ ...regForm, nip: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">NIK</label>
-                    <input value={regForm.nik} onChange={e => setRegForm({ ...regForm, nik: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nomor Induk Kependudukan" />
+                    <input autoComplete="off" name="register-personel-nik" value={regForm.nik} onChange={e => setRegForm({ ...regForm, nik: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nomor Induk Kependudukan" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                    <input value={regForm.phone} onChange={e => setRegForm({ ...regForm, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input autoComplete="off" name="register-personel-phone" value={regForm.phone} onChange={e => setRegForm({ ...regForm, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>
               </div>
@@ -429,12 +439,12 @@ const PersonelPage: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                    <input required type="email" value={regForm.email} onChange={e => setRegForm({ ...regForm, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input required autoComplete="off" name="register-personel-email" type="email" value={regForm.email} onChange={e => setRegForm({ ...regForm, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
                     <div className="relative">
-                      <input required type={showPass ? 'text' : 'password'} value={regForm.password} onChange={e => setRegForm({ ...regForm, password: e.target.value })} className="w-full px-3 py-2 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <input required autoComplete="new-password" name="register-personel-password" type={showPass ? 'text' : 'password'} value={regForm.password} onChange={e => setRegForm({ ...regForm, password: e.target.value })} className="w-full px-3 py-2 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                       <button type="button" onClick={() => setShowPass(s => !s)} className="absolute inset-y-0 right-0 px-3 text-sm text-gray-600 hover:text-gray-800">{showPass ? 'Hide' : 'Show'}</button>
                     </div>
                     <div className="mt-2">
@@ -446,23 +456,32 @@ const PersonelPage: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                    <select value={(regForm as any).role || ''} onChange={e => setRegForm({ ...regForm, role: e.target.value as any })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="">Pilih Role</option>
-                      <option value="admin">Admin</option>
-                      <option value="calibrator">Calibrator</option>
-                      <option value="verifikator">Verifikator</option>
-                      <option value="assignor">Assignor</option>
-                      <option value="user_station">User Station</option>
-                    </select>
+                    <SearchableDropdown
+                      value={(regForm as any).role || ''}
+                      onChange={(value) => setRegForm({ ...regForm, role: (value || '') as any })}
+                      options={roleOptions.filter((option) => option.id !== '')}
+                      placeholder="Pilih role"
+                      searchPlaceholder="Cari role..."
+                      emptyLabel="Role tidak ditemukan"
+                    />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Station (opsional)</label>
-                    <select value={(regForm as any).station_id || ''} onChange={e => setRegForm({ ...regForm, station_id: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="">Tidak ada</option>
-                      {stations.map(s => (
-                        <option key={s.id} value={String(s.id)}>{s.name} ({s.station_id})</option>
-                      ))}
-                    </select>
+                    <SearchableDropdown
+                      value={(regForm as any).station_id || ''}
+                      onChange={(value) => setRegForm({ ...regForm, station_id: value ? String(value) : '' })}
+                      options={[
+                        { id: '', name: 'Tidak ada' },
+                        ...stations.map((station) => ({
+                          id: String(station.id),
+                          name: station.name,
+                          description: station.station_id ? `ID Stasiun: ${station.station_id}` : undefined,
+                        }))
+                      ]}
+                      placeholder="Pilih stasiun"
+                      searchPlaceholder="Cari nama atau ID stasiun..."
+                      emptyLabel="Stasiun tidak ditemukan"
+                    />
                     <p className="text-xs text-gray-500 mt-1">Khusus role user_station, pilih stasiun yang terkait.</p>
                   </div>
                 </div>
