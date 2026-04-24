@@ -373,6 +373,11 @@ const CertificatesCRUD: React.FC = () => {
   const [isRejectionNotesModalOpen, setIsRejectionNotesModalOpen] = useState(false)
   const [selectedRejectionCertificate, setSelectedRejectionCertificate] = useState<Certificate | null>(null)
 
+  // Filter & search state untuk daftar sertifikat
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterStatus, setFilterStatus] = useState<'all' | 'draft' | 'sent' | 'verified' | 'rejected' | 'completed'>('all')
+  const [filterStation, setFilterStation] = useState<'all' | string>('all')
+
   // Menutup dropdown action saat klik di luar
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -383,6 +388,11 @@ const CertificatesCRUD: React.FC = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Reset halaman ke 1 setiap kali filter / pencarian berubah
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, filterStatus, filterStation])
 
   const [editing, setEditing] = useState<Certificate | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -1224,10 +1234,35 @@ type ResultItem = {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.instrument, sensors.length, instruments.length]);
 
-  // Pagination + personalization: only show certificates assigned to the current user
+  // Pagination + personalization
   const isUserAssigned = (item: Certificate) => {
     const uid = user?.id ? String(user.id) : null
     if (!uid) return false
+
+    if (role === 'user_station') {
+      const stationIds = new Set(stations.map((station) => String(station.id)))
+      const instrumentIds = new Set(instruments.map((instrument) => String(instrument.id)))
+      const itemStationId = item.station !== undefined && item.station !== null ? String(item.station) : null
+      const itemInstrumentId = item.instrument !== undefined && item.instrument !== null ? String(item.instrument) : null
+      const directAssignedFields = [
+        (item as any).authorized_by,
+        (item as any).verifikator_1,
+        (item as any).verifikator_2,
+        (item as any).verifikator_3,
+        (item as any).assignor,
+        (item as any).sent_by,
+        (item as any).created_by,
+        (item as any).creator_id,
+        (item as any).owner,
+        (item as any).owner_id,
+      ]
+
+      if (itemStationId && stationIds.has(itemStationId)) return true
+      if (itemInstrumentId && instrumentIds.has(itemInstrumentId)) return true
+      if (directAssignedFields.some((field) => field !== undefined && field !== null && String(field) === uid)) return true
+      return false
+    }
+
     const directFields = [
       (item as any).authorized_by,
       (item as any).verifikator_1,
@@ -1247,7 +1282,41 @@ type ResultItem = {
     return false
   }
 
-  const allowedCertificates = certificates.filter(isUserAssigned)
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase()
+
+  const allowedCertificates = certificates
+    .filter(isUserAssigned)
+    // Role user_station hanya boleh melihat sertifikat yang sudah selesai (ditandatangani).
+    .filter((item) => role !== 'user_station' || (item.status || '').toLowerCase() === 'completed')
+    // Filter status (terapkan hanya jika bukan 'all')
+    .filter((item) => {
+      if (filterStatus === 'all') return true
+      const itemStatus = (item.status || 'draft').toLowerCase()
+      return itemStatus === filterStatus
+    })
+    // Filter stasiun (terapkan hanya jika bukan 'all')
+    .filter((item) => {
+      if (filterStation === 'all') return true
+      return String(item.station ?? '') === filterStation
+    })
+    // Pencarian teks bebas
+    .filter((item) => {
+      if (!normalizedSearchQuery) return true
+      const instrumentName = instruments.find((inst) => inst.id === item.instrument)?.name || ''
+      const stationName = stations.find((st) => st.id === item.station)?.name || ''
+      const haystack = [
+        item.no_certificate,
+        item.no_order,
+        item.no_identification,
+        instrumentName,
+        stationName,
+        item.status,
+      ]
+        .filter((value) => value !== undefined && value !== null)
+        .map((value) => String(value).toLowerCase())
+        .join(' | ')
+      return haystack.includes(normalizedSearchQuery)
+    })
 
   const indexOfLastItem = currentPage * itemsPerPage
   const indexOfFirstItem = indexOfLastItem - itemsPerPage
@@ -1830,6 +1899,105 @@ type ResultItem = {
         </div>
       )}
 
+      {/* Filter & Search Bar */}
+      <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <div className="relative flex-1 lg:max-w-md">
+            <svg
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              id="certificate-search-input"
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cari no. sertifikat, no. order, instrumen, atau stasiun..."
+              className="w-full pl-10 pr-10 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e377c]/40 focus:border-[#1e377c] text-sm bg-white transition-all"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition-colors"
+                aria-label="Bersihkan pencarian"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label htmlFor="certificate-filter-status" className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+                Status
+              </label>
+              <select
+                id="certificate-filter-status"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
+                className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e377c]/40 focus:border-[#1e377c] text-sm bg-white transition-all"
+              >
+                <option value="all">Semua Status</option>
+                <option value="draft">Draft</option>
+                <option value="sent">Sent</option>
+                <option value="verified">Verified</option>
+                <option value="rejected">Rejected</option>
+                <option value="completed">Completed</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label htmlFor="certificate-filter-station" className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+                Stasiun
+              </label>
+              <select
+                id="certificate-filter-station"
+                value={filterStation}
+                onChange={(e) => setFilterStation(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e377c]/40 focus:border-[#1e377c] text-sm bg-white transition-all max-w-[220px] truncate"
+              >
+                <option value="all">Semua Stasiun</option>
+                {stations.map((station) => (
+                  <option key={station.id} value={String(station.id)}>
+                    {station.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {(searchQuery || filterStatus !== 'all' || filterStation !== 'all') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('')
+                  setFilterStatus('all')
+                  setFilterStation('all')
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-800 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Reset Filter
+              </button>
+            )}
+          </div>
+        </div>
+
+        {(searchQuery || filterStatus !== 'all' || filterStation !== 'all') && (
+          <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500">
+            Menampilkan <span className="font-semibold text-gray-800">{allowedCertificates.length}</span> sertifikat hasil filter
+          </div>
+        )}
+      </div>
+
       {/* Tabel dengan card elegan */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
@@ -1844,6 +2012,59 @@ type ResultItem = {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
+              {currentCertificates.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-12">
+                    <div className="flex flex-col items-center justify-center text-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#1e377c] mb-3">
+                        <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      {(searchQuery || filterStatus !== 'all' || filterStation !== 'all') ? (
+                        <>
+                          <p className="text-sm font-semibold text-gray-900">Tidak ada sertifikat sesuai filter</p>
+                          <p className="mt-1 text-xs text-gray-500 max-w-md">
+                            Coba ubah kata kunci pencarian atau reset filter untuk melihat sertifikat lain.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSearchQuery('')
+                              setFilterStatus('all')
+                              setFilterStation('all')
+                            }}
+                            className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#1e377c] border border-[#1e377c]/30 rounded-lg hover:bg-[#1e377c]/5 transition-colors"
+                          >
+                            Reset Filter
+                          </button>
+                        </>
+                      ) : role === 'user_station' ? (
+                        <>
+                          <p className="text-sm font-semibold text-gray-900">Belum ada sertifikat selesai</p>
+                          <p className="mt-1 text-xs text-gray-500 max-w-md">
+                            Daftar menampilkan hanya sertifikat berstatus <strong>Completed</strong> untuk stasiun yang ditugaskan ke akun Anda. Belum ada sertifikat yang memenuhi kriteria tersebut.
+                          </p>
+                        </>
+                      ) : certificates.length === 0 ? (
+                        <>
+                          <p className="text-sm font-semibold text-gray-900">Belum ada sertifikat</p>
+                          <p className="mt-1 text-xs text-gray-500 max-w-md">
+                            Sistem belum memiliki sertifikat. Gunakan tombol &quot;Create New&quot; untuk membuat sertifikat baru.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-sm font-semibold text-gray-900">Tidak ada sertifikat yang relevan</p>
+                          <p className="mt-1 text-xs text-gray-500 max-w-md">
+                            Belum ada sertifikat yang sesuai dengan akun Anda. Sertifikat akan tampil di sini setelah Anda ditugaskan sebagai pembuat, verifikator, atau penandatangan.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )}
               {currentCertificates.map((item) => (
                 <tr key={item.id} className="hover:bg-blue-50/30 transition-colors duration-200">
                   <td className="px-4 py-3">
@@ -1934,7 +2155,82 @@ type ResultItem = {
                       </button>
 
                       {/* Dropdown Menu */}
-                      {actionDropdownOpenId === item.id && (
+                      {actionDropdownOpenId === item.id && role === 'user_station' && (
+                        <div className="absolute right-0 mt-2 w-48 rounded-xl shadow-xl bg-white ring-1 ring-black ring-opacity-5 z-[50] py-1 animate-in fade-in slide-in-from-top-2 duration-200 border border-gray-100">
+                          <div className="py-1">
+                            {item.pdf_path ? (
+                              <>
+                                <a
+                                  href={`/api/certificates/${item.id}/pdf?t=${encodeURIComponent(String((item as any).pdf_generated_at || Date.now()))}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
+                                >
+                                  <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  View Signed PDF
+                                </a>
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      const pdfEndpoint = `/api/certificates/${item.id}/pdf?download=true&t=${Date.now()}`
+                                      const response = await fetch(pdfEndpoint, { cache: 'no-store' })
+                                      if (!response.ok) throw new Error('Failed to get PDF')
+
+                                      const contentType = response.headers.get('Content-Type') || ''
+                                      if (!contentType.toLowerCase().includes('application/pdf')) {
+                                        const errorText = await response.text().catch(() => '')
+                                        throw new Error(`Response download bukan PDF yang valid.${errorText ? ` ${errorText.slice(0, 160)}` : ''}`)
+                                      }
+
+                                      const contentDisposition = response.headers.get('Content-Disposition')
+                                      let filename = `Certificate_${item.no_certificate || item.id}.pdf`
+                                      if (contentDisposition) {
+                                        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i)
+                                        if (filenameMatch && filenameMatch[1]) {
+                                          filename = filenameMatch[1].replace(/['"]/g, '')
+                                          if (filename.includes('%')) filename = decodeURIComponent(filename)
+                                        }
+                                      }
+
+                                      if (!filename.toLowerCase().endsWith('.pdf')) filename = `${filename}.pdf`
+
+                                      const blob = await response.blob()
+                                      const url = window.URL.createObjectURL(blob)
+                                      const a = document.createElement('a')
+                                      a.href = url
+                                      a.download = filename
+                                      a.type = 'application/pdf'
+                                      document.body.appendChild(a)
+                                      a.click()
+                                      window.URL.revokeObjectURL(url)
+                                      document.body.removeChild(a)
+                                      setActionDropdownOpenId(null)
+                                    } catch (err) {
+                                      console.error('Error downloading PDF:', err)
+                                      showError('Failed to download PDF. Please try again.')
+                                    }
+                                  }}
+                                  className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
+                                >
+                                  <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  Download Signed PDF
+                                </button>
+                              </>
+                            ) : (
+                              <div className="px-4 py-3 text-xs text-gray-500 italic text-center">
+                                File PDF tertandatangan belum tersedia.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Dropdown Menu - full version untuk role selain user_station */}
+                      {actionDropdownOpenId === item.id && role !== 'user_station' && (
                         <div className="absolute right-0 mt-2 w-48 rounded-xl shadow-xl bg-white ring-1 ring-black ring-opacity-5 z-[50] py-1 animate-in fade-in slide-in-from-top-2 duration-200 border border-gray-100 divide-y divide-gray-50">
                           {/* VIEW GROUP */}
                           <div className="py-1">
@@ -4255,27 +4551,12 @@ type ResultItem = {
                       <span className="font-medium text-gray-700">Ditolak Oleh:</span>
                       <p className="text-gray-900 mt-1">{rejectedBy || '-'}</p>
                     </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Kategori Penolakan:</span>
-                      <p className="text-gray-900 mt-1">
-                        {latestRejection?.rejection_category_label || latestRejection?.rejection_category || '-'}
+                    <div className="col-span-2">
+                      <span className="font-medium text-gray-700">Catatan Reject:</span>
+                      <p className="text-gray-900 mt-1 whitespace-pre-wrap">
+                        {latestRejection?.rejection_reason || (selectedRejectionCertificate as any).rejection_reason || 'Catatan penolakan tidak tersedia.'}
                       </p>
                     </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Ulang Verifikasi Dari:</span>
-                      <p className="text-gray-900 mt-1">
-                        {latestRejection?.reset_from_level
-                          ? getVerificationLevelLabel(latestRejection.reset_from_level)
-                          : '-'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-                    <p className="text-sm font-medium text-red-800 mb-2">Alasan Penolakan</p>
-                    <p className="text-sm text-red-900 whitespace-pre-wrap">
-                      {latestRejection?.rejection_reason || (selectedRejectionCertificate as any).rejection_reason || 'Catatan penolakan tidak tersedia.'}
-                    </p>
                   </div>
 
                   {rejectionHistory.length > 1 && (

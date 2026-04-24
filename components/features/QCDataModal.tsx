@@ -197,7 +197,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
     const computeRowQC = (row: RawDataRow) => {
         const { value: stdCorrection, hasData: hasCertData } = getStdCorrection(row);
 
-        // Exact floating point math before rounding
+        // Exact floating point math — NO rounding applied so display matches raw DB values
         const rawStdCorrected = row.standard_data + stdCorrection;
 
         // Convert std_corrected to UUT unit when units differ
@@ -216,14 +216,11 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
         const rawUutCorrection = stdCorrectedInUutUnit - row.uut_data;
 
-        // Round to 3 decimal places (standard for calibration) to match Excel formulas
-        const round3 = (num: number) => Math.round((num + Number.EPSILON) * 1000) / 1000;
-
         return {
-            stdCorrection: round3(stdCorrection),
-            stdCorrected: round3(stdCorrectedInUutUnit),  // displayed in UUT unit
-            stdCorrectedRaw: round3(rawStdCorrected),     // original STD unit (for reference)
-            uutCorrection: round3(rawUutCorrection),
+            stdCorrection,                                // raw value
+            stdCorrected: stdCorrectedInUutUnit,          // raw value (displayed in UUT unit)
+            stdCorrectedRaw: rawStdCorrected,             // raw value (original STD unit)
+            uutCorrection: rawUutCorrection,              // raw value
             hasCertData,
             hasConversion,
             qc: checkQCResult(rawUutCorrection, activeSensorLimit),
@@ -258,12 +255,26 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
                 const uutAvg = groupData.reduce((sum, r) => sum + r.uut_data, 0) / groupData.length;
 
-                // Compute average correction from existing correctionMap
+                // Compute average correction from RAW (unrounded) per-row corrections
+                // PENTING: gunakan nilai raw, bukan yang sudah di-round3 di computeRowQC,
+                // supaya tidak ada double-rounding yang menggeser hasil akhir.
                 let correctionAvg = 0;
                 if (correctionMap.size > 0) {
                     const corrections = groupData.map(row => {
-                        const { uutCorrection } = computeRowQC(row);
-                        return uutCorrection;
+                        const stdCorrection = row.sensor_id_std
+                            ? (correctionMap.get(`${row.sensor_id_std}:${row.standard_data}`) ?? 0)
+                            : 0;
+                        const rawStdCorrected = row.standard_data + stdCorrection;
+                        const unitStd = row.unit_std || '';
+                        let unitUut = row.unit_uut || '';
+                        if (!unitUut && row.sensor_id_uut) {
+                            const uutSensor = sensors.find((s: any) => s.id === row.sensor_id_uut);
+                            unitUut = uutSensor?.graduating_unit || uutSensor?.range_capacity_unit || '';
+                        }
+                        const stdCorrectedInUutUnit = (unitStd && unitUut && needsConversion(unitStd, unitUut))
+                            ? convertUnit(rawStdCorrected, unitStd, unitUut)
+                            : rawStdCorrected;
+                        return stdCorrectedInUutUnit - row.uut_data;
                     });
                     correctionAvg = corrections.reduce((sum, c) => sum + c, 0) / corrections.length;
                 }

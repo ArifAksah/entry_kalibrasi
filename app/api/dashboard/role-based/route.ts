@@ -47,13 +47,47 @@ type CertificateRow = {
   created_at: string
   issue_date: string | null
   status: string | null
+  station?: number | null
+  instrument?: number | null
   version?: number | null
   verifikator_1?: string | null
   verifikator_2?: string | null
   verifikator_3?: string | null
   authorized_by?: string | null
+  sent_by?: string | null
+  assignor?: string | null
+  created_by?: string | null
   rejection_history?: any[] | null
   results?: any[] | null
+}
+
+type InstrumentRow = {
+  id: number
+  station_id?: number | null
+}
+
+type StationRow = {
+  id: number
+  name: string | null
+  station_wmo_id: string | number | null
+  address: string | null
+  region: string | null
+  province: string | null
+  regency: string | null
+}
+
+type StationSummary = {
+  id: number
+  name: string
+  station_wmo_id: string | null
+  address: string | null
+  region: string | null
+  province: string | null
+  regency: string | null
+  instrument_count: number
+  certificate_count: number
+  draft_count: number
+  completed_count: number
 }
 
 type VerificationRow = {
@@ -147,11 +181,129 @@ const buildRejectItems = (certificates: CertificateRow[]): RejectItem[] => {
 async function getCertificates() {
   const { data, error } = await supabaseAdmin
     .from('certificate')
-    .select('id, no_certificate, no_order, no_identification, created_at, issue_date, status, version, verifikator_1, verifikator_2, verifikator_3, authorized_by, rejection_history, results')
+    .select('id, no_certificate, no_order, no_identification, created_at, issue_date, status, station, instrument, version, verifikator_1, verifikator_2, verifikator_3, authorized_by, sent_by, assignor, created_by, rejection_history, results')
     .order('created_at', { ascending: false })
 
   if (error) throw new Error(error.message)
   return (data || []) as CertificateRow[]
+}
+
+async function getInstruments() {
+  const { data, error } = await supabaseAdmin
+    .from('instrument')
+    .select('id, station_id')
+
+  if (error) throw new Error(error.message)
+  return (data || []) as InstrumentRow[]
+}
+
+async function getUserStationIds(userId: string) {
+  const { data, error } = await supabaseAdmin
+    .from('user_stations')
+    .select('station_id')
+    .eq('user_id', userId)
+
+  if (error) throw new Error(error.message)
+  return new Set((data || []).map((item: any) => Number(item.station_id)))
+}
+
+async function getStationsByIds(stationIds: number[]) {
+  if (stationIds.length === 0) return [] as StationRow[]
+  const { data, error } = await supabaseAdmin
+    .from('station')
+    .select('id, name, station_wmo_id, address, region, province, regency')
+    .in('id', stationIds)
+    .order('name', { ascending: true })
+
+  if (error) throw new Error(error.message)
+  return (data || []) as StationRow[]
+}
+
+const buildStationSummaries = (
+  stations: StationRow[],
+  instruments: InstrumentRow[],
+  certificates: CertificateRow[]
+): StationSummary[] => {
+  return stations.map((station) => {
+    const instrumentIdsForStation = new Set(
+      instruments
+        .filter((instrument) => Number(instrument.station_id) === Number(station.id))
+        .map((instrument) => instrument.id)
+    )
+
+    const certsForStation = certificates.filter((certificate) => {
+      const stationMatch = certificate.station !== undefined && certificate.station !== null && Number(certificate.station) === Number(station.id)
+      const instrumentMatch = certificate.instrument !== undefined && certificate.instrument !== null && instrumentIdsForStation.has(Number(certificate.instrument))
+      return stationMatch || instrumentMatch
+    })
+
+    return {
+      id: Number(station.id),
+      name: station.name || `Stasiun #${station.id}`,
+      station_wmo_id: station.station_wmo_id !== null && station.station_wmo_id !== undefined ? String(station.station_wmo_id) : null,
+      address: station.address,
+      region: station.region,
+      province: station.province,
+      regency: station.regency,
+      instrument_count: instrumentIdsForStation.size,
+      certificate_count: certsForStation.length,
+      draft_count: certsForStation.filter((certificate) => certificate.status === 'draft').length,
+      completed_count: certsForStation.filter((certificate) => certificate.status === 'completed' || certificate.status === 'verified').length
+    }
+  })
+}
+
+const getDirectlyRelatedCertificates = (certificates: CertificateRow[], userId: string) => {
+  return certificates.filter((certificate) => {
+    const directFields = [
+      certificate.authorized_by,
+      certificate.verifikator_1,
+      certificate.verifikator_2,
+      certificate.verifikator_3,
+      certificate.sent_by,
+      certificate.assignor,
+      certificate.created_by,
+      (certificate as any).creator_id,
+      (certificate as any).owner,
+      (certificate as any).owner_id,
+    ]
+
+    return directFields.some((field) => field !== undefined && field !== null && String(field) === userId)
+  })
+}
+
+const getUserStationRelatedCertificates = (
+  certificates: CertificateRow[],
+  userId: string,
+  userStationIds: Set<number>,
+  instruments: InstrumentRow[]
+) => {
+  const userInstrumentIds = new Set(
+    instruments
+      .filter((instrument) => instrument.station_id !== undefined && instrument.station_id !== null && userStationIds.has(Number(instrument.station_id)))
+      .map((instrument) => instrument.id)
+  )
+
+  return certificates.filter((certificate) => {
+    const stationMatch = certificate.station !== undefined && certificate.station !== null && userStationIds.has(Number(certificate.station))
+    const instrumentMatch = certificate.instrument !== undefined && certificate.instrument !== null && userInstrumentIds.has(Number(certificate.instrument))
+
+    const directFields = [
+      certificate.authorized_by,
+      certificate.verifikator_1,
+      certificate.verifikator_2,
+      certificate.verifikator_3,
+      certificate.sent_by,
+      certificate.assignor,
+      certificate.created_by,
+      (certificate as any).creator_id,
+      (certificate as any).owner,
+      (certificate as any).owner_id,
+    ]
+    const directMatch = directFields.some((field) => field !== undefined && field !== null && String(field) === userId)
+
+    return stationMatch || instrumentMatch || directMatch
+  })
 }
 
 async function getVerifications(certificateIds: number[]) {
@@ -187,6 +339,7 @@ export async function GET(request: NextRequest) {
     const role = roleData.role
     const certificates = await getCertificates()
     const verifications = await getVerifications(certificates.map((certificate) => certificate.id))
+    const instruments = role === 'user_station' ? await getInstruments() : []
 
     if (role === 'verifikator') {
       const assignedCertificates = certificates.filter((certificate) =>
@@ -296,10 +449,17 @@ export async function GET(request: NextRequest) {
     }
 
     if (role === 'calibrator' || role === 'user_station') {
-      const totalCertificates = certificates.length
-      const draftCertificates = certificates.filter((certificate) => certificate.status === 'draft')
-      const returnedCertificates = certificates.filter((certificate) => certificate.status === 'draft' && latestRejection(certificate))
-      const completedCertificates = certificates.filter((certificate) => certificate.status === 'completed' || certificate.status === 'verified')
+      const userStationIds = role === 'user_station' ? await getUserStationIds(user.id) : new Set<number>()
+      const assignedStations = role === 'user_station' ? await getStationsByIds(Array.from(userStationIds)) : []
+
+      const relevantCertificates = role === 'user_station'
+        ? getUserStationRelatedCertificates(certificates, user.id, userStationIds, instruments)
+        : getDirectlyRelatedCertificates(certificates, user.id)
+
+      const totalCertificates = relevantCertificates.length
+      const draftCertificates = relevantCertificates.filter((certificate) => certificate.status === 'draft')
+      const returnedCertificates = relevantCertificates.filter((certificate) => certificate.status === 'draft' && latestRejection(certificate))
+      const completedCertificates = relevantCertificates.filter((certificate) => certificate.status === 'completed' || certificate.status === 'verified')
       const readyToSend = draftCertificates.filter((certificate) =>
         certificate.verifikator_1 &&
         certificate.verifikator_2 &&
@@ -309,6 +469,13 @@ export async function GET(request: NextRequest) {
       const { count: instrumentCount } = await supabaseAdmin
         .from('instrument')
         .select('*', { count: 'exact', head: true })
+
+      const stationSummaries = role === 'user_station'
+        ? buildStationSummaries(assignedStations, instruments, relevantCertificates)
+        : []
+      const assignedInstrumentCount = role === 'user_station'
+        ? instruments.filter((instrument) => instrument.station_id !== undefined && instrument.station_id !== null && userStationIds.has(Number(instrument.station_id))).length
+        : 0
 
       const prioritizedDrafts = [...returnedCertificates, ...draftCertificates.filter((certificate) => !latestRejection(certificate))]
         .slice(0, 8)
@@ -326,18 +493,31 @@ export async function GET(request: NextRequest) {
           }
         })
 
+      const userStationCards: DashboardCard[] = [
+        { label: 'Stasiun Saya', value: assignedStations.length, hint: 'Stasiun yang ditugaskan kepada Anda', tone: 'blue' },
+        { label: 'Instrumen di Stasiun', value: assignedInstrumentCount, hint: 'Instrumen pada stasiun tugas Anda', tone: 'purple' },
+        { label: 'Total Sertifikat', value: totalCertificates, hint: 'Dokumen pada stasiun tugas Anda', tone: 'slate' },
+        { label: 'Kembali untuk Revisi', value: returnedCertificates.length, hint: 'Prioritas utama untuk diperbaiki', tone: 'red' }
+      ]
+
+      const calibratorCards: DashboardCard[] = [
+        { label: 'Draft Aktif', value: draftCertificates.length, hint: 'Dokumen yang masih dalam pengerjaan', tone: 'slate' },
+        { label: 'Kembali untuk Revisi', value: returnedCertificates.length, hint: 'Prioritas utama untuk diperbaiki', tone: 'red' },
+        { label: 'Siap Dikirim', value: readyToSend.length, hint: 'Draft dengan penugasan reviewer lengkap', tone: 'amber' },
+        { label: 'Instrumen Aktif', value: instrumentCount || 0, hint: 'Instrumen terdaftar di sistem', tone: 'blue' }
+      ]
+
+      const userStationSubtitle = assignedStations.length === 0
+        ? 'Belum ada stasiun yang ditugaskan pada akun Anda. Hubungi admin untuk penugasan.'
+        : `Pantau ${assignedStations.length} stasiun tugas Anda beserta instrumen dan progres sertifikatnya.`
+
       return NextResponse.json({
         role,
         title: role === 'calibrator' ? 'Dashboard Petugas Kalibrasi' : 'Dashboard Stasiun',
         subtitle: role === 'calibrator'
           ? 'Pantau draft, revisi, dan sertifikat yang siap dikirim ke verifikator.'
-          : 'Pantau instrumen aktif dan progres sertifikat di stasiun Anda.',
-        cards: [
-          { label: 'Draft Aktif', value: draftCertificates.length, hint: 'Dokumen yang masih dalam pengerjaan', tone: 'slate' },
-          { label: 'Kembali untuk Revisi', value: returnedCertificates.length, hint: 'Prioritas utama untuk diperbaiki', tone: 'red' },
-          { label: 'Siap Dikirim', value: readyToSend.length, hint: 'Draft dengan penugasan reviewer lengkap', tone: 'amber' },
-          { label: role === 'calibrator' ? 'Instrumen Aktif' : 'Total Sertifikat', value: role === 'calibrator' ? (instrumentCount || 0) : totalCertificates, hint: role === 'calibrator' ? 'Instrumen terdaftar di sistem' : 'Dokumen yang terpantau', tone: 'blue' }
-        ] as DashboardCard[],
+          : userStationSubtitle,
+        cards: role === 'user_station' ? userStationCards : calibratorCards,
         queue: [
           { label: 'Draft', value: draftCertificates.length },
           { label: 'Revisi', value: returnedCertificates.length },
@@ -345,7 +525,8 @@ export async function GET(request: NextRequest) {
           { label: 'Selesai', value: completedCertificates.length }
         ],
         actionItems: prioritizedDrafts,
-        recentRejects: buildRejectItems(certificates)
+        recentRejects: buildRejectItems(relevantCertificates),
+        stations: stationSummaries
       })
     }
 

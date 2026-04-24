@@ -312,6 +312,28 @@ const InstrumentsCRUD: React.FC = () => {
   }, [search])
 
   useEffect(() => {
+    if (role === 'user_station' && filterType !== 'uut') {
+      setFilterType('uut')
+    }
+  }, [role, filterType])
+
+  // Pastikan user_station tidak pernah membuat instrumen berstatus standar
+  useEffect(() => {
+    if (role !== 'user_station') return
+    if (isStandardInstrument) {
+      setIsStandardInstrument(false)
+    }
+    if (sensorForms.some((sensor) => sensor.is_standard)) {
+      setSensorForms(prev => prev.map(sensor => ({ ...sensor, is_standard: false })))
+    }
+  }, [role, isStandardInstrument, sensorForms])
+
+  useEffect(() => {
+    // Hindari fetch awal sebelum role diketahui agar user_station tidak
+    // sempat melihat daftar berisi alat standar pada detik pertama.
+    if (!role) return
+    if (role === 'user_station' && filterType !== 'uut') return
+
     fetchInstruments({
       q: debouncedSearch,
       page: currentPage,
@@ -775,6 +797,8 @@ const InstrumentsCRUD: React.FC = () => {
     )
   }
 
+  const isReadOnlyUserStation = role === 'user_station'
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -803,11 +827,13 @@ const InstrumentsCRUD: React.FC = () => {
                 setFilterType((val || 'all') as 'all' | 'uut' | 'standard')
                 setCurrentPage(1)
               }}
-              options={[
-                { id: 'all', name: 'Semua Instrumen' },
-                { id: 'uut', name: 'Instrumen UUT' },
-                { id: 'standard', name: 'Instrumen Standar' },
-              ]}
+              options={isReadOnlyUserStation
+                ? [{ id: 'uut', name: 'Instrumen UUT' }]
+                : [
+                    { id: 'all', name: 'Semua Instrumen' },
+                    { id: 'uut', name: 'Instrumen UUT' },
+                    { id: 'standard', name: 'Instrumen Standar' },
+                  ]}
               placeholder="Pilih filter"
               searchPlaceholder="Cari filter..."
               className="w-48"
@@ -915,7 +941,7 @@ const InstrumentsCRUD: React.FC = () => {
                         {can('instrument', 'update') && canEndpoint('PUT', `/api/instruments/${item.id}`) && (
                           <EditButton onClick={() => openModal(item)} title="Edit Instrument" />
                         )}
-                        {can('instrument', 'delete') && canEndpoint('DELETE', `/api/instruments/${item.id}`) && (
+                        {!isReadOnlyUserStation && can('instrument', 'delete') && canEndpoint('DELETE', `/api/instruments/${item.id}`) && (
                           <DeleteButton onClick={() => handleDelete(item.id)} title="Delete Instrument" />
                         )}
                       </td>
@@ -1179,32 +1205,34 @@ const InstrumentsCRUD: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* Checkbox Instrument Standard */}
-                        <div className="lg:col-span-2 mt-2">
-                          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                            <div className="flex items-center space-x-3">
-                              <input
-                                type="checkbox"
-                                id="is_standard_instrument"
-                                checked={isStandardInstrument}
-                                onChange={(e) => {
-                                  const isChecked = e.target.checked;
-                                  setIsStandardInstrument(isChecked);
-                                  // Update ALL sensors to match this setting
-                                  setSensorForms(prev => prev.map(s => ({ ...s, is_standard: isChecked })));
-                                }}
-                                className="h-5 w-5 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
-                              />
-                              <label htmlFor="is_standard_instrument" className="text-sm font-medium text-gray-700">
-                                Jadikan Sebagai Alat Standar
-                              </label>
+                        {/* Checkbox Instrument Standard - disembunyikan untuk role user_station (UUT only) */}
+                        {!isReadOnlyUserStation && (
+                          <div className="lg:col-span-2 mt-2">
+                            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                              <div className="flex items-center space-x-3">
+                                <input
+                                  type="checkbox"
+                                  id="is_standard_instrument"
+                                  checked={isStandardInstrument}
+                                  onChange={(e) => {
+                                    const isChecked = e.target.checked;
+                                    setIsStandardInstrument(isChecked);
+                                    // Update ALL sensors to match this setting
+                                    setSensorForms(prev => prev.map(s => ({ ...s, is_standard: isChecked })));
+                                  }}
+                                  className="h-5 w-5 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                                />
+                                <label htmlFor="is_standard_instrument" className="text-sm font-medium text-gray-700">
+                                  Jadikan Sebagai Alat Standar
+                                </label>
+                              </div>
+                              <p className="text-xs text-gray-600 mt-2 ml-8">
+                                Jika dicentang, semua sensor yang ditambahkan otomatis dianggap sebagai <strong>Sensor Standar</strong> (memiliki sertifikat).
+                                Jika tidak multi-sensor, sertifikat akan ditambahkan langsung ke alat ini.
+                              </p>
                             </div>
-                            <p className="text-xs text-gray-600 mt-2 ml-8">
-                              Jika dicentang, semua sensor yang ditambahkan otomatis dianggap sebagai <strong>Sensor Standar</strong> (memiliki sertifikat).
-                              Jika tidak multi-sensor, sertifikat akan ditambahkan langsung ke alat ini.
-                            </p>
                           </div>
-                        </div>
+                        )}
                         {/* Global Certificates for Standard Instrument */}
                         {isStandardInstrument && (
                           <div className="lg:col-span-2 mt-4 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">

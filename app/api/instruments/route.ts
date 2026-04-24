@@ -38,8 +38,51 @@ export async function GET(request: NextRequest) {
       query = query.eq('sensor.is_standard', true)
     }
 
-    // For 'uut', we simply use the default list (server-side logic is open)
-    // No specific filter needed here as per original logic.
+    // Untuk filter 'uut': sembunyikan instrumen yang memiliki sensor standar
+    // (mis. alat standar), sehingga daftar hanya menampilkan UUT murni.
+    // Relasi utama: kolom `sensor.instrument_id` (FK pada tabel sensor menunjuk ke instrument),
+    // serta tabel junction `instrument_sensors` untuk konfigurasi multi-sensor lama.
+    if (type === 'uut') {
+      try {
+        const excludedSet = new Set<number>()
+
+        // 1) Instrumen dengan sensor langsung (sensor.instrument_id) berstatus standar
+        const { data: directStandardSensors } = await supabaseAdmin
+          .from('sensor')
+          .select('id, instrument_id')
+          .eq('is_standard', true)
+
+        ;(directStandardSensors || []).forEach((row: any) => {
+          const instrumentId = Number(row.instrument_id)
+          if (Number.isFinite(instrumentId)) excludedSet.add(instrumentId)
+        })
+
+        // 2) Instrumen multi-sensor via tabel junction `instrument_sensors`
+        const standardSensorIds = (directStandardSensors || [])
+          .map((row: any) => Number(row.id))
+          .filter((value) => Number.isFinite(value))
+
+        if (standardSensorIds.length > 0) {
+          const { data: linkedInstruments, error: junctionError } = await supabaseAdmin
+            .from('instrument_sensors')
+            .select('instrument_id')
+            .in('sensor_id', standardSensorIds)
+
+          if (!junctionError) {
+            ;(linkedInstruments || []).forEach((row: any) => {
+              const instrumentId = Number(row.instrument_id)
+              if (Number.isFinite(instrumentId)) excludedSet.add(instrumentId)
+            })
+          }
+        }
+
+        if (excludedSet.size > 0) {
+          query = query.not('id', 'in', `(${Array.from(excludedSet).join(',')})`)
+        }
+      } catch (filterError) {
+        console.warn('[instruments] Failed to apply UUT exclusion filter, falling back to unfiltered list:', filterError)
+      }
+    }
 
     // Tambahkan filter pencarian jika ada query 'q'
     if (q) {

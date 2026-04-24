@@ -133,7 +133,13 @@ export const usePermissions = () => {
     }
 
     if (role === 'user_station') {
-      return m === 'GET'
+      if (m === 'GET') return true
+      // User stasiun boleh menambah/memperbarui instrumen (UUT) & sensor pendukung,
+      // namun tidak diperbolehkan menghapus.
+      if (path.startsWith('/api/instruments') || path.startsWith('/api/sensors')) {
+        return ['POST', 'PUT', 'PATCH'].includes(m)
+      }
+      return false
     }
 
     return m === 'GET' // Default to allow read for authenticated users? Or strict false?

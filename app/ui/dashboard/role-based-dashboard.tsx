@@ -36,6 +36,20 @@ type RejectItem = {
   timestamp: string | null
 }
 
+type StationSummary = {
+  id: number
+  name: string
+  station_wmo_id: string | null
+  address: string | null
+  region: string | null
+  province: string | null
+  regency: string | null
+  instrument_count: number
+  certificate_count: number
+  draft_count: number
+  completed_count: number
+}
+
 type DashboardData = {
   role?: string
   title?: string
@@ -44,6 +58,7 @@ type DashboardData = {
   queue?: QueueItem[]
   actionItems?: ActionItem[]
   recentRejects?: RejectItem[]
+  stations?: StationSummary[]
 }
 
 const toneClasses: Record<Tone, string> = {
@@ -193,6 +208,96 @@ const RoleBasedDashboard: React.FC = () => {
               <p className="mt-3 text-sm opacity-75">{card.hint}</p>
             </div>
           ))}
+        </section>
+      )}
+
+      {dashboardData.role === 'user_station' && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-950">Stasiun Saya</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Daftar stasiun yang ditugaskan kepada akun Anda beserta ringkasan instrumen dan sertifikatnya.
+              </p>
+            </div>
+            <a
+              href="/stations"
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-white"
+            >
+              Kelola Stasiun
+              <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </a>
+          </div>
+
+          {(dashboardData.stations || []).length === 0 ? (
+            <div className="mt-5">
+              <EmptyState
+                title="Belum ada stasiun yang ditugaskan"
+                description="Akun Anda belum memiliki stasiun tugas. Hubungi admin untuk meminta penugasan stasiun."
+              />
+            </div>
+          ) : (
+            <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {(dashboardData.stations || []).map((station) => {
+                const locationParts = [station.regency, station.province].filter(Boolean) as string[]
+                return (
+                  <div
+                    key={station.id}
+                    className="group flex flex-col rounded-2xl border border-slate-200 bg-slate-50 p-5 transition-colors hover:border-slate-300 hover:bg-white"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-900">{station.name}</p>
+                        {station.station_wmo_id && (
+                          <p className="mt-1 text-xs text-slate-500">WMO ID: {station.station_wmo_id}</p>
+                        )}
+                        {locationParts.length > 0 && (
+                          <p className="mt-1 text-xs text-slate-500">{locationParts.join(', ')}</p>
+                        )}
+                        {station.region && (
+                          <span className="mt-2 inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                            {station.region}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-xl border border-slate-200 bg-white px-2 py-2">
+                        <p className="text-[11px] font-medium text-slate-500">Instrumen</p>
+                        <p className="mt-1 text-lg font-semibold text-slate-900">{station.instrument_count}</p>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white px-2 py-2">
+                        <p className="text-[11px] font-medium text-slate-500">Sertifikat</p>
+                        <p className="mt-1 text-lg font-semibold text-slate-900">{station.certificate_count}</p>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white px-2 py-2">
+                        <p className="text-[11px] font-medium text-slate-500">Draft</p>
+                        <p className="mt-1 text-lg font-semibold text-amber-700">{station.draft_count}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between text-xs">
+                      <span className="text-slate-500">
+                        Selesai: <span className="font-semibold text-green-700">{station.completed_count}</span>
+                      </span>
+                      <a
+                        href={`/certificates?station=${station.id}`}
+                        className="inline-flex items-center gap-1 text-slate-600 transition-colors group-hover:text-blue-600"
+                      >
+                        Detail
+                        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </a>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </section>
       )}
 
