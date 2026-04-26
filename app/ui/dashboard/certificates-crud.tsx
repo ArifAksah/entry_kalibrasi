@@ -21,6 +21,7 @@ import { calculateCalibrationResult } from '../../../lib/uncertainty-utils'
 import DateRangePicker from '../../../components/ui/DateRangePicker'
 import RichTextEditor from '../../../components/ui/RichTextEditor'
 import { DEFAULT_NOTES_OTHERS_HTML } from '../../../lib/rich-text'
+import { firstLegacyResult, resultsToLegacyView } from '../../../lib/validators/certificate-results-render-adapter'
 
 // Keep TrashIcon for backward compatibility in this file
 
@@ -463,16 +464,14 @@ const CertificatesCRUD: React.FC = () => {
     setLhksCertificate(cert)
     setLhksRawData([])
 
-    if (cert.results && Array.isArray(cert.results) && cert.results.length > 0) {
-      const sessionId = (cert.results[0] as any).session_id
-      if (sessionId) {
-        try {
-          const res = await fetch(`/api/raw-data?session_id=${sessionId}`)
-          const json = await res.json()
-          setLhksRawData(json.data || [])
-        } catch (e) {
-          console.error("Failed to fetch raw data for LHKS", e)
-        }
+    const sessionId = firstLegacyResult(cert.results)?.session_id
+    if (sessionId) {
+      try {
+        const res = await fetch(`/api/raw-data?session_id=${sessionId}`)
+        const json = await res.json()
+        setLhksRawData(json.data || [])
+      } catch (e) {
+        console.error("Failed to fetch raw data for LHKS", e)
       }
     }
     setShowLHKSModal(true)
@@ -515,6 +514,10 @@ const CertificatesCRUD: React.FC = () => {
     station: null,
     instrument: null,
     station_address: null as any,
+    // Komponen format nomor sesuai IKK BMKG (fokus FC untuk saat ini).
+    certificate_type: 'sert',
+    calibration_place: 'FC',
+    instrument_code: null,
   })
 
   // Derived instrument details (read-only preview)
@@ -1234,6 +1237,32 @@ type ResultItem = {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.instrument, sensors.length, instruments.length]);
 
+  // Auto-resolve instrument_code saat user memilih INSTRUMEN UUT di dropdown
+  // "Pilih Instrument (UUT)". Chain:
+  //   form.instrument (= certificate.instrument = instrument.id)
+  //   → instruments[].instrument_names_id (FK ke instrument_names)
+  //   → instrument_names[].code_alat  (kolom yang dikelola admin di menu
+  //                                    "Master Daftar Alat")
+  // Hanya aktif di mode CREATE supaya nilai existing tidak ter-override saat EDIT.
+  useEffect(() => {
+    if (editing) return
+    if (!form.instrument) {
+      if ((form as any).instrument_code) {
+        setForm(prev => ({ ...prev, instrument_code: null }))
+      }
+      return
+    }
+    const inst = instruments.find(i => i.id === form.instrument) as any
+    const nameId = inst?.instrument_names_id ?? null
+    const nm = nameId ? (instrumentNames.find(n => n.id === nameId) as any) : null
+    const resolvedCode: string | null = nm?.code_alat?.toString().trim() || null
+
+    if ((form as any).instrument_code !== resolvedCode) {
+      setForm(prev => ({ ...prev, instrument_code: resolvedCode }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.instrument, instruments.length, instrumentNames.length, editing])
+
   // Pagination + personalization
   const isUserAssigned = (item: Certificate) => {
     const uid = user?.id ? String(user.id) : null
@@ -1338,20 +1367,13 @@ type ResultItem = {
         station: item.station,
         instrument: item.instrument,
         station_address: (item as any).station_address ?? (item.station ? stations.find(s => s.id === item.station)?.address ?? null : null),
+        // Format nomor (IKK): isi dari item kalau sudah di-backfill, fallback default.
+        certificate_type:  (item as any).certificate_type  ?? 'sert',
+        calibration_place: (item as any).calibration_place ?? 'FC',
+        instrument_code:   (item as any).instrument_code   ?? null,
       })
       // Parse results - can be JSON string or array from DB
-      let parsedResults: any[] = []
-      try {
-        const raw = (item as any).results
-        if (Array.isArray(raw)) {
-          parsedResults = raw
-        } else if (typeof raw === 'string' && raw.trim()) {
-          parsedResults = JSON.parse(raw)
-        }
-      } catch (e) {
-        console.warn('Failed to parse results JSON:', e)
-        parsedResults = []
-      }
+      const parsedResults = resultsToLegacyView((item as any).results)
 
       const savedResults = Array.isArray(parsedResults) && parsedResults.length > 0 ? parsedResults : [{
         sensorId: null,
@@ -1365,10 +1387,49 @@ type ResultItem = {
         unitUut: null,
         unitStd: null
       }]
-      setResults(savedResults)
+
+      // Enrich savedResults with standardInstrumentId/standardCertificateId from original raw data
+      // (these fields are stripped during V0→V1 conversion, so we re-derive them here)
+      const originalSensors = (() => {
+        try {
+          const r = (item as any).results
+          const p = typeof r === 'string' ? JSON.parse(r) : r
+          return Array.isArray(p?.sensors) ? p.sensors : (Array.isArray(p) ? p : [])
+        } catch { return [] }
+      })()
+
+      const enrichedResults = savedResults.map((r: any, idx: number) => {
+        const orig = originalSensors[idx]
+        if (!orig) return r
+        // V1 entry: extract from setup.standard_instruments
+        if (orig.links) {
+          const std = orig.setup?.standard_instruments?.[0] ?? null
+          const matchedCert = std?.certificate_no
+            ? standardCerts.find((c: any) => c.no_certificate === std.certificate_no) ?? null
+            : null
+          return {
+            ...r,
+            standardInstrumentId: std?.instrument_id ?? null,
+            standardCertificateId: matchedCert?.id ?? null,
+            standardCertificateNumber: std?.certificate_no ?? null,
+          }
+        }
+        // V0 entry: these fields are already in r (passthrough from resultsToLegacyView)
+        // Also restore unitUut/unitStd from V0 if present (fallback when raw data not loaded yet)
+        return {
+          ...r,
+          standardInstrumentId: orig.standardInstrumentId ?? r.standardInstrumentId ?? null,
+          standardCertificateId: orig.standardCertificateId ?? r.standardCertificateId ?? null,
+          standardCertificateNumber: orig.standardCertificateNumber ?? r.standardCertificateNumber ?? null,
+          unitUut: orig.unitUut ?? r.unitUut ?? null,
+          unitStd: orig.unitStd ?? r.unitStd ?? null,
+        }
+      })
+
+      setResults(enrichedResults as unknown as ResultItem[])
 
       // Restore global standard instrument from first result (if available)
-      const firstResult = savedResults[0] as any
+      const firstResult = enrichedResults[0] as any
       if (firstResult?.standardInstrumentId) {
         setGlobalStandardInstrumentId(firstResult.standardInstrumentId)
       }
@@ -1414,8 +1475,9 @@ type ResultItem = {
               const reconstructedSheets = Object.keys(grouped).map((key) => {
                 const sensorId = key === 'unknown' ? null : Number(key);
                 const matchedSensor = sensorId ? sensors.find((s: any) => s.id === sensorId) : null;
-                // Get the actual sheet_name stored in DB from the first row of this group
-                const storedSheetName = data.data.find((d: any) => String(d.sensor_id_uut) === key)?.sheet_name;
+                const rowsForKey = data.data.filter((d: any) => String(d.sensor_id_uut) === key);
+                const firstRow = rowsForKey[0];
+                const storedSheetName = firstRow?.sheet_name;
 
                 // Resolve label: prioritize stored sheet_name, then lookup, skip numeric-only names
                 let sensorLabel: string;
@@ -1442,11 +1504,24 @@ type ResultItem = {
                   name: sensorLabel,
                   data: grouped[key] as any[],
                   sensor_id_uut: sensorId,
-                  sensor_id_std: data.data.find((d: any) => String(d.sensor_id_uut) === key)?.sensor_id_std
+                  sensor_id_std: firstRow?.sensor_id_std,
+                  unit_uut: firstRow?.unit_uut,
+                  unit_std: firstRow?.unit_std,
                 };
               });
 
               setRawData(reconstructedSheets);
+
+              // Inject unit_uut/unit_std from reconstructed sheets into results
+              setResults(prev => prev.map((r, idx) => {
+                const sheet = reconstructedSheets[idx];
+                if (!sheet) return r;
+                return {
+                  ...r,
+                  unitUut: sheet.unit_uut ?? r.unitUut ?? null,
+                  unitStd: sheet.unit_std ?? r.unitStd ?? null,
+                };
+              }));
               setRawDataFilename(`Data Session ${sessionId} (${reconstructedSheets.length} sensor)`);
             } else {
               setRawData([]);
@@ -1475,7 +1550,7 @@ type ResultItem = {
       setGlobalStandardCertificateNumber(null)
       setInstrumentPreview({})
       setForm({
-        no_certificate: 'Membuat nomor otomatis...',
+        no_certificate: 'Pilih Instrumen UUT & isi No. Identifikasi untuk preview…',
         no_order: '...',
         no_identification: '',
         authorized_by: null,
@@ -1486,25 +1561,12 @@ type ResultItem = {
         station: null,
         instrument: null,
         station_address: null as any,
+        certificate_type: 'sert',
+        calibration_place: 'FC',
+        instrument_code: null,
       })
-
-      fetch('/api/certificates/generate-number')
-        .then(res => res.json())
-        .then(data => {
-          setForm(prev => ({
-            ...prev,
-            no_certificate: data.no_certificate || '',
-            no_order: data.no_order || ''
-          }));
-        })
-        .catch(err => {
-          console.error("Failed to fetch generated numbers", err);
-          setForm(prev => ({
-            ...prev,
-            no_certificate: '',
-            no_order: ''
-          }));
-        });
+      // Preview nomor akan di-fetch oleh useEffect di bawah setiap kali
+      // code_alat / no_identification / place / cert_type berubah.
 
       setResults([{
         sensorId: null,
@@ -1528,14 +1590,87 @@ type ResultItem = {
 
   }
 
+  // Re-fetch preview nomor sertifikat setiap kali komponen format berubah
+  // (hanya di mode CREATE, saat modal terbuka, dan setelah code + no_ident diisi).
+  // Nomor yang ditampilkan cuma preview — server tetap meng-assign nomor final
+  // secara atomik saat submit untuk mencegah race condition.
+  useEffect(() => {
+    if (!isModalOpen) return
+    if (editing) return              // mode edit: pakai nomor existing
+    const code    = (form as any).instrument_code
+    const noIdent = form.no_identification
+    const place   = (form as any).calibration_place || 'FC'
+    const ctype   = (form as any).certificate_type  || 'sert'
+
+    // Butuh code & no_ident terisi untuk preview yang meaningful (khusus FC)
+    if (!code || !noIdent) {
+      setForm(prev => ({
+        ...prev,
+        no_certificate: 'Pilih Instrumen UUT & isi No. Identifikasi untuk preview…',
+        no_order: '...',
+      }))
+      return
+    }
+
+    const controller = new AbortController()
+    const handle = setTimeout(() => {
+      const qs = new URLSearchParams({
+        cert_type: ctype,
+        place,
+        code,
+        no_ident: noIdent,
+      }).toString()
+
+      fetch(`/api/certificates/generate-number?${qs}`, { signal: controller.signal })
+        .then(r => r.ok ? r.json() : Promise.reject(r))
+        .then(data => {
+          setForm(prev => ({
+            ...prev,
+            no_certificate: data.no_certificate || '',
+            no_order: data.no_order || '',
+          }))
+        })
+        .catch(err => {
+          if (err?.name === 'AbortError') return
+          console.error('Failed to fetch preview number:', err)
+        })
+    }, 250)
+
+    return () => {
+      clearTimeout(handle)
+      controller.abort()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isModalOpen,
+    editing,
+    (form as any).instrument_code,
+    form.no_identification,
+    (form as any).calibration_place,
+    (form as any).certificate_type,
+  ])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     // Prevent multiple submissions
     if (submitDisabled || isSubmitting) return
 
-    if (!form.no_certificate || !form.no_order || !form.no_identification || !form.issue_date) {
-      showError('Semua field yang wajib diisi harus diisi')
+    // Saat CREATE, no_certificate & no_order digenerate atomik di server
+    // (create_certificate_with_auto_number), jadi nilai di form hanya preview
+    // dan TIDAK WAJIB ada. Saat EDIT, kedua kolom tersebut harus ada.
+    if (editing && (!form.no_certificate || !form.no_order)) {
+      showError('Nomor sertifikat dan nomor order wajib diisi')
+      return
+    }
+    if (!form.no_identification || !form.issue_date) {
+      showError('No. Identifikasi dan Tanggal Terbit wajib diisi')
+      return
+    }
+
+    // Saat CREATE, kode alat ikut ke format nomor (IKK). Auto-resolve dari UUT.
+    if (!editing && !(form as any).instrument_code) {
+      showError('Kode Alat belum tersedia. Pilih Instrumen UUT yang Nama Instrumen-nya sudah punya "Kode Alat" di menu Master Daftar Alat.')
       return
     }
 
@@ -1634,7 +1769,13 @@ type ResultItem = {
             body: JSON.stringify(sessionPayload)
           })
 
-          if (sessionRes.ok) {
+          if (!sessionRes.ok) {
+            const errData = await sessionRes.json().catch(() => ({}))
+            const errMsg = errData.error || errData.message || sessionRes.statusText || 'Unknown error'
+            throw new Error(`Gagal membuat sesi kalibrasi: ${errMsg} (Status: ${sessionRes.status})`)
+          }
+
+          {
             const sessionData = await sessionRes.json()
             console.log('Session Created/Found:', sessionData)
 
@@ -1643,8 +1784,7 @@ type ResultItem = {
               // Validate: Ensure all sheets have a selected UUT Sensor
               const missingUUT = rawData.some((_, idx) => !results[idx]?.sensorId);
               if (missingUUT) {
-                showError("Mohon pilih Sensor UUT untuk setiap sheet data mentah sebelum menyimpan.");
-                return null;
+                throw new Error("Mohon pilih Sensor UUT untuk setiap sheet data mentah sebelum menyimpan.");
               }
 
               const rawDataPayload = {
@@ -1737,8 +1877,8 @@ type ResultItem = {
           }
         } catch (sessionErr) {
           console.error('Failed to save session/raw data', sessionErr)
+          throw sessionErr
         }
-        return null
       }
 
       if (editing) {
@@ -2131,15 +2271,27 @@ type ResultItem = {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${item.status === 'draft' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                      item.status === 'sent' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                        item.status === 'verified' ? 'bg-green-50 text-green-700 border-green-200' :
-                          item.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
-                            item.status === 'completed' ? 'bg-purple-50 text-purple-700 border-purple-200' :
-                              'bg-gray-50 text-gray-700 border-gray-200'
-                      }`}>
-                      {item.status || 'draft'}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${item.status === 'draft' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                        item.status === 'sent' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                          item.status === 'verified' ? 'bg-green-50 text-green-700 border-green-200' :
+                            item.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
+                              item.status === 'completed' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                                'bg-gray-50 text-gray-700 border-gray-200'
+                        }`}>
+                        {item.status || 'draft'}
+                      </span>
+                      {(item as any).calibration_kind && (
+                        <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded border ${(item as any).calibration_kind === 'LC' ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-sky-50 text-sky-700 border-sky-200'}`}>
+                          {(item as any).calibration_kind}
+                        </span>
+                      )}
+                      {(item as any).results_frozen_at && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded border bg-gray-100 text-gray-500 border-gray-300" title={`Results dibekukan: ${new Date((item as any).results_frozen_at).toLocaleString('id-ID')}`}>
+                          🔒
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-sm font-medium">
                     <div className="relative inline-block text-left" data-action-menu="true">
@@ -2333,9 +2485,7 @@ type ResultItem = {
 
                             <button
                               onClick={() => {
-                                const sessionId = Array.isArray(item.results) && item.results.length > 0
-                                  ? (item.results[0] as any).session_id
-                                  : null;
+                                const sessionId = firstLegacyResult(item.results)?.session_id ?? null;
 
                                 if (sessionId) {
                                   setQcModalCertificate(item);
@@ -2354,9 +2504,7 @@ type ResultItem = {
                             </button>
                             <button
                               onClick={async () => {
-                                const sessionId = Array.isArray(item.results) && item.results.length > 0
-                                  ? (item.results[0] as any).session_id
-                                  : null;
+                                const sessionId = firstLegacyResult(item.results)?.session_id ?? null;
 
                                 if (sessionId) {
                                   setUncertaintyModalCertificate(item);
@@ -2595,10 +2743,88 @@ type ResultItem = {
                       />
                     </div>
 
-                    {/* Certificate Numbers */}
+                    {/* Komponen format nomor sertifikat sesuai IKK BMKG.
+                        Hanya ditampilkan saat CREATE; saat EDIT nomor sudah ada.
+                        - Jenis Kalibrasi: FC (Field) saat ini; LC disiapkan untuk tahap berikut.
+                        - Kode Alat: auto-resolve dari instrument (UUT) yang dipilih,
+                          via relasi instrument.instrument_names_id → instrument_names.code_alat. */}
+                    {!editing && (
+                      <>
+                        <div className="space-y-1">
+                          <label className="block text-xs font-semibold text-gray-700">Jenis Kalibrasi *</label>
+                          <select
+                            value={(form as any).calibration_place || 'FC'}
+                            onChange={(e) => setForm({ ...form, calibration_place: e.target.value as any })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                          >
+                            <option value="FC">Field Calibration (FC)</option>
+                            <option value="LC" disabled>Lab Calibration (LC) — belum aktif</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-xs font-semibold text-gray-700">
+                            Kode Alat <span className="font-normal text-gray-500">(auto dari UUT)</span>
+                          </label>
+                          <input
+                            type="text"
+                            readOnly
+                            value={(form as any).instrument_code || ''}
+                            placeholder={form.instrument ? 'Kode alat tidak tersedia untuk instrumen ini' : 'Pilih Instrumen UUT dulu…'}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700 text-sm"
+                          />
+                          {form.instrument && !(form as any).instrument_code && (
+                            <p className="text-[11px] text-red-500 italic">
+                              Nama Instrumen terhubung ke instrumen ini belum punya "Kode Alat". Minta admin isi di menu "Master Daftar Alat".
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {/* Certificate Numbers
+                        Saat CREATE, no_certificate & no_order digenerate atomik di server
+                        (create_certificate_with_auto_number) sehingga read-only & berperan
+                        sebagai preview saja. Saat EDIT, keduanya editable normal. */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700">
+                        {editing ? 'No. Sertifikat *' : 'No. Sertifikat (otomatis)'}
+                      </label>
+                      <input
+                        required={!!editing}
+                        readOnly={!editing}
+                        type="text"
+                        value={form.no_certificate}
+                        onChange={(e) => setForm({ ...form, no_certificate: e.target.value })}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] ${
+                          editing
+                            ? 'border-gray-300'
+                            : 'border-gray-200 bg-gray-50 text-gray-700 cursor-not-allowed'
+                        }`}
+                      />
+                      {!editing && (
+                        <p className="text-[11px] text-gray-500 italic">
+                          Nomor final akan ditetapkan otomatis saat disimpan untuk mencegah duplikasi.
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700">
+                        {editing ? 'No. Order *' : 'No. Order (otomatis)'}
+                      </label>
+                      <input
+                        required={!!editing}
+                        readOnly={!editing}
+                        type="text"
+                        value={form.no_order}
+                        onChange={(e) => setForm({ ...form, no_order: e.target.value })}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] ${
+                          editing
+                            ? 'border-gray-300'
+                            : 'border-gray-200 bg-gray-50 text-gray-700 cursor-not-allowed'
+                        }`}
+                      />
+                    </div>
                     {[
-                      { label: 'No. Sertifikat *', value: form.no_certificate, onChange: (e: any) => setForm({ ...form, no_certificate: e.target.value }), type: 'text', required: true },
-                      { label: 'No. Order *', value: form.no_order, onChange: (e: any) => setForm({ ...form, no_order: e.target.value }), type: 'text', required: true },
                       { label: 'No. Identifikasi *', value: form.no_identification, onChange: (e: any) => setForm({ ...form, no_identification: e.target.value }), type: 'text', required: true },
                       { label: 'Tanggal Terbit *', value: form.issue_date, onChange: (e: any) => setForm({ ...form, issue_date: e.target.value }), type: 'date', required: true },
                     ].map((field, index) => (
@@ -2689,6 +2915,23 @@ type ResultItem = {
                     </div>
                   </div>
                 </div>
+
+                {/* Frozen banner — tampil jika results sudah dibekukan */}
+                {(editing as any)?.results_frozen_at && (
+                  <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                    <span className="text-lg leading-none">🔒</span>
+                    <div>
+                      <p className="text-sm font-semibold text-amber-800">Hasil kalibrasi telah dibekukan</p>
+                      <p className="text-xs text-amber-700 mt-0.5">
+                        Dibekukan sejak {new Date((editing as any).results_frozen_at).toLocaleString('id-ID')}.
+                        Bagian II dan III tidak dapat diedit. Untuk membuka kembali, sertifikat harus dikembalikan ke status Draft melalui alur penolakan verifikator.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Wrapper disabled untuk Bagian II & III saat frozen */}
+                <div className={(editing as any)?.results_frozen_at ? 'pointer-events-none opacity-50 select-none' : ''}>
 
                 {/* Bagian II – Detail Sesi Kalibrasi (Global Session Info) */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-6">
@@ -3504,6 +3747,8 @@ type ResultItem = {
 
 
 
+
+                </div>{/* end frozen wrapper */}
 
                 {/* Footer Action Buttons */}
                 <div className="sticky bottom-0 bg-white/90 backdrop-blur-sm border-t border-gray-200 p-4 -mx-4 -mb-4 flex justify-between items-center z-10">
@@ -4642,9 +4887,7 @@ type ResultItem = {
             }}
             title={qcModalCertificate.no_certificate}
             sessionId={
-              Array.isArray(qcModalCertificate.results) && qcModalCertificate.results.length > 0
-                ? (qcModalCertificate.results[0] as any).session_id
-                : undefined
+              firstLegacyResult(qcModalCertificate.results)?.session_id ?? undefined
             }
             certificateId={String(qcModalCertificate.id)}
             certificateInstrumentId={qcModalCertificate.instrument || undefined}
@@ -4654,8 +4897,9 @@ type ResultItem = {
             }
             instrumentNames={instrumentNames}
             standardCerts={standardCerts}
+            certificateStatus={qcModalCertificate.status}
             onCalculateSaved={async (updates) => {
-              const results = Array.isArray(qcModalCertificate.results) ? [...qcModalCertificate.results] : [];
+              const results = resultsToLegacyView(qcModalCertificate.results);
 
               updates.forEach(update => {
                 const targetIdx = update.sensorId === 'unknown'
@@ -4671,7 +4915,10 @@ type ResultItem = {
                 // Gunakan updateCertificate dari hook (yg memakai PUT dengan full object)
                 await updateCertificate(qcModalCertificate.id, {
                   ...qcModalCertificate,
-                  results: results
+                  results: results,
+                  // Tandai bahwa user sudah "Hitung & Input Tabel ke Sertifikat".
+                  // Flag ini yang dipakai halaman draft-view untuk unlock KIRIM KONSEP.
+                  calibration_computed_at: new Date().toISOString(),
                 } as any);
                 showSuccess(`✅ Tabel hasil berhasil di-generate & disimpan ke sertifikat ${qcModalCertificate.no_certificate}!`);
               } catch (err) {
@@ -4686,7 +4933,10 @@ type ResultItem = {
 
       {/* LHKS Modal */}
       {
-        lhksCertificate && (
+        lhksCertificate && (() => {
+          const sessionResults = resultsToLegacyView(lhksCertificate.results)
+          const firstResult = sessionResults[0]
+          return (
           <LHKSReport
             isOpen={showLHKSModal}
             onClose={() => {
@@ -4701,20 +4951,21 @@ type ResultItem = {
             }
             rawData={lhksRawData}
             standardCerts={standardCerts}
-            calibrationDate={(lhksCertificate.results as any)?.[0]?.startDate || lhksCertificate.issue_date}
-            calibrationLocation={(lhksCertificate.results as any)?.[0]?.place || ''}
+            calibrationDate={firstResult?.startDate || lhksCertificate.issue_date}
+            calibrationLocation={firstResult?.place || ''}
             environmentConditions={(() => {
-              const envs = (lhksCertificate.results as any)?.[0]?.environment || [];
+              const envs = firstResult?.environment || [];
               const temp = envs.find((e: any) => e.key.toLowerCase().includes('suhu') || e.key.toLowerCase().includes('temp'))?.value;
               const hum = envs.find((e: any) => e.key.toLowerCase().includes('kelembapan') || e.key.toLowerCase().includes('humidity') || e.key.toLowerCase().includes('rh'))?.value;
               return { temperature: temp || '-', humidity: hum || '-' };
             })()}
-            sessionResults={(lhksCertificate.results as any) || []}
+            sessionResults={sessionResults}
             allInstruments={instruments}
             allSensors={sensors}
             instrumentNames={instrumentNames}
           />
-        )
+          )
+        })()
       }
 
       {/* Uncertainty Modal */}

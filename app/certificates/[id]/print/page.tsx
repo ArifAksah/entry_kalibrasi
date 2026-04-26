@@ -8,6 +8,7 @@ import QRCode from 'react-qr-code'
 import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
 import { formatUnit, needsConversion } from '../../../../lib/unitConversion'
 import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClassName } from '../../../../lib/rich-text'
+import { resultsToLegacyView } from '../../../../lib/validators/certificate-results-render-adapter'
 
 // --- TIPE DATA KOMPREHENSIF ---
 // Saya gabungkan tipe dari ViewCertificatePage.tsx Anda ke sini
@@ -301,13 +302,7 @@ const PrintCertificatePage: React.FC = () => {
 
   // Data hasil kalibrasi (normalize ke array)
   const results = useMemo(() => {
-    const r: any = (cert as any)?.results
-    if (!r) return []
-    try {
-      return typeof r === 'string' ? JSON.parse(r) : r
-    } catch {
-      return []
-    }
+    return resultsToLegacyView((cert as any)?.results)
   }, [cert])
   const resultData = useMemo(() => (results && results.length > 0 ? results[0] : null), [results])
 
@@ -381,7 +376,7 @@ const PrintCertificatePage: React.FC = () => {
 
         if (c?.results) {
           try {
-            const parsedResults = typeof c.results === 'string' ? JSON.parse(c.results) : c.results;
+            const parsedResults = resultsToLegacyView(c.results);
             const sessionIds = parsedResults.map((r: any) => r.session_id).filter(Boolean);
             if (sessionIds.length > 0) {
               const rawDataPromises = sessionIds.map((sid: string) =>

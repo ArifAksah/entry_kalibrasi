@@ -44,18 +44,18 @@ const LoginPage: React.FC = () => {
       }
 
       if (data.user) {
-        const { data: personelData, error: personelError } = await supabase
-          .from('personel')
-          .select('id, name')
-          .eq('id', data.user.id)
-          .single();
+        const token = data.session?.access_token
+        const res = await fetch(`/api/personel/${data.user.id}`, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        })
 
-        if (personelError || !personelData) {
+        if (!res.ok) {
           showError('User not found in system. Please contact administrator.')
           await supabase.auth.signOut();
           return;
         }
 
+        const personelData = await res.json()
         showSuccess(`Welcome back, ${personelData.name}!`)
         setTimeout(() => {
           router.push('/')

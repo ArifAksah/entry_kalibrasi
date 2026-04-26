@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../lib/supabase'
 import { sendAssignmentNotificationEmail } from '../../../lib/email'
+import {
+  normalizeResultsOnWrite,
+  ResultsValidationError,
+} from '../../../lib/validators/certificate-results-normalize'
 
 // Using shared supabaseAdmin with env fallbacks for consistency
 
@@ -86,8 +90,10 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const {
-      no_certificate,
-      no_order,
+      // no_certificate & no_order dari body SENGAJA DIABAIKAN.
+      // Nomor definitif digenerate atomik di DB oleh
+      // create_certificate_with_auto_number() untuk mencegah race condition
+      // ketika beberapa user membuat sertifikat bersamaan.
       no_identification,
       issue_date,
       station,
@@ -97,12 +103,37 @@ export async function POST(request: NextRequest) {
       verifikator_2,
       verifikator_3,
       results,
-      station_address
+      station_address,
+      // Komponen format nomor sesuai IKK BMKG
+      certificate_type,   // 'sert' | 's_ket' — default 'sert'
+      calibration_place,  // 'FC' | 'LC'     — default 'FC'
+      instrument_code     // AWS, TT, PP, ... — wajib
     } = body
 
-    if (!no_certificate || !no_order || !no_identification || !issue_date) {
+    if (!no_identification || !issue_date) {
       return NextResponse.json({
-        error: 'Certificate number, order number, identification number, and issue date are required',
+        error: 'No. Identifikasi dan Tanggal Terbit wajib diisi',
+      }, { status: 400 })
+    }
+
+    // Instrument code wajib untuk format nomor sesuai IKK.
+    if (!instrument_code || typeof instrument_code !== 'string') {
+      return NextResponse.json({
+        error: 'Kode alat (instrument_code) wajib diisi',
+      }, { status: 400 })
+    }
+
+    const normalizedPlace = (calibration_place || 'FC').toString().toUpperCase()
+    if (!['FC', 'LC'].includes(normalizedPlace)) {
+      return NextResponse.json({
+        error: 'calibration_place harus FC atau LC',
+      }, { status: 400 })
+    }
+
+    const normalizedCertType = (certificate_type || 'sert').toString().toLowerCase()
+    if (!['sert', 's_ket'].includes(normalizedCertType)) {
+      return NextResponse.json({
+        error: "certificate_type harus 'sert' atau 's_ket'",
       }, { status: 400 })
     }
 
@@ -209,31 +240,89 @@ export async function POST(request: NextRequest) {
     console.log('Authorized By:', authorizedPersonId)
     console.log('============================')
 
-    const { data, error } = await supabaseAdmin
-      .from('certificate')
-      .insert({
-        no_certificate,
-        no_order,
-        no_identification,
-        authorized_by: authorizedPersonId,
-        verifikator_1: v1,
-        verifikator_2: v2,
-        verifikator_3: v3,
-        assignor: authorizedPersonId, // Set assignor same as authorized_by
-        issue_date,
-        station: station ? parseInt(station) : null,
-        instrument: instrument ? parseInt(instrument) : null,
-        station_address: (resolvedStationAddress ?? station_address) ?? null,
-        results: results ?? null,
-        version: 1,
-        status: 'draft', // Set status to draft for new certificates
-        draft_created_at: new Date().toISOString(),
-        sent_by: user.id // Set sent_by to current user
+    // -----------------------------------------------------------------------
+    // INSERT atomik via RPC dengan retry.
+    // Fungsi create_certificate_with_auto_number() di Postgres:
+    //   1. Mengambil pg_advisory_xact_lock bersifat per-tahun.
+    //   2. Menghitung no_order berikutnya (MAX+1) dalam transaksi yang sama.
+    //   3. INSERT row dan RETURNING row lengkap.
+    //   4. Melepas lock otomatis saat transaksi commit.
+    // Retry diperlukan sebagai lapisan pengaman terhadap kemungkinan
+    // 23505 unique_violation (mis. race yang tidak terjangkau oleh lock,
+    // atau insert manual dari sumber lain).
+    // -----------------------------------------------------------------------
+    // Normalisasi results ke Certificate Results V1 sebelum disimpan.
+    // - Tolerant mode (default): V0 legacy auto-convert ke V1, log warn.
+    // - Strict mode (env RESULTS_VALIDATION_STRICT=true): V0 ditolak.
+    // Throw ResultsValidationError → akan tertangkap di catch bawah.
+    let normalizedResults: unknown = null
+    try {
+      const outcome = normalizeResultsOnWrite(results, {
+        calibration_kind: normalizedPlace as 'FC' | 'LC',
+        certificate_id: 'NEW',
       })
-      .select()
-      .single()
+      if (outcome.kind === 'ok') normalizedResults = outcome.value
+    } catch (err) {
+      if (err instanceof ResultsValidationError) {
+        return NextResponse.json(
+          { error: err.message, details: err.details },
+          { status: err.status }
+        )
+      }
+      throw err
+    }
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    const rpcPayload = {
+      no_identification,
+      certificate_type: normalizedCertType,
+      calibration_place: normalizedPlace,
+      instrument_code,
+      authorized_by: authorizedPersonId,
+      verifikator_1: v1,
+      verifikator_2: v2,
+      verifikator_3: v3,
+      assignor: authorizedPersonId,
+      issue_date,
+      station: station ? String(parseInt(station)) : '',
+      instrument: instrument ? String(parseInt(instrument)) : '',
+      station_address: (resolvedStationAddress ?? station_address) ?? '',
+      results: normalizedResults,
+      sent_by: user.id,
+      created_by: user.id,
+    }
+
+    const MAX_RETRIES = 5
+    let data: any = null
+    let lastError: any = null
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      const { data: rows, error: rpcErr } = await supabaseAdmin
+        .rpc('create_certificate_with_auto_number', { p_data: rpcPayload })
+
+      if (!rpcErr && rows) {
+        // rpc returns SETOF certificate -> array with one element
+        data = Array.isArray(rows) ? rows[0] : rows
+        lastError = null
+        break
+      }
+
+      lastError = rpcErr
+      // 23505 = unique_violation pada Postgres. Retry dengan regenerate nomor.
+      const isUniqueViolation = rpcErr?.code === '23505' || /duplicate key/i.test(rpcErr?.message ?? '')
+      if (!isUniqueViolation) break
+
+      console.warn(`[certificates] unique_violation on attempt ${attempt}, retrying…`, rpcErr?.message)
+      // Small jitter before retry to reduce thundering herd on hot contention.
+      await new Promise(r => setTimeout(r, 25 + Math.floor(Math.random() * 50)))
+    }
+
+    if (lastError || !data) {
+      console.error('[certificates] Failed to create certificate:', lastError)
+      return NextResponse.json({ error: lastError?.message || 'Failed to create certificate' }, { status: 500 })
+    }
+
+    // Nomor definitif datang dari DB.
+    const finalNoCertificate: string = data.no_certificate
+    const finalNoOrder: string = data.no_order
 
     // Create log entry for certificate creation
     try {
@@ -245,8 +334,8 @@ export async function POST(request: NextRequest) {
         previous_status: null,
         new_status: 'draft',
         metadata: {
-          no_certificate: no_certificate,
-          no_order: no_order
+          no_certificate: finalNoCertificate,
+          no_order: finalNoOrder
         }
       })
     } catch (logError) {
@@ -268,13 +357,13 @@ export async function POST(request: NextRequest) {
     };
 
     if (authorized_by) {
-      await sendNotification(authorized_by, 'Authorized By', no_certificate, data.id);
+      await sendNotification(authorized_by, 'Authorized By', finalNoCertificate, data.id);
     }
     if (verifikator_1) {
-      await sendNotification(verifikator_1, 'Verifikator 1', no_certificate, data.id);
+      await sendNotification(verifikator_1, 'Verifikator 1', finalNoCertificate, data.id);
     }
     if (verifikator_2) {
-      await sendNotification(verifikator_2, 'Verifikator 2', no_certificate, data.id);
+      await sendNotification(verifikator_2, 'Verifikator 2', finalNoCertificate, data.id);
     }
 
     return NextResponse.json(data, { status: 201 })

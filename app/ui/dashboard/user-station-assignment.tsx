@@ -4,6 +4,14 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
 
+const getAuthHeaders = async (): Promise<Record<string, string>> => {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (session?.access_token) {
+    return { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }
+  }
+  return { 'Content-Type': 'application/json' }
+}
+
 type Person = {
   id: string
   name: string
@@ -108,14 +116,12 @@ const UserStationAssignment: React.FC = () => {
 
   const fetchUsers = async () => {
     try {
-      const { data: personel, error } = await supabase
-        .from('personel')
-        .select('*')
-        .order('name')
-
-      if (error) throw error
-
-      setUsers(personel || [])
+      const headers = await getAuthHeaders()
+      const res = await fetch('/api/personel', { headers })
+      if (!res.ok) throw new Error('Failed to fetch users')
+      const data = await res.json()
+      const personel = Array.isArray(data) ? data : (data?.data || [])
+      setUsers(personel)
     } catch (error) {
       console.error('Error fetching users:', error)
       setError('Failed to fetch users')
@@ -126,17 +132,17 @@ const UserStationAssignment: React.FC = () => {
 
   const fetchUserStations = async () => {
     try {
-      const { data, error } = await supabase
-        .from('user_stations')
-        .select('*')
+      const headers = await getAuthHeaders()
+      const res = await fetch('/api/user-stations', { headers })
+      if (!res.ok) throw new Error('Failed to fetch user stations')
+      const data = await res.json()
+      const list: UserStation[] = Array.isArray(data) ? data : []
 
-      if (error) throw error
-
-      setUserStations(data || [])
+      setUserStations(list)
 
       // Initialize selectedStations from existing assignments
       const stationMap: Record<string, number[]> = {}
-      data?.forEach(us => {
+      list.forEach(us => {
         if (!stationMap[us.user_id]) {
           stationMap[us.user_id] = []
         }
@@ -218,27 +224,16 @@ const UserStationAssignment: React.FC = () => {
     setSuccess(null)
 
     try {
-      // Delete existing assignments for this user
-      const { error: deleteError } = await supabase
-        .from('user_stations')
-        .delete()
-        .eq('user_id', selectedUser)
-
-      if (deleteError) throw deleteError
-
-      // Insert new assignments
-      const userStationIds = selectedStations[selectedUser] || [];
-      const newAssignments = userStationIds.map(stationId => ({
-        user_id: selectedUser,
-        station_id: stationId
-      }))
-
-      if (newAssignments.length > 0) {
-        const { error: insertError } = await supabase
-          .from('user_stations')
-          .insert(newAssignments)
-
-        if (insertError) throw insertError
+      const userStationIds = selectedStations[selectedUser] || []
+      const headers = await getAuthHeaders()
+      const res = await fetch('/api/user-stations', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ user_id: selectedUser, station_ids: userStationIds })
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.error || `HTTP ${res.status}`)
       }
 
       setSuccess('Station assignments saved successfully')

@@ -4,6 +4,7 @@ import { Certificate, Instrument, Sensor, Station, CertStandard } from '../../li
 import { fetchQCLimitForSensor, checkQCResult, QCLimit } from '../../lib/qc-utils';
 import { convertUnit, needsConversion, formatUnit } from '../../lib/unitConversion';
 import bmkgLogo from '../../app/bmkg.png';
+import { SigFigBadge } from '../ui/SigFigBadge';
 
 // Define RawDataRow interface locally if not exported, or match what's used in QCDataModal
 interface RawDataRow {
@@ -824,17 +825,30 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                         )}
                                                         <tr className={isFail ? 'bg-pink-100' : ''} style={isFail ? { backgroundColor: '#fce7f3' } : {}}>
                                                             <td className="border border-black px-1">{displayIdx}</td>
-                                                            <td className="border border-black px-1">{row.standard_data.toFixed(2)}</td>
-                                                            <td className="border border-black px-1">{stdCorrectionStr}</td>
+                                                            <td className="border border-black px-1">
+                                                                {row.standard_data.toFixed(2)}
+                                                                <span className="print:hidden ml-1"><SigFigBadge value={row.standard_data} /></span>
+                                                            </td>
+                                                            <td className="border border-black px-1">
+                                                                {stdCorrectionStr}
+                                                                {stdCorrectionRaw !== 0 && (
+                                                                    <span className="print:hidden ml-1"><SigFigBadge value={stdCorrectionRaw} /></span>
+                                                                )}
+                                                            </td>
                                                             <td className="border border-black px-1">
                                                                 {stdConverted.toFixed(3)}
                                                                 {hasUnitMismatch && (
                                                                     <span className="text-[8px] text-gray-400 ml-0.5" title={`Dikonversi dari ${row.unit_std || rowUnitStd} ke ${row.unit_uut || rowUnitUut}`}>*</span>
                                                                 )}
+                                                                <span className="print:hidden ml-1"><SigFigBadge value={stdConverted} /></span>
                                                             </td>
-                                                            <td className="border border-black px-1">{row.uut_data.toFixed(2)}</td>
+                                                            <td className="border border-black px-1">
+                                                                {row.uut_data.toFixed(2)}
+                                                                <span className="print:hidden ml-1"><SigFigBadge value={row.uut_data} /></span>
+                                                            </td>
                                                             <td className={`border border-black px-1 ${isFail ? 'text-red-600 font-bold' : ''}`}>
                                                                 {rawCorrection.toFixed(4).replace(/\.?0+$/, '') || '0'}
+                                                                <span className="print:hidden ml-1"><SigFigBadge value={rawCorrection} /></span>
                                                             </td>
                                                         </tr>
                                                     </React.Fragment>
@@ -843,14 +857,26 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                             {/* Rata-rata */}
                                             <tr>
                                                 <td colSpan={3} className="border border-black text-left font-bold px-1 pl-2">Rata-Rata</td>
-                                                <td className="border border-black font-bold px-1">{avgStdCorrected.toFixed(3)}</td>
-                                                <td className="border border-black font-bold px-1">{avgUutData.toFixed(2)}</td>
-                                                <td className="border border-black font-bold px-1">{avgCorrection.toFixed(4).replace(/\.?0+$/, '') || '0'}</td>
+                                                <td className="border border-black font-bold px-1">
+                                                    {avgStdCorrected.toFixed(3)}
+                                                    <span className="print:hidden ml-1"><SigFigBadge value={avgStdCorrected} /></span>
+                                                </td>
+                                                <td className="border border-black font-bold px-1">
+                                                    {avgUutData.toFixed(2)}
+                                                    <span className="print:hidden ml-1"><SigFigBadge value={avgUutData} /></span>
+                                                </td>
+                                                <td className="border border-black font-bold px-1">
+                                                    {avgCorrection.toFixed(4).replace(/\.?0+$/, '') || '0'}
+                                                    <span className="print:hidden ml-1"><SigFigBadge value={avgCorrection} /></span>
+                                                </td>
                                             </tr>
                                             {/* Standar Deviasi */}
                                             <tr>
                                                 <td colSpan={5} className="border border-black text-left font-bold px-1 pl-2">Standar Deviasi</td>
-                                                <td className="border border-black px-1">{stdDevCorrection.toFixed(4).replace(/\.?0+$/, '') || '0'}</td>
+                                                <td className="border border-black px-1">
+                                                    {stdDevCorrection.toFixed(4).replace(/\.?0+$/, '') || '0'}
+                                                    <span className="print:hidden ml-1"><SigFigBadge value={stdDevCorrection} /></span>
+                                                </td>
                                             </tr>
                                         </tbody>
                                     </table>

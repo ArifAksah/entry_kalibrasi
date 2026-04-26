@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '../../../lib/supabase'
+import { supabaseAdmin as supabase } from '../../../lib/supabase'
 import { getSession } from '../../../lib/session'
 
 export async function GET(request: NextRequest) {
@@ -50,14 +50,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check if user has admin role
+    // Check if user has admin role (user_roles first, fallback to personel.role)
     const { data: userRoles } = await supabase
       .from('user_roles')
       .select('role')
-      .eq('id', session.user.id)
-      .single()
+      .eq('user_id', session.user.id)
+      .maybeSingle()
 
-    if (!userRoles || userRoles.role !== 'admin') {
+    let isAdmin = userRoles?.role === 'admin'
+
+    if (!isAdmin) {
+      const { data: personel } = await supabase
+        .from('personel')
+        .select('role')
+        .eq('id', session.user.id)
+        .maybeSingle()
+      isAdmin = personel?.role === 'admin'
+    }
+
+    if (!isAdmin) {
       return NextResponse.json(
         { error: 'Only admin can assign stations to users' },
         { status: 403 }

@@ -36,29 +36,13 @@ export async function GET(request: NextRequest) {
         // Use explicit SQL query to avoid PGRST203 overload ambiguity.
         // This forces PostgreSQL to use the NUMERIC version of hitung_koreksi.
         const { data, error } = await supabaseAdmin.rpc('hitung_koreksi', {
-            input_val: reading,         // JS number → PostgREST sends as JSON number
-            target_config_id: sensorStdId,
-        }, {
-            // Tell PostgREST to prefer the NUMERIC signature
-            head: false,
-        } as any)
+            reading: reading,
+            sensor_std_id: sensorStdId,
+        })
 
         if (error) {
             console.error('Error calling hitung_koreksi RPC:', error)
-
-            // Fallback: try via raw SQL with explicit cast to resolve ambiguity
-            const { data: fallbackData, error: fallbackError } = await supabaseAdmin
-                .rpc('hitung_koreksi', {
-                    input_val: String(reading),    // Send as string → PostgREST interprets as text, PG casts to NUMERIC
-                    target_config_id: sensorStdId,
-                } as any)
-
-            if (fallbackError) {
-                console.error('Fallback hitung_koreksi also failed:', fallbackError)
-                return NextResponse.json({ error: fallbackError.message }, { status: 500 })
-            }
-
-            return NextResponse.json({ correction: fallbackData ?? 0 })
+            return NextResponse.json({ error: error.message }, { status: 500 })
         }
 
         return NextResponse.json({ correction: data ?? 0 })

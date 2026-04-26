@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '../../../../lib/supabase'
+import { supabaseAdmin as supabase } from '../../../../lib/supabase'
 import { createClient } from '@supabase/supabase-js'
 import { sendAssignmentNotificationEmail } from '../../../../lib/email'
+import {
+  normalizeResultsOnWrite,
+  ResultsValidationError,
+} from '../../../../lib/validators/certificate-results-normalize'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -53,7 +57,8 @@ export async function PUT(
       verifikator_2,
       verifikator_3,
       results,
-      station_address
+      station_address,
+      calibration_computed_at,
     } = body
 
     if (!no_certificate || !no_order || !no_identification || !issue_date) {
@@ -65,7 +70,7 @@ export async function PUT(
     // Get current certificate data before updating
     const { data: currentCertificate, error: currentError } = await supabaseAdmin
       .from('certificate')
-      .select('authorized_by, verifikator_1, verifikator_2, verifikator_3, version, status, rejection_history, no_certificate, no_order, no_identification, issue_date, station, instrument, station_address, results')
+      .select('authorized_by, verifikator_1, verifikator_2, verifikator_3, version, status, rejection_history, no_certificate, no_order, no_identification, issue_date, station, instrument, station_address, results, calibration_place, calibration_kind, results_frozen_at')
       .eq('id', id)
       .single();
 
@@ -161,6 +166,46 @@ export async function PUT(
       v3 = verifikator_3
     }
 
+    // --- Normalisasi results (V0 → V1) ---------------------------------
+    // Hanya normalisasi & ikut-update kalau client mengirim key 'results'.
+    // Kalau tidak dikirim sama sekali, jangan sentuh kolomnya (selaras dengan
+    // pola calibration_computed_at di bawah).
+    const clientSentResults = 'results' in body
+    let resultsForUpdate: unknown = currentCertificate?.results ?? null
+    if (clientSentResults) {
+      try {
+        const outcome = normalizeResultsOnWrite(results, {
+          calibration_kind:
+            ((currentCertificate as any)?.calibration_kind ||
+             ((currentCertificate as any)?.calibration_place === 'LC' ? 'LC' : 'FC')
+            ) as 'FC' | 'LC',
+          certificate_id: id,
+        })
+        // `not_provided` berarti body mengirim results=null/undefined → simpan null
+        resultsForUpdate = outcome.kind === 'ok' ? outcome.value : null
+      } catch (err) {
+        if (err instanceof ResultsValidationError) {
+          return NextResponse.json(
+            { error: err.message, details: err.details },
+            { status: err.status }
+          )
+        }
+        throw err
+      }
+    }
+
+    const resultsChanged =
+      clientSentResults &&
+      JSON.stringify(currentCertificate?.results ?? null) !==
+        JSON.stringify(resultsForUpdate ?? null)
+
+    if (resultsChanged && currentCertificate?.results_frozen_at) {
+      return NextResponse.json({
+        error: 'Certificate results are frozen and can no longer be changed',
+        results_frozen_at: currentCertificate.results_frozen_at,
+      }, { status: 409 })
+    }
+
     // Auto-increment version when content changes meaningfully
     const nextVersion = (() => {
       const prev = currentCertificate?.version ?? 1
@@ -172,7 +217,7 @@ export async function PUT(
         (currentCertificate.station ?? null) !== (station ? parseInt(station) : null) ||
         (currentCertificate.instrument ?? null) !== (instrument ? parseInt(instrument) : null) ||
         (currentCertificate.station_address ?? null) !== ((resolvedStationAddress ?? station_address) ?? null) ||
-        JSON.stringify(currentCertificate.results ?? null) !== JSON.stringify(results ?? null)
+        resultsChanged
       return changed ? (prev + 1) : prev
     })()
 
@@ -191,8 +236,17 @@ export async function PUT(
         station: station ? parseInt(station) : null,
         instrument: instrument ? parseInt(instrument) : null,
         station_address: (resolvedStationAddress ?? station_address) ?? null,
-        results: results ?? null,
-        version: nextVersion
+        version: nextVersion,
+        // Hanya overwrite results kalau client eksplisit mengirim key 'results'.
+        // Update non-results (assign verifikator dsb.) tidak akan menyentuh kolom.
+        ...(clientSentResults ? { results: resultsForUpdate } : {}),
+        // Hanya overwrite calibration_computed_at jika client EKSPLISIT mengirim key ini
+        // (mis. setelah user klik "Hitung & Input Tabel ke Sertifikat" di QC Modal).
+        // Update dari sumber lain (assign verifikator, edit form, dll.) tidak
+        // akan menghapus timestamp yang sudah tersimpan.
+        ...('calibration_computed_at' in body
+          ? { calibration_computed_at: calibration_computed_at ?? null }
+          : {}),
       })
       .eq('id', id)
       .select()

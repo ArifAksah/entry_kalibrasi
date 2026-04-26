@@ -232,6 +232,48 @@ const FooterQRCode: React.FC<{
   )
 }
 
+/** Normalize a single sensor result entry from V1 shape to V0-compatible render shape.
+ *  V0 entries (no `links` namespace) pass through unchanged. */
+function normalizeResEntry(res: any): any {
+  if (!res?.links) return res // V0 already in render-compatible shape
+  const links = res.links || {}
+  const snapshot = res.snapshot || {}
+  const setup = res.setup || {}
+  const display = res.display || {}
+  return {
+    sensorId: links.sensor_id ?? null,
+    session_id: links.session_id ?? null,
+    sensorDetails: {
+      name: snapshot.name || '',
+      manufacturer: snapshot.manufacturer || '',
+      type: snapshot.type || '',
+      serial_number: snapshot.serial_number || '',
+      range_capacity: snapshot.range_capacity || '',
+      range_capacity_unit: snapshot.range_capacity_unit || '',
+      graduating: snapshot.graduating || '',
+      graduating_unit: snapshot.graduating_unit || '',
+    },
+    startDate: setup.start_date || '',
+    endDate: setup.end_date || '',
+    place: display.place || '',
+    environment: setup.environment || [],
+    table: display.tables || [],
+    images: display.images || [],
+    unitUut: snapshot.graduating_unit || snapshot.range_capacity_unit || '',
+    unitStd: '',
+    notesForm: {
+      calibration_methode: setup.calibration_method || '',
+      reference_document: setup.reference_document || '',
+      traceable_to_si_through: setup.traceable_to_si_through || '',
+      others: setup.others || '',
+      others_enabled: setup.others_enabled,
+      standardInstruments: (setup.standard_instruments || [])
+        .map((si: any) => typeof si === 'number' ? si : (si?.instrument_id ?? null))
+        .filter((id: any) => id != null),
+    },
+  }
+}
+
 const ViewCertificatePage: React.FC = () => {
   const params = useParams<{ id: string }>()
   const router = useRouter()
@@ -305,7 +347,11 @@ const ViewCertificatePage: React.FC = () => {
     const r: any = (cert as any)?.results
     if (!r) return []
     try {
-      return typeof r === 'string' ? JSON.parse(r) : r
+      const parsed = typeof r === 'string' ? JSON.parse(r) : r
+      const raw: any[] = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.sensors) ? parsed.sensors : []
+      return raw.map(normalizeResEntry)
     } catch {
       return []
     }
@@ -383,7 +429,10 @@ const ViewCertificatePage: React.FC = () => {
         if (c?.results) {
           try {
             const parsedResults = typeof c.results === 'string' ? JSON.parse(c.results) : c.results;
-            const sessionIds = parsedResults.map((r: any) => r.session_id).filter(Boolean);
+            const rawArr: any[] = Array.isArray(parsedResults)
+              ? parsedResults
+              : Array.isArray(parsedResults?.sensors) ? parsedResults.sensors : [];
+            const sessionIds = rawArr.map(normalizeResEntry).map((r: any) => r.session_id).filter(Boolean);
             if (sessionIds.length > 0) {
               const rawDataPromises = sessionIds.map((sid: string) =>
                 fetch(`/api/raw-data?session_id=${sid}`).then(res => res.ok ? res.json() : { data: [] })

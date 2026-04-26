@@ -6,6 +6,7 @@ import {
 } from '../../lib/qc-utils';
 import { convertUnit, needsConversion } from '../../lib/unitConversion';
 import { calculateCalibrationResult } from '../../lib/uncertainty-utils';
+import { SigFigBadge } from '../ui/SigFigBadge';
 
 
 interface RawDataRow {
@@ -27,17 +28,24 @@ interface QCDataModalProps {
     onClose: () => void;
     title: string;
     sessionId?: string;
-    certificateId: string;
+    certificateId?: string;
     certificateInstrumentId?: number;
     instruments: Instrument[];
     sensors: any[];
     instrumentNames: Array<{ id: number; name: string }>;
     standardCerts?: any[];
     onCalculateSaved?: (updates: Array<{ sensorId: number | string, table: any[] }>) => void | Promise<void>;
+    /**
+     * Status certificate pemilik data (mis. 'draft' | 'sent' | 'verified' | ...).
+     * Button "Hitung dan Input Tabel ke Sertifikat" hanya tampil saat draft
+     * karena setelah kirim konsep, data sudah frozen untuk proses verifikasi.
+     * Jika undefined → default permissive (tombol tampil) untuk backward compat.
+     */
+    certificateStatus?: string | null;
 }
 
 const QCDataModal: React.FC<QCDataModalProps> = ({
-    isOpen, onClose, title, sessionId, instruments, sensors, certificateInstrumentId, instrumentNames, standardCerts = [], onCalculateSaved
+    isOpen, onClose, title, sessionId, instruments, sensors, certificateInstrumentId, instrumentNames, standardCerts = [], onCalculateSaved, certificateStatus
 }) => {
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<RawDataRow[]>([]);
@@ -486,20 +494,43 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                                             <td className="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">
                                                                 {new Date(row.timestamp).toLocaleString('id-ID')}
                                                             </td>
-                                                            <td className="px-4 py-2 text-sm font-medium text-gray-700">{row.standard_data}</td>
+                                                            <td className="px-4 py-2 text-sm font-medium text-gray-700">
+                                                                <span className="inline-flex items-center gap-1.5">
+                                                                    <span>{row.standard_data}</span>
+                                                                    <SigFigBadge value={row.standard_data} />
+                                                                </span>
+                                                            </td>
                                                             <td className="px-4 py-2 text-sm font-medium bg-blue-50/50">
                                                                 {correctionLoading
                                                                     ? <span className="text-gray-300 text-xs">...</span>
                                                                     : hasCertData
-                                                                        ? <span className="text-blue-700">{stdCorrection > 0 ? '+' : ''}{stdCorrection}</span>
+                                                                        ? (
+                                                                            <span className="inline-flex items-center gap-1.5">
+                                                                                <span className="text-blue-700">{stdCorrection > 0 ? '+' : ''}{stdCorrection}</span>
+                                                                                <SigFigBadge value={stdCorrection} />
+                                                                            </span>
+                                                                        )
                                                                         : <span className="text-gray-400 text-[10px] italic">tidak ada</span>}
                                                             </td>
                                                             <td className="px-4 py-2 text-sm font-bold text-blue-900 bg-blue-50/30">
-                                                                {hasCertData ? stdCorrected : <span className="text-gray-400 text-xs">= {row.standard_data}</span>}
+                                                                {hasCertData ? (
+                                                                    <span className="inline-flex items-center gap-1.5">
+                                                                        <span>{stdCorrected}</span>
+                                                                        <SigFigBadge value={stdCorrected} />
+                                                                    </span>
+                                                                ) : <span className="text-gray-400 text-xs">= {row.standard_data}</span>}
                                                             </td>
-                                                            <td className="px-4 py-2 text-sm font-medium text-gray-700">{row.uut_data}</td>
+                                                            <td className="px-4 py-2 text-sm font-medium text-gray-700">
+                                                                <span className="inline-flex items-center gap-1.5">
+                                                                    <span>{row.uut_data}</span>
+                                                                    <SigFigBadge value={row.uut_data} />
+                                                                </span>
+                                                            </td>
                                                             <td className={`px-4 py-2 text-sm font-bold ${isFail ? 'text-red-600' : 'text-green-600'}`}>
-                                                                {uutCorrection > 0 ? '+' : ''}{uutCorrection}
+                                                                <span className="inline-flex items-center gap-1.5">
+                                                                    <span>{uutCorrection > 0 ? '+' : ''}{uutCorrection}</span>
+                                                                    <SigFigBadge value={uutCorrection} />
+                                                                </span>
                                                             </td>
                                                             <td className="px-4 py-2 text-xs text-gray-500">{qc.limitStr}</td>
                                                             <td className="px-4 py-2 text-center">
@@ -536,7 +567,17 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                         )}
                     </div>
                     <div className="flex items-center gap-3">
-                        {currentData.length > 0 && (
+                        {/* Info frozen-data muncul di non-draft (sent/verified/...) agar user paham kenapa tombol hilang */}
+                        {currentData.length > 0 && certificateStatus && certificateStatus !== 'draft' && (
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-50 text-amber-800 border border-amber-200">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                </svg>
+                                <span>Data sudah {certificateStatus === 'sent' ? 'dikirim ke Verifikator' : 'diverifikasi'} — tabel tidak bisa diubah lagi.</span>
+                            </div>
+                        )}
+                        {/* Tombol Hitung & Input: hanya saat draft (atau status tidak di-set → legacy) */}
+                        {currentData.length > 0 && (!certificateStatus || certificateStatus === 'draft') && (
                             <button
                                 onClick={handleSaveToTable}
                                 disabled={isSavingToTable}

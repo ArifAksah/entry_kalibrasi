@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '../../../lib/supabase'
+import { supabaseAdmin as supabase } from '../../../lib/supabase'
 import { createClient } from '@supabase/supabase-js'
 
 // Service role client to bypass RLS for validation and writes

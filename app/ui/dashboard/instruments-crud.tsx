@@ -187,7 +187,20 @@ const InstrumentsCRUD: React.FC = () => {
   })
 
   // Lookup tables for dropdowns
-  const [instrumentNames, setInstrumentNames] = useState<Array<{ id: number; name: string }>>([])
+  const [instrumentNames, setInstrumentNames] = useState<Array<{ id: number; name: string; code_alat?: string | null }>>([])
+
+  /**
+   * Tentukan apakah suatu sensor adalah sensor curah hujan berdasarkan
+   * master data `instrument_names.code_alat` (bukan keyword pada nama).
+   * Sesuai standar IKK BMKG kode alat `TT` = Tipping bucket / sensor curah hujan,
+   * sehingga kolom Funnel Diameter, Volume Per Tip, dan Funnel Area hanya
+   * tampil untuk instrumen dengan kode alat ini.
+   */
+  const isRainGaugeSensor = React.useCallback((sensorNameId: number | null | undefined) => {
+    if (!sensorNameId) return false
+    const found = instrumentNames.find(n => n.id === sensorNameId)
+    return (found?.code_alat || '').trim().toUpperCase() === 'TT'
+  }, [instrumentNames])
   const [instrumentTypes, setInstrumentTypes] = useState<Array<{ id: number; name: string }>>([])
   const pageSize = 10
   const [currentPage, setCurrentPage] = useState(1)
@@ -506,20 +519,28 @@ const InstrumentsCRUD: React.FC = () => {
                       sensorData: []
                     });
                   }
-                  certsMap.get(c.no_certificate).sensorData.push({
-                    sensorLocalId: sensor.id.toString(),
-                    drift: c.drift || 0,
-                    u95_general: c.u95_general || 0,
-                    correction_data: c.correction_data || [],
-                    dbCertId: c.id
-                  });
+                  const certEntry = certsMap.get(c.no_certificate);
+                  const sensorLocalId = sensor.id.toString();
+                  const alreadyAdded = certEntry.sensorData.some((d: any) => d.sensorLocalId === sensorLocalId);
+                  if (!alreadyAdded) {
+                    certEntry.sensorData.push({
+                      sensorLocalId,
+                      drift: c.drift || 0,
+                      u95_general: c.u95_general || 0,
+                      correction_data: c.correction_data || [],
+                      dbCertId: c.id
+                    });
+                  }
                 });
               }
 
               return { ...sensor, range_capacity, resolution };
             });
 
-            setSensorForms(processedSensors)
+            const uniqueSensors = processedSensors.filter(
+              (s: any, idx: number, arr: any[]) => arr.findIndex((x: any) => x.id === s.id) === idx
+            )
+            setSensorForms(uniqueSensors)
             setGlobalCertificates(Array.from(certsMap.values()))
             // Directly set isStandardInstrument based on loaded sensors (fixes race condition)
             const anyStandard = processedSensors.some((s: any) => s.is_standard);
@@ -1360,8 +1381,9 @@ const InstrumentsCRUD: React.FC = () => {
                                           }));
                                         };
 
-                                        const isRainSensor = instrumentNames.find(n => n.id === sensor.sensor_name_id)?.name?.toLowerCase().includes('hujan') ||
-                                          instrumentNames.find(n => n.id === sensor.sensor_name_id)?.name?.toLowerCase().includes('rain');
+                                        // Tampilkan kolom Funnel berdasarkan kode alat master (TT = curah hujan),
+                                        // bukan keyword pada nama sensor.
+                                        const isRainSensor = isRainGaugeSensor(sensor.sensor_name_id);
 
                                         return (
                                           <div key={sd.sensorLocalId} className="border border-blue-200 rounded-xl overflow-hidden shadow-sm">
@@ -1768,8 +1790,9 @@ const InstrumentsCRUD: React.FC = () => {
                                         placeholder="Ex: 0.01"/>
                                     </div>
                                   </div>
-                                  {(instrumentNames.find(n => n.id === sensor.sensor_name_id)?.name?.toLowerCase().includes('hujan') ||
-                                    instrumentNames.find(n => n.id === sensor.sensor_name_id)?.name?.toLowerCase().includes('rain')) && (
+                                  {/* Kolom Funnel hanya tampil untuk sensor curah hujan
+                                      berdasarkan master code_alat = 'TT' (IKK BMKG). */}
+                                  {isRainGaugeSensor(sensor.sensor_name_id) && (
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                       <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">Funnel Diameter</label>

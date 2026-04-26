@@ -14,6 +14,7 @@ import { useAlert } from '../../hooks/useAlert'
 import { supabase } from '../../lib/supabase'
 import QCDataModal from '../../components/features/QCDataModal'
 import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClassName } from '../../lib/rich-text'
+import { firstLegacyResult, resultsToLegacyView } from '../../lib/validators/certificate-results-render-adapter'
 
 const RichTextCell: React.FC<{ value: string; className?: string }> = ({ value, className = '' }) => (
   <div
@@ -297,16 +298,10 @@ const CertificatePreview: React.FC<{
 
   // Parse results data (handle both string and object)
   const results = (() => {
-    const r: any = certificate.results
-    if (!r) return []
-    try {
-      return typeof r === 'string' ? JSON.parse(r) : (Array.isArray(r) ? r : [])
-    } catch {
-      return []
-    }
+    return resultsToLegacyView(certificate.results)
   })()
 
-  const totalPrintedPages = (Array.isArray(results) ? results.length : 0) + 2
+  const totalPrintedPages = results.length + 2
 
   // QR verification URL and signing status
   const qrUrl = certificate.no_certificate ? `/verify/${encodeURIComponent(certificate.no_certificate)}` : ''
@@ -392,7 +387,7 @@ const CertificatePreview: React.FC<{
   }
 
   const sensorsSummary = (() => {
-    const r: any[] = Array.isArray(results) ? results : []
+    const r: any[] = results
     if (!r.length) return instrument?.others || '-'
     const lines = r.map((res: any, i: number) => {
       const sd = res?.sensorDetails || {}
@@ -1060,7 +1055,14 @@ const DraftView: React.FC<{
     }
   }
 
-  const isReadyToSend = certificate.verifikator_1 && certificate.verifikator_2
+  // --- Prasyarat untuk KIRIM KONSEP ---
+  // Button dikunci sampai semua item di bawah "OK"; banner checklist akan
+  // menampilkan step yang kurang beserta tombol shortcut untuk menyelesaikannya.
+  const hasVerifikators = !!(certificate.verifikator_1 && certificate.verifikator_2 && certificate.verifikator_3)
+  const hasComputedQC   = !!certificate.calibration_computed_at
+  const isReadyToSend   = hasVerifikators && hasComputedQC
+  // Legacy usage: beberapa bagian kode lain mengecek "assign verifikator".
+  const hasBasicAssignments = !!(certificate.verifikator_1 && certificate.verifikator_2)
 
   return (
     <div className="bg-white rounded-lg shadow-sm border p-6">
@@ -1068,7 +1070,19 @@ const DraftView: React.FC<{
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Detail Log Sertifikat Kalibrasi</h2>
-          <p className="text-sm text-gray-600">Status: Draft</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <p className="text-sm text-gray-600">Status: Draft</p>
+            {(certificate as any).calibration_kind && (
+              <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded border ${(certificate as any).calibration_kind === 'LC' ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-sky-50 text-sky-700 border-sky-200'}`}>
+                {(certificate as any).calibration_kind}
+              </span>
+            )}
+            {(certificate as any).results_frozen_at && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded border bg-amber-50 text-amber-700 border-amber-200" title={`Dibekukan: ${new Date((certificate as any).results_frozen_at).toLocaleString('id-ID')}`}>
+                🔒 Hasil Dibekukan
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center space-x-3">
           {/* <button
@@ -1084,10 +1098,7 @@ const DraftView: React.FC<{
 
           <button
             onClick={() => {
-              // Try to find session_id from results
-              const sessionId = Array.isArray(certificate.results) && certificate.results.length > 0
-                ? (certificate.results[0] as any).session_id
-                : null;
+              const sessionId = firstLegacyResult(certificate.results)?.session_id ?? null;
 
               if (sessionId) {
                 setShowQCModal(true);
@@ -1095,7 +1106,9 @@ const DraftView: React.FC<{
                 alert("Data QC tidak tersedia untuk sertifikat ini. Pastikan sertifikat dibuat/diupdate dengan data mentah baru.");
               }
             }}
-            className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            disabled={!!(certificate as any).results_frozen_at}
+            title={(certificate as any).results_frozen_at ? 'Hasil kalibrasi sudah dibekukan — tidak bisa diedit ulang' : undefined}
+            className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1103,7 +1116,7 @@ const DraftView: React.FC<{
             QC CHECK
           </button>
 
-          {!isReadyToSend && (
+          {!hasVerifikators && (
             <button
               onClick={() => setIsEditing(true)}
               className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -1117,6 +1130,12 @@ const DraftView: React.FC<{
           <button
             onClick={() => { if (!(isSending || hasSent)) setShowModal(true) }}
             disabled={isSending || hasSent || !isReadyToSend}
+            title={
+              hasSent ? 'Naskah sudah terkirim ke Verifikator' :
+              !hasVerifikators ? 'Tentukan dulu Verifikator 1, 2, dan 3 sebelum kirim konsep' :
+              !hasComputedQC  ? 'Buka QC CHECK dan klik "Hitung & Input ke Tabel Sertifikat" terlebih dahulu' :
+              'Kirim konsep ke verifikator'
+            }
             className={`flex items-center px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 ${isReadyToSend && !(isSending || hasSent)
               ? 'bg-green-600 hover:bg-green-700'
               : 'bg-gray-400 cursor-not-allowed'
@@ -1144,9 +1163,7 @@ const DraftView: React.FC<{
         onClose={() => setShowQCModal(false)}
         title={certificate.no_certificate}
         sessionId={
-          Array.isArray(certificate.results) && certificate.results.length > 0
-            ? (certificate.results[0] as any).session_id
-            : undefined
+          firstLegacyResult(certificate.results)?.session_id ?? undefined
         }
         certificateId={String(certificate.id)}
         certificateInstrumentId={certificate.instrument || undefined}
@@ -1156,22 +1173,134 @@ const DraftView: React.FC<{
           instruments.find(i => i.id === certificate.instrument)?.sensor || []
         }
         instrumentNames={instrumentNames}
+        certificateStatus={certificate.status}
+        onCalculateSaved={async (updates) => {
+          if (!onUpdateCertificate) return
+          // Merge hasil hitung ke results[] existing berdasarkan sensorId.
+          // Struktur results: array of {sensorId, table, ...} per sensor.
+          const prev = resultsToLegacyView(certificate.results)
+          updates.forEach((u) => {
+            const idx = prev.findIndex((r: any) => String(r.sensorId ?? r.sensor_id) === String(u.sensorId))
+            if (idx >= 0) {
+              prev[idx] = { ...prev[idx], table: u.table }
+            } else {
+              prev.push({
+                sensorId: typeof u.sensorId === 'number' ? u.sensorId : null,
+                table: u.table,
+              } as any)
+            }
+          })
+          try {
+            await onUpdateCertificate(certificate.id, {
+              no_certificate:    certificate.no_certificate,
+              no_order:          certificate.no_order,
+              no_identification: certificate.no_identification,
+              issue_date:        certificate.issue_date,
+              station:           certificate.station,
+              instrument:        certificate.instrument,
+              station_address:   certificate.station_address,
+              verifikator_1:     certificate.verifikator_1 ?? null,
+              verifikator_2:     certificate.verifikator_2 ?? null,
+              verifikator_3:     certificate.verifikator_3 ?? null,
+              results:           prev,
+              // Tandai: user sudah menjalankan "Hitung & Input Tabel ke Sertifikat".
+              // Ini yang akan unlock tombol KIRIM KONSEP di header.
+              calibration_computed_at: new Date().toISOString(),
+            })
+            // Sync local state supaya UI button re-evaluasi tanpa tunggu reload.
+            ;(certificate as any).results = prev
+            ;(certificate as any).calibration_computed_at = new Date().toISOString()
+          } catch (err) {
+            console.error('Gagal menyimpan hasil QC ke sertifikat:', err)
+          }
+        }}
       />
 
-      {/* Status Message */}
-      <div className="bg-gray-100 border border-gray-200 rounded-lg p-4 mb-6">
-        <div className="flex items-center">
-          <svg className="w-5 h-5 text-gray-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <div>
-            <p className="text-gray-700 font-medium">Naskah ini belum dikirim</p>
-            <p className="text-sm text-gray-600">
-              Pastikan Naskah sudah lengkap dan sesuai. Naskah akan dikirimkan kepada Verifikator.
-            </p>
+      {/* Checklist prasyarat KIRIM KONSEP.
+          - Tampil HANYA saat masih ada item yang belum tuntas (!isReadyToSend)
+            agar tidak menambah noise saat semua sudah siap.
+          - Tiap item yang belum tuntas punya tombol shortcut supaya user
+            tidak perlu menebak aksi selanjutnya. */}
+      {!isReadyToSend ? (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+          <div className="flex items-start gap-3">
+            <svg className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M5 19h14a2 2 0 001.84-2.75L13.73 4a2 2 0 00-3.46 0L3.16 16.25A2 2 0 005 19z" />
+            </svg>
+            <div className="flex-1">
+              <p className="font-semibold text-amber-900">Belum bisa kirim konsep — selesaikan langkah berikut:</p>
+              <ul className="mt-2 space-y-2 text-sm">
+                <li className="flex items-center gap-2">
+                  {hasVerifikators ? (
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-700">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold">!</span>
+                  )}
+                  <span className={hasVerifikators ? 'text-gray-700 line-through' : 'text-gray-800 font-medium'}>
+                    Tentukan Verifikator 1, 2, dan 3
+                  </span>
+                  {!hasVerifikators && (
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      className="ml-2 inline-flex items-center text-xs font-semibold text-blue-700 hover:text-blue-900 underline underline-offset-2"
+                    >
+                      Assign sekarang →
+                    </button>
+                  )}
+                </li>
+                <li className="flex items-center gap-2">
+                  {hasComputedQC ? (
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-700">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold">!</span>
+                  )}
+                  <span className={hasComputedQC ? 'text-gray-700 line-through' : 'text-gray-800 font-medium'}>
+                    Hitung &amp; Input Tabel ke Sertifikat di QC Check Data
+                  </span>
+                  {!hasComputedQC && (
+                    <button
+                      onClick={() => {
+                        const sessionId = firstLegacyResult(certificate.results)?.session_id ?? null
+                        if (sessionId) {
+                          setShowQCModal(true)
+                        } else {
+                          alert('Data QC tidak tersedia untuk sertifikat ini. Pastikan sertifikat dibuat/diupdate dengan data mentah baru.')
+                        }
+                      }}
+                      className="ml-2 inline-flex items-center text-xs font-semibold text-indigo-700 hover:text-indigo-900 underline underline-offset-2"
+                    >
+                      Buka QC Check →
+                    </button>
+                  )}
+                </li>
+              </ul>
+              {hasComputedQC && (
+                <p className="mt-2 text-[11px] text-gray-500 italic">
+                  Tabel sertifikat terakhir dihitung pada {new Date(certificate.calibration_computed_at!).toLocaleString('id-ID')}.
+                </p>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center gap-3">
+            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <p className="font-semibold text-green-900">Siap dikirim</p>
+              <p className="text-xs text-green-700">
+                Semua prasyarat terpenuhi. Klik <span className="font-semibold">KIRIM KONSEP</span> di kanan atas untuk melanjutkan ke verifikator.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Certificate Details */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

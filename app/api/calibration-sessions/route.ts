@@ -25,13 +25,7 @@ export async function POST(req: NextRequest) {
             status: status ? { current: status } : { current: 'draft' }, // Map status to jsonb
             // tgl_kalibrasi is required (date). Use start_date or today.
             tgl_kalibrasi: start_date ? new Date(start_date).toISOString() : new Date().toISOString(),
-            // uut_instrument_id is required (bigint). 
-            // If body doesn't have it, we might fail. 
-            // We should request it from frontend.
-            // For now, if missing, we try 0 or 1 if it's a FK... unlikely to work if FK constraint.
-            // If it's just a bigint without FK, 0 might work.
-            // Let's assume frontend passes 'instrument_id' in body (I need to update frontend).
-            uut_instrument_id: body.instrument_id ? parseInt(body.instrument_id) : 0,
+            uut_instrument_id: body.instrument_id ? parseInt(body.instrument_id) : null,
 
             created_at: new Date().toISOString()
         }

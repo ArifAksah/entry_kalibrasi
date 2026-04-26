@@ -48,51 +48,71 @@ export async function POST(req: NextRequest) {
                     continue
                 }
 
+                // Parse numeric values — handles comma decimal, thousand separator, null/undefined
+                const cleanFloat = (val: any): number | null => {
+                    if (val === null || val === undefined || val === '') return null
+                    if (typeof val === 'number') return isNaN(val) ? null : val
+                    if (typeof val === 'string') {
+                        // Remove thousand separators (dot before 3-digit groups) then swap comma→dot for decimal
+                        let s = val.trim()
+                        // European format "1.234,56" → strip dots used as thousands → "1234,56" → "1234.56"
+                        if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) {
+                            s = s.replace(/\./g, '').replace(',', '.')
+                        } else {
+                            // Replace comma decimal separator (non-European)
+                            s = s.replace(',', '.')
+                        }
+                        const n = parseFloat(s)
+                        return isNaN(n) ? null : n
+                    }
+                    return null
+                }
+
+                let skippedNoUut = 0, skippedNoTimestamp = 0, kept = 0
+
                 // Process data rows
                 for (let i = 1; i < sheetData.length; i++) {
                     const row = sheetData[i]
                     if (!row || row.length === 0) continue
 
                     const timestampVal = row[timestampIdx]
-                    const standardVal = row[standardIdx]
-                    const uutVal = row[uutIdx]
+                    const uutVal      = uutIdx !== -1 ? row[uutIdx] : undefined
+                    const standardVal = standardIdx !== -1 ? row[standardIdx] : undefined
 
-                    // Basic validation: ensure we have data
-                    if (timestampVal === undefined || standardVal === undefined || uutVal === undefined) continue
-
-                    // Parse numeric values (handle comma as decimal)
-                    const cleanFloat = (val: any) => {
-                        if (typeof val === 'number') return val
-                        if (typeof val === 'string') return parseFloat(val.replace(',', '.'))
-                        return NaN
+                    // Only timestamp + UUT are required; standard_data is nullable in DB
+                    if (timestampVal === undefined || timestampVal === null || timestampVal === '') {
+                        skippedNoTimestamp++
+                        continue
                     }
 
+                    const uutData      = cleanFloat(uutVal)
                     const standardData = cleanFloat(standardVal)
-                    const uutData = cleanFloat(uutVal)
 
-                    // Parse timestamp (basic handling)
+                    // Skip rows with no UUT reading — they are meaningless
+                    if (uutData === null) {
+                        skippedNoUut++
+                        continue
+                    }
+
+                    // Parse timestamp
                     let timestamp: string | null = null
                     try {
-                        if (timestampVal) {
-                            // Handle Excel serial date if passed as number
-                            if (typeof timestampVal === 'number' && timestampVal > 20000) {
-                                // Basic Excel date conversion (approximate for modern Excel)
-                                const date = new Date((timestampVal - 25569) * 86400 * 1000)
-                                timestamp = date.toISOString()
-                            } else {
-                                timestamp = new Date(timestampVal).toISOString()
-                            }
+                        if (typeof timestampVal === 'number' && timestampVal > 20000) {
+                            // Excel serial date conversion
+                            const date = new Date((timestampVal - 25569) * 86400 * 1000)
+                            timestamp = date.toISOString()
+                        } else {
+                            timestamp = new Date(timestampVal).toISOString()
                         }
-                    } catch (e) {
-                        timestamp = new Date().toISOString() // Fallback
+                    } catch {
+                        timestamp = new Date().toISOString()
                     }
 
-                    if (isNaN(standardData) || isNaN(uutData)) continue // Skip invalid rows
-
+                    kept++
                     rowsToInsert.push({
                         session_id,
                         timestamp: timestamp || new Date().toISOString(),
-                        standard_data: standardData,
+                        standard_data: standardData,  // null is OK — DB column is nullable
                         uut_data: uutData,
                         created_at: new Date().toISOString(),
                         sensor_id_uut: sensorIdUut || null,
@@ -102,6 +122,8 @@ export async function POST(req: NextRequest) {
                         unit_uut: unitUut,
                     })
                 }
+                console.log(`[raw-data] Sheet "${sheetName}": kept=${kept}, skipped_no_uut=${skippedNoUut}, skipped_no_timestamp=${skippedNoTimestamp}`)
+
             }
         }
 
