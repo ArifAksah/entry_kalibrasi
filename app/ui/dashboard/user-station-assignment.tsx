@@ -69,8 +69,6 @@ const UserStationAssignment: React.FC = () => {
     fetchUsers()
     fetchUserStations()
     fetchAllStations()
-    fetchUserStations()
-    fetchAllStations()
 
     // Fetch Provinces
     fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json')
@@ -94,12 +92,12 @@ const UserStationAssignment: React.FC = () => {
   const fetchAllStations = async () => {
     try {
       console.log('Fetching all stations for assignment...')
-      // Use the existing stations API with a large page size to get all stations
-      const response = await fetch('/api/stations?pageSize=1000&page=1')
+      const response = await fetch('/api/stations/all')
       if (!response.ok) throw new Error('Failed to fetch stations')
       const data = await response.json()
-      console.log(`Received ${data?.data?.length || 0} stations from API (total: ${data?.total || 0})`)
-      setStations(data?.data || [])
+      const stationsList = Array.isArray(data) ? data : []
+      console.log(`Received ${stationsList.length} stations from API /api/stations/all`)
+      setStations(stationsList)
     } catch (error) {
       console.error('Error fetching stations:', error)
       setError('Failed to fetch stations')
