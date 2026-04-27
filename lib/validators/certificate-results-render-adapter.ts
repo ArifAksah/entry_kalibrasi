@@ -39,6 +39,8 @@ import {
 export interface LegacyResultEntry {
   sensorId: number | null
   session_id?: string | null
+  unitUut?: string | null
+  unitStd?: string | null
   place: string
   startDate: string
   endDate: string
@@ -81,6 +83,8 @@ function sensorV1ToLegacyEntry(s: SensorResultV1): LegacyResultEntry {
   return {
     sensorId: s.links.sensor_id,
     session_id: s.links.session_id ?? null,
+    unitUut: s.setup.measurement_units?.uut ?? null,
+    unitStd: s.setup.measurement_units?.std ?? null,
     place: s.display.place,
     startDate: s.setup.start_date,
     endDate: s.setup.end_date,
@@ -107,7 +111,7 @@ function sensorV1ToLegacyEntry(s: SensorResultV1): LegacyResultEntry {
       // name/sn dari V1 snapshot belum dipakai renderer hari ini, disimpan
       // saja di V1 untuk kepentingan Opsi C.
       standardInstruments: s.setup.standard_instruments
-        .map((si) => si.instrument_id)
+        .map((si) => si.sensor_id ?? si.instrument_id)
         .filter((id): id is number => typeof id === 'number'),
     },
     sensorDetails: {

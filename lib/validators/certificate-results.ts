@@ -99,6 +99,7 @@ export const EnvironmentConditionSchema = z.object({
 export const StandardInstrumentRefSchema = z.object({
   /** Link ke master — Opsi C akan jadi FK ke instruments.id */
   instrument_id: z.number().int().nullable().optional(),
+  sensor_id: z.number().int().nullable().optional(),
   name: z.string(),
   serial_number: z.string().default(''),
   certificate_no: z.string().default(''),
@@ -191,6 +192,12 @@ export const CalibrationSetupSchema = z.object({
 
   /** Standar yang dipakai. */
   standard_instruments: z.array(StandardInstrumentRefSchema).default([]),
+
+  /** Unit eksplisit untuk kolom raw data agar tidak hilang saat edit/reload. */
+  measurement_units: z.object({
+    uut: z.string().default(''),
+    std: z.string().default(''),
+  }).optional(),
 })
 
 // ---------------------------------------------------------------------------

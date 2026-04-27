@@ -137,21 +137,28 @@ function convertLegacyEntry(raw: unknown, index: number): SensorResultV1 {
   const rawStandards = asArray<unknown>(nf.standardInstruments ?? nf.standard_instruments)
   const standardInstruments = rawStandards.map((si) => {
     if (typeof si === 'number' || typeof si === 'string') {
-      const id = asNumberOrNull(si)
+      const sensorId = asNumberOrNull(si)
       return {
-        instrument_id: id,
+        instrument_id: asNumberOrNull((entry as any).standardInstrumentId ?? (entry as any).standard_instrument_id),
+        sensor_id: sensorId,
         name: '',
         serial_number: '',
-        certificate_no: '',
+        certificate_no: asString((entry as any).standardCertificateNumber ?? (entry as any).standard_certificate_number),
         traceable_to: '',
       }
     }
     const obj = asPlainObject(si)
     return {
       instrument_id: asNumberOrNull(obj.instrument_id ?? obj.id),
+      sensor_id: asNumberOrNull(obj.sensor_id),
       name: asString(obj.name),
       serial_number: asString(obj.serial_number ?? obj.sn),
-      certificate_no: asString(obj.certificate_no ?? obj.no_certificate),
+      certificate_no: asString(
+        obj.certificate_no ??
+        obj.no_certificate ??
+        (entry as any).standardCertificateNumber ??
+        (entry as any).standard_certificate_number
+      ),
       traceable_to: asString(obj.traceable_to ?? obj.traceability),
     }
   })
@@ -174,6 +181,10 @@ function convertLegacyEntry(raw: unknown, index: number): SensorResultV1 {
     end_date: asString(entry.endDate ?? entry.end_date),
     environment,
     standard_instruments: standardInstruments,
+    measurement_units: {
+      uut: asString(entry.unitUut ?? entry.unit_uut),
+      std: asString(entry.unitStd ?? entry.unit_std),
+    },
   }
 
   // --- display ----------------------------------------------------------

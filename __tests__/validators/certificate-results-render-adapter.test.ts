@@ -19,6 +19,8 @@ const V0_FULL = [
     place: 'Lab A - Sensor X',
     sensorId: 7,
     session_id: '11111111-1111-4111-8111-111111111111',
+    unitUut: 'mm',
+    unitStd: 'inch',
     table: [
       {
         title: 'Hasil Pengukuran',
@@ -108,6 +110,8 @@ describe('roundtrip V0 → V1 → V0 via adapter', () => {
     // links / ids
     expect(e.sensorId).toBe(7)
     expect(e.session_id).toBe('11111111-1111-4111-8111-111111111111')
+    expect(e.unitUut).toBe('mm')
+    expect(e.unitStd).toBe('inch')
 
     // display
     expect(e.place).toBe('Lab A - Sensor X')

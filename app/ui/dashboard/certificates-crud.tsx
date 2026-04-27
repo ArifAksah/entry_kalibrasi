@@ -422,6 +422,11 @@ const CertificatesCRUD: React.FC = () => {
   const [lhksCertificate, setLhksCertificate] = useState<Certificate | null>(null)
   const [lhksRawData, setLhksRawData] = useState<any[]>([])
 
+  const getAnyResultSessionId = (rawResults: unknown): string | null => {
+    const entries = resultsToLegacyView(rawResults)
+    return entries.map((r: any) => r.session_id).find((sid: any) => !!sid) ?? null
+  }
+
   const getVerificationLevelLabel = (level: number | null | undefined) => {
     switch (level) {
       case 1:
@@ -464,7 +469,7 @@ const CertificatesCRUD: React.FC = () => {
     setLhksCertificate(cert)
     setLhksRawData([])
 
-    const sessionId = firstLegacyResult(cert.results)?.session_id
+    const sessionId = getAnyResultSessionId(cert.results)
     if (sessionId) {
       try {
         const res = await fetch(`/api/raw-data?session_id=${sessionId}`)
@@ -722,6 +727,165 @@ type ResultItem = {
   const [rawPreviewSheetIndex, setRawPreviewSheetIndex] = useState(0)
   const [isGenerating, setIsGenerating] = useState(false)
 
+  const decodeWorkbookFileText = (entry: any): string | null => {
+    if (!entry) return null
+    if (entry.content && entry.type) {
+      const content = entry.content
+      if (typeof content === 'string') return content
+      if (content instanceof Uint8Array || Array.isArray(content)) {
+        return new TextDecoder('utf-8').decode(content instanceof Uint8Array ? content : new Uint8Array(content))
+      }
+    }
+    if (typeof entry.data === 'string') return entry.data
+    if (typeof entry.asBinary === 'function') return entry.asBinary()
+    if (typeof entry.asNodeBuffer === 'function') {
+      const buffer = entry.asNodeBuffer()
+      return new TextDecoder('utf-8').decode(buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer))
+    }
+    if (entry._data?.getContent) {
+      const content = entry._data.getContent()
+      if (typeof content === 'string') return content
+      return new TextDecoder('utf-8').decode(content instanceof Uint8Array ? content : new Uint8Array(content))
+    }
+    return null
+  }
+
+  const findWorkbookFile = (workbook: any, targetPath: string): any | null => {
+    const files = workbook?.files
+    if (!files) return null
+    const normalizedTarget = targetPath.replace(/\\/g, '/').toLowerCase()
+
+    for (const key of Object.keys(files)) {
+      const normalizedKey = key.replace(/^Root Entry[\\/]/i, '').replace(/\\/g, '/').toLowerCase()
+      if (normalizedKey === normalizedTarget) return files[key]
+    }
+
+    return null
+  }
+
+  const decodeXmlEntities = (value: string): string =>
+    value
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, '&')
+
+  const getWorkbookSheetXmlPaths = (workbook: any): Record<string, string> => {
+    const workbookRelsXml = decodeWorkbookFileText(findWorkbookFile(workbook, 'xl/_rels/workbook.xml.rels'))
+    const workbookSheets = workbook?.Workbook?.Sheets
+    const pathsByName: Record<string, string> = {}
+    if (!Array.isArray(workbookSheets)) return pathsByName
+
+    if (!workbookRelsXml) {
+      workbookSheets.forEach((sheet: any, index: number) => {
+        const sheetName = workbook.SheetNames?.[index] || sheet?.name
+        if (!sheetName) return
+        pathsByName[sheetName] = `xl/worksheets/sheet${index + 1}.xml`
+      })
+      return pathsByName
+    }
+
+    const relTargetById: Record<string, string> = {}
+    const relationshipRegex = /<Relationship\b([^>]*)\/?>/g
+    const attrRegex = /([A-Za-z_:][\w:.-]*)="([^"]*)"/g
+    let relationshipMatch: RegExpExecArray | null
+
+    while ((relationshipMatch = relationshipRegex.exec(workbookRelsXml)) !== null) {
+      const attrsSource = relationshipMatch[1] || ''
+      const attrs: Record<string, string> = {}
+      let attrMatch: RegExpExecArray | null
+
+      while ((attrMatch = attrRegex.exec(attrsSource)) !== null) {
+        attrs[attrMatch[1]] = attrMatch[2]
+      }
+
+      const relType = attrs.Type || attrs.type || ''
+      const relId = attrs.Id || attrs.id || ''
+      const relTarget = attrs.Target || attrs.target || ''
+
+      if (relType.toLowerCase().includes('worksheet') && relId && relTarget) {
+        relTargetById[relId] = relTarget
+      }
+    }
+
+    workbookSheets.forEach((sheet: any, index: number) => {
+      const relId = sheet?.id || sheet?.strRelID
+      const target = relId ? relTargetById[relId] : null
+      const sheetName = workbook.SheetNames?.[index] || sheet?.name
+      if (!sheetName) return
+
+      if (target) {
+        pathsByName[sheetName] = `xl/${String(target).replace(/^\/?xl\//i, '').replace(/^\.\.\//, '')}`.replace(/\\/g, '/')
+        return
+      }
+
+      pathsByName[sheetName] = `xl/worksheets/sheet${index + 1}.xml`
+    })
+
+    return pathsByName
+  }
+
+  const extractRowsFromSheetXml = (sheetXml: string, sharedStrings: any[] = []): any[][] => {
+    const sheetDataMatch = sheetXml.match(/<(?:\w+:)?sheetData[^>]*>([\s\S]*?)<\/(?:\w+:)?sheetData>/i)
+    if (!sheetDataMatch?.[1]) return []
+
+    const rows: any[][] = []
+    const rowRegex = /<(?:\w+:)?row\b[^>]*>([\s\S]*?)<\/(?:\w+:)?row>/gi
+    const cellRegex = /<(?:\w+:)?c\b([^>]*)>([\s\S]*?)<\/(?:\w+:)?c>|<(?:\w+:)?c\b([^>]*)\/>/gi
+    const attrRegex = /([A-Za-z_:][\w:.-]*)="([^"]*)"/g
+
+    const readCellValue = (attrsSource: string, content: string): any => {
+      const attrs: Record<string, string> = {}
+      let attrMatch: RegExpExecArray | null
+      while ((attrMatch = attrRegex.exec(attrsSource)) !== null) {
+        attrs[attrMatch[1]] = attrMatch[2]
+      }
+
+      const cellType = attrs.t || ''
+      const valueMatch = content.match(/<(?:\w+:)?v[^>]*>([\s\S]*?)<\/(?:\w+:)?v>/i)
+      const inlineStringMatch = content.match(/<(?:\w+:)?t[^>]*>([\s\S]*?)<\/(?:\w+:)?t>/i)
+      const rawValue = valueMatch?.[1] ?? inlineStringMatch?.[1] ?? ''
+      const decodedValue = decodeXmlEntities(rawValue)
+
+      if (cellType === 's') {
+        const stringIndex = Number(decodedValue)
+        return Number.isFinite(stringIndex)
+          ? (sharedStrings?.[stringIndex]?.t ?? sharedStrings?.[stringIndex]?.r ?? decodedValue)
+          : decodedValue
+      }
+      if (cellType === 'inlineStr' || cellType === 'str') return decodedValue
+      if (cellType === 'b') return decodedValue === '1'
+      if (cellType === 'd') return decodedValue
+
+      const numericValue = Number(decodedValue)
+      return decodedValue !== '' && Number.isFinite(numericValue) ? numericValue : decodedValue
+    }
+
+    let rowMatch: RegExpExecArray | null
+    while ((rowMatch = rowRegex.exec(sheetDataMatch[1])) !== null) {
+      const rowCellsXml = rowMatch[1]
+      const row: any[] = []
+      let cellMatch: RegExpExecArray | null
+
+      while ((cellMatch = cellRegex.exec(rowCellsXml)) !== null) {
+        const attrsSource = cellMatch[1] || cellMatch[3] || ''
+        const content = cellMatch[2] || ''
+        const refMatch = attrsSource.match(/\br="([^"]+)"/)
+        if (!refMatch?.[1]) continue
+
+        const cellPos = utils.decode_cell(refMatch[1])
+        row[cellPos.c] = readCellValue(attrsSource, content)
+      }
+
+      if (row.some(val => val !== undefined && val !== null && val !== '')) {
+        rows.push(row)
+      }
+    }
+
+    return rows
+  }
+
   // Auto-Generate Table Result from QC Data
   const handleAutoGenerate = async (sectionIndex: number) => {
     if (tableEditIndex === null) return;
@@ -799,7 +963,7 @@ type ResultItem = {
     setIsImporting(true)
     try {
       const data = await file.arrayBuffer()
-      const workbook = read(data)
+      const workbook = read(data, { raw: true, cellDates: true })
       const worksheet = workbook.Sheets[workbook.SheetNames[0]]
       const jsonData = utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
 
@@ -884,18 +1048,54 @@ type ResultItem = {
 
     try {
       const data = await file.arrayBuffer()
-      const workbook = read(data)
+      const workbook: any = read(data, { raw: true, cellDates: true, bookFiles: true })
+      const sheetXmlPaths = getWorkbookSheetXmlPaths(workbook)
+      const sharedStrings = Array.isArray(workbook.Strings) ? workbook.Strings : []
 
       const sheetsData: { name: string, data: any[][] }[] = []
       const invalidSheets: string[] = []
 
-      workbook.SheetNames.forEach(name => {
+      workbook.SheetNames.forEach((name: string) => {
         const worksheet = workbook.Sheets[name]
+        const sheetXmlPath = sheetXmlPaths[name]
+        const sheetXml = decodeWorkbookFileText(sheetXmlPath ? findWorkbookFile(workbook, sheetXmlPath) : null)
+        const xmlRows = sheetXml ? extractRowsFromSheetXml(sheetXml, sharedStrings) : []
 
         // Manual Extraction to bypass `sheet_to_json` format coercion and get pure `.v` (raw value)
         const jsonData: any[][] = [];
-        const ref = worksheet['!ref'];
-        if (ref) {
+        const refFromMetadata = worksheet['!ref'];
+        const cellAddresses = Object.keys(worksheet).filter(key => /^[A-Z]+[0-9]+$/i.test(key))
+        let ref = refFromMetadata
+        if (cellAddresses.length > 0) {
+          let minRow = Number.POSITIVE_INFINITY
+          let minCol = Number.POSITIVE_INFINITY
+          let maxRow = Number.NEGATIVE_INFINITY
+          let maxCol = Number.NEGATIVE_INFINITY
+
+          cellAddresses.forEach(addr => {
+            const cellPos = utils.decode_cell(addr)
+            if (cellPos.r < minRow) minRow = cellPos.r
+            if (cellPos.c < minCol) minCol = cellPos.c
+            if (cellPos.r > maxRow) maxRow = cellPos.r
+            if (cellPos.c > maxCol) maxCol = cellPos.c
+          })
+
+          const computedRef = utils.encode_range({
+            s: { r: minRow, c: minCol },
+            e: { r: maxRow, c: maxCol }
+          })
+
+          if (!ref || (utils.decode_range(computedRef).e.r > utils.decode_range(ref).e.r)) {
+            ref = computedRef
+          }
+
+          console.log(`[raw-upload] Sheet "${name}" ref metadata=${refFromMetadata || 'none'} computed=${computedRef} cells=${cellAddresses.length}`)
+        }
+
+        if (xmlRows.length > 0) {
+          jsonData.push(...xmlRows)
+          console.log(`[raw-upload] Sheet "${name}" xmlRows=${xmlRows.length} xmlPath=${sheetXmlPath || 'unknown'}`)
+        } else if (ref) {
           const range = utils.decode_range(ref);
           for (let R = range.s.r; R <= range.e.r; ++R) {
             const row: any[] = [];
@@ -924,26 +1124,50 @@ type ResultItem = {
         }
 
         if (jsonData.length > 0) {
-          // Validation: Check headers (Flexible)
-          const headers = (jsonData[0] as any[]).map(h => String(h).toLowerCase().trim())
+          // Validation: detect the actual header row in the first few rows.
+          // Some workbooks have stale ranges / blank rows above the real header.
+          let detectedHeaderIndex = -1
+          let detectedHeaders: string[] = []
 
-          const hasTimestamp = headers.some(h => h.includes('timestamp') || h.includes('waktu') || h.includes('time') || h.includes('tanggal'))
-          const hasStandard = headers.some(h => h.includes('standar') || h.includes('ref') || h.includes('master') || h.includes('std'))
-          const hasUUT = headers.some(h => h.includes('uut') || h.includes('bacaan') || h.includes('reading') || h.includes('alat'))
+          for (let i = 0; i < Math.min(jsonData.length, 10); i++) {
+            const headers = (jsonData[i] as any[]).map(h => String(h).toLowerCase().trim())
+            const hasTimestamp = headers.some(h => h.includes('timestamp') || h.includes('waktu') || h.includes('time') || h.includes('tanggal'))
+            const hasStandard = headers.some(h => h.includes('standar') || h.includes('standard') || h.includes('ref') || h.includes('master') || h.includes('std'))
+            const hasUUT = headers.some(h => h.includes('uut') || h.includes('bacaan') || h.includes('reading') || h.includes('alat'))
 
-          if (hasTimestamp && hasStandard && hasUUT) {
-            sheetsData.push({ name, data: jsonData })
+            if (hasTimestamp && hasStandard && hasUUT) {
+              detectedHeaderIndex = i
+              detectedHeaders = headers
+              break
+            }
+          }
+
+          if (detectedHeaderIndex !== -1) {
+            const normalizedData = detectedHeaderIndex === 0
+              ? jsonData
+              : jsonData.slice(detectedHeaderIndex)
+            console.log(`[raw-upload] Sheet "${name}" headerRow=${detectedHeaderIndex + 1}`, detectedHeaders)
+            sheetsData.push({ name, data: normalizedData })
           } else {
+            const previewHeaders = (jsonData[0] as any[]).map(h => String(h).toLowerCase().trim())
             const missing = []
-            if (!hasTimestamp) missing.push('Timestamp/Waktu')
-            if (!hasStandard) missing.push('Standard/Ref')
-            if (!hasUUT) missing.push('UUT/Reading')
-            invalidSheets.push(`${name} (Missing: ${missing.join(', ')})`)
+            if (!previewHeaders.some(h => h.includes('timestamp') || h.includes('waktu') || h.includes('time') || h.includes('tanggal'))) missing.push('Timestamp/Waktu')
+            if (!previewHeaders.some(h => h.includes('standar') || h.includes('standard') || h.includes('ref') || h.includes('master') || h.includes('std'))) missing.push('Standard/Ref')
+            if (!previewHeaders.some(h => h.includes('uut') || h.includes('bacaan') || h.includes('reading') || h.includes('alat'))) missing.push('UUT/Reading')
+            invalidSheets.push(`${name} (Missing: ${missing.join(', ') || 'Header tidak ditemukan pada 10 baris awal'})`)
           }
         }
       })
 
       console.log('Raw Data Sheets:', sheetsData)
+      console.log(
+        '[raw-upload] final sheet counts:',
+        sheetsData.map((sheet) => ({
+          name: sheet.name,
+          rowsIncludingHeader: sheet.data.length,
+          dataRows: Math.max(sheet.data.length - 1, 0),
+        }))
+      )
       setRawData(sheetsData)
 
       if (invalidSheets.length > 0) {
@@ -1398,18 +1622,37 @@ type ResultItem = {
         } catch { return [] }
       })()
 
+      const resolveStandardInstrumentId = (rawId: unknown): number | null => {
+        const numericId = typeof rawId === 'number'
+          ? rawId
+          : (typeof rawId === 'string' && rawId.trim() !== '' && !Number.isNaN(Number(rawId)) ? Number(rawId) : null)
+        if (!numericId) return null
+
+        // Preferred: value already references instrument.id
+        const instrumentMatch = instruments.find((inst: any) => inst.id === numericId)
+        if (instrumentMatch) return numericId
+
+        // Legacy fallback: value actually points to sensor.id
+        const sensorMatch = sensors.find((sensor: any) => sensor.id === numericId)
+        return sensorMatch?.instrument_id ?? null
+      }
+
       const enrichedResults = savedResults.map((r: any, idx: number) => {
         const orig = originalSensors[idx]
         if (!orig) return r
         // V1 entry: extract from setup.standard_instruments
         if (orig.links) {
           const std = orig.setup?.standard_instruments?.[0] ?? null
+          const resolvedStandardInstrumentId = resolveStandardInstrumentId(std?.instrument_id ?? std?.sensor_id)
           const matchedCert = std?.certificate_no
-            ? standardCerts.find((c: any) => c.no_certificate === std.certificate_no) ?? null
+            ? standardCerts.find((c: any) =>
+                c.no_certificate === std.certificate_no &&
+                (std?.sensor_id ? c.sensor_id === std.sensor_id : true)
+              ) ?? standardCerts.find((c: any) => c.no_certificate === std.certificate_no) ?? null
             : null
           return {
             ...r,
-            standardInstrumentId: std?.instrument_id ?? null,
+            standardInstrumentId: resolvedStandardInstrumentId,
             standardCertificateId: matchedCert?.id ?? null,
             standardCertificateNumber: std?.certificate_no ?? null,
           }
@@ -1430,12 +1673,8 @@ type ResultItem = {
 
       // Restore global standard instrument from first result (if available)
       const firstResult = enrichedResults[0] as any
-      if (firstResult?.standardInstrumentId) {
-        setGlobalStandardInstrumentId(firstResult.standardInstrumentId)
-      }
-      if (firstResult?.standardCertificateNumber) {
-        setGlobalStandardCertificateNumber(firstResult.standardCertificateNumber)
-      }
+      setGlobalStandardInstrumentId(firstResult?.standardInstrumentId ?? null)
+      setGlobalStandardCertificateNumber(firstResult?.standardCertificateNumber ?? null)
 
       // Restore sessionDetails from first result
       if (firstResult?.startDate || firstResult?.endDate || firstResult?.place) {
@@ -1454,18 +1693,34 @@ type ResultItem = {
         .map((r: any) => r.session_id)
         .find((sid: any) => !!sid) ?? (item as any).session_id ?? null;
 
+      console.log('[edit-open] certificate session ids:', savedResults.map((r: any) => ({
+        sensorId: r.sensorId ?? r.sensor_id ?? null,
+        session_id: r.session_id ?? null,
+      })))
+      console.log('[edit-open] selected session id:', sessionId)
+
       if (sessionId) {
         setRawDataFilename(`Memuat data session ${sessionId}...`)
         fetch(`/api/raw-data?session_id=${sessionId}`)
           .then(res => res.json())
           .then(data => {
             if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-              // Group flat raw_data rows back into sheets by sensor_id_uut
+              // Group by persisted sheet name first. Fallback to sensor_id_uut only when
+              // old records do not have sheet_name. This prevents multiple sheets with
+              // the same UUT sensor from being merged during edit.
               const grouped: Record<string, any[]> = {};
+              const groupedMeta: Record<string, { sensorId: number | null }> = {};
               data.data.forEach((row: any) => {
-                const key = String(row.sensor_id_uut ?? 'unknown');
-                if (!grouped[key]) grouped[key] = [['Timestamp', 'Standard', 'UUT']]; // Headers
-                grouped[key].push([
+                const sheetKey = row.sheet_name && String(row.sheet_name).trim() !== ''
+                  ? `sheet:${String(row.sheet_name).trim()}`
+                  : `sensor:${String(row.sensor_id_uut ?? 'unknown')}`;
+                if (!grouped[sheetKey]) {
+                  grouped[sheetKey] = [['Timestamp', 'Standard', 'UUT']];
+                  groupedMeta[sheetKey] = {
+                    sensorId: row.sensor_id_uut == null ? null : Number(row.sensor_id_uut),
+                  };
+                }
+                grouped[sheetKey].push([
                   row.timestamp,
                   row.standard_data,
                   row.uut_data
@@ -1473,9 +1728,14 @@ type ResultItem = {
               });
 
               const reconstructedSheets = Object.keys(grouped).map((key) => {
-                const sensorId = key === 'unknown' ? null : Number(key);
+                const sensorId = groupedMeta[key]?.sensorId ?? null;
                 const matchedSensor = sensorId ? sensors.find((s: any) => s.id === sensorId) : null;
-                const rowsForKey = data.data.filter((d: any) => String(d.sensor_id_uut) === key);
+                const rowsForKey = data.data.filter((d: any) => {
+                  const candidateKey = d.sheet_name && String(d.sheet_name).trim() !== ''
+                    ? `sheet:${String(d.sheet_name).trim()}`
+                    : `sensor:${String(d.sensor_id_uut ?? 'unknown')}`;
+                  return candidateKey === key;
+                });
                 const firstRow = rowsForKey[0];
                 const storedSheetName = firstRow?.sheet_name;
 
@@ -1485,7 +1745,7 @@ type ResultItem = {
                 if (storedSheetName && !/^\d+$/.test(String(storedSheetName).trim())) {
                   sensorLabel = storedSheetName;
                 } else if (!matchedSensor) {
-                  sensorLabel = key === 'unknown' ? 'Unknown' : `Sensor ${key}`;
+                  sensorLabel = sensorId == null ? 'Unknown' : `Sensor ${sensorId}`;
                 } else {
                   const fromLookup = matchedSensor.sensor_name_id
                     ? instrumentNames.find((n: any) => n.id === matchedSensor.sensor_name_id)?.name
@@ -1509,6 +1769,16 @@ type ResultItem = {
                   unit_std: firstRow?.unit_std,
                 };
               });
+
+              console.log(
+                '[edit-open] reconstructed sheet counts:',
+                reconstructedSheets.map((sheet) => ({
+                  name: sheet.name,
+                  rowsIncludingHeader: Array.isArray(sheet.data) ? sheet.data.length : 0,
+                  dataRows: Array.isArray(sheet.data) ? Math.max(sheet.data.length - 1, 0) : 0,
+                  sensor_id_uut: sheet.sensor_id_uut ?? null,
+                }))
+              )
 
               setRawData(reconstructedSheets);
 
@@ -1753,7 +2023,9 @@ type ResultItem = {
       // Helper to save session and raw data (reused for create and update)
       const saveSessionAndRawData = async () => {
         try {
+          const existingSessionId = editing ? getAnyResultSessionId(editing.results) : null
           const sessionPayload = {
+            ...(existingSessionId ? { session_id: existingSessionId } : {}),
             station_id: form.station,
             instrument_id: form.instrument, // Pass instrument ID for uut_instrument_id
             start_date: sessionDetails.start_date || new Date().toISOString(), // Ensure start_date (mapped to tgl_kalibrasi)
@@ -1764,7 +2036,7 @@ type ResultItem = {
           }
 
           const sessionRes = await fetch('/api/calibration-sessions', {
-            method: 'POST',
+            method: existingSessionId ? 'PUT' : 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(sessionPayload)
           })
@@ -1852,9 +2124,18 @@ type ResultItem = {
               };
 
               console.log('DEBUG: Sending Raw Data Payload:', JSON.stringify(rawDataPayload, null, 2));
+              console.log(
+                '[raw-save] sheet counts:',
+                rawDataPayload.data.map((sheet: any) => ({
+                  name: sheet.name,
+                  rowsIncludingHeader: Array.isArray(sheet.data) ? sheet.data.length : 0,
+                  dataRows: Array.isArray(sheet.data) ? Math.max(sheet.data.length - 1, 0) : 0,
+                  sensor_id_uut: sheet.sensor_id_uut,
+                }))
+              )
 
               const rawRes = await fetch('/api/raw-data', {
-                method: 'POST',
+                method: existingSessionId ? 'PUT' : 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   ...rawDataPayload,
@@ -1895,6 +2176,11 @@ type ResultItem = {
         const finalResults = sessionId
           ? results.map(r => ({ ...r, session_id: sessionId }))
           : results;
+
+        console.log('[certificate-update] final results session ids:', finalResults.map((r: any) => ({
+          sensorId: r.sensorId,
+          session_id: r.session_id ?? null,
+        })))
 
         // Update Certificate
         await updateCertificate(editing.id, { ...payload, results: finalResults } as any)
@@ -2485,7 +2771,7 @@ type ResultItem = {
 
                             <button
                               onClick={() => {
-                                const sessionId = firstLegacyResult(item.results)?.session_id ?? null;
+                                const sessionId = getAnyResultSessionId(item.results);
 
                                 if (sessionId) {
                                   setQcModalCertificate(item);
@@ -2504,7 +2790,7 @@ type ResultItem = {
                             </button>
                             <button
                               onClick={async () => {
-                                const sessionId = firstLegacyResult(item.results)?.session_id ?? null;
+                                const sessionId = getAnyResultSessionId(item.results);
 
                                 if (sessionId) {
                                   setUncertaintyModalCertificate(item);
@@ -4886,9 +5172,7 @@ type ResultItem = {
               setQcModalCertificate(null);
             }}
             title={qcModalCertificate.no_certificate}
-            sessionId={
-              firstLegacyResult(qcModalCertificate.results)?.session_id ?? undefined
-            }
+            sessionId={getAnyResultSessionId(qcModalCertificate.results) ?? undefined}
             certificateId={String(qcModalCertificate.id)}
             certificateInstrumentId={qcModalCertificate.instrument || undefined}
             instruments={instruments}
@@ -4897,6 +5181,11 @@ type ResultItem = {
             }
             instrumentNames={instrumentNames}
             standardCerts={standardCerts}
+            resultEntries={resultsToLegacyView(qcModalCertificate.results).map((r: any) => ({
+              sensorId: r.sensorId ?? r.sensor_id ?? null,
+              unitUut: r.unitUut ?? r.unit_uut ?? null,
+              unitStd: r.unitStd ?? r.unit_std ?? null,
+            }))}
             certificateStatus={qcModalCertificate.status}
             onCalculateSaved={async (updates) => {
               const results = resultsToLegacyView(qcModalCertificate.results);

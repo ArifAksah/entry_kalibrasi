@@ -2,31 +2,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../lib/supabase'
 
+const buildSessionPayload = (body: any) => ({
+    station_id: body.station_id ? parseInt(body.station_id) : null,
+    start_date: body.start_date ? new Date(body.start_date).toISOString() : null,
+    end_date: body.end_date ? new Date(body.end_date).toISOString() : null,
+    place: body.place,
+    keterangan: body.notes ? { text: body.notes } : null,
+    status: body.status ? { current: body.status } : { current: 'draft' },
+    tgl_kalibrasi: body.start_date ? new Date(body.start_date).toISOString() : new Date().toISOString(),
+    uut_instrument_id: body.instrument_id ? parseInt(body.instrument_id) : null,
+})
+
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json()
         console.log('Creating session with body:', body)
-        const { station_id, start_date, end_date, place, notes, status } = body
-
-        // Map to calibration_session table schema
-        // Required fields based on user screenshot: uut_instrument_id, tgl_kalibrasi
-        // We might not have instrument_id here if it's just a session? 
-        // But the user workflow seemingly aims to create a session linked to a certificate context.
-        // For now, we'll try to insert with minimal valid data. 
-        // If uut_instrument_id is required, we need to pass it from frontend.
-        // Let's check if we can pass it in body.
-
         const payload = {
-            station_id: station_id ? parseInt(station_id) : null,
-            start_date: start_date ? new Date(start_date).toISOString() : null,
-            end_date: end_date ? new Date(end_date).toISOString() : null,
-            place,
-            keterangan: notes ? { text: notes } : null, // Map notes to keterangan (jsonb)
-            status: status ? { current: status } : { current: 'draft' }, // Map status to jsonb
-            // tgl_kalibrasi is required (date). Use start_date or today.
-            tgl_kalibrasi: start_date ? new Date(start_date).toISOString() : new Date().toISOString(),
-            uut_instrument_id: body.instrument_id ? parseInt(body.instrument_id) : null,
-
+            ...buildSessionPayload(body),
             created_at: new Date().toISOString()
         }
 
@@ -48,6 +40,39 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(data)
     } catch (error: any) {
         console.error('Error creating calibration session (catch):', error)
+        return NextResponse.json({ error: error.message || 'Unknown error' }, { status: 500 })
+    }
+}
+
+export async function PUT(req: NextRequest) {
+    try {
+        const body = await req.json()
+        const { session_id } = body
+
+        if (!session_id) {
+            return NextResponse.json({ error: 'session_id is required' }, { status: 400 })
+        }
+
+        const payload = {
+            ...buildSessionPayload(body),
+            updated_at: new Date().toISOString()
+        }
+
+        const { data, error } = await supabaseAdmin
+            .from('calibration_session')
+            .update(payload)
+            .eq('session_id', session_id)
+            .select()
+            .single()
+
+        if (error) {
+            console.error('Supabase error updating session:', error)
+            throw error
+        }
+
+        return NextResponse.json(data)
+    } catch (error: any) {
+        console.error('Error updating calibration session (catch):', error)
         return NextResponse.json({ error: error.message || 'Unknown error' }, { status: 500 })
     }
 }

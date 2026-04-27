@@ -1,4 +1,3 @@
-
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -7,10 +6,91 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+const cleanFloat = (val: any): number | null => {
+    if (val === null || val === undefined || val === '') return null
+    if (typeof val === 'number') return isNaN(val) ? null : val
+    if (typeof val === 'string') {
+        let s = val.trim()
+        if (s === '') return null
+        if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) {
+            s = s.replace(/\./g, '').replace(',', '.')
+        } else {
+            s = s.replace(',', '.')
+        }
+        const n = parseFloat(s)
+        return isNaN(n) ? null : n
+    }
+    return null
+}
+
+const isTimestampLike = (val: any): boolean => {
+    if (val === null || val === undefined || val === '') return false
+    if (typeof val === 'number') return val > 20000
+    if (typeof val === 'string') {
+        const s = val.trim()
+        return s !== '' && !Number.isNaN(Date.parse(s))
+    }
+    return false
+}
+
+const selectBestColumn = (
+    headers: string[],
+    rows: any[][],
+    keywords: string[],
+    kind: 'numeric' | 'timestamp'
+): number => {
+    const candidates = headers
+        .map((header, index) => ({ header, index }))
+        .filter(({ header }) => keywords.some((kw) => header.includes(kw)))
+
+    if (candidates.length === 0) return -1
+    if (candidates.length === 1) return candidates[0].index
+
+    const sampleRows = rows.slice(1, Math.min(rows.length, 201))
+    let bestIndex = candidates[0].index
+    let bestScore = Number.NEGATIVE_INFINITY
+
+    for (const candidate of candidates) {
+        const header = candidate.header
+        let score = 0
+
+        if (header === 'uut' || header.includes('uut')) score += 50
+        if (header.includes('reading')) score += 20
+        if (header.includes('standard') || header.includes('standar') || header.includes('std')) score += 30
+        if (header.includes('timestamp') || header.includes('waktu') || header.includes('time') || header.includes('tanggal')) score += 30
+        if (header.includes('alat') && !header.includes('uut')) score -= 15
+        if (header.includes('name') || header.includes('nama')) score -= 20
+
+        for (const row of sampleRows) {
+            const value = row?.[candidate.index]
+            if (kind === 'numeric') {
+                if (cleanFloat(value) !== null) score += 2
+            } else if (isTimestampLike(value)) {
+                score += 2
+            }
+        }
+
+        if (score > bestScore) {
+            bestScore = score
+            bestIndex = candidate.index
+        }
+    }
+
+    return bestIndex
+}
+
 export async function POST(req: NextRequest) {
+    return saveRawData(req, false)
+}
+
+export async function PUT(req: NextRequest) {
+    return saveRawData(req, true)
+}
+
+async function saveRawData(req: NextRequest, replaceExisting: boolean) {
     try {
         const body = await req.json()
-        const { session_id, data, filename, uploaded_by } = body
+        const { session_id, data } = body
 
         if (!session_id || !data) {
             console.error('Validation failed: session_id or data missing', { session_id, hasData: !!data })
@@ -20,13 +100,12 @@ export async function POST(req: NextRequest) {
             }, { status: 400 })
         }
 
-        // Parse data (Array of sheets) into rows for raw_data table
         const rowsToInsert: any[] = []
 
         if (Array.isArray(data)) {
             for (const sheet of data) {
                 const sheetName = sheet.name
-                const sheetData = sheet.data // Array of arrays
+                const sheetData = sheet.data
                 const sensorIdUut = sheet.sensor_id_uut
                 const sensorIdStd = sheet.sensor_id_std
                 const unitStd = sheet.unit_std || null
@@ -34,85 +113,59 @@ export async function POST(req: NextRequest) {
 
                 if (!Array.isArray(sheetData) || sheetData.length < 2) continue
 
-
-                // Find header row (assume first row)
                 const headers = sheetData[0].map((h: any) => String(h).toLowerCase().trim())
 
-                const timestampIdx = headers.findIndex((h: string) => h.includes('timestamp') || h.includes('waktu') || h.includes('time') || h.includes('tanggal'))
-                const standardIdx = headers.findIndex((h: string) => h.includes('standar') || h.includes('ref') || h.includes('master') || h.includes('std'))
-                const uutIdx = headers.findIndex((h: string) => h.includes('uut') || h.includes('bacaan') || h.includes('reading') || h.includes('alat'))
+                const timestampIdx = selectBestColumn(headers, sheetData, ['timestamp', 'waktu', 'time', 'tanggal'], 'timestamp')
+                const standardIdx = selectBestColumn(headers, sheetData, ['standar', 'standard', 'ref', 'master', 'std'], 'numeric')
+                const uutIdx = selectBestColumn(headers, sheetData, ['uut', 'bacaan', 'reading', 'alat'], 'numeric')
 
-                // Skip if critical columns not found
                 if (timestampIdx === -1 || standardIdx === -1 || uutIdx === -1) {
                     console.warn(`Skipping sheet ${sheetName}: Missing required columns. Found: ${headers.join(', ')}`)
                     continue
                 }
 
-                // Parse numeric values — handles comma decimal, thousand separator, null/undefined
-                const cleanFloat = (val: any): number | null => {
-                    if (val === null || val === undefined || val === '') return null
-                    if (typeof val === 'number') return isNaN(val) ? null : val
-                    if (typeof val === 'string') {
-                        // Remove thousand separators (dot before 3-digit groups) then swap comma→dot for decimal
-                        let s = val.trim()
-                        // European format "1.234,56" → strip dots used as thousands → "1234,56" → "1234.56"
-                        if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) {
-                            s = s.replace(/\./g, '').replace(',', '.')
-                        } else {
-                            // Replace comma decimal separator (non-European)
-                            s = s.replace(',', '.')
-                        }
-                        const n = parseFloat(s)
-                        return isNaN(n) ? null : n
-                    }
-                    return null
-                }
+                console.log(`[raw-data] Sheet "${sheetName}" columns: timestamp=${timestampIdx}(${headers[timestampIdx]}), std=${standardIdx}(${headers[standardIdx]}), uut=${uutIdx}(${headers[uutIdx]})`)
 
-                let skippedNoUut = 0, skippedNoTimestamp = 0, kept = 0
+                let skippedNoUut = 0
+                let skippedNoTimestamp = 0
+                let kept = 0
 
-                // Process data rows
                 for (let i = 1; i < sheetData.length; i++) {
                     const row = sheetData[i]
                     if (!row || row.length === 0) continue
 
                     const timestampVal = row[timestampIdx]
-                    const uutVal      = uutIdx !== -1 ? row[uutIdx] : undefined
+                    const uutVal = uutIdx !== -1 ? row[uutIdx] : undefined
                     const standardVal = standardIdx !== -1 ? row[standardIdx] : undefined
 
-                    // Only timestamp + UUT are required; standard_data is nullable in DB
-                    if (timestampVal === undefined || timestampVal === null || timestampVal === '') {
-                        skippedNoTimestamp++
-                        continue
-                    }
+                    const hasTimestamp = !(timestampVal === undefined || timestampVal === null || timestampVal === '')
+                    if (!hasTimestamp) skippedNoTimestamp++
 
-                    const uutData      = cleanFloat(uutVal)
+                    const uutData = cleanFloat(uutVal)
                     const standardData = cleanFloat(standardVal)
 
-                    // Skip rows with no UUT reading — they are meaningless
-                    if (uutData === null) {
-                        skippedNoUut++
-                        continue
-                    }
+                    if (uutData === null) skippedNoUut++
+                    if (!hasTimestamp && uutData === null && standardData === null) continue
 
-                    // Parse timestamp
                     let timestamp: string | null = null
                     try {
                         if (typeof timestampVal === 'number' && timestampVal > 20000) {
-                            // Excel serial date conversion
                             const date = new Date((timestampVal - 25569) * 86400 * 1000)
                             timestamp = date.toISOString()
-                        } else {
+                        } else if (hasTimestamp) {
                             timestamp = new Date(timestampVal).toISOString()
+                        } else {
+                            timestamp = null
                         }
                     } catch {
-                        timestamp = new Date().toISOString()
+                        timestamp = null
                     }
 
                     kept++
                     rowsToInsert.push({
                         session_id,
-                        timestamp: timestamp || new Date().toISOString(),
-                        standard_data: standardData,  // null is OK — DB column is nullable
+                        timestamp,
+                        standard_data: standardData,
                         uut_data: uutData,
                         created_at: new Date().toISOString(),
                         sensor_id_uut: sensorIdUut || null,
@@ -122,18 +175,32 @@ export async function POST(req: NextRequest) {
                         unit_uut: unitUut,
                     })
                 }
-                console.log(`[raw-data] Sheet "${sheetName}": kept=${kept}, skipped_no_uut=${skippedNoUut}, skipped_no_timestamp=${skippedNoTimestamp}`)
 
+                console.log(`[raw-data] Sheet "${sheetName}": kept=${kept}, skipped_no_uut=${skippedNoUut}, skipped_no_timestamp=${skippedNoTimestamp}`)
             }
         }
 
+        console.log('[raw-data] total rows prepared for insert:', rowsToInsert.length)
 
+        if (replaceExisting) {
+            const { error: deleteError } = await supabase
+                .from('raw_data')
+                .delete()
+                .eq('session_id', session_id)
 
-        if (rowsToInsert.length === 0) {
-            return NextResponse.json({ message: 'No valid data rows found to insert' }, { status: 200 })
+            if (deleteError) throw deleteError
+
+            console.log('[raw-data] existing rows deleted for session:', session_id)
         }
 
-        // Bulk insert
+        if (rowsToInsert.length === 0) {
+            return NextResponse.json({
+                message: replaceExisting
+                    ? 'Existing rows cleared; no valid data rows found to insert'
+                    : 'No valid data rows found to insert'
+            }, { status: 200 })
+        }
+
         const { data: insertedData, error } = await supabase
             .from('raw_data')
             .insert(rowsToInsert)
@@ -160,15 +227,35 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'Missing session_id' }, { status: 400 })
         }
 
-        const { data, error } = await supabase
-            .from('raw_data')
-            .select('*')
-            .eq('session_id', session_id)
-            .order('created_at', { ascending: true })
+        const pageSize = 1000
+        const allRows: any[] = []
+        let from = 0
 
-        if (error) throw error
+        while (true) {
+            const { data, error } = await supabase
+                .from('raw_data')
+                .select('*')
+                .eq('session_id', session_id)
+                .order('created_at', { ascending: true })
+                .range(from, from + pageSize - 1)
 
-        return NextResponse.json({ data })
+            if (error) throw error
+
+            const batch = data ?? []
+            allRows.push(...batch)
+
+            if (batch.length < pageSize) break
+            from += pageSize
+        }
+
+        const bySheet: Record<string, number> = {}
+        for (const row of allRows) {
+            const key = row.sheet_name || `sensor:${row.sensor_id_uut ?? 'unknown'}`
+            bySheet[key] = (bySheet[key] || 0) + 1
+        }
+        console.log('[raw-data] fetched rows by sheet for session', session_id, bySheet)
+
+        return NextResponse.json({ data: allRows })
     } catch (error: any) {
         console.error('Error fetching raw data:', error)
         return NextResponse.json({ error: error.message }, { status: 500 })

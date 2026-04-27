@@ -306,4 +306,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create certificate verification' }, { status: 500 })
   }
 }
-

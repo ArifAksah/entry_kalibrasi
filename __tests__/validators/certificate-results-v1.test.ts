@@ -99,6 +99,21 @@ describe('CertificateResultsV1Schema — validasi positif', () => {
     expect(parsed.schema_version).toBe(1)
     expect(parsed.sensors[0].links.sensor_id).toBe(1)
   })
+
+  it('membawa unit UUT dan STD ke V1', () => {
+    const legacyWithUnits = [
+      {
+        ...LEGACY_V0_SAMPLE[0],
+        unitUut: 'mm',
+        unitStd: 'inch',
+      },
+    ]
+    const v1 = convertResultsLegacyToV1(legacyWithUnits, { calibration_kind: 'FC' })
+    expect(v1.sensors[0].setup.measurement_units).toEqual({
+      uut: 'mm',
+      std: 'inch',
+    })
+  })
 })
 
 describe('CertificateResultsV1Schema — validasi negatif', () => {
