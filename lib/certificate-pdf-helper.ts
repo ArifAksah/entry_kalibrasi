@@ -308,8 +308,7 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
           /* Page container - sync dengan @media print di print/page.tsx */
           .page-container {
             margin: 0 !important;
-            padding: 5mm !important;
-            padding-bottom: 18mm !important;
+            padding: 5mm !important; /* Uniform 5mm (0.5 cm) di semua sisi */
             border: none !important;
             box-shadow: none !important;
             page-break-after: auto !important;
@@ -374,13 +373,11 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
           }
           .page-1-footer { background-color: white !important; }
           .page-1-footer *::marker { display: none !important; content: none !important; color: transparent !important; }
-          .page-1-footer *::before, .page-1-footer *::after { content: none !important; display: none !important; background: transparent !important; background-image: none !important; width: 0 !important; height: 0 !important; visibility: hidden !important; }
-          .page-1-footer span, .page-1-footer div { position: relative !important; display: inline-block !important; }
 
           /* ── QR code footer halaman 2+ ── */
           .footer-qr-small { display: none !important; visibility: hidden !important; }
           .page-container.results-page .footer-qr-small.results-page-qr {
-            position: absolute !important; bottom: 4mm !important; left: 4mm !important;
+            position: absolute !important; bottom: 5mm !important; left: 5mm !important;
             width: 100px !important; height: 100px !important; z-index: 999 !important;
             display: block !important; visibility: visible !important; opacity: 1 !important;
             -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
@@ -421,12 +418,12 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
           thead.print-repeat-header { display: table-header-group !important; }
           tbody.print-content { display: table-row-group !important; }
 
-          /* Page container heights */
+          /* Page container heights — margins uniform 5mm (0.5 cm) di semua sisi */
           .page-container.results-page {
             position: relative !important;
             min-height: 297mm !important;
             height: 297mm !important;
-            padding: 0 5mm 18mm 5mm !important;
+            padding: 5mm !important;
             box-sizing: border-box !important;
           }
           .page-container.cover-page {
@@ -436,8 +433,8 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
             box-sizing: border-box !important;
           }
           
-          /* Thead padding top handle */
-          .page-container.results-page thead.print-repeat-header > tr > td { padding: 4mm 0 0 0 !important; }
+          /* Thead padding top handle — page-container sudah 5mm, thead tidak perlu offset */
+          .page-container.results-page thead.print-repeat-header > tr > td { padding: 0 !important; }
           .page-container.results-page tbody.print-content > tr > td { padding-top: 3mm !important; vertical-align: top !important; }
           .results-header-table td { vertical-align: top !important; }
           .results-footer-shell { width: 100% !important; padding-top: 4.5mm !important; }

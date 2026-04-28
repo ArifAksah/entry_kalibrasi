@@ -282,23 +282,44 @@ const PrintCertificatePage: React.FC = () => {
   // Helper to resolve canonical sensor name
   const resolveSensorName = useCallback((res: any, fallbackIndex: number) => {
     const sd = res?.sensorDetails || {}
-    const sensorRecord = sensors.find((s: any) => s.id === res?.sensorId)
+    const targetId = res?.sensorId != null ? Number(res.sensorId) : null
+    const sensorRecord = targetId != null
+      ? sensors.find((s: any) => s.id != null && Number(s.id) === targetId)
+      : undefined
     let canonicalName = undefined
-    if (sensorRecord?.sensor_name_id) {
-      canonicalName = instrumentNames.find((n: any) => n.id === sensorRecord.sensor_name_id)?.name
+    if (sensorRecord?.sensor_name_id != null) {
+      canonicalName = instrumentNames.find((n: any) => n.id != null && Number(n.id) === Number(sensorRecord.sensor_name_id))?.name
     }
-    // Priority: canonical name from instrument_names table > sensorDetails.name fallback
-    return canonicalName || sensorRecord?.name || sd.name || sd.type || `Sensor ${fallbackIndex + 1}`
+    // Priority: canonical name from instrument_names table > sensorDetails.name > sensorDetails.id fallback
+    return canonicalName || sensorRecord?.name || sd.name || (targetId ? `Sensor ID ${targetId}` : null) || sd.type || `Sensor ${fallbackIndex + 1}`
   }, [sensors, instrumentNames])
 
   // Menggunakan useMemo untuk data turunan
-  const station = useMemo(() => stations.find(s => s.id === (cert?.station ?? -1)) || null, [stations, cert])
+  const station = useMemo(() => {
+    const targetId = cert?.station != null ? Number(cert.station) : null
+    return targetId != null ? stations.find(s => s.id != null && Number(s.id) === targetId) || null : null
+  }, [stations, cert])
   const resolvedStationAddress = useMemo(() => (cert?.station_address ?? null) || (station?.address ?? null), [cert, station])
-  const instrument = useMemo(() => instruments.find(i => i.id === (cert?.instrument ?? -1)) || null, [instruments, cert])
-  const authorized = useMemo(() => personel.find(p => p.id === (cert?.authorized_by ?? '')) || null, [personel, cert])
-  const verifikator1 = useMemo(() => personel.find(p => p.id === (cert?.verifikator_1 ?? '')) || null, [personel, cert])
-  const verifikator2 = useMemo(() => personel.find(p => p.id === (cert?.verifikator_2 ?? '')) || null, [personel, cert])
-  const verifikator3 = useMemo(() => personel.find(p => p.id === (cert?.verifikator_3 ?? '')) || null, [personel, cert])
+  const instrument = useMemo(() => {
+    const targetId = cert?.instrument != null ? Number(cert.instrument) : null
+    return targetId != null ? instruments.find(i => i.id != null && Number(i.id) === targetId) || null : null
+  }, [instruments, cert])
+  const authorized = useMemo(() => {
+    const targetId = cert?.authorized_by != null ? Number(cert.authorized_by) : null
+    return targetId != null ? personel.find(p => p.id != null && Number(p.id) === targetId) || null : null
+  }, [personel, cert])
+  const verifikator1 = useMemo(() => {
+    const targetId = cert?.verifikator_1 != null ? Number(cert.verifikator_1) : null
+    return targetId != null ? personel.find(p => p.id != null && Number(p.id) === targetId) || null : null
+  }, [personel, cert])
+  const verifikator2 = useMemo(() => {
+    const targetId = cert?.verifikator_2 != null ? Number(cert.verifikator_2) : null
+    return targetId != null ? personel.find(p => p.id != null && Number(p.id) === targetId) || null : null
+  }, [personel, cert])
+  const verifikator3 = useMemo(() => {
+    const targetId = cert?.verifikator_3 != null ? Number(cert.verifikator_3) : null
+    return targetId != null ? personel.find(p => p.id != null && Number(p.id) === targetId) || null : null
+  }, [personel, cert])
 
   // Data hasil kalibrasi (normalize ke array)
   const results = useMemo(() => {
@@ -349,92 +370,141 @@ const PrintCertificatePage: React.FC = () => {
       setLoading(false)
       return
     }
-    const load = async () => {
+
+    // Helper: fetch with timeout to prevent any single hung request from blocking page
+    const fetchWithTimeout = async (url: string, timeoutMs = 12000): Promise<Response | null> => {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
       try {
-        // Fetch certificate dan personel
-        const [cRes, pRes, sRes, inRes] = await Promise.all([
-          fetch(`/api/certificates/${id}`),
-          fetch('/api/personel'),
-          fetch('/api/sensors'),
-          fetch('/api/instrument-names'),
-        ])
-        const c = await cRes.json()
-        const p = await pRes.json()
+        return await fetch(url, { signal: controller.signal })
+      } catch (e) {
+        console.warn(`[Print] fetch failed/timeout: ${url}`, e)
+        return null
+      } finally {
+        clearTimeout(timer)
+      }
+    }
 
-        if (sRes.ok) {
-          const sData = await sRes.json()
-          setSensors(Array.isArray(sData) ? sData : (sData?.data ?? []))
-        }
+    const safeJson = async (res: Response | null): Promise<any> => {
+      if (!res || !res.ok) return null
+      try { return await res.json() } catch { return null }
+    }
 
-        if (inRes.ok) {
-          const inData = await inRes.json()
-          setInstrumentNames(Array.isArray(inData) ? inData : (inData?.data ?? []))
-        }
-
-        if (!cRes.ok) throw new Error(c?.error || 'Failed to load certificate')
+    const load = async () => {
+      console.log('[Print] Starting load for cert id:', id)
+      try {
+        // CRITICAL PATH: certificate must load first — page can't render without it
+        const cRes = await fetchWithTimeout(`/api/certificates/${id}`, 15000)
+        if (!cRes) throw new Error('Timeout: gagal memuat data sertifikat')
+        const c = await safeJson(cRes)
+        if (!cRes.ok) throw new Error(c?.error || `Failed to load certificate (HTTP ${cRes.status})`)
+        if (!c) throw new Error('Sertifikat tidak ditemukan / response kosong')
+        console.log('[Print] Certificate loaded:', c?.id, 'results format:', Array.isArray(c?.results) ? 'V0-array' : (c?.results?.schema_version ? `V${c.results.schema_version}` : 'null/other'))
         setCert(c)
+        // Page can render now — clear loading even if secondary data still pending.
+        setLoading(false)
 
-        if (c?.results) {
+        // SECONDARY (non-blocking): kick off in parallel; we'll setState as each finishes.
+        // Raw data fetch — needs cert.results
+        ;(async () => {
+          if (!c?.results) return
           try {
-            const parsedResults = resultsToLegacyView(c.results);
-            const sessionIds = parsedResults.map((r: any) => r.session_id).filter(Boolean);
-            if (sessionIds.length > 0) {
-              const rawDataPromises = sessionIds.map((sid: string) =>
-                fetch(`/api/raw-data?session_id=${sid}`).then(res => res.ok ? res.json() : { data: [] })
-              );
-              const allRawDataResp = await Promise.all(rawDataPromises);
-              const mergedRawData = allRawDataResp.flatMap(resp => resp.data || []);
-              setAllRawData(mergedRawData);
-            }
+            const parsedResults = resultsToLegacyView(c.results)
+            const sessionIds = Array.from(new Set(parsedResults.map((r: any) => r.session_id).filter(Boolean)))
+            if (sessionIds.length === 0) return
+            const responses = await Promise.all(
+              sessionIds.map((sid: any) => fetchWithTimeout(`/api/raw-data?session_id=${sid}`, 15000))
+            )
+            const jsons = await Promise.all(responses.map(r => safeJson(r)))
+            const merged = jsons.flatMap((j: any) => (j?.data ?? []))
+            setAllRawData(merged)
           } catch (e) {
-            console.error("Failed to fetch raw data for print", e);
+            console.error('[Print] Failed to fetch raw data:', e)
           }
-        }
+        })()
 
-        const personelData = Array.isArray(p) ? p : []
-        setPersonel(personelData)
+        // Personel
+        ;(async () => {
+          const r = await fetchWithTimeout('/api/personel', 12000)
+          const p = await safeJson(r)
+          if (Array.isArray(p)) setPersonel(p)
+        })()
 
-        // Fetch instruments dengan pagination lengkap
-        try {
-          const first = await fetch('/api/instruments?page=1&pageSize=100')
-          if (first.ok) {
-            const fj = await first.json()
+        // Sensors
+        ;(async () => {
+          const r = await fetchWithTimeout('/api/sensors', 12000)
+          const sData = await safeJson(r)
+          if (sData) setSensors(Array.isArray(sData) ? sData : (sData?.data ?? []))
+        })()
+
+        // Instrument names
+        ;(async () => {
+          const r = await fetchWithTimeout('/api/instrument-names', 12000)
+          const inData = await safeJson(r)
+          if (inData) setInstrumentNames(Array.isArray(inData) ? inData : (inData?.data ?? []))
+        })()
+
+        // Instruments — paginated
+        ;(async () => {
+          try {
+            const first = await fetchWithTimeout('/api/instruments?page=1&pageSize=100', 12000)
+            const fj = await safeJson(first)
+            if (!fj) return
             const firstData = Array.isArray(fj) ? fj : (fj?.data ?? [])
             const totalPages = (Array.isArray(fj) ? 1 : (fj?.totalPages ?? 1)) as number
             if (totalPages <= 1) {
               setInstruments(firstData)
             } else {
-              const rest = await Promise.all(Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(p => fetch(`/api/instruments?page=${p}&pageSize=100`).then(r => r.ok ? r.json() : { data: [] })))
-              const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
+              const restRes = await Promise.all(
+                Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
+                  .map(p => fetchWithTimeout(`/api/instruments?page=${p}&pageSize=100`, 12000))
+              )
+              const restJsons = await Promise.all(restRes.map(r => safeJson(r)))
+              const restData = restJsons.flatMap((j: any) => Array.isArray(j) ? j : (j?.data ?? []))
               setInstruments([...firstData, ...restData])
             }
+          } catch (e) {
+            console.error('[Print] Failed to fetch instruments:', e)
           }
-        } catch { }
+        })()
 
-        // Fetch stations (logika Anda sudah benar)
-        try {
-          const first = await fetch('/api/stations?page=1&pageSize=100')
-          if (first.ok) {
-            const fj = await first.json()
+        // Stations — paginated
+        ;(async () => {
+          try {
+            const first = await fetchWithTimeout('/api/stations?page=1&pageSize=100', 12000)
+            const fj = await safeJson(first)
+            if (!fj) return
             const firstData = Array.isArray(fj) ? fj : (fj?.data ?? [])
             const totalPages = (Array.isArray(fj) ? 1 : (fj?.totalPages ?? 1)) as number
             if (totalPages <= 1) {
               setStations(firstData)
             } else {
-              const rest = await Promise.all(Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(p => fetch(`/api/stations?page=${p}&pageSize=100`).then(r => r.ok ? r.json() : { data: [] })))
-              const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
+              const restRes = await Promise.all(
+                Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
+                  .map(p => fetchWithTimeout(`/api/stations?page=${p}&pageSize=100`, 12000))
+              )
+              const restJsons = await Promise.all(restRes.map(r => safeJson(r)))
+              const restData = restJsons.flatMap((j: any) => Array.isArray(j) ? j : (j?.data ?? []))
               setStations([...firstData, ...restData])
             }
+          } catch (e) {
+            console.error('[Print] Failed to fetch stations:', e)
           }
-        } catch { }
-
+        })()
       } catch (e) {
+        console.error('[Print] Load failed:', e)
         setError(e instanceof Error ? e.message : 'Failed to load data')
-      } finally {
         setLoading(false)
       }
     }
-    load()
+
+    // Watchdog: ensure loading flag is cleared even if everything else fails.
+    const watchdog = setTimeout(() => {
+      console.warn('[Print] Watchdog timeout (25s) — forcing loading=false')
+      setLoading(false)
+    }, 25000)
+
+    load().finally(() => clearTimeout(watchdog))
   }, [params.id])
 
   // Cek status verifikasi Level 3 untuk warna QR (merah jika belum, hitam jika sudah)
@@ -666,16 +736,16 @@ const PrintCertificatePage: React.FC = () => {
       /* Jangan pakai min-height tetap agar tidak melebihi tinggi A4 saat ditambah padding */
       min-height: auto;
       padding: 5mm; /* Batas kiri/kanan/atas/bawah 0.5 cm dari tepi lembar kerja */
-      padding-bottom: 35mm; /* Ruang untuk footer static (halaman cover) */
+      padding-bottom: 5mm; /* Uniform 5mm di semua sisi */
       margin: 0 auto;
       box-sizing: border-box;
       position: relative;
       /* Jangan paksa page break di semua container; kita atur manual di elemen tertentu */
     }
     
-    /* Halaman hasil kalibrasi (dengan QR footer) butuh padding konsisten */
+    /* Halaman hasil kalibrasi (dengan QR footer) — margin uniform 5mm (0.5 cm) di semua sisi */
     .page-container.results-page {
-      padding: 0 5mm 18mm 5mm;
+      padding: 5mm;
       min-height: 297mm;
       box-sizing: border-box;
       position: relative;
@@ -687,11 +757,12 @@ const PrintCertificatePage: React.FC = () => {
       border-collapse: collapse;
       border-spacing: 0;
     }
+    /* thead padding-top dihapus karena page-container sudah beri margin 5mm */
     .page-container.results-page thead.print-repeat-header > tr > td {
-      padding: 4mm 0 0 0 !important;
+      padding: 0 !important;
     }
     .page-container.results-page tbody.print-content > tr > td {
-      padding-top: 3mm !important;
+      padding-top: 0 !important;
       vertical-align: top;
     }
     
@@ -770,13 +841,13 @@ const PrintCertificatePage: React.FC = () => {
       position: relative !important;
       min-height: 297mm !important; /* Tinggi A4 */
     }
-    
+
     /* Hanya tampilkan di page-container dengan class results-page */
     /* QR code akan selalu di footer karena parent memiliki min-height penuh */
     .page-container.results-page .footer-qr-small.results-page-qr {
       position: absolute !important;
-      bottom: 4mm !important;
-      left: 4mm !important;
+      bottom: 5mm !important;
+      left: 5mm !important;
       width: 100px !important;
       height: 100px !important;
       z-index: 999 !important;
@@ -909,18 +980,17 @@ const PrintCertificatePage: React.FC = () => {
       .page-container {
         margin: 0;
         padding: 5mm; /* Batas kiri/kanan/atas/bawah 0.5 cm dari tepi lembar kerja */
-        padding-bottom: 18mm; /* Ruang footer halaman hasil */
         border: none !important;
         box-shadow: none !important;
         page-break-after: auto; /* Jangan paksa break di akhir container */
         break-after: auto;
       }
       
-      /* Halaman hasil kalibrasi (dengan QR footer) butuh padding lebih untuk QR code */
+      /* Halaman hasil kalibrasi — margin uniform 5mm (0.5 cm) di semua sisi */
       .page-container.results-page {
         min-height: 297mm !important;
         height: 297mm !important;
-        padding: 0 5mm 18mm 5mm !important;
+        padding: 5mm !important;
         box-sizing: border-box !important;
         position: relative !important;
       }
@@ -928,12 +998,12 @@ const PrintCertificatePage: React.FC = () => {
       .page-container.results-page table.repeatable-page-table {
         height: 100% !important;
       }
-      /* thead td handles top margin itself */
+      /* thead tidak perlu offset padding karena page-container sudah 5mm */
       .page-container.results-page thead.print-repeat-header > tr > td {
-        padding: 4mm 0 0 0 !important;
+        padding: 0 !important;
       }
       .page-container.results-page tbody.print-content > tr > td {
-        padding-top: 3mm !important;
+        padding-top: 0 !important;
         vertical-align: top !important;
       }
       
@@ -1035,8 +1105,8 @@ const PrintCertificatePage: React.FC = () => {
       /* QR code akan selalu di footer karena parent memiliki min-height penuh */
       .page-container.results-page .footer-qr-small.results-page-qr {
         position: absolute !important;
-        bottom: 4mm !important;
-        left: 4mm !important;
+        bottom: 5mm !important;
+        left: 5mm !important;
         width: 100px !important;
         height: 100px !important;
         z-index: 999 !important;
@@ -1536,7 +1606,7 @@ const PrintCertificatePage: React.FC = () => {
                               { label: 'Tempat Kalibrasi / ', labelEng: 'Calibration Place', value: place },
                             ]
                             const sensorSessionId = res?.session_id;
-                            const sensorRawData = sensorSessionId ? allRawData.filter(rd => rd.session_id === sensorSessionId) : [];
+                            const sensorRawData = sensorSessionId ? allRawData.filter(rd => String(rd.session_id || '') === String(sensorSessionId)) : [];
                             const rawSuhu = computeEnvCondition('suhu', sensorRawData);
                             const rawHum = computeEnvCondition('kelembaban', sensorRawData);
 
@@ -1741,7 +1811,10 @@ const PrintCertificatePage: React.FC = () => {
 
                                           if (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0) {
                                             const standards = nf.standardInstruments.map((sid: number) => {
-                                              const s = sensors.find((sensor: any) => sensor.id === sid)
+                                              const targetId = sid != null ? Number(sid) : null
+                                              const s = targetId != null
+                                                ? sensors.find((sensor: any) => sensor.id != null && Number(sensor.id) === targetId)
+                                                : undefined
                                               if (!s) return null
                                               // Format: Name - SN (if available)
                                               const name = s.name || s.type || 'Sensor'

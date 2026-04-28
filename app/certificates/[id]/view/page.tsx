@@ -324,23 +324,44 @@ const ViewCertificatePage: React.FC = () => {
   // Helper to resolve canonical sensor name
   const resolveSensorName = useCallback((res: any, fallbackIndex: number) => {
     const sd = res?.sensorDetails || {}
-    const sensorRecord = sensors.find((s: any) => s.id === res?.sensorId)
+    const targetId = res?.sensorId != null ? Number(res.sensorId) : null
+    const sensorRecord = targetId != null
+      ? sensors.find((s: any) => s.id != null && Number(s.id) === targetId)
+      : undefined
     let canonicalName = undefined
-    if (sensorRecord?.sensor_name_id) {
-      canonicalName = instrumentNames.find((n: any) => n.id === sensorRecord.sensor_name_id)?.name
+    if (sensorRecord?.sensor_name_id != null) {
+      canonicalName = instrumentNames.find((n: any) => n.id != null && Number(n.id) === Number(sensorRecord.sensor_name_id))?.name
     }
-    // Priority: canonical name from instrument_names table > sensorDetails.name fallback
-    return canonicalName || sensorRecord?.name || sd.name || sd.type || `Sensor ${fallbackIndex + 1}`
+    // Priority: canonical name from instrument_names table > sensorDetails.name > sensorDetails.id fallback
+    return canonicalName || sensorRecord?.name || sd.name || (targetId ? `Sensor ID ${targetId}` : null) || sd.type || `Sensor ${fallbackIndex + 1}`
   }, [sensors, instrumentNames])
 
   // Menggunakan useMemo untuk data turunan
-  const station = useMemo(() => stations.find(s => s.id === (cert?.station ?? -1)) || null, [stations, cert])
+  const station = useMemo(() => {
+    const targetId = cert?.station != null ? Number(cert.station) : null
+    return targetId != null ? stations.find(s => s.id != null && Number(s.id) === targetId) || null : null
+  }, [stations, cert])
   const resolvedStationAddress = useMemo(() => (cert?.station_address ?? null) || (station?.address ?? null), [cert, station])
-  const instrument = useMemo(() => instruments.find(i => i.id === (cert?.instrument ?? -1)) || null, [instruments, cert])
-  const authorized = useMemo(() => personel.find(p => p.id === (cert?.authorized_by ?? '')) || null, [personel, cert])
-  const verifikator1 = useMemo(() => personel.find(p => p.id === (cert?.verifikator_1 ?? '')) || null, [personel, cert])
-  const verifikator2 = useMemo(() => personel.find(p => p.id === (cert?.verifikator_2 ?? '')) || null, [personel, cert])
-  const verifikator3 = useMemo(() => personel.find(p => p.id === (cert?.verifikator_3 ?? '')) || null, [personel, cert])
+  const instrument = useMemo(() => {
+    const targetId = cert?.instrument != null ? Number(cert.instrument) : null
+    return targetId != null ? instruments.find(i => i.id != null && Number(i.id) === targetId) || null : null
+  }, [instruments, cert])
+  const authorized = useMemo(() => {
+    const targetId = cert?.authorized_by != null ? Number(cert.authorized_by) : null
+    return targetId != null ? personel.find(p => p.id != null && Number(p.id) === targetId) || null : null
+  }, [personel, cert])
+  const verifikator1 = useMemo(() => {
+    const targetId = cert?.verifikator_1 != null ? Number(cert.verifikator_1) : null
+    return targetId != null ? personel.find(p => p.id != null && Number(p.id) === targetId) || null : null
+  }, [personel, cert])
+  const verifikator2 = useMemo(() => {
+    const targetId = cert?.verifikator_2 != null ? Number(cert.verifikator_2) : null
+    return targetId != null ? personel.find(p => p.id != null && Number(p.id) === targetId) || null : null
+  }, [personel, cert])
+  const verifikator3 = useMemo(() => {
+    const targetId = cert?.verifikator_3 != null ? Number(cert.verifikator_3) : null
+    return targetId != null ? personel.find(p => p.id != null && Number(p.id) === targetId) || null : null
+  }, [personel, cert])
 
   // Data hasil kalibrasi (normalize ke array)
   const results = useMemo(() => {
@@ -1682,7 +1703,7 @@ const ViewCertificatePage: React.FC = () => {
                                     { label: 'Tempat Kalibrasi / ', labelEng: 'Calibration Place', value: place },
                                   ]
                                   const sensorSessionId = res?.session_id;
-                                  const sensorRawData = sensorSessionId ? allRawData.filter(rd => rd.session_id === sensorSessionId) : [];
+                                  const sensorRawData = sensorSessionId ? allRawData.filter(rd => String(rd.session_id || '') === String(sensorSessionId)) : [];
                                   const rawSuhu = computeEnvCondition('suhu', sensorRawData);
                                   const rawHum = computeEnvCondition('kelembaban', sensorRawData);
 
@@ -1893,10 +1914,14 @@ const ViewCertificatePage: React.FC = () => {
                                             <td className="w-[5%] align-top py-0">:</td>
                                             <td className="w-[55%] align-top whitespace-pre-line py-0">
                                               {nf.standardInstruments.map((sid: number) => {
-                                                const s = sensors.find((sensor: any) => sensor.id === sid)
+                                                const targetId = sid != null ? Number(sid) : null
+                                                const s = targetId != null
+                                                  ? sensors.find((sensor: any) => sensor.id != null && Number(sensor.id) === targetId)
+                                                  : undefined
                                                 if (!s) return null
-                                                const name = s.sensor_name_id
-                                                  ? instrumentNames.find((n: any) => n.id === s.sensor_name_id)?.name || s.name || s.type || '-'
+                                                const sensorNameId = s.sensor_name_id != null ? Number(s.sensor_name_id) : null
+                                                const name = sensorNameId != null
+                                                  ? instrumentNames.find((n: any) => n.id != null && Number(n.id) === sensorNameId)?.name || s.name || s.type || '-'
                                                   : s.name || s.type || '-'
                                                 const manufacturer = s.manufacturer || '-'
                                                 const type = s.type || '-'

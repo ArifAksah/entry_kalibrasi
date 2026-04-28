@@ -135,7 +135,7 @@ const Header: React.FC = () => {
   };
 
   return (
-    <header className="border-b border-slate-200 bg-white/95 px-6 py-4 shadow-sm backdrop-blur">
+    <header className="relative z-[60] border-b border-slate-200 bg-white/95 px-6 py-4 shadow-sm backdrop-blur">
       <div className="flex items-center justify-between gap-6">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Area Kerja</p>
@@ -179,7 +179,7 @@ const Header: React.FC = () => {
 
             {/* Notification Dropdown */}
             {isNotificationOpen && (
-              <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
+              <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-[100]">
                 <div className="p-4 border-b border-gray-200 flex justify-between items-center">
                   <h3 className="text-lg font-semibold text-gray-900">Notifikasi</h3>
                   {unreadCount > 0 && (
@@ -243,7 +243,7 @@ const Header: React.FC = () => {
 
             {/* Profile Dropdown */}
             {isProfileOpen && (
-              <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
+              <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-[100]">
                 <div className="p-4 border-b border-gray-200">
                   <div className="flex items-center space-x-3">
                     <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center">

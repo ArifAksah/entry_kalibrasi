@@ -2287,9 +2287,9 @@ type ResultItem = {
       )}
 
       {/* Header dengan background putih dan aksen biru elegan */}
-      <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-4 relative overflow-hidden">
+      <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-4 relative overflow-hidden z-0">
         <BatikBackground />
-        <div className="relative z-10 flex justify-between items-center">
+        <div className="relative z-[1] flex justify-between items-center">
           <div>
             <Breadcrumb items={[{ label: 'Documents', href: '#' }, { label: 'Certificates' }]} />
           </div>
