@@ -44,7 +44,7 @@ export interface LegacyResultEntry {
   place: string
   startDate: string
   endDate: string
-  table: Array<{ title: string; rows: Array<{ key: string; value: string; unit: string; extraValues?: string[] }> }>
+  table: Array<{ title: string; headers?: string[]; rows: Array<{ key: string; value: string; unit: string; extraValues?: string[] }> }>
   images: Array<{ url: string; caption: string }>
   environment: Array<{ key: string; value: string; unit: string }>
   notesForm: {
@@ -83,13 +83,14 @@ function sensorV1ToLegacyEntry(s: SensorResultV1): LegacyResultEntry {
   return {
     sensorId: s.links.sensor_id,
     session_id: s.links.session_id ?? null,
-    unitUut: s.setup.measurement_units?.uut ?? null,
+    unitUut: s.setup.measurement_units?.uut || s.snapshot.graduating_unit || s.snapshot.range_capacity_unit || null,
     unitStd: s.setup.measurement_units?.std ?? null,
     place: s.display.place,
     startDate: s.setup.start_date,
     endDate: s.setup.end_date,
     table: s.display.tables.map((t) => ({
       title: t.title,
+      ...(Array.isArray(t.headers) ? { headers: t.headers } : {}),
       rows: t.rows.map((r) => ({
         key: r.key,
         value: r.value,

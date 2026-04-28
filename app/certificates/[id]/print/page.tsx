@@ -77,6 +77,12 @@ type Instrument = {
 }
 type Personel = { id: string; name: string | null }
 
+const findPersonelById = (personel: Personel[], id: string | number | null | undefined) => {
+  if (id == null || id === '') return null
+  const targetId = String(id)
+  return personel.find(p => p.id != null && String(p.id) === targetId) || null
+}
+
 // --- Komponen Label Helper ---
 // Untuk meniru format label di PDF (Indo bold + English italic)
 const PdfLabel: React.FC<{ indo: string; eng: string; className?: string }> = ({ indo, eng, className = '' }) => (
@@ -97,6 +103,9 @@ const isOthersEnabled = (notesForm: { others?: string | null; others_enabled?: b
   typeof notesForm?.others_enabled === 'boolean'
     ? notesForm.others_enabled
     : Boolean(notesForm?.others)
+
+const unwrapListResponse = (payload: any): any[] =>
+  Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : [])
 
 // --- Komponen QR Code dengan styling (modules/finder) dan logo BMKG di tengah ---
 const QRCodeWithBMKGLogo: React.FC<{
@@ -305,20 +314,16 @@ const PrintCertificatePage: React.FC = () => {
     return targetId != null ? instruments.find(i => i.id != null && Number(i.id) === targetId) || null : null
   }, [instruments, cert])
   const authorized = useMemo(() => {
-    const targetId = cert?.authorized_by != null ? Number(cert.authorized_by) : null
-    return targetId != null ? personel.find(p => p.id != null && Number(p.id) === targetId) || null : null
+    return findPersonelById(personel, cert?.authorized_by)
   }, [personel, cert])
   const verifikator1 = useMemo(() => {
-    const targetId = cert?.verifikator_1 != null ? Number(cert.verifikator_1) : null
-    return targetId != null ? personel.find(p => p.id != null && Number(p.id) === targetId) || null : null
+    return findPersonelById(personel, cert?.verifikator_1)
   }, [personel, cert])
   const verifikator2 = useMemo(() => {
-    const targetId = cert?.verifikator_2 != null ? Number(cert.verifikator_2) : null
-    return targetId != null ? personel.find(p => p.id != null && Number(p.id) === targetId) || null : null
+    return findPersonelById(personel, cert?.verifikator_2)
   }, [personel, cert])
   const verifikator3 = useMemo(() => {
-    const targetId = cert?.verifikator_3 != null ? Number(cert.verifikator_3) : null
-    return targetId != null ? personel.find(p => p.id != null && Number(p.id) === targetId) || null : null
+    return findPersonelById(personel, cert?.verifikator_3)
   }, [personel, cert])
 
   // Data hasil kalibrasi (normalize ke array)
@@ -432,9 +437,26 @@ const PrintCertificatePage: React.FC = () => {
 
         // Sensors
         ;(async () => {
-          const r = await fetchWithTimeout('/api/sensors', 12000)
-          const sData = await safeJson(r)
-          if (sData) setSensors(Array.isArray(sData) ? sData : (sData?.data ?? []))
+          try {
+            const first = await fetchWithTimeout('/api/sensors?page=1&pageSize=100', 12000)
+            const firstPayload = await safeJson(first)
+            if (!firstPayload) return
+            const firstData = unwrapListResponse(firstPayload)
+            const totalPages = Array.isArray(firstPayload) ? 1 : Number(firstPayload?.totalPages ?? 1)
+            if (totalPages <= 1) {
+              setSensors(firstData)
+            } else {
+              const restRes = await Promise.all(
+                Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map((page) =>
+                  fetchWithTimeout(`/api/sensors?page=${page}&pageSize=100`, 12000)
+                )
+              )
+              const restPayloads = await Promise.all(restRes.map(r => safeJson(r)))
+              setSensors([...firstData, ...restPayloads.flatMap(unwrapListResponse)])
+            }
+          } catch (e) {
+            console.error('[Print] Failed to fetch sensors:', e)
+          }
         })()
 
         // Instrument names
@@ -696,6 +718,17 @@ const PrintCertificatePage: React.FC = () => {
       color: #000 !important;
     }
 
+    .page-container,
+    .page-container table,
+    .page-container td,
+    .page-container th,
+    .page-container p,
+    .page-container div {
+      font-size: 11pt !important;
+      line-height: 1.25 !important;
+      font-weight: 700 !important;
+    }
+
     .cert-title-id {
       font-size: 20pt !important;
       line-height: 1.15 !important;
@@ -722,7 +755,8 @@ const PrintCertificatePage: React.FC = () => {
       color: #000 !important;
     }
 
-    .cert-text-en {
+    .cert-text-en,
+    .page-container .italic {
       font-size: 9pt !important;
       line-height: 1.05 !important;
       font-weight: 700 !important;
@@ -1237,7 +1271,7 @@ const PrintCertificatePage: React.FC = () => {
         padding-top: 3mm !important;
       }
       .page-container.results-page {
-        padding-bottom: 18mm !important; 
+        padding-bottom: 5mm !important; 
         min-height: 297mm !important;
       }
     }
@@ -1695,6 +1729,10 @@ const PrintCertificatePage: React.FC = () => {
                             <div className="text-[12px] font-bold text-center mb-1">Hasil Kalibrasi / <span className="italic font-normal">Calibration Result</span></div>
                             {res.table.map((sec: any, sIdx: number) => {
                               const rows = Array.isArray(sec?.rows) ? sec.rows : []
+                              const headers = Array.isArray(sec?.headers) && sec.headers.length > 0
+                                ? sec.headers
+                                : ['Penunjukan Alat / Instrument Reading', 'Koreksi / Correction', 'Ketidakpastian / Uncertainty']
+                              const resultUnit = formatUnit(res?.unitUut || res?.sensorDetails?.graduating_unit || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || '')
                               const isDuplicateTitle = sec?.title?.toLowerCase().includes('hasil kalibrasi') || sec?.title?.toLowerCase().includes('calibration result');
                               return (
                                 <div key={sIdx} className="mt-3 avoid-break">
@@ -1703,27 +1741,11 @@ const PrintCertificatePage: React.FC = () => {
                                   <table className="w-full text-xs border-[2px] border-black text-center border-collapse">
                                     <thead>
                                       <tr className="font-bold">
-                                        {/* Use explicit headers if available, otherwise fallback to Key/Unit/Value logic */}
-                                        {sec.headers ? (
-                                          sec.headers.map((h: string, i: number) => {
-                                            const unit = formatUnit(res?.unitUut || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit);
-                                            // Extract base header string without HTML tags if any, but since it's string just append
-                                            return (
-                                              <td key={i} className="p-1 border border-black text-center">
-                                                {h}<br />{unit ? `(${unit})` : ''}
-                                              </td>
-                                            );
-                                          })
-                                        ) : (
-                                          // Fallback for old data without headers
-                                          rows.length > 0 && (
-                                            <>
-                                              <td className="p-1 border border-black text-center">Parameter</td>
-                                              <td className="p-1 border border-black text-center">Unit</td>
-                                              <td className="p-1 border border-black text-center">Nilai</td>
-                                            </>
-                                          )
-                                        )}
+                                        {headers.map((h: string, i: number) => (
+                                          <td key={i} className="p-1 border border-black text-center">
+                                            {h}<br />{resultUnit ? `(${resultUnit})` : ''}
+                                          </td>
+                                        ))}
                                       </tr>
                                       {/* Baris Unit Tambahan dihapus as requested */}
                                     </thead>
@@ -1731,7 +1753,7 @@ const PrintCertificatePage: React.FC = () => {
                                       {rows.map((row: any, rIdx: number) => (
                                         <tr key={rIdx}>
                                           {/* If headers exist, map based on standard + extra values */}
-                                          {sec.headers ? (
+                                          {headers.length > 0 ? (
                                             <>
                                               <td className="p-1 border border-black text-center">{row.key || '-'}</td>
                                               <td className="p-1 border border-black text-center">{formatUnit(row.unit || '-')}</td>

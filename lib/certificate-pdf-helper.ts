@@ -296,6 +296,17 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
           body, p, span, div, td, th, h1, h2, h3, h4, h5, h6, button, input, label {
             font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif !important;
           }
+          .page-container,
+          .page-container table,
+          .page-container td,
+          .page-container th,
+          .page-container p,
+          .page-container div {
+            font-size: 11pt !important;
+            line-height: 1.25 !important;
+            font-weight: 700 !important;
+            color: #000 !important;
+          }
           /* Sembunyikan no-print */
           .no-print { display: none !important; }
           .bg-gray-100 { background-color: white !important; }
@@ -341,7 +352,8 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
             color: #000 !important;
           }
 
-          .cert-text-en {
+          .cert-text-en,
+          .page-container .italic {
             font-size: 9pt !important;
             line-height: 1.05 !important;
             font-weight: 700 !important;

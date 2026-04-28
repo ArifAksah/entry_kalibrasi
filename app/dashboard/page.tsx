@@ -12,13 +12,6 @@ const DashboardPage: React.FC = () => {
       <div className="main-content">
         <Header />
         <div className="p-6">
-          {/* Welcome Section */}
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard Overview 📊</h1>
-            <p className="text-gray-600">Monitor your assigned tasks and system metrics.</p>
-          </div>
-
-          {/* Role-based Dashboard Content */}
           <RoleBasedDashboard />
         </div>
       </div>

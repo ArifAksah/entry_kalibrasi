@@ -162,6 +162,79 @@ export async function GET(
             display: none !important;
             content: none !important;
           }
+          @page {
+            size: A4;
+            margin: 0;
+          }
+          body,
+          .print-container {
+            margin: 0 !important;
+            padding: 0 !important;
+            font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif !important;
+          }
+          body, p, span, div, td, th, h1, h2, h3, h4, h5, h6 {
+            font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif !important;
+          }
+          .page-container {
+            margin: 0 !important;
+            padding: 5mm !important;
+            box-sizing: border-box !important;
+          }
+          .page-container,
+          .page-container table,
+          .page-container td,
+          .page-container th,
+          .page-container p,
+          .page-container div {
+            font-size: 11pt !important;
+            line-height: 1.25 !important;
+            font-weight: 700 !important;
+            color: #000 !important;
+          }
+          .cert-title-id {
+            font-size: 20pt !important;
+            line-height: 1.15 !important;
+            font-weight: 700 !important;
+            letter-spacing: 0 !important;
+            color: #000 !important;
+            text-transform: uppercase;
+          }
+          .cert-title-en,
+          .cert-text-en,
+          .page-container .italic {
+            font-size: 9pt !important;
+            line-height: 1.05 !important;
+            font-weight: 700 !important;
+            font-style: italic !important;
+            letter-spacing: 0.01em !important;
+            color: #000 !important;
+          }
+          .cert-text-id,
+          .cert-info-text,
+          .cert-info-text td {
+            font-size: 11pt !important;
+            line-height: 1.25 !important;
+            font-weight: 700 !important;
+            color: #000 !important;
+          }
+          .page-container.results-page,
+          .page-container.cover-page {
+            width: 210mm !important;
+            height: 297mm !important;
+            max-height: 297mm !important;
+            padding: 5mm !important;
+            box-sizing: border-box !important;
+            position: relative !important;
+          }
+          .page-1-footer {
+            bottom: 5mm !important;
+            left: 5mm !important;
+            right: 5mm !important;
+          }
+          .page-container.results-page .footer-qr-small.results-page-qr {
+            bottom: 5mm !important;
+            left: 5mm !important;
+          }
           .page-1-footer,
           .page-1-footer * {
             list-style: none !important;

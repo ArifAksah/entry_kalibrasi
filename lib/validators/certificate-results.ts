@@ -79,6 +79,7 @@ export const ResultTableRowSchema = z.object({
 /** Satu tabel (punya judul + list baris). */
 export const ResultTableSchema = z.object({
   title: z.string(),
+  headers: z.array(z.string()).optional(),
   rows: z.array(ResultTableRowSchema),
 })
 

@@ -190,6 +190,7 @@ function convertLegacyEntry(raw: unknown, index: number): SensorResultV1 {
   // --- display ----------------------------------------------------------
   const tables = asArray<Record<string, unknown>>(entry.table ?? entry.tables).map((t) => ({
     title: asString(t.title),
+    ...(Array.isArray(t.headers) ? { headers: (t.headers as unknown[]).map((h) => asString(h)) } : {}),
     rows: asArray<Record<string, unknown>>(t.rows).map((r) => ({
       key: asString(r.key),
       value: asString(r.value),
