@@ -8,7 +8,7 @@ DECLARE
     x2 DOUBLE PRECISION;
     y1 DOUBLE PRECISION;
     y2 DOUBLE PRECISION;
-    correction DOUBLE PRECISION;
+    calculated_correction DOUBLE PRECISION;
     i INT;
     len INT;
     setpoints DOUBLE PRECISION[];
@@ -31,14 +31,14 @@ BEGIN
     WITH sorted_points AS (
         SELECT
             (sp.elem #>> '{}')::DOUBLE PRECISION AS setpoint,
-            (cs.elem #>> '{}')::DOUBLE PRECISION AS correction
+            (cs.elem #>> '{}')::DOUBLE PRECISION AS correction_value
         FROM jsonb_array_elements(cert_record.setpoint::jsonb) WITH ORDINALITY AS sp(elem, idx)
         JOIN jsonb_array_elements(cert_record.correction_std::jsonb) WITH ORDINALITY AS cs(elem, idx)
             USING (idx)
     )
     SELECT
-        array_agg(setpoint ORDER BY setpoint),
-        array_agg(correction ORDER BY setpoint)
+        array_agg(sorted_points.setpoint ORDER BY sorted_points.setpoint),
+        array_agg(sorted_points.correction_value ORDER BY sorted_points.setpoint)
     INTO setpoints, corrections
     FROM sorted_points;
 
@@ -80,9 +80,9 @@ BEGIN
     END IF;
 
     -- Linear Interpolation: y = y1 + (x - x1) * (y2 - y1) / (x2 - x1)
-    correction := y1 + ((reading - x1) * (y2 - y1) / (x2 - x1));
+    calculated_correction := y1 + ((reading - x1) * (y2 - y1) / (x2 - x1));
 
-    RETURN correction;
+    RETURN calculated_correction;
 END;
 $$ LANGUAGE plpgsql;
 

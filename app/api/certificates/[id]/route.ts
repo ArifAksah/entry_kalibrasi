@@ -138,8 +138,9 @@ export async function PUT(
       }
     }
 
-    // Validate authorized_by (personel) if provided; else default to user.id
-    let authorizedPersonId: string = user.id
+    // Validate authorized_by (personel) if provided; otherwise keep existing assignment.
+    // Partial updates must not silently replace the signer with the current user.
+    let authorizedPersonId: string | null = currentCertificate.authorized_by ?? null
     if (authorized_by) {
       const { data: p, error: pErr } = await supabaseAdmin
         .from('personel')
@@ -152,8 +153,8 @@ export async function PUT(
       authorizedPersonId = authorized_by
     }
 
-    // Validate verifikator_1 if provided
-    let v1: string | null = null
+    // Validate verifikator_1 if provided; otherwise keep existing assignment.
+    let v1: string | null = currentCertificate.verifikator_1 ?? null
     if (verifikator_1) {
       const { data: p1, error: p1Err } = await supabaseAdmin
         .from('personel')
@@ -166,8 +167,8 @@ export async function PUT(
       v1 = verifikator_1
     }
 
-    // Validate verifikator_2 if provided
-    let v2: string | null = null
+    // Validate verifikator_2 if provided; otherwise keep existing assignment.
+    let v2: string | null = currentCertificate.verifikator_2 ?? null
     if (verifikator_2) {
       const { data: p2, error: p2Err } = await supabaseAdmin
         .from('personel')
@@ -180,8 +181,8 @@ export async function PUT(
       v2 = verifikator_2
     }
 
-    // Validate verifikator_3 if provided
-    let v3: string | null = null
+    // Validate verifikator_3 if provided; otherwise keep existing assignment.
+    let v3: string | null = currentCertificate.verifikator_3 ?? null
     if (verifikator_3) {
       const { data: p3, error: p3Err } = await supabaseAdmin
         .from('personel')
