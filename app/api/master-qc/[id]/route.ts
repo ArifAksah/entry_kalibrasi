@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../../lib/supabase'
 
+function getMasterQcErrorMessage(error: any) {
+    if (error?.code === '23505') {
+        if (error?.message?.includes('master_qc_pkey')) {
+            return 'ID Master QC bentrok. Sequence auto-increment perlu disinkronkan di database.'
+        }
+
+        return 'Data Master QC untuk instrumen dan satuan ini sudah ada.'
+    }
+
+    return error?.message || 'Gagal menyimpan data Master QC'
+}
+
 // PUT - Update data berdasarkan ID
 export async function PUT(
     request: NextRequest,
@@ -23,11 +35,34 @@ export async function PUT(
             )
         }
 
+        const normalizedInstrumentNameId = Number(instrument_name_id)
+        const normalizedUnitId = Number(unit_id)
+
+        const { data: duplicateRows, error: duplicateError } = await supabaseAdmin
+            .from('master_qc')
+            .select('id')
+            .eq('instrument_name_id', normalizedInstrumentNameId)
+            .eq('unit_id', normalizedUnitId)
+            .neq('id', id)
+            .limit(1)
+
+        if (duplicateError) {
+            console.error(`PUT /api/master-qc/${id} duplicate check error:`, duplicateError)
+            return NextResponse.json({ error: duplicateError.message }, { status: 400 })
+        }
+
+        if (Array.isArray(duplicateRows) && duplicateRows.length > 0) {
+            return NextResponse.json(
+                { error: 'Data Master QC untuk instrumen dan satuan ini sudah ada.' },
+                { status: 409 }
+            )
+        }
+
         const { data, error } = await supabaseAdmin
             .from('master_qc')
             .update({
-                instrument_name_id: Number(instrument_name_id),
-                unit_id: Number(unit_id),
+                instrument_name_id: normalizedInstrumentNameId,
+                unit_id: normalizedUnitId,
                 nilai_batas_koreksi: nilai_batas_koreksi.trim(),
                 catatan: catatan?.trim() || null,
             })
@@ -45,7 +80,7 @@ export async function PUT(
 
         if (error) {
             console.error(`PUT /api/master-qc/${id} error:`, error)
-            return NextResponse.json({ error: error.message }, { status: 400 })
+            return NextResponse.json({ error: getMasterQcErrorMessage(error) }, { status: error.code === '23505' ? 409 : 400 })
         }
 
         return NextResponse.json({ data })

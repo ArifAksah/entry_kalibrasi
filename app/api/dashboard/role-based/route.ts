@@ -59,6 +59,7 @@ type CertificateRow = {
   created_by?: string | null
   rejection_history?: any[] | null
   results?: any[] | null
+  pdf_generated_at?: string | null
 }
 
 type InstrumentRow = {
@@ -90,12 +91,71 @@ type StationSummary = {
   completed_count: number
 }
 
+type StationDashboardInstrument = {
+  id: number
+  name: string
+  code: string
+  station_id: number | null
+  sensor_ids: number[]
+}
+
+type ExpiringInstrumentItem = {
+  id: number
+  instrument_name: string
+  instrument_code: string
+  valid_from: string | null
+  expires_at: string | null
+  certificate_no: string
+  certificate_order: string | null
+  no_identification: string | null
+  issue_date: string | null
+  status: 'expired' | 'warning' | 'valid' | 'missing'
+  days_remaining: number | null
+  certificate_id?: number | null
+}
+
+type TrendPoint = {
+  year: number
+  correction: number | null
+  uncertainty: number | null
+}
+
+type TrendSeries = {
+  instrument_id: number
+  instrument_name: string
+  instrument_code: string
+  points: TrendPoint[]
+}
+
+type UserStationDashboard = {
+  stationName: string
+  stationCount: number
+  totalInstruments: number
+  validCertificates: number
+  pendingCalibration: number
+  activeInstruments: number
+  expiringInstruments: ExpiringInstrumentItem[]
+  trendSeries: TrendSeries[]
+}
+
 type VerificationRow = {
   certificate_id: number
   verification_level: number
   status: string
   certificate_version?: number | null
+  signed_at?: string | null
   updated_at?: string | null
+}
+
+type CertificateStandardRow = {
+  id: number
+  no_certificate: string | null
+  calibration_date: string | null
+  sensor_id: number | null
+  correction_std: any
+  u95_std: any
+  setpoint: any
+  u95_general: number | null
 }
 
 const levelLabel = (level: number) => {
@@ -181,7 +241,7 @@ const buildRejectItems = (certificates: CertificateRow[]): RejectItem[] => {
 async function getCertificates() {
   const { data, error } = await supabaseAdmin
     .from('certificate')
-    .select('id, no_certificate, no_order, no_identification, created_at, issue_date, status, station, instrument, version, verifikator_1, verifikator_2, verifikator_3, authorized_by, sent_by, assignor, created_by, rejection_history, results')
+    .select('id, no_certificate, no_order, no_identification, created_at, issue_date, status, station, instrument, version, verifikator_1, verifikator_2, verifikator_3, authorized_by, sent_by, assignor, created_by, rejection_history, results, pdf_generated_at')
     .order('created_at', { ascending: false })
 
   if (error) throw new Error(error.message)
@@ -195,6 +255,84 @@ async function getInstruments() {
 
   if (error) throw new Error(error.message)
   return (data || []) as InstrumentRow[]
+}
+
+async function getStationDashboardInstruments(stationIds: number[]) {
+  if (stationIds.length === 0) return [] as StationDashboardInstrument[]
+
+  const { data: instrumentData, error: instrumentError } = await supabaseAdmin
+    .from('instrument')
+    .select('id, name, station_id, instrument_names_id')
+    .in('station_id', stationIds)
+    .order('name', { ascending: true })
+
+  if (instrumentError) throw new Error(instrumentError.message)
+
+  const instruments = instrumentData || []
+  const instrumentIds = instruments.map((instrument: any) => Number(instrument.id)).filter((id: number) => Number.isFinite(id))
+  const instrumentNameIds = Array.from(new Set(
+    instruments
+      .map((instrument: any) => Number(instrument.instrument_names_id))
+      .filter((id: number) => Number.isFinite(id))
+  ))
+
+  const { data: sensorData, error: sensorError } = instrumentIds.length > 0
+    ? await supabaseAdmin
+      .from('sensor')
+      .select('id, instrument_id')
+      .in('instrument_id', instrumentIds)
+    : { data: [], error: null }
+
+  if (sensorError) throw new Error(sensorError.message)
+
+  const { data: nameData, error: nameError } = instrumentNameIds.length > 0
+    ? await supabaseAdmin
+      .from('instrument_names')
+      .select('id, name, code_alat')
+      .in('id', instrumentNameIds)
+    : { data: [], error: null }
+
+  if (nameError) throw new Error(nameError.message)
+
+  const sensorsByInstrument = new Map<number, number[]>()
+  ;(sensorData || []).forEach((sensor: any) => {
+    const instrumentId = Number(sensor.instrument_id)
+    const sensorId = Number(sensor.id)
+    if (!Number.isFinite(instrumentId) || !Number.isFinite(sensorId)) return
+    const list = sensorsByInstrument.get(instrumentId) || []
+    list.push(sensorId)
+    sensorsByInstrument.set(instrumentId, list)
+  })
+
+  const namesById = new Map<number, any>()
+  ;(nameData || []).forEach((name: any) => {
+    const id = Number(name.id)
+    if (Number.isFinite(id)) namesById.set(id, name)
+  })
+
+  return instruments.map((instrument: any) => {
+    const instrumentName = namesById.get(Number(instrument.instrument_names_id))
+    return {
+      id: Number(instrument.id),
+      name: instrument.name || instrumentName?.name || `Instrumen #${instrument.id}`,
+      code: instrumentName?.code_alat || '-',
+      station_id: instrument.station_id == null ? null : Number(instrument.station_id),
+      sensor_ids: sensorsByInstrument.get(Number(instrument.id)) || []
+    }
+  }) as StationDashboardInstrument[]
+}
+
+async function getCertificateStandardsBySensorIds(sensorIds: number[]) {
+  if (sensorIds.length === 0) return [] as CertificateStandardRow[]
+
+  const { data, error } = await supabaseAdmin
+    .from('certificate_standard')
+    .select('id, no_certificate, calibration_date, sensor_id, correction_std, u95_std, setpoint, u95_general')
+    .in('sensor_id', sensorIds)
+    .order('calibration_date', { ascending: false })
+
+  if (error) throw new Error(error.message)
+  return (data || []) as CertificateStandardRow[]
 }
 
 async function getUserStationIds(userId: string) {
@@ -251,6 +389,223 @@ const buildStationSummaries = (
       completed_count: certsForStation.filter((certificate) => certificate.status === 'completed' || certificate.status === 'verified').length
     }
   })
+}
+
+const parseNumericArray = (value: any): number[] => {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => {
+      if (typeof item === 'number') return item
+      if (typeof item === 'string' && item.trim() !== '' && !Number.isNaN(Number(item))) return Number(item)
+      if (item && typeof item === 'object') {
+        const candidate = item.correction ?? item.koreksi ?? item.u95 ?? item.u95_std ?? item.value
+        if (typeof candidate === 'number') return candidate
+        if (typeof candidate === 'string' && candidate.trim() !== '' && !Number.isNaN(Number(candidate))) return Number(candidate)
+      }
+      return null
+    })
+    .filter((item): item is number => typeof item === 'number' && Number.isFinite(item))
+}
+
+const average = (values: number[]) => {
+  if (values.length === 0) return null
+  return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
+const addOneYear = (dateString: string) => {
+  const date = new Date(dateString)
+  if (Number.isNaN(date.getTime())) return null
+  const next = new Date(date)
+  next.setFullYear(next.getFullYear() + 1)
+  return next
+}
+
+const normalizeCertificateNo = (value: string | null | undefined) => {
+  return (value || '').trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+const getSignedAtForCertificate = (
+  certificate: CertificateRow,
+  verifications: VerificationRow[]
+) => {
+  const version = certificate.version ?? 1
+  const approvedSignatures = verifications
+    .filter((verification) =>
+      verification.certificate_id === certificate.id &&
+      verification.status === 'approved' &&
+      (verification.verification_level === 4 || verification.verification_level === 3)
+    )
+    .sort((a, b) => {
+      const levelDiff = b.verification_level - a.verification_level
+      if (levelDiff !== 0) return levelDiff
+
+      const aCurrentVersion = (a.certificate_version ?? 1) === version ? 1 : 0
+      const bCurrentVersion = (b.certificate_version ?? 1) === version ? 1 : 0
+      if (aCurrentVersion !== bCurrentVersion) return bCurrentVersion - aCurrentVersion
+
+      return new Date(b.signed_at || b.updated_at || 0).getTime() - new Date(a.signed_at || a.updated_at || 0).getTime()
+    })
+
+  const signature = approvedSignatures[0]
+
+  return signature?.signed_at || signature?.updated_at || certificate.pdf_generated_at || null
+}
+
+const buildUserStationDashboard = (
+  assignedStations: StationRow[],
+  instruments: StationDashboardInstrument[],
+  standards: CertificateStandardRow[],
+  certificates: CertificateRow[],
+  verifications: VerificationRow[]
+): UserStationDashboard => {
+  const now = new Date()
+  const warningDays = 30
+  const standardsBySensor = new Map<number, CertificateStandardRow[]>()
+  const signedCertificatesByInstrument = new Map<number, Array<CertificateRow & { signed_at_effective: string }>>()
+  const signedCertificatesByNumber = new Map<string, CertificateRow & { signed_at_effective: string }>()
+
+  standards.forEach((standard) => {
+    const sensorId = Number(standard.sensor_id)
+    if (!Number.isFinite(sensorId)) return
+    const list = standardsBySensor.get(sensorId) || []
+    list.push(standard)
+    standardsBySensor.set(sensorId, list)
+  })
+
+  certificates
+    .filter((certificate) => certificate.status === 'completed' || certificate.status === 'verified')
+    .forEach((certificate) => {
+      const signedAt = getSignedAtForCertificate(certificate, verifications)
+      if (!signedAt || Number.isNaN(new Date(signedAt).getTime())) return
+
+      const normalizedNo = normalizeCertificateNo(certificate.no_certificate)
+      if (normalizedNo) {
+        const existing = signedCertificatesByNumber.get(normalizedNo)
+        if (!existing || new Date(signedAt).getTime() > new Date(existing.signed_at_effective).getTime()) {
+          signedCertificatesByNumber.set(normalizedNo, { ...certificate, signed_at_effective: signedAt })
+        }
+      }
+
+      const instrumentId = Number(certificate.instrument)
+      if (!Number.isFinite(instrumentId)) return
+
+      const list = signedCertificatesByInstrument.get(instrumentId) || []
+      list.push({ ...certificate, signed_at_effective: signedAt })
+      signedCertificatesByInstrument.set(instrumentId, list)
+    })
+
+  const latestForInstrument = instruments.map((instrument) => {
+    const relatedStandards = instrument.sensor_ids.flatMap((sensorId) => standardsBySensor.get(sensorId) || [])
+    const certificatesFromStandards = relatedStandards
+      .map((standard) => signedCertificatesByNumber.get(normalizeCertificateNo(standard.no_certificate)))
+      .filter((certificate): certificate is CertificateRow & { signed_at_effective: string } => !!certificate)
+    const certificateCandidates = [
+      ...(signedCertificatesByInstrument.get(instrument.id) || []),
+      ...certificatesFromStandards
+    ]
+    const latestCertificate = certificateCandidates
+      .sort((a, b) => new Date(b.signed_at_effective).getTime() - new Date(a.signed_at_effective).getTime())[0] || null
+    const sorted = relatedStandards
+      .filter((standard) => standard.calibration_date)
+      .sort((a, b) => new Date(b.calibration_date || 0).getTime() - new Date(a.calibration_date || 0).getTime())
+    const latest = sorted[0] || null
+    const validFrom = latestCertificate?.signed_at_effective || null
+    const expiresAt = validFrom ? addOneYear(validFrom) : null
+    const daysRemaining = expiresAt
+      ? Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      : null
+    const status: ExpiringInstrumentItem['status'] = daysRemaining == null
+      ? 'missing'
+      : daysRemaining < 0
+        ? 'expired'
+        : daysRemaining <= warningDays
+          ? 'warning'
+          : 'valid'
+
+    return { instrument, latest, latestCertificate, validFrom, expiresAt, daysRemaining, status, relatedStandards }
+  })
+
+  const expiringInstruments = latestForInstrument
+    .sort((a, b) => {
+      const statusPriority: Record<ExpiringInstrumentItem['status'], number> = {
+        expired: 0,
+        warning: 1,
+        valid: 2,
+        missing: 3
+      }
+      const statusDiff = statusPriority[a.status] - statusPriority[b.status]
+      if (statusDiff !== 0) return statusDiff
+      return (a.daysRemaining ?? Number.MAX_SAFE_INTEGER) - (b.daysRemaining ?? Number.MAX_SAFE_INTEGER)
+    })
+    .slice(0, 5)
+    .map((item) => ({
+      id: item.instrument.id,
+      instrument_name: item.instrument.name,
+      instrument_code: item.instrument.code,
+      valid_from: item.validFrom,
+      expires_at: item.expiresAt ? item.expiresAt.toISOString() : null,
+      certificate_no: item.latestCertificate?.no_certificate || '-',
+      certificate_order: item.latestCertificate?.no_order || null,
+      no_identification: item.latestCertificate?.no_identification || null,
+      issue_date: item.latestCertificate?.issue_date || null,
+      certificate_id: item.latestCertificate?.id ?? null,
+      status: item.status,
+      days_remaining: item.daysRemaining
+    }))
+
+  const trendSeries = latestForInstrument
+    .filter((item) => item.relatedStandards.length > 0)
+    .slice(0, 8)
+    .map((item) => {
+      const byYear = new Map<number, CertificateStandardRow[]>()
+      item.relatedStandards.forEach((standard) => {
+        if (!standard.calibration_date) return
+        const year = new Date(standard.calibration_date).getFullYear()
+        if (!Number.isFinite(year)) return
+        const list = byYear.get(year) || []
+        list.push(standard)
+        byYear.set(year, list)
+      })
+
+      const points = Array.from(byYear.entries())
+        .sort(([a], [b]) => a - b)
+        .map(([year, rows]) => {
+          const corrections = rows.flatMap((row) => parseNumericArray(row.correction_std))
+          const uncertainties = rows.flatMap((row) => {
+            const parsed = parseNumericArray(row.u95_std)
+            if (parsed.length > 0) return parsed
+            return typeof row.u95_general === 'number' ? [row.u95_general] : []
+          })
+          return {
+            year,
+            correction: average(corrections),
+            uncertainty: average(uncertainties)
+          }
+        })
+
+      return {
+        instrument_id: item.instrument.id,
+        instrument_name: item.instrument.name,
+        instrument_code: item.instrument.code,
+        points
+      }
+    })
+    .filter((series) => series.points.length > 0)
+
+  return {
+    stationName: assignedStations.length === 1
+      ? (assignedStations[0]?.name || 'Stasiun')
+      : assignedStations.length > 1
+        ? `${assignedStations.length} Stasiun`
+        : 'Belum Ada Stasiun',
+    stationCount: assignedStations.length,
+    totalInstruments: instruments.length,
+    validCertificates: latestForInstrument.filter((item) => item.status === 'valid').length,
+    pendingCalibration: latestForInstrument.filter((item) => item.status === 'missing' || item.status === 'expired' || item.status === 'warning').length,
+    activeInstruments: instruments.length,
+    expiringInstruments,
+    trendSeries
+  }
 }
 
 const getDirectlyRelatedCertificates = (certificates: CertificateRow[], userId: string) => {
@@ -310,7 +665,7 @@ async function getVerifications(certificateIds: number[]) {
   if (certificateIds.length === 0) return []
   const { data, error } = await supabaseAdmin
     .from('certificate_verification')
-    .select('certificate_id, verification_level, status, certificate_version, updated_at')
+    .select('certificate_id, verification_level, status, certificate_version, signed_at, updated_at')
     .in('certificate_id', certificateIds)
 
   if (error) throw new Error(error.message)
@@ -451,6 +806,12 @@ export async function GET(request: NextRequest) {
     if (role === 'calibrator' || role === 'user_station') {
       const userStationIds = role === 'user_station' ? await getUserStationIds(user.id) : new Set<number>()
       const assignedStations = role === 'user_station' ? await getStationsByIds(Array.from(userStationIds)) : []
+      const stationDashboardInstruments = role === 'user_station'
+        ? await getStationDashboardInstruments(Array.from(userStationIds))
+        : []
+      const stationDashboardStandards = role === 'user_station'
+        ? await getCertificateStandardsBySensorIds(Array.from(new Set(stationDashboardInstruments.flatMap((instrument) => instrument.sensor_ids))))
+        : []
 
       const relevantCertificates = role === 'user_station'
         ? getUserStationRelatedCertificates(certificates, user.id, userStationIds, instruments)
@@ -473,9 +834,10 @@ export async function GET(request: NextRequest) {
       const stationSummaries = role === 'user_station'
         ? buildStationSummaries(assignedStations, instruments, relevantCertificates)
         : []
-      const assignedInstrumentCount = role === 'user_station'
-        ? instruments.filter((instrument) => instrument.station_id !== undefined && instrument.station_id !== null && userStationIds.has(Number(instrument.station_id))).length
-        : 0
+      const userStationDashboard = role === 'user_station'
+        ? buildUserStationDashboard(assignedStations, stationDashboardInstruments, stationDashboardStandards, certificates, verifications)
+        : null
+      const assignedInstrumentCount = userStationDashboard?.totalInstruments || 0
 
       const prioritizedDrafts = [...returnedCertificates, ...draftCertificates.filter((certificate) => !latestRejection(certificate))]
         .slice(0, 8)
@@ -526,7 +888,8 @@ export async function GET(request: NextRequest) {
         ],
         actionItems: prioritizedDrafts,
         recentRejects: buildRejectItems(relevantCertificates),
-        stations: stationSummaries
+        stations: stationSummaries,
+        stationDashboard: userStationDashboard
       })
     }
 

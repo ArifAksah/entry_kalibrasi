@@ -52,7 +52,8 @@ const Header: React.FC = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(true);
-  const displayName = formatDisplayName(user?.email);
+  const [personelName, setPersonelName] = useState<string | null>(null);
+  const displayName = personelName || formatDisplayName(user?.email);
   const roleLabel = formatRoleLabel(role);
   const todayLabel = new Date().toLocaleDateString('id-ID', {
     weekday: 'long',
@@ -90,6 +91,29 @@ const Header: React.FC = () => {
         return () => clearInterval(interval);
     }
   }, [user]);
+
+  useEffect(() => {
+    const fetchPersonelName = async () => {
+      if (!user?.id) {
+        setPersonelName(null);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('personel')
+        .select('name')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (!error && data?.name?.trim()) {
+        setPersonelName(data.name.trim());
+      } else {
+        setPersonelName(null);
+      }
+    };
+
+    fetchPersonelName();
+  }, [user?.id]);
 
   const handleLogout = async () => {
     await signOut();
@@ -135,7 +159,7 @@ const Header: React.FC = () => {
   };
 
   return (
-    <header className="border-b border-slate-200 bg-white/95 px-6 py-4 shadow-sm backdrop-blur">
+    <header className="relative z-10 border-b border-slate-200 bg-white/95 px-6 py-4 shadow-sm backdrop-blur">
       <div className="flex items-center justify-between gap-6">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Area Kerja</p>
@@ -179,9 +203,9 @@ const Header: React.FC = () => {
 
             {/* Notification Dropdown */}
             {isNotificationOpen && (
-              <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
+              <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-[100]">
                 <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-                  <h3 className="text-lg font-semibold text-gray-900">Notifikasi</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Kotak Pesan</h3>
                   {unreadCount > 0 && (
                     <button onClick={handleMarkAllAsRead} className="text-xs text-blue-600 hover:underline">
                       Tandai semua dibaca
@@ -192,7 +216,7 @@ const Header: React.FC = () => {
                     {loadingNotifications ? (
                         <div className="p-4 text-center text-gray-500">Memuat...</div>
                     ) : notifications.length === 0 ? (
-                        <div className="p-4 text-center text-gray-500">Belum ada notifikasi baru.</div>
+                        <div className="p-4 text-center text-gray-500">Belum ada pesan baru.</div>
                     ) : (
                         notifications.map(notification => (
                             <div 
@@ -225,7 +249,7 @@ const Header: React.FC = () => {
               <div className="relative">
                 <div className="w-9 h-9 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center shadow-lg">
                   <span className="text-white font-bold text-sm">
-                    {user?.email?.charAt(0).toUpperCase() || 'U'}
+                    {displayName.charAt(0).toUpperCase() || 'U'}
                   </span>
                 </div>
                 <div className="absolute -inset-1 bg-cyan-500/20 rounded-full blur-sm group-hover:bg-cyan-500/30 transition-all duration-300"></div>
@@ -243,19 +267,20 @@ const Header: React.FC = () => {
 
             {/* Profile Dropdown */}
             {isProfileOpen && (
-              <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
+              <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-[100]">
                 <div className="p-4 border-b border-gray-200">
                   <div className="flex items-center space-x-3">
                     <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center">
                       <span className="text-white font-bold text-sm">
-                        {user?.email?.charAt(0).toUpperCase() || 'U'}
+                        {displayName.charAt(0).toUpperCase() || 'U'}
                       </span>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-sm font-medium text-gray-900">
                         {displayName}
                       </p>
-                      <p className="text-xs text-gray-500">{user?.email}</p>
+                      <p className="text-xs text-gray-500">{roleLabel}</p>
+                      <p className="max-w-[160px] truncate text-xs text-gray-400">{user?.email}</p>
                     </div>
                   </div>
                 </div>

@@ -89,6 +89,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Auto-assign user to selected station via user_stations table
+    if (station_id) {
+      const { error: userStationError } = await supabaseAdmin
+        .from('user_stations')
+        .upsert(
+          {
+            user_id: createdUserId,
+            station_id: parseInt(String(station_id), 10),
+          },
+          { onConflict: 'user_id,station_id' }
+        )
+
+      if (userStationError) {
+        console.error('Error assigning user to station:', userStationError)
+        // Non-fatal: don't throw here so registration still succeeds
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,

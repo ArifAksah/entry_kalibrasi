@@ -8,6 +8,9 @@ import QRCode from 'react-qr-code'
 import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
 import { formatUnit, needsConversion } from '../../../../lib/unitConversion'
 import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClassName } from '../../../../lib/rich-text'
+import { resultsToLegacyView } from '../../../../lib/validators/certificate-results-render-adapter'
+import { formatLatexUnit } from '../../../../lib/qc-utils'
+import { supabase } from '../../../../lib/supabase'
 
 // --- TIPE DATA KOMPREHENSIF ---
 // Saya gabungkan tipe dari ViewCertificatePage.tsx Anda ke sini
@@ -76,6 +79,12 @@ type Instrument = {
 }
 type Personel = { id: string; name: string | null }
 
+const findPersonelById = (personel: Personel[], id: string | number | null | undefined) => {
+  if (id == null || id === '') return null
+  const targetId = String(id)
+  return personel.find(p => p.id != null && String(p.id) === targetId) || null
+}
+
 // --- Komponen Label Helper ---
 // Untuk meniru format label di PDF (Indo bold + English italic)
 const PdfLabel: React.FC<{ indo: string; eng: string; className?: string }> = ({ indo, eng, className = '' }) => (
@@ -96,6 +105,9 @@ const isOthersEnabled = (notesForm: { others?: string | null; others_enabled?: b
   typeof notesForm?.others_enabled === 'boolean'
     ? notesForm.others_enabled
     : Boolean(notesForm?.others)
+
+const unwrapListResponse = (payload: any): any[] =>
+  Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : [])
 
 // --- Komponen QR Code dengan styling (modules/finder) dan logo BMKG di tengah ---
 const QRCodeWithBMKGLogo: React.FC<{
@@ -251,19 +263,31 @@ const PrintCertificatePage: React.FC = () => {
   const [allRawData, setAllRawData] = useState<any[]>([])
 
   const computeEnvCondition = useCallback((type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
-    const keywords = type === 'suhu'
-      ? ['suhu', 'temp', 'termometer', 'temperature', 'thermo']
-      : ['kelembab', 'hum', 'hygro', 'rh'];
-
     const matchedRows = sensorRawData.filter(r => {
-      const name = (r.sheet_name || '').toLowerCase();
-      return keywords.some(k => name.includes(k));
+      const rawUnit = String(r.unit_std || r.unit_uut || '');
+      const unit = formatLatexUnit(rawUnit).toLowerCase().trim();
+      const name = (r.sheet_name || r.name || r.category || '').toLowerCase();
+
+      if (type === 'suhu') {
+        const unitIsTemp = unit && (unit.includes('°c') || unit.includes('c') || unit.includes('celcius') || unit.includes('celsius'));
+        const nameIsTemp = ['suhu', 'temp', 'termometer', 'temperature', 'thermo'].some(k => name.includes(k));
+        return unitIsTemp || (nameIsTemp && !unit);
+      }
+
+      const unitIsHum = unit && (unit.includes('%') || unit.includes('rh') || unit.includes('r.h') || unit.includes('kelembaban') || unit.includes('humidity') || unit.includes('hum'));
+      const nameIsHum = ['kelembab', 'lembab', 'humidity', 'hum', 'hygro', 'rh', 'r.h'].some(k => name.includes(k));
+      return unitIsHum || (nameIsHum && !unit);
     });
 
     if (matchedRows.length === 0) return '-';
 
     const values = matchedRows
-      .map(r => r.std_corrected ?? (r.standard_data + (r.std_correction ?? 0)))
+      .map(r => {
+        if (r.std_corrected != null) return Number(r.std_corrected);
+        const standardData = Number(r.standard_data);
+        const stdCorrection = Number(r.std_correction ?? 0);
+        return Number.isFinite(standardData) ? standardData + stdCorrection : NaN;
+      })
       .filter(v => typeof v === 'number' && !isNaN(v));
 
     if (values.length === 0) return '-';
@@ -281,35 +305,78 @@ const PrintCertificatePage: React.FC = () => {
   // Helper to resolve canonical sensor name
   const resolveSensorName = useCallback((res: any, fallbackIndex: number) => {
     const sd = res?.sensorDetails || {}
-    const sensorRecord = sensors.find((s: any) => s.id === res?.sensorId)
+    const targetId = res?.sensorId != null ? Number(res.sensorId) : null
+    const sensorRecord = targetId != null
+      ? sensors.find((s: any) => s.id != null && Number(s.id) === targetId)
+      : undefined
     let canonicalName = undefined
-    if (sensorRecord?.sensor_name_id) {
-      canonicalName = instrumentNames.find((n: any) => n.id === sensorRecord.sensor_name_id)?.name
+    if (sensorRecord?.sensor_name_id != null) {
+      canonicalName = instrumentNames.find((n: any) => n.id != null && Number(n.id) === Number(sensorRecord.sensor_name_id))?.name
     }
-    // Priority: canonical name from instrument_names table > sensorDetails.name fallback
-    return canonicalName || sensorRecord?.name || sd.name || sd.type || `Sensor ${fallbackIndex + 1}`
+    // Priority: canonical name from instrument_names table > sensorDetails.name > sensorDetails.id fallback
+    return canonicalName || sensorRecord?.name || sd.name || (targetId ? `Sensor ID ${targetId}` : null) || sd.type || `Sensor ${fallbackIndex + 1}`
   }, [sensors, instrumentNames])
 
   // Menggunakan useMemo untuk data turunan
-  const station = useMemo(() => stations.find(s => s.id === (cert?.station ?? -1)) || null, [stations, cert])
+  const station = useMemo(() => {
+    const targetId = cert?.station != null ? Number(cert.station) : null
+    return targetId != null ? stations.find(s => s.id != null && Number(s.id) === targetId) || null : null
+  }, [stations, cert])
   const resolvedStationAddress = useMemo(() => (cert?.station_address ?? null) || (station?.address ?? null), [cert, station])
-  const instrument = useMemo(() => instruments.find(i => i.id === (cert?.instrument ?? -1)) || null, [instruments, cert])
-  const authorized = useMemo(() => personel.find(p => p.id === (cert?.authorized_by ?? '')) || null, [personel, cert])
-  const verifikator1 = useMemo(() => personel.find(p => p.id === (cert?.verifikator_1 ?? '')) || null, [personel, cert])
-  const verifikator2 = useMemo(() => personel.find(p => p.id === (cert?.verifikator_2 ?? '')) || null, [personel, cert])
-  const verifikator3 = useMemo(() => personel.find(p => p.id === (cert?.verifikator_3 ?? '')) || null, [personel, cert])
+  const instrument = useMemo(() => {
+    const targetId = cert?.instrument != null ? Number(cert.instrument) : null
+    return targetId != null ? instruments.find(i => i.id != null && Number(i.id) === targetId) || null : null
+  }, [instruments, cert])
+  const authorized = useMemo(() => {
+    return findPersonelById(personel, cert?.authorized_by)
+  }, [personel, cert])
+  const verifikator1 = useMemo(() => {
+    return findPersonelById(personel, cert?.verifikator_1)
+  }, [personel, cert])
+  const verifikator2 = useMemo(() => {
+    return findPersonelById(personel, cert?.verifikator_2)
+  }, [personel, cert])
+  const verifikator3 = useMemo(() => {
+    return findPersonelById(personel, cert?.verifikator_3)
+  }, [personel, cert])
 
   // Data hasil kalibrasi (normalize ke array)
   const results = useMemo(() => {
-    const r: any = (cert as any)?.results
-    if (!r) return []
-    try {
-      return typeof r === 'string' ? JSON.parse(r) : r
-    } catch {
-      return []
-    }
+    return resultsToLegacyView((cert as any)?.results)
   }, [cert])
   const resultData = useMemo(() => (results && results.length > 0 ? results[0] : null), [results])
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return
+
+    const urlParams = new URLSearchParams(window.location.search)
+    const isPdfRender = urlParams.get('pdf') === 'true'
+    if (!isPdfRender) {
+      document.body.dataset.printDataReady = 'true'
+      return
+    }
+
+    const resultSensorIds = (results || [])
+      .map((result: any) => result?.sensorId)
+      .filter((sensorId: any) => sensorId !== null && sensorId !== undefined)
+      .map((sensorId: any) => Number(sensorId))
+      .filter(Number.isFinite)
+    const resultSessionIds = Array.from(new Set((results || [])
+      .map((result: any) => result?.session_id)
+      .filter(Boolean)))
+
+    const hasInstrument = cert?.instrument == null || Boolean(instrument)
+    const hasStation = cert?.station == null || Boolean(station) || Boolean(cert?.station_address)
+    const hasAuthorized = cert?.authorized_by == null || Boolean(authorized) || personel.length > 0
+    const hasSensorLookups = resultSensorIds.length === 0 || resultSensorIds.every((sensorId: number) =>
+      sensors.some((sensor: any) => Number(sensor.id) === sensorId)
+    )
+    const hasRawData = resultSessionIds.length === 0 || allRawData.length > 0
+
+    document.body.dataset.printDataReady = cert && hasInstrument && hasStation && hasAuthorized && hasSensorLookups && hasRawData
+      ? 'true'
+      : 'false'
+  }, [cert, instrument, station, authorized, personel.length, results, sensors, allRawData.length])
 
   // Ringkasan sensor untuk field "Lain-lain / Others" di halaman 1
   const sensorsSummary = useMemo(() => {
@@ -331,14 +398,8 @@ const PrintCertificatePage: React.FC = () => {
 
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
 
-    // Use public_id if available for secure verification
     if (cert.public_id) {
       return `${baseUrl}/verify/${cert.public_id}`
-    }
-
-    // Fallback to certificate number if public_id is missing (legacy)
-    if (cert.no_certificate) {
-      return `${baseUrl}/verify/${encodeURIComponent(cert.no_certificate)}`
     }
 
     return ''
@@ -354,92 +415,175 @@ const PrintCertificatePage: React.FC = () => {
       setLoading(false)
       return
     }
-    const load = async () => {
+
+    // Helper: fetch with timeout to prevent any single hung request from blocking page
+    const fetchWithTimeout = async (url: string, timeoutMs = 12000, headers?: HeadersInit): Promise<Response | null> => {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
       try {
-        // Fetch certificate dan personel
-        const [cRes, pRes, sRes, inRes] = await Promise.all([
-          fetch(`/api/certificates/${id}`),
-          fetch('/api/personel'),
-          fetch('/api/sensors'),
-          fetch('/api/instrument-names'),
-        ])
-        const c = await cRes.json()
-        const p = await pRes.json()
+        return await fetch(url, { signal: controller.signal, headers })
+      } catch (e) {
+        console.warn(`[Print] fetch failed/timeout: ${url}`, e)
+        return null
+      } finally {
+        clearTimeout(timer)
+      }
+    }
 
-        if (sRes.ok) {
-          const sData = await sRes.json()
-          setSensors(Array.isArray(sData) ? sData : (sData?.data ?? []))
+    const safeJson = async (res: Response | null): Promise<any> => {
+      if (!res || !res.ok) return null
+      try { return await res.json() } catch { return null }
+    }
+
+    const load = async () => {
+      console.log('[Print] Starting load for cert id:', id)
+      if (typeof document !== 'undefined') {
+        document.body.dataset.printDataReady = 'false'
+      }
+      try {
+        // CRITICAL PATH: certificate must load first — page can't render without it
+        const urlParams = new URLSearchParams(window.location.search)
+        const renderToken = urlParams.get('render_token')
+        const renderTimestamp = urlParams.get('render_ts')
+        const certificateHeaders: HeadersInit = {}
+
+        if (renderToken && renderTimestamp) {
+          certificateHeaders['x-pdf-render-token'] = renderToken
+          certificateHeaders['x-pdf-render-ts'] = renderTimestamp
+        } else {
+          const { data: { session } } = await supabase.auth.getSession()
+          if (!session?.access_token) throw new Error('Not authenticated')
+          certificateHeaders['Authorization'] = `Bearer ${session.access_token}`
         }
 
-        if (inRes.ok) {
-          const inData = await inRes.json()
-          setInstrumentNames(Array.isArray(inData) ? inData : (inData?.data ?? []))
-        }
-
-        if (!cRes.ok) throw new Error(c?.error || 'Failed to load certificate')
+        const cRes = await fetchWithTimeout(`/api/certificates/${id}`, 15000, certificateHeaders)
+        if (!cRes) throw new Error('Timeout: gagal memuat data sertifikat')
+        const c = await safeJson(cRes)
+        if (!cRes.ok) throw new Error(c?.error || `Failed to load certificate (HTTP ${cRes.status})`)
+        if (!c) throw new Error('Sertifikat tidak ditemukan / response kosong')
+        console.log('[Print] Certificate loaded:', c?.id, 'results format:', Array.isArray(c?.results) ? 'V0-array' : (c?.results?.schema_version ? `V${c.results.schema_version}` : 'null/other'))
         setCert(c)
+        // Page can render now — clear loading even if secondary data still pending.
+        setLoading(false)
 
-        if (c?.results) {
+        // SECONDARY (non-blocking): kick off in parallel; we'll setState as each finishes.
+        // Raw data fetch — needs cert.results
+        ;(async () => {
+          if (!c?.results) return
           try {
-            const parsedResults = typeof c.results === 'string' ? JSON.parse(c.results) : c.results;
-            const sessionIds = parsedResults.map((r: any) => r.session_id).filter(Boolean);
-            if (sessionIds.length > 0) {
-              const rawDataPromises = sessionIds.map((sid: string) =>
-                fetch(`/api/raw-data?session_id=${sid}`).then(res => res.ok ? res.json() : { data: [] })
-              );
-              const allRawDataResp = await Promise.all(rawDataPromises);
-              const mergedRawData = allRawDataResp.flatMap(resp => resp.data || []);
-              setAllRawData(mergedRawData);
+            const parsedResults = resultsToLegacyView(c.results)
+            const sessionIds = Array.from(new Set(parsedResults.map((r: any) => r.session_id).filter(Boolean)))
+            if (sessionIds.length === 0) return
+            const responses = await Promise.all(
+              sessionIds.map((sid: any) => fetchWithTimeout(`/api/raw-data?session_id=${sid}`, 15000))
+            )
+            const jsons = await Promise.all(responses.map(r => safeJson(r)))
+            const merged = jsons.flatMap((j: any) => (j?.data ?? []))
+            setAllRawData(merged)
+          } catch (e) {
+            console.error('[Print] Failed to fetch raw data:', e)
+          }
+        })()
+
+        // Personel
+        ;(async () => {
+          const r = await fetchWithTimeout('/api/personel', 12000)
+          const p = await safeJson(r)
+          if (Array.isArray(p)) setPersonel(p)
+        })()
+
+        // Sensors
+        ;(async () => {
+          try {
+            const first = await fetchWithTimeout('/api/sensors?page=1&pageSize=100', 12000)
+            const firstPayload = await safeJson(first)
+            if (!firstPayload) return
+            const firstData = unwrapListResponse(firstPayload)
+            const totalPages = Array.isArray(firstPayload) ? 1 : Number(firstPayload?.totalPages ?? 1)
+            if (totalPages <= 1) {
+              setSensors(firstData)
+            } else {
+              const restRes = await Promise.all(
+                Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map((page) =>
+                  fetchWithTimeout(`/api/sensors?page=${page}&pageSize=100`, 12000)
+                )
+              )
+              const restPayloads = await Promise.all(restRes.map(r => safeJson(r)))
+              setSensors([...firstData, ...restPayloads.flatMap(unwrapListResponse)])
             }
           } catch (e) {
-            console.error("Failed to fetch raw data for print", e);
+            console.error('[Print] Failed to fetch sensors:', e)
           }
-        }
+        })()
 
-        const personelData = Array.isArray(p) ? p : []
-        setPersonel(personelData)
+        // Instrument names
+        ;(async () => {
+          const r = await fetchWithTimeout('/api/instrument-names', 12000)
+          const inData = await safeJson(r)
+          if (inData) setInstrumentNames(Array.isArray(inData) ? inData : (inData?.data ?? []))
+        })()
 
-        // Fetch instruments dengan pagination lengkap
-        try {
-          const first = await fetch('/api/instruments?page=1&pageSize=100')
-          if (first.ok) {
-            const fj = await first.json()
+        // Instruments — paginated
+        ;(async () => {
+          try {
+            const first = await fetchWithTimeout('/api/instruments?page=1&pageSize=100', 12000)
+            const fj = await safeJson(first)
+            if (!fj) return
             const firstData = Array.isArray(fj) ? fj : (fj?.data ?? [])
             const totalPages = (Array.isArray(fj) ? 1 : (fj?.totalPages ?? 1)) as number
             if (totalPages <= 1) {
               setInstruments(firstData)
             } else {
-              const rest = await Promise.all(Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(p => fetch(`/api/instruments?page=${p}&pageSize=100`).then(r => r.ok ? r.json() : { data: [] })))
-              const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
+              const restRes = await Promise.all(
+                Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
+                  .map(p => fetchWithTimeout(`/api/instruments?page=${p}&pageSize=100`, 12000))
+              )
+              const restJsons = await Promise.all(restRes.map(r => safeJson(r)))
+              const restData = restJsons.flatMap((j: any) => Array.isArray(j) ? j : (j?.data ?? []))
               setInstruments([...firstData, ...restData])
             }
+          } catch (e) {
+            console.error('[Print] Failed to fetch instruments:', e)
           }
-        } catch { }
+        })()
 
-        // Fetch stations (logika Anda sudah benar)
-        try {
-          const first = await fetch('/api/stations?page=1&pageSize=100')
-          if (first.ok) {
-            const fj = await first.json()
+        // Stations — paginated
+        ;(async () => {
+          try {
+            const first = await fetchWithTimeout('/api/stations?page=1&pageSize=100', 12000)
+            const fj = await safeJson(first)
+            if (!fj) return
             const firstData = Array.isArray(fj) ? fj : (fj?.data ?? [])
             const totalPages = (Array.isArray(fj) ? 1 : (fj?.totalPages ?? 1)) as number
             if (totalPages <= 1) {
               setStations(firstData)
             } else {
-              const rest = await Promise.all(Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(p => fetch(`/api/stations?page=${p}&pageSize=100`).then(r => r.ok ? r.json() : { data: [] })))
-              const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
+              const restRes = await Promise.all(
+                Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
+                  .map(p => fetchWithTimeout(`/api/stations?page=${p}&pageSize=100`, 12000))
+              )
+              const restJsons = await Promise.all(restRes.map(r => safeJson(r)))
+              const restData = restJsons.flatMap((j: any) => Array.isArray(j) ? j : (j?.data ?? []))
               setStations([...firstData, ...restData])
             }
+          } catch (e) {
+            console.error('[Print] Failed to fetch stations:', e)
           }
-        } catch { }
-
+        })()
       } catch (e) {
+        console.error('[Print] Load failed:', e)
         setError(e instanceof Error ? e.message : 'Failed to load data')
-      } finally {
         setLoading(false)
       }
     }
-    load()
+
+    // Watchdog: ensure loading flag is cleared even if everything else fails.
+    const watchdog = setTimeout(() => {
+      console.warn('[Print] Watchdog timeout (25s) — forcing loading=false')
+      setLoading(false)
+    }, 25000)
+
+    load().finally(() => clearTimeout(watchdog))
   }, [params.id])
 
   // Cek status verifikasi Level 3 untuk warna QR (merah jika belum, hitam jika sudah)
@@ -456,8 +600,13 @@ const PrintCertificatePage: React.FC = () => {
         return
       }
 
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+
       // Use certificate ID for API call to ensure uniqueness
-      const res = await fetch(`/api/verify-certificate?id=${cert.id}`)
+      const res = await fetch(`/api/verify-certificate?id=${cert.id}`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      })
       if (res.ok) {
         const data = await res.json()
         console.log('🔍 [Print] verify-certificate response:', data)
@@ -631,6 +780,17 @@ const PrintCertificatePage: React.FC = () => {
       color: #000 !important;
     }
 
+    .page-container,
+    .page-container table,
+    .page-container td,
+    .page-container th,
+    .page-container p,
+    .page-container div {
+      font-size: 11pt !important;
+      line-height: 1.25 !important;
+      font-weight: 700 !important;
+    }
+
     .cert-title-id {
       font-size: 20pt !important;
       line-height: 1.15 !important;
@@ -657,7 +817,8 @@ const PrintCertificatePage: React.FC = () => {
       color: #000 !important;
     }
 
-    .cert-text-en {
+    .cert-text-en,
+    .page-container .italic {
       font-size: 9pt !important;
       line-height: 1.05 !important;
       font-weight: 700 !important;
@@ -671,16 +832,77 @@ const PrintCertificatePage: React.FC = () => {
       /* Jangan pakai min-height tetap agar tidak melebihi tinggi A4 saat ditambah padding */
       min-height: auto;
       padding: 5mm; /* Batas kiri/kanan/atas/bawah 0.5 cm dari tepi lembar kerja */
-      padding-bottom: 35mm; /* Ruang untuk footer static (halaman cover) */
+      padding-bottom: 5mm; /* Uniform 5mm di semua sisi */
       margin: 0 auto;
       box-sizing: border-box;
       position: relative;
       /* Jangan paksa page break di semua container; kita atur manual di elemen tertentu */
     }
+
+    .page-container.cover-page {
+      height: 297mm;
+      padding: 5mm;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .cover-content {
+      position: static !important;
+      z-index: 10;
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: flex-start !important;
+      padding-top: 0 !important;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .cover-header {
+      min-height: 25mm;
+      padding-bottom: 3mm;
+      align-items: center;
+      margin-top: 0;
+    }
+
+    .cover-logo-slot {
+      width: 26mm;
+      flex: 0 0 26mm;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .cover-logo-slot img {
+      width: 22mm !important;
+      height: auto !important;
+      max-height: 24mm !important;
+      object-fit: contain;
+    }
+
+    .cover-header-spacer {
+      width: 26mm;
+      flex: 0 0 26mm;
+    }
+
+    .cover-agency-title h1,
+    .cover-agency-title h2 {
+      font-size: 11.5pt !important;
+      line-height: 1.28 !important;
+      margin: 0 !important;
+    }
+
+    .cover-title-block {
+      margin: 6mm 0 6mm !important;
+    }
+
+    .cover-title-block .cert-info-text {
+      margin-top: 1.5mm !important;
+    }
     
-    /* Halaman hasil kalibrasi (dengan QR footer) butuh padding konsisten */
+    /* Halaman hasil kalibrasi (dengan QR footer) — margin uniform 5mm (0.5 cm) di semua sisi */
     .page-container.results-page {
-      padding: 0 5mm 18mm 5mm;
+      padding: 5mm;
       min-height: 297mm;
       box-sizing: border-box;
       position: relative;
@@ -692,21 +914,20 @@ const PrintCertificatePage: React.FC = () => {
       border-collapse: collapse;
       border-spacing: 0;
     }
+    /* thead padding-top dihapus karena page-container sudah beri margin 5mm */
     .page-container.results-page thead.print-repeat-header > tr > td {
-      padding: 4mm 0 0 0 !important;
+      padding: 0 !important;
     }
     .page-container.results-page tbody.print-content > tr > td {
-      padding-top: 3mm !important;
+      padding-top: 0 !important;
       vertical-align: top;
     }
     
     /* Footer khusus untuk halaman 1 saja */
     .page-1-footer {
-      position: absolute !important;
-      bottom: 5mm !important;
-      left: 5mm !important;
-      right: 5mm !important;
+      position: static !important;
       z-index: 1000 !important;
+      flex: 0 0 auto;
       list-style-type: none !important;
       list-style: none !important;
       list-style-position: outside !important;
@@ -775,13 +996,13 @@ const PrintCertificatePage: React.FC = () => {
       position: relative !important;
       min-height: 297mm !important; /* Tinggi A4 */
     }
-    
+
     /* Hanya tampilkan di page-container dengan class results-page */
     /* QR code akan selalu di footer karena parent memiliki min-height penuh */
     .page-container.results-page .footer-qr-small.results-page-qr {
       position: absolute !important;
-      bottom: 4mm !important;
-      left: 4mm !important;
+      bottom: 0 !important;
+      left: 0 !important;
       width: 100px !important;
       height: 100px !important;
       z-index: 999 !important;
@@ -807,7 +1028,7 @@ const PrintCertificatePage: React.FC = () => {
 
     .results-footer-shell {
       width: 100%;
-      padding-top: 4.5mm;
+      padding-top: 3mm;
     }
 
     .results-footer-grid {
@@ -819,55 +1040,68 @@ const PrintCertificatePage: React.FC = () => {
     .results-footer-grid td {
       vertical-align: middle;
       color: #000;
-      font-size: 9.5px;
-      line-height: 1.22;
+      font-size: 8.5pt !important;
+      line-height: 1.18 !important;
+      font-weight: 700 !important;
       padding: 0;
     }
 
     .results-footer-qr-cell {
-      width: 15%;
+      width: 22mm;
+      text-align: left;
     }
 
     .results-footer-note-cell {
-      width: 63%;
+      width: auto;
       text-align: center;
-      font-weight: 600;
-      padding: 0 2mm !important;
+      font-weight: 700;
+      padding: 0 4mm !important;
       vertical-align: middle !important;
     }
 
     .results-footer-meta-cell {
-      width: 22%;
+      width: 34mm;
       text-align: right;
       font-weight: 700;
       white-space: nowrap;
       vertical-align: middle !important;
-      padding-top: 2mm !important;
+      padding-top: 0 !important;
     }
 
     .results-footer-qr-wrap {
       display: flex;
       flex-direction: column;
       align-items: flex-start;
-      gap: 0.6mm;
+      gap: 0.8mm;
     }
 
     .results-footer-qr-box {
-      width: 36px;
-      height: 36px;
-      flex: 0 0 36px;
+      width: 12mm;
+      height: 12mm;
+      flex: 0 0 12mm;
     }
 
     .results-footer-form-code {
-      font-size: 9.5px;
-      line-height: 1.1;
-      font-weight: 700;
+      font-size: 7.5pt !important;
+      line-height: 1 !important;
+      font-weight: 700 !important;
+      white-space: nowrap;
     }
 
     .results-footer-note-copy {
-      max-width: 88mm;
+      max-width: 112mm;
       margin: 0 auto;
       text-align: center;
+      font-size: 8.2pt !important;
+      line-height: 1.18 !important;
+      font-weight: 700 !important;
+    }
+
+    .results-footer-meta-cell,
+    .results-footer-meta-cell * {
+      font-size: 8.3pt !important;
+      line-height: 1.15 !important;
+      font-weight: 700 !important;
     }
     
     /* Hapus aturan last-child; break diatur manual dengan kelas */
@@ -913,19 +1147,21 @@ const PrintCertificatePage: React.FC = () => {
       }
       .page-container {
         margin: 0;
-        padding: 5mm; /* Batas kiri/kanan/atas/bawah 0.5 cm dari tepi lembar kerja */
-        padding-bottom: 18mm; /* Ruang footer halaman hasil */
+        width: 210mm !important;
+        max-width: 210mm !important;
+        padding: 5mm !important;
         border: none !important;
         box-shadow: none !important;
+        box-sizing: border-box !important;
         page-break-after: auto; /* Jangan paksa break di akhir container */
         break-after: auto;
       }
       
-      /* Halaman hasil kalibrasi (dengan QR footer) butuh padding lebih untuk QR code */
+      /* Halaman hasil kalibrasi — margin uniform 5mm (0.5 cm) di semua sisi */
       .page-container.results-page {
         min-height: 297mm !important;
         height: 297mm !important;
-        padding: 0 5mm 18mm 5mm !important;
+        padding: 5mm !important;
         box-sizing: border-box !important;
         position: relative !important;
       }
@@ -933,19 +1169,76 @@ const PrintCertificatePage: React.FC = () => {
       .page-container.results-page table.repeatable-page-table {
         height: 100% !important;
       }
-      /* thead td handles top margin itself */
+      /* thead tidak perlu offset padding karena page-container sudah 5mm */
       .page-container.results-page thead.print-repeat-header > tr > td {
-        padding: 4mm 0 0 0 !important;
+        padding: 0 !important;
       }
       .page-container.results-page tbody.print-content > tr > td {
-        padding-top: 3mm !important;
+        padding-top: 0 !important;
         vertical-align: top !important;
       }
       
       .page-container.cover-page {
-        height: 297mm !important; /* Force exact physical A4 height explicitly on print */
+        height: 297mm !important;
+        min-height: 297mm !important;
         max-height: 297mm !important;
         position: relative !important;
+        padding: 5mm !important;
+        overflow: hidden !important;
+        display: flex !important;
+        flex-direction: column !important;
+      }
+
+      .cover-content {
+        position: static !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+        padding-top: 0 !important;
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+      }
+
+      .cover-header {
+        min-height: 25mm !important;
+        padding-bottom: 3mm !important;
+        align-items: center !important;
+        margin-top: 0 !important;
+      }
+
+      .cover-logo-slot {
+        width: 26mm !important;
+        flex: 0 0 26mm !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+      }
+
+      .cover-logo-slot img {
+        width: 22mm !important;
+        height: auto !important;
+        max-height: 24mm !important;
+        object-fit: contain !important;
+      }
+
+      .cover-header-spacer {
+        width: 26mm !important;
+        flex: 0 0 26mm !important;
+      }
+
+      .cover-agency-title h1,
+      .cover-agency-title h2 {
+        font-size: 11.5pt !important;
+        line-height: 1.28 !important;
+        margin: 0 !important;
+      }
+
+      .cover-title-block {
+        margin: 6mm 0 6mm !important;
+      }
+
+      .cover-title-block .cert-info-text {
+        margin-top: 1.5mm !important;
       }
       
       /* Hindari page break setelah container terakhir */
@@ -956,17 +1249,15 @@ const PrintCertificatePage: React.FC = () => {
       
       /* Footer halaman 1 tetap static di mode print, jangan gunakan fixed karena akan duplikat di semua halaman */
       .page-1-footer {
-        position: absolute !important;
-        bottom: 5mm !important;
-        left: 5mm !important;
-        right: 5mm !important;
+        position: static !important;
         z-index: 1000 !important;
+        flex: 0 0 auto !important;
         background-color: white !important; /* Tutupi elemen fixed di belakangnya */
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
-        padding-top: 20px !important; /* Make white mask taller */
-        padding-bottom: 20px !important;
-        margin-bottom: -10px !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        margin-bottom: 0 !important;
         list-style-type: none !important;
         list-style: none !important;
         list-style-position: outside !important;
@@ -1033,15 +1324,15 @@ const PrintCertificatePage: React.FC = () => {
       /* Gunakan absolute positioning dengan page-container yang memiliki min-height A4 */
       .page-container.results-page {
         position: relative !important;
-        min-height: 297mm !important; /* Tinggi A4 */
+        min-height: 297mm !important;
       }
       
       /* Hanya tampilkan di page-container dengan class results-page */
       /* QR code akan selalu di footer karena parent memiliki min-height penuh */
       .page-container.results-page .footer-qr-small.results-page-qr {
         position: absolute !important;
-        bottom: 4mm !important;
-        left: 4mm !important;
+        bottom: 0 !important;
+        left: 0 !important;
         width: 100px !important;
         height: 100px !important;
         z-index: 999 !important;
@@ -1172,8 +1463,8 @@ const PrintCertificatePage: React.FC = () => {
         padding-top: 3mm !important;
       }
       .page-container.results-page {
-        padding-bottom: 18mm !important; 
-        min-height: 297mm !important;
+        padding-bottom: 0 !important;
+        min-height: 287mm !important;
       }
     }
   `
@@ -1191,7 +1482,7 @@ const PrintCertificatePage: React.FC = () => {
                       value={qrCodeData}
                       fgColor={isSigned ? '#000000' : '#B91C1C'}
                       onRendered={handleQRRendered}
-                      size={40}
+                      size={45}
                     />
                   </div>
                 ) : (
@@ -1243,21 +1534,21 @@ const PrintCertificatePage: React.FC = () => {
         </div>
 
         {/* Konten halaman dengan z-index lebih tinggi */}
-        <div className="relative z-10">
+        <div className="cover-content">
           {/* Header Halaman 1 */}
-          <header className="flex flex-row items-center justify-between border-b-[3px] border-double border-black pb-2">
-            <div className="flex items-start w-[100px]">
+          <header className="cover-header flex flex-row justify-between border-b-[3px] border-double border-black">
+            <div className="cover-logo-slot">
               <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
             </div>
-            <div className="text-center leading-tight">
+            <div className="cover-agency-title text-center leading-tight">
               <h1 className="text-base font-bold">BADAN METEOROLOGI KLIMATOLOGI DAN GEOFISIKA</h1>
               <h2 className="text-base font-bold">LABORATORIUM KALIBRASI BMKG</h2>
             </div>
-            <div className="w-[100px]"></div> {/* Spacer agar center */}
+            <div className="cover-header-spacer"></div> {/* Spacer agar center */}
           </header>
 
           {/* Judul Sertifikat */}
-          <div className="text-center my-6">
+          <div className="cover-title-block text-center">
             <h1 className="cert-title-id">SERTIFIKAT KALIBRASI</h1>
             <h2 className="cert-title-en">CALIBRATION CERTIFICATE</h2>
             <div className="cert-info-text mt-2">{cert.no_certificate}</div>
@@ -1541,7 +1832,7 @@ const PrintCertificatePage: React.FC = () => {
                               { label: 'Tempat Kalibrasi / ', labelEng: 'Calibration Place', value: place },
                             ]
                             const sensorSessionId = res?.session_id;
-                            const sensorRawData = sensorSessionId ? allRawData.filter(rd => rd.session_id === sensorSessionId) : [];
+                            const sensorRawData = sensorSessionId ? allRawData.filter(rd => String(rd.session_id || '') === String(sensorSessionId)) : [];
                             const rawSuhu = computeEnvCondition('suhu', sensorRawData);
                             const rawHum = computeEnvCondition('kelembaban', sensorRawData);
 
@@ -1630,6 +1921,10 @@ const PrintCertificatePage: React.FC = () => {
                             <div className="text-[12px] font-bold text-center mb-1">Hasil Kalibrasi / <span className="italic font-normal">Calibration Result</span></div>
                             {res.table.map((sec: any, sIdx: number) => {
                               const rows = Array.isArray(sec?.rows) ? sec.rows : []
+                              const headers = Array.isArray(sec?.headers) && sec.headers.length > 0
+                                ? sec.headers
+                                : ['Penunjukan Alat / Instrument Reading', 'Koreksi / Correction', 'Ketidakpastian / Uncertainty']
+                              const resultUnit = formatUnit(res?.unitUut || res?.sensorDetails?.graduating_unit || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || '')
                               const isDuplicateTitle = sec?.title?.toLowerCase().includes('hasil kalibrasi') || sec?.title?.toLowerCase().includes('calibration result');
                               return (
                                 <div key={sIdx} className="mt-3 avoid-break">
@@ -1638,27 +1933,11 @@ const PrintCertificatePage: React.FC = () => {
                                   <table className="w-full text-xs border-[2px] border-black text-center border-collapse">
                                     <thead>
                                       <tr className="font-bold">
-                                        {/* Use explicit headers if available, otherwise fallback to Key/Unit/Value logic */}
-                                        {sec.headers ? (
-                                          sec.headers.map((h: string, i: number) => {
-                                            const unit = formatUnit(res?.unitUut || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit);
-                                            // Extract base header string without HTML tags if any, but since it's string just append
-                                            return (
-                                              <td key={i} className="p-1 border border-black text-center">
-                                                {h}<br />{unit ? `(${unit})` : ''}
-                                              </td>
-                                            );
-                                          })
-                                        ) : (
-                                          // Fallback for old data without headers
-                                          rows.length > 0 && (
-                                            <>
-                                              <td className="p-1 border border-black text-center">Parameter</td>
-                                              <td className="p-1 border border-black text-center">Unit</td>
-                                              <td className="p-1 border border-black text-center">Nilai</td>
-                                            </>
-                                          )
-                                        )}
+                                        {headers.map((h: string, i: number) => (
+                                          <td key={i} className="p-1 border border-black text-center">
+                                            {h}<br />{resultUnit ? `(${resultUnit})` : ''}
+                                          </td>
+                                        ))}
                                       </tr>
                                       {/* Baris Unit Tambahan dihapus as requested */}
                                     </thead>
@@ -1666,7 +1945,7 @@ const PrintCertificatePage: React.FC = () => {
                                       {rows.map((row: any, rIdx: number) => (
                                         <tr key={rIdx}>
                                           {/* If headers exist, map based on standard + extra values */}
-                                          {sec.headers ? (
+                                          {headers.length > 0 ? (
                                             <>
                                               <td className="p-1 border border-black text-center">{row.key || '-'}</td>
                                               <td className="p-1 border border-black text-center">{formatUnit(row.unit || '-')}</td>
@@ -1746,7 +2025,10 @@ const PrintCertificatePage: React.FC = () => {
 
                                           if (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0) {
                                             const standards = nf.standardInstruments.map((sid: number) => {
-                                              const s = sensors.find((sensor: any) => sensor.id === sid)
+                                              const targetId = sid != null ? Number(sid) : null
+                                              const s = targetId != null
+                                                ? sensors.find((sensor: any) => sensor.id != null && Number(sensor.id) === targetId)
+                                                : undefined
                                               if (!s) return null
                                               // Format: Name - SN (if available)
                                               const name = s.name || s.type || 'Sensor'

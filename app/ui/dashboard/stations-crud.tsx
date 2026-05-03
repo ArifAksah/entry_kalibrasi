@@ -10,6 +10,7 @@ import Breadcrumb from '../../../components/ui/Breadcrumb'
 import Loading from '../../../components/ui/Loading'
 import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
 import { usePermissions } from '../../../hooks/usePermissions'
+import Toast from '../../../components/ui/Toast'
 
 // SVG Icons untuk tampilan yang lebih elegan
 const EditIcon = ({ className = "" }) => (
@@ -91,6 +92,17 @@ export default function StationsCRUD() {
   const [showRefDropdown, setShowRefDropdown] = useState(false)
   const [isLoadingRef, setIsLoadingRef] = useState(false)
 
+  // Toast notification state
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
+  
+  // Confirm modal state
+  const [confirmState, setConfirmState] = useState<{ isOpen: boolean; id: number | null; title: string; message: string }>({
+    isOpen: false,
+    id: null,
+    title: 'Konfirmasi',
+    message: ''
+  })
+
   // State for Wilayah API
   const [provinces, setProvinces] = useState<WilayahProvince[]>([])
   const [regencies, setRegencies] = useState<WilayahRegency[]>([])
@@ -111,6 +123,7 @@ export default function StationsCRUD() {
     regency: '',
     created_by: '', // Will be set to current user
   })
+
 
   // Search Reference Stations
   useEffect(() => {
@@ -346,7 +359,7 @@ export default function StationsCRUD() {
     const finalPayload = { ...form, created_by: currentUserId || form.created_by } as StationInsert
 
     if (!finalPayload.created_by) {
-      alert('Please log in to create a station')
+      setToast({ message: 'Please log in to create a station', type: 'error' })
       return
     }
 
@@ -354,23 +367,39 @@ export default function StationsCRUD() {
     try {
       if (editing) {
         await updateStation(editing.id, finalPayload)
+        setToast({ message: 'Station updated successfully', type: 'success' })
       } else {
         await addStation(finalPayload)
+        setToast({ message: 'Station created successfully', type: 'success' })
       }
       closeModal()
     } catch (e) {
       console.error('Error submitting station:', e)
+      setToast({ message: 'Failed to save station', type: 'error' })
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Delete this station?')) return
+  const handleDelete = (id: number) => {
+    setConfirmState({
+      isOpen: true,
+      id,
+      title: 'Konfirmasi Hapus',
+      message: 'Apakah Anda yakin ingin menghapus stasiun ini?'
+    })
+  }
+
+  const handleConfirmDelete = async () => {
+    if (confirmState.id === null) return
     try {
-      await deleteStation(id)
+      await deleteStation(confirmState.id)
+      setToast({ message: 'Station deleted successfully', type: 'success' })
     } catch (e) {
       console.error('Error deleting station:', e)
+      setToast({ message: 'Failed to delete station', type: 'error' })
+    } finally {
+      setConfirmState({ isOpen: false, id: null, title: 'Konfirmasi', message: '' })
     }
   }
 
@@ -545,11 +574,6 @@ export default function StationsCRUD() {
         </div>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">
-          {error}
-        </div>
-      )}
 
       <Card>
         <Table
@@ -700,7 +724,20 @@ export default function StationsCRUD() {
                           { value: 'Geofisika', label: 'Geofisika' }
                         ]
                       },
-                      { label: 'Time Zone *', value: form.time_zone, onChange: (e: any) => setForm({ ...form, time_zone: e.target.value }), type: 'text', required: true },
+                      {
+                        label: 'Time Zone *',
+                        value: form.time_zone || '',
+                        onChange: (e: any) => setForm({ ...form, time_zone: e.target.value }),
+                        type: 'select',
+                        required: true,
+                        options: [
+                          { value: '', label: 'Pilih Zona Waktu' },
+                          { value: 'UTC+07:00', label: 'WIB (UTC+07:00)' },
+                          { value: 'UTC+08:00', label: 'WITA (UTC+08:00)' },
+                          { value: 'UTC+09:00', label: 'WIT (UTC+09:00)' },
+                          { value: 'UTC+00:00', label: 'UTC (UTC+00:00)' }
+                        ]
+                      },
                     ].map((field, index) => (
                       <div key={index} className="space-y-1">
                         <label className="block text-xs font-semibold text-gray-700">{field.label}</label>
@@ -892,6 +929,47 @@ export default function StationsCRUD() {
             </div>
           </div >
         </div >
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+          durationMs={3000}
+        />
+      )}
+
+      {/* Confirm Delete Modal */}
+      {confirmState.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="p-2 bg-yellow-50 rounded-full">
+                <svg className="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">{confirmState.title}</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-6">{confirmState.message}</p>
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setConfirmState({ isOpen: false, id: null, title: 'Konfirmasi', message: '' })}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg"
+              >
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div >
   )

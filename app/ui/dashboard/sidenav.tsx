@@ -97,8 +97,6 @@ const sections: NavSection[] = [
   {
     title: 'Administrasi',
     items: [
-      { name: 'Hak Akses Peran', href: '/role-permissions', icon: Icon.check },
-      { name: 'Hak Akses Endpoint', href: '/endpoint-permissions', icon: Icon.list },
       { name: 'Manajemen Personel', href: '/personel', icon: Icon.doc },
       { name: 'Penugasan Stasiun', href: '/user-stations', icon: Icon.building },
     ],

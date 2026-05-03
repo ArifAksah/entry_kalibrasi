@@ -205,6 +205,13 @@ export interface Certificate {
   station_address?: string | null
   results?: any
   version?: number
+  // Komponen format nomor sesuai IKK BMKG
+  // 'sert' → "Sert.", 's_ket' → "S.Ket."
+  certificate_type?: 'sert' | 's_ket'
+  // 'FC' = Field Calibration, 'LC' = Lab Calibration
+  calibration_place?: 'FC' | 'LC'
+  // Kode alat (AWS, TT, PP, ...), dari master instrument_names.code_alat
+  instrument_code?: string | null
   // New draft workflow fields
   status?: 'draft' | 'sent' | 'verified' | 'rejected' | 'completed'
   draft_created_at?: string
@@ -214,6 +221,16 @@ export interface Certificate {
   // PDF storage fields (generated when level 3 is approved)
   pdf_path?: string | null
   pdf_generated_at?: string | null
+  // Penanda user sudah menjalankan "Hitung dan Input Tabel ke Sertifikat" di QC Modal.
+  // NULL = belum pernah dihitung → tombol KIRIM KONSEP dikunci di UI.
+  calibration_computed_at?: string | null
+  // Terisi saat results dibekukan; setelah ini payload results tidak boleh berubah.
+  results_frozen_at?: string | null
+  // Audit versi kontrak JSONB certificate.results.
+  results_schema_version?: number | null
+  // Alias audit untuk FC/LC; dibackfill dari calibration_place.
+  calibration_kind?: 'FC' | 'LC' | null
+  public_id?: string | null
 }
 
 export type CertificateInsert = Omit<Certificate, 'id' | 'created_at' | 'version'>

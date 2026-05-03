@@ -10,8 +10,15 @@
  *   koreksi = std_terkoreksi - uut_converted
  */
 
-// Normalise unit string for comparison (lowercase, strip spaces)
-export const normaliseUnit = (u: string): string => u.trim().toLowerCase().replace(/\s/g, '');
+/**
+ * Strip LaTeX markup from a unit string, then lowercase + remove spaces.
+ * This ensures LaTeX-stored units (e.g. "\\mathrm{hPa}", "^\\circ C") resolve
+ * correctly against the plain-text CONVERSIONS table.
+ */
+export const normaliseUnit = (u: string): string => {
+    const plain = formatUnit(u); // strip LaTeX first
+    return plain.trim().toLowerCase().replace(/\s/g, '');
+};
 
 // Conversion matrix: [from][to] = factor  (y = x * factor + offset)
 // For simple linear conversions offset = 0
@@ -58,7 +65,7 @@ export function needsConversion(unitA: string, unitB: string): boolean {
 }
 
 /**
- * Format raw LaTeX units to plain text for display.
+ * Format raw LaTeX units to plain text for display/comparison.
  * e.g., "^\circ C" -> "°C", "m/s^2" -> "m/s²", "\mu m" -> "µm"
  */
 export function formatUnit(unit: string): string {
@@ -81,6 +88,7 @@ export function formatUnit(unit: string): string {
     // Replace Greek letters
     formatted = formatted.replace(/\\mu\b/g, 'µ');
     formatted = formatted.replace(/\\Omega\b/g, 'Ω');
+    formatted = formatted.replace(/\\%/g, '%');
     
     // Replace \mathrm and \text
     formatted = formatted.replace(/\\mathrm\{([^}]+)\}/g, '$1');

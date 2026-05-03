@@ -1,4 +1,5 @@
 -- Function to calculate correction using Linear Interpolation
+-- setpoint and correction_std are stored as JSON arrays (e.g. ["700","750","800"])
 CREATE OR REPLACE FUNCTION public.hitung_koreksi(reading DOUBLE PRECISION, sensor_std_id BIGINT)
 RETURNS DOUBLE PRECISION AS $$
 DECLARE
@@ -10,8 +11,8 @@ DECLARE
     correction DOUBLE PRECISION;
     i INT;
     len INT;
-    setpoints TEXT[]; -- Stored as text array in DB? Based on route.ts logging
-    corrections TEXT[];
+    setpoints DOUBLE PRECISION[];
+    corrections DOUBLE PRECISION[];
 BEGIN
     -- 1. Find the latest active certificate for this sensor
     SELECT * INTO cert_record
@@ -21,53 +22,66 @@ BEGIN
     LIMIT 1;
 
     IF NOT FOUND THEN
-        RETURN 0; -- No certificate found, assume 0 correction
+        RETURN 0;
     END IF;
 
-    setpoints := cert_record.setpoint;
-    corrections := cert_record.correction_std;
-    
+    -- Parse JSON arrays into paired DOUBLE PRECISION arrays, sorted by setpoint.
+    -- The certificate input order can be arbitrary, so keep correction_std paired
+    -- by original array index, then sort both arrays by setpoint before interpolating.
+    WITH sorted_points AS (
+        SELECT
+            (sp.elem #>> '{}')::DOUBLE PRECISION AS setpoint,
+            (cs.elem #>> '{}')::DOUBLE PRECISION AS correction
+        FROM jsonb_array_elements(cert_record.setpoint::jsonb) WITH ORDINALITY AS sp(elem, idx)
+        JOIN jsonb_array_elements(cert_record.correction_std::jsonb) WITH ORDINALITY AS cs(elem, idx)
+            USING (idx)
+    )
+    SELECT
+        array_agg(setpoint ORDER BY setpoint),
+        array_agg(correction ORDER BY setpoint)
+    INTO setpoints, corrections
+    FROM sorted_points;
+
     len := array_length(setpoints, 1);
-    
+
     IF len IS NULL OR len = 0 THEN
         RETURN 0;
     END IF;
 
-    -- 2. Find bounding points (x1, x2) for the reading
-    -- Assumes setpoints are sorted ascending. 
-    -- If reading is below min, use first two points (extrapolation/clamping - usually linear from first segment)
-    -- If reading is above max, use last two points.
-    
-    -- Cast text arrays to numeric for calculation
-    -- Logic: Iterate to find where reading fits
-    
+    -- Edge case: only one setpoint
+    IF len = 1 THEN
+        RETURN corrections[1];
+    END IF;
+
+    -- 2. Find bounding segment for linear interpolation
+    -- Default to first segment (handles reading < min setpoint)
+    x1 := setpoints[1];
+    x2 := setpoints[2];
+    y1 := corrections[1];
+    y2 := corrections[2];
+
     i := 1;
     WHILE i < len LOOP
-        x1 := CAST(setpoints[i] AS DOUBLE PRECISION);
-        x2 := CAST(setpoints[i+1] AS DOUBLE PRECISION);
-        y1 := CAST(corrections[i] AS DOUBLE PRECISION);
-        y2 := CAST(corrections[i+1] AS DOUBLE PRECISION);
+        x1 := setpoints[i];
+        x2 := setpoints[i + 1];
+        y1 := corrections[i];
+        y2 := corrections[i + 1];
 
         IF reading <= x2 THEN
-            -- Found the segment (or it's before the first segment if i=1)
-            EXIT; 
+            EXIT;
         END IF;
-        
+
         i := i + 1;
     END LOOP;
 
-    -- At this point, we use x1, x2, y1, y2 defined in the loop.
-    -- If loop finished (reading > max), we use the last segment (i=len-1) which is set in the last iteration.
-    
     -- Prevent division by zero
     IF x2 = x1 THEN
         RETURN y1;
     END IF;
 
-    -- Linear Interpolation Formula
-    -- y = y1 + ((x - x1) * (y2 - y1) / (x2 - x1))
+    -- Linear Interpolation: y = y1 + (x - x1) * (y2 - y1) / (x2 - x1)
     correction := y1 + ((reading - x1) * (y2 - y1) / (x2 - x1));
-    
+
     RETURN correction;
 END;
 $$ LANGUAGE plpgsql;

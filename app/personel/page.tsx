@@ -46,6 +46,12 @@ const getRoleBadgeClass = (role?: string | null) => {
   }
 }
 
+type PersonelForm = Person & {
+  nik?: string
+  password?: string
+  station_id?: string | number | null
+}
+
 const PersonelPage: React.FC = () => {
   const {
     items,
@@ -67,7 +73,7 @@ const PersonelPage: React.FC = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editing, setEditing] = useState<Person | null>(null)
-  const [form, setForm] = useState<Person & { nik?: string }>({ id: '', name: '', email: '', phone: '', nip: '', nik: '' })
+  const [form, setForm] = useState<PersonelForm>({ id: '', name: '', email: '', phone: '', nip: '', nik: '', role: '', station_id: '', password: '' })
   const [savingRole, setSavingRole] = useState<string | null>(null)
 
   // Registration modal state
@@ -84,6 +90,7 @@ const PersonelPage: React.FC = () => {
   })
   const [regLoading, setRegLoading] = useState(false)
   const [showPass, setShowPass] = useState(false)
+  const [showEditPass, setShowEditPass] = useState(false)
   const [pwStrength, setPwStrength] = useState<{ score: number; label: string; color: string }>({ score: 0, label: 'Very weak', color: 'bg-red-500' })
   const [stations, setStations] = useState<Array<{ id: number; name: string; station_id: string }>>([])
   const [regError, setRegError] = useState<string | null>(null)
@@ -92,17 +99,26 @@ const PersonelPage: React.FC = () => {
   const openModal = (p?: Person) => {
     if (p) {
       setEditing(p)
-      setForm({ ...p, phone: p.phone || '', nip: p.nip || '', nik: (p as any).nik || '' })
+      setForm({
+        ...p,
+        phone: p.phone || '',
+        nip: p.nip || '',
+        nik: p.nik || '',
+        role: p.role || '',
+        station_id: p.station_id ? String(p.station_id) : '',
+        password: '',
+      })
     } else {
       setEditing(null)
-      setForm({ id: '', name: '', email: '', phone: '', nip: '', nik: '' })
+      setForm({ id: '', name: '', email: '', phone: '', nip: '', nik: '', role: '', station_id: '', password: '' })
     }
+    setShowEditPass(false)
     setIsModalOpen(true)
   }
 
-  // Load stations for registration modal
+  // Load stations for registration and edit modal
   useEffect(() => {
-    if (!isRegisterOpen) return
+    if (!isRegisterOpen && !isModalOpen) return
     const loadStations = async () => {
       try {
         const response = await fetch('/api/stations/all')
@@ -114,7 +130,7 @@ const PersonelPage: React.FC = () => {
       }
     }
     loadStations()
-  }, [isRegisterOpen])
+  }, [isRegisterOpen, isModalOpen])
 
   // Password strength evaluation
   useEffect(() => {
@@ -182,6 +198,7 @@ const PersonelPage: React.FC = () => {
   const closeModal = () => {
     setIsModalOpen(false)
     setEditing(null)
+    setShowEditPass(false)
   }
 
   const savePerson = async (e: React.FormEvent) => {
@@ -196,7 +213,10 @@ const PersonelPage: React.FC = () => {
           email: form.email,
           phone: form.phone,
           nip: form.nip,
-          nik: (form as any).nik
+          nik: form.nik,
+          password: form.password || undefined,
+          role: form.role || null,
+          station_id: form.station_id || null,
         }),
       })
       if (!response.ok) {
@@ -373,30 +393,79 @@ const PersonelPage: React.FC = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
-          <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl p-6 m-4">
+          <div className="bg-white w-full max-w-3xl rounded-xl shadow-2xl p-6 m-4">
             <h3 className="text-xl font-semibold mb-6 text-gray-800">Edit Personel</h3>
-            <form onSubmit={savePerson} autoComplete="off" className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+            <form onSubmit={savePerson} autoComplete="off" className="space-y-8">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nama</label>
-                <input autoComplete="off" name="edit-personel-name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                <h4 className="text-base font-semibold text-gray-900 mb-3">Informasi Personel</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                    <input required autoComplete="off" name="edit-personel-name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">NIP</label>
+                    <input autoComplete="off" name="edit-personel-nip" value={form.nip || ''} onChange={e => setForm({ ...form, nip: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">NIK</label>
+                    <input autoComplete="off" name="edit-personel-nik" value={form.nik || ''} onChange={e => setForm({ ...form, nik: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nomor Induk Kependudukan" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                    <input autoComplete="off" name="edit-personel-phone" value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input autoComplete="off" name="edit-personel-email" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                <h4 className="text-base font-semibold text-gray-900 mb-3">Akun & Akses</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input required autoComplete="off" name="edit-personel-email" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Password Baru</label>
+                    <div className="relative">
+                      <input autoComplete="new-password" name="edit-personel-password" type={showEditPass ? 'text' : 'password'} value={form.password || ''} onChange={e => setForm({ ...form, password: e.target.value })} className="w-full px-3 py-2 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Kosongkan jika tidak diubah" />
+                      <button type="button" onClick={() => setShowEditPass(s => !s)} className="absolute inset-y-0 right-0 px-3 text-sm text-gray-600 hover:text-gray-800">{showEditPass ? 'Hide' : 'Show'}</button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                    <SearchableDropdown
+                      value={form.role || ''}
+                      onChange={(value) => setForm({ ...form, role: (value || '') as Person['role'] })}
+                      options={roleOptions}
+                      placeholder="Pilih role"
+                      searchPlaceholder="Cari role..."
+                      emptyLabel="Role tidak ditemukan"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Station (opsional)</label>
+                    <SearchableDropdown
+                      value={form.station_id ? String(form.station_id) : ''}
+                      onChange={(value) => setForm({ ...form, station_id: value ? String(value) : '' })}
+                      options={[
+                        { id: '', name: 'Tidak ada' },
+                        ...stations.map((station) => ({
+                          id: String(station.id),
+                          name: station.name,
+                          description: station.station_id ? `ID Stasiun: ${station.station_id}` : undefined,
+                        }))
+                      ]}
+                      placeholder="Pilih stasiun"
+                      searchPlaceholder="Cari nama atau ID stasiun..."
+                      emptyLabel="Stasiun tidak ditemukan"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Khusus role user_station, pilih stasiun yang terkait.</p>
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                <input autoComplete="off" name="edit-personel-phone" value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">NIP</label>
-                <input autoComplete="off" name="edit-personel-nip" value={form.nip || ''} onChange={e => setForm({ ...form, nip: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">NIK</label>
-                <input autoComplete="off" name="edit-personel-nik" value={(form as any).nik || ''} onChange={e => setForm({ ...form, nik: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="Nomor Induk Kependudukan" />
-              </div>
-              <div className="sm:col-span-2 flex justify-end gap-3 pt-4 mt-2 border-t">
+
+              <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={closeModal} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors">Batal</button>
                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-colors">Simpan Perubahan</button>
               </div>

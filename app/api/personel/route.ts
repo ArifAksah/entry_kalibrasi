@@ -18,7 +18,7 @@ export async function GET() {
 
     const { data: rolesData, error: rolesError } = await supabaseAdmin
       .from('user_roles')
-      .select('user_id, role')
+      .select('user_id, role, station_id')
 
     if (rolesError) {
       console.warn('[personel] Failed to fetch roles, returning personel without roles.')
@@ -27,7 +27,7 @@ export async function GET() {
 
     const mergedData = personelData.map((p: any) => {
       const roleInfo = rolesData.find((r: any) => r.user_id === p.id)
-      return { ...p, role: roleInfo?.role || null }
+      return { ...p, role: roleInfo?.role || null, station_id: roleInfo?.station_id || null }
     })
 
     return NextResponse.json(mergedData)

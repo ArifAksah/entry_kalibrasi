@@ -6,14 +6,15 @@ import {
 } from '../../lib/qc-utils';
 import { convertUnit, needsConversion } from '../../lib/unitConversion';
 import { calculateCalibrationResult } from '../../lib/uncertainty-utils';
+import { SigFigBadge } from '../ui/SigFigBadge';
 
 
 interface RawDataRow {
     id: number;
     created_at: string;
-    timestamp: string;
-    standard_data: number;
-    uut_data: number;
+    timestamp: string | null;
+    standard_data: number | null;
+    uut_data: number | null;
     session_id: string;
     sensor_id_uut?: number;
     sensor_id_std?: number;
@@ -27,17 +28,29 @@ interface QCDataModalProps {
     onClose: () => void;
     title: string;
     sessionId?: string;
-    certificateId: string;
+    certificateId?: string;
     certificateInstrumentId?: number;
     instruments: Instrument[];
     sensors: any[];
     instrumentNames: Array<{ id: number; name: string }>;
     standardCerts?: any[];
+    resultEntries?: Array<{
+        sensorId: number | null;
+        unitUut?: string | null;
+        unitStd?: string | null;
+    }>;
     onCalculateSaved?: (updates: Array<{ sensorId: number | string, table: any[] }>) => void | Promise<void>;
+    /**
+     * Status certificate pemilik data (mis. 'draft' | 'sent' | 'verified' | ...).
+     * Button "Hitung dan Input Tabel ke Sertifikat" hanya tampil saat draft
+     * karena setelah kirim konsep, data sudah frozen untuk proses verifikasi.
+     * Jika undefined → default permissive (tombol tampil) untuk backward compat.
+     */
+    certificateStatus?: string | null;
 }
 
 const QCDataModal: React.FC<QCDataModalProps> = ({
-    isOpen, onClose, title, sessionId, instruments, sensors, certificateInstrumentId, instrumentNames, standardCerts = [], onCalculateSaved
+    isOpen, onClose, title, sessionId, instruments, sensors, certificateInstrumentId, instrumentNames, standardCerts = [], resultEntries = [], onCalculateSaved, certificateStatus
 }) => {
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<RawDataRow[]>([]);
@@ -74,16 +87,59 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
     const [correctionMap, setCorrectionMap] = useState<Map<string, number>>(new Map());
     const [correctionLoading, setCorrectionLoading] = useState(false);
 
+    const normalizedData = React.useMemo(() => {
+        if (!Array.isArray(data) || data.length === 0 || resultEntries.length === 0) return data;
+
+        const orderedGroups: Array<{ key: string; rows: RawDataRow[] }> = [];
+        const groupMap = new Map<string, RawDataRow[]>();
+
+        data.forEach((row) => {
+            const key = row.sheet_name && row.sheet_name.trim() !== ''
+                ? `sheet:${row.sheet_name.trim()}`
+                : row.sensor_id_uut != null
+                    ? `sensor:${row.sensor_id_uut}`
+                    : 'unknown';
+
+            let bucket = groupMap.get(key);
+            if (!bucket) {
+                bucket = [];
+                groupMap.set(key, bucket);
+                orderedGroups.push({ key, rows: bucket });
+            }
+            bucket.push(row);
+        });
+
+        const rowOverrides = new Map<number, { sensorId: number | null; unitUut?: string | null; unitStd?: string | null }>();
+        orderedGroups.forEach((group, index) => {
+            const fallback = resultEntries[index];
+            if (!fallback) return;
+            group.rows.forEach((row) => {
+                rowOverrides.set(row.id, fallback);
+            });
+        });
+
+        return data.map((row) => {
+            const fallback = rowOverrides.get(row.id);
+            if (!fallback) return row;
+            return {
+                ...row,
+                sensor_id_uut: row.sensor_id_uut ?? fallback.sensorId ?? undefined,
+                unit_uut: row.unit_uut ?? fallback.unitUut ?? null,
+                unit_std: row.unit_std ?? fallback.unitStd ?? null,
+            };
+        });
+    }, [data, resultEntries]);
+
     // Group data by UUT sensor ID
     const groupedData = React.useMemo(() => {
         const groups: Record<string, RawDataRow[]> = {};
-        data.forEach(row => {
+        normalizedData.forEach(row => {
             const key = row.sensor_id_uut ? String(row.sensor_id_uut) : 'unknown';
             if (!groups[key]) groups[key] = [];
             groups[key].push(row);
         });
         return groups;
-    }, [data]);
+    }, [normalizedData]);
 
     const sensorKeys = Object.keys(groupedData);
 
@@ -126,12 +182,12 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
      * hitung_koreksi(reading, sensor_std_id) for each unique (standard_data, sensor_id_std) pair.
      */
     useEffect(() => {
-        if (data.length === 0) return;
+        if (normalizedData.length === 0) return;
 
         // Collect unique pairs that have both standard_data and sensor_id_std
-        const pairs = data
-            .filter(r => r.sensor_id_std != null)
-            .map(r => ({ reading: r.standard_data, sensorStdId: r.sensor_id_std! }));
+        const pairs = normalizedData
+            .filter(r => r.sensor_id_std != null && r.standard_data != null)
+            .map(r => ({ reading: r.standard_data as number, sensorStdId: r.sensor_id_std! }));
 
         if (pairs.length === 0) return;
 
@@ -139,7 +195,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
         hitungKoreksiBatch(pairs)
             .then(map => setCorrectionMap(map))
             .finally(() => setCorrectionLoading(false));
-    }, [data]);
+    }, [normalizedData]);
 
     const fetchRawData = async (sId: string) => {
         setLoading(true);
@@ -180,7 +236,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
     if (!isOpen) return null;
 
     const currentData = (groupedData[String(activeTab)] || []).sort((a, b) => {
-        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+        return new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime();
     });
 
     /**
@@ -188,7 +244,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
      * Key: `${sensor_id_std}:${standard_data}`
      */
     const getStdCorrection = (row: RawDataRow): { value: number; hasData: boolean } => {
-        if (!row.sensor_id_std) return { value: 0, hasData: false };
+        if (!row.sensor_id_std || row.standard_data == null) return { value: 0, hasData: false };
         const key = `${row.sensor_id_std}:${row.standard_data}`;
         const hasData = correctionMap.has(key);
         return { value: correctionMap.get(key) ?? 0, hasData };
@@ -196,9 +252,11 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
     const computeRowQC = (row: RawDataRow) => {
         const { value: stdCorrection, hasData: hasCertData } = getStdCorrection(row);
+        const hasUutValue = row.uut_data != null;
+        const hasStdValue = row.standard_data != null;
 
         // Exact floating point math — NO rounding applied so display matches raw DB values
-        const rawStdCorrected = row.standard_data + stdCorrection;
+        const rawStdCorrected = hasStdValue ? ((row.standard_data as number) + stdCorrection) : null;
 
         // Convert std_corrected to UUT unit when units differ
         // e.g. STD in hPa, UUT in inHg → convert hPa→inHg before subtraction
@@ -210,11 +268,15 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
             unitUut = uutSensor?.graduating_unit || uutSensor?.range_capacity_unit || '';
         }
         const hasConversion = unitStd && unitUut && needsConversion(unitStd, unitUut);
-        const stdCorrectedInUutUnit = hasConversion
-            ? convertUnit(rawStdCorrected, unitStd, unitUut)
-            : rawStdCorrected;
+        const stdCorrectedInUutUnit = rawStdCorrected == null
+            ? null
+            : hasConversion
+                ? convertUnit(rawStdCorrected, unitStd, unitUut)
+                : rawStdCorrected;
 
-        const rawUutCorrection = stdCorrectedInUutUnit - row.uut_data;
+        const rawUutCorrection = (stdCorrectedInUutUnit != null && hasUutValue)
+            ? (stdCorrectedInUutUnit - (row.uut_data as number))
+            : null;
 
         return {
             stdCorrection,                                // raw value
@@ -223,11 +285,16 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
             uutCorrection: rawUutCorrection,              // raw value
             hasCertData,
             hasConversion,
-            qc: checkQCResult(rawUutCorrection, activeSensorLimit),
+            qc: rawUutCorrection == null
+                ? { passed: true, limitStr: '-', absCorrection: 0, limitValue: null }
+                : checkQCResult(rawUutCorrection, activeSensorLimit),
         };
     };
 
-    const failCount = currentData.filter(row => !computeRowQC(row).qc.passed).length;
+    const failCount = currentData.filter(row => {
+        const qc = computeRowQC(row);
+        return qc.uutCorrection != null && !qc.qc.passed;
+    }).length;
     const stdSensorId = currentData.length > 0 ? currentData[0].sensor_id_std : null;
 
     /**
@@ -236,6 +303,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
      */
     const handleSaveToTable = async () => {
         if (sensorKeys.length === 0) return;
+        if (correctionLoading) return;
         setIsSavingToTable(true);
         try {
             const updates: Array<{ sensorId: number | string, table: any[] }> = [];
@@ -253,14 +321,17 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                     ? standardCerts.find((c: any) => c.sensor_id === stdSensorId)
                     : null;
 
-                const uutAvg = groupData.reduce((sum, r) => sum + r.uut_data, 0) / groupData.length;
+                const rowsForCalc = groupData.filter(r => r.uut_data != null);
+                if (rowsForCalc.length === 0) continue;
+                const uutAvg = rowsForCalc.reduce((sum, r) => sum + (r.uut_data as number), 0) / rowsForCalc.length;
 
                 // Compute average correction from RAW (unrounded) per-row corrections
                 // PENTING: gunakan nilai raw, bukan yang sudah di-round3 di computeRowQC,
                 // supaya tidak ada double-rounding yang menggeser hasil akhir.
                 let correctionAvg = 0;
                 if (correctionMap.size > 0) {
-                    const corrections = groupData.map(row => {
+                    const corrections = rowsForCalc.map(row => {
+                        if (row.standard_data == null) return null;
                         const stdCorrection = row.sensor_id_std
                             ? (correctionMap.get(`${row.sensor_id_std}:${row.standard_data}`) ?? 0)
                             : 0;
@@ -274,9 +345,11 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                         const stdCorrectedInUutUnit = (unitStd && unitUut && needsConversion(unitStd, unitUut))
                             ? convertUnit(rawStdCorrected, unitStd, unitUut)
                             : rawStdCorrected;
-                        return stdCorrectedInUutUnit - row.uut_data;
-                    });
-                    correctionAvg = corrections.reduce((sum, c) => sum + c, 0) / corrections.length;
+                        return stdCorrectedInUutUnit - (row.uut_data as number);
+                    }).filter((v): v is number => v != null);
+                    if (corrections.length > 0) {
+                        correctionAvg = corrections.reduce((sum, c) => sum + c, 0) / corrections.length;
+                    }
                 }
 
                 // Get uncertainty from calculateCalibrationResult
@@ -314,6 +387,8 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
             setIsSavingToTable(false);
         }
     };
+
+    const isCalculateDisabled = isSavingToTable || correctionLoading;
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] backdrop-blur-sm">
@@ -366,7 +441,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                         <div className="text-center p-8 m-6 bg-red-50 rounded-xl border border-red-200">
                             <p className="text-red-600 font-medium">{error}</p>
                         </div>
-                    ) : data.length === 0 ? (
+                    ) : normalizedData.length === 0 ? (
                         <div className="text-center p-12 m-6 bg-white rounded-xl border border-dashed border-gray-300">
                             <p className="text-gray-500">Tidak ada data untuk sesi ini.</p>
                         </div>
@@ -479,27 +554,56 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                             <tbody className="bg-white divide-y divide-gray-200">
                                                 {currentData.length > 0 ? currentData.map((row, index) => {
                                                     const { stdCorrection, stdCorrected, uutCorrection, hasCertData, qc } = computeRowQC(row);
-                                                    const isFail = !qc.passed;
+                                                    const isFail = uutCorrection != null && !qc.passed;
                                                     return (
                                                         <tr key={row.id} className={`${isFail ? 'bg-pink-50 hover:bg-pink-100' : 'hover:bg-gray-50'} transition-colors`}>
                                                             <td className="px-4 py-2 text-xs text-gray-500 font-mono">{index + 1}</td>
                                                             <td className="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">
-                                                                {new Date(row.timestamp).toLocaleString('id-ID')}
+                                                                {row.timestamp ? new Date(row.timestamp).toLocaleString('id-ID') : <span className="text-gray-400 italic">-</span>}
                                                             </td>
-                                                            <td className="px-4 py-2 text-sm font-medium text-gray-700">{row.standard_data}</td>
+                                                            <td className="px-4 py-2 text-sm font-medium text-gray-700">
+                                                                {row.standard_data != null ? (
+                                                                    <span className="inline-flex items-center gap-1.5">
+                                                                        <span>{row.standard_data}</span>
+                                                                        <SigFigBadge value={row.standard_data} />
+                                                                    </span>
+                                                                ) : <span className="text-gray-400 italic">-</span>}
+                                                            </td>
                                                             <td className="px-4 py-2 text-sm font-medium bg-blue-50/50">
                                                                 {correctionLoading
                                                                     ? <span className="text-gray-300 text-xs">...</span>
                                                                     : hasCertData
-                                                                        ? <span className="text-blue-700">{stdCorrection > 0 ? '+' : ''}{stdCorrection}</span>
+                                                                        ? (
+                                                                            <span className="inline-flex items-center gap-1.5">
+                                                                                <span className="text-blue-700">{stdCorrection > 0 ? '+' : ''}{stdCorrection}</span>
+                                                                                <SigFigBadge value={stdCorrection} />
+                                                                            </span>
+                                                                        )
                                                                         : <span className="text-gray-400 text-[10px] italic">tidak ada</span>}
                                                             </td>
                                                             <td className="px-4 py-2 text-sm font-bold text-blue-900 bg-blue-50/30">
-                                                                {hasCertData ? stdCorrected : <span className="text-gray-400 text-xs">= {row.standard_data}</span>}
+                                                                {stdCorrected != null ? (
+                                                                    <span className="inline-flex items-center gap-1.5">
+                                                                        <span>{stdCorrected}</span>
+                                                                        <SigFigBadge value={stdCorrected} />
+                                                                    </span>
+                                                                ) : row.standard_data != null ? <span className="text-gray-400 text-xs">= {row.standard_data}</span> : <span className="text-gray-400 italic">-</span>}
                                                             </td>
-                                                            <td className="px-4 py-2 text-sm font-medium text-gray-700">{row.uut_data}</td>
+                                                            <td className="px-4 py-2 text-sm font-medium text-gray-700">
+                                                                {row.uut_data != null ? (
+                                                                    <span className="inline-flex items-center gap-1.5">
+                                                                        <span>{row.uut_data}</span>
+                                                                        <SigFigBadge value={row.uut_data} />
+                                                                    </span>
+                                                                ) : <span className="text-gray-400 italic">-</span>}
+                                                            </td>
                                                             <td className={`px-4 py-2 text-sm font-bold ${isFail ? 'text-red-600' : 'text-green-600'}`}>
-                                                                {uutCorrection > 0 ? '+' : ''}{uutCorrection}
+                                                                {uutCorrection != null ? (
+                                                                    <span className="inline-flex items-center gap-1.5">
+                                                                        <span>{uutCorrection > 0 ? '+' : ''}{uutCorrection}</span>
+                                                                        <SigFigBadge value={uutCorrection} />
+                                                                    </span>
+                                                                ) : <span className="text-gray-400 italic">-</span>}
                                                             </td>
                                                             <td className="px-4 py-2 text-xs text-gray-500">{qc.limitStr}</td>
                                                             <td className="px-4 py-2 text-center">
@@ -536,20 +640,41 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                         )}
                     </div>
                     <div className="flex items-center gap-3">
-                        {currentData.length > 0 && (
+                        {/* Info frozen-data muncul di non-draft (sent/verified/...) agar user paham kenapa tombol hilang */}
+                        {currentData.length > 0 && certificateStatus && certificateStatus !== 'draft' && (
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-50 text-amber-800 border border-amber-200">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                </svg>
+                                <span>Data sudah {certificateStatus === 'sent' ? 'dikirim ke Verifikator' : 'diverifikasi'} — tabel tidak bisa diubah lagi.</span>
+                            </div>
+                        )}
+                        {/* Tombol Hitung & Input: hanya saat draft (atau status tidak di-set → legacy) */}
+                        {currentData.length > 0 && (!certificateStatus || certificateStatus === 'draft') && (
                             <button
                                 onClick={handleSaveToTable}
-                                disabled={isSavingToTable}
-                                title={hasSavedToTable ? 'Sudah pernah dijalankan. Klik lagi untuk memperbarui.' : 'Hitung dan simpan hasil ke tabel sertifikat'}
+                                disabled={isCalculateDisabled}
+                                title={
+                                    correctionLoading
+                                        ? 'Tunggu sampai perhitungan koreksi standar selesai.'
+                                        : hasSavedToTable
+                                            ? 'Sudah pernah dijalankan. Klik lagi untuk memperbarui.'
+                                            : 'Hitung dan simpan hasil ke tabel sertifikat'
+                                }
                                 className={`px-5 py-2 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${
-                                    isSavingToTable
+                                    isCalculateDisabled
                                         ? 'bg-gray-100 text-gray-400 cursor-wait'
                                         : hasSavedToTable
                                             ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-sm ring-2 ring-green-300'
                                             : 'bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-white shadow-sm'
                                 }`}
                             >
-                                {isSavingToTable ? (
+                                {correctionLoading ? (
+                                    <>
+                                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-transparent" />
+                                        <span>Menghitung koreksi...</span>
+                                    </>
+                                ) : isSavingToTable ? (
                                     <>
                                         <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-transparent" />
                                         <span>Menyimpan...</span>

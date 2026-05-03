@@ -22,7 +22,7 @@ const Toast: React.FC<ToastProps> = ({ message, type = 'info', onClose, duration
   }, [durationMs, onClose])
 
   return (
-    <div className={`fixed top-4 right-4 border rounded-lg shadow ${colors[type]} px-4 py-2 z-[60]`}> 
+    <div className={`fixed top-4 right-4 border rounded-lg shadow ${colors[type]} px-4 py-2 z-[200]`}> 
       <div className="flex items-center space-x-3">
         <span className="text-sm font-medium">{message}</span>
         {onClose && (

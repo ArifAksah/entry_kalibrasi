@@ -8,6 +8,9 @@ import QRCode from 'react-qr-code'
 import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
 import { formatUnit, needsConversion } from '../../../../lib/unitConversion'
 import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClassName } from '../../../../lib/rich-text'
+import { resultsToLegacyView } from '../../../../lib/validators/certificate-results-render-adapter'
+import { formatLatexUnit } from '../../../../lib/qc-utils'
+import { supabase } from '../../../../lib/supabase'
 
 // --- TIPE DATA KOMPREHENSIF ---
 // Saya gabungkan tipe dari ViewCertificatePage.tsx Anda ke sini
@@ -76,12 +79,18 @@ type Instrument = {
 }
 type Personel = { id: string; name: string | null }
 
+const findPersonelById = (personel: Personel[], id: string | number | null | undefined) => {
+  if (id == null || id === '') return null
+  const targetId = String(id)
+  return personel.find(p => p.id != null && String(p.id) === targetId) || null
+}
+
 // --- Komponen Label Helper ---
 // Untuk meniru format label di PDF (Indo bold + English italic)
 const PdfLabel: React.FC<{ indo: string; eng: string; className?: string }> = ({ indo, eng, className = '' }) => (
   <div className={`leading-tight ${className}`}>
-    <div className="font-bold text-xs">{indo}</div>
-    <div className="text-[10px] italic text-gray-600">{eng}</div>
+    <div className="cert-text-id">{indo}</div>
+    <div className="cert-text-en">{eng}</div>
   </div>
 )
 
@@ -232,6 +241,28 @@ const FooterQRCode: React.FC<{
   )
 }
 
+const unwrapListResponse = (payload: any): any[] =>
+  Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : [])
+
+const fetchAllSensors = async (): Promise<any[]> => {
+  const first = await fetch('/api/sensors?page=1&pageSize=100')
+  if (!first.ok) return []
+
+  const firstPayload = await first.json()
+  const firstData = unwrapListResponse(firstPayload)
+  const totalPages = Array.isArray(firstPayload) ? 1 : Number(firstPayload?.totalPages ?? 1)
+
+  if (totalPages <= 1) return firstData
+
+  const restPayloads = await Promise.all(
+    Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map((page) =>
+      fetch(`/api/sensors?page=${page}&pageSize=100`).then((res) => res.ok ? res.json() : { data: [] })
+    )
+  )
+
+  return [...firstData, ...restPayloads.flatMap(unwrapListResponse)]
+}
+
 const ViewCertificatePage: React.FC = () => {
   const params = useParams<{ id: string }>()
   const router = useRouter()
@@ -252,19 +283,40 @@ const ViewCertificatePage: React.FC = () => {
   const [allRawData, setAllRawData] = useState<any[]>([])
 
   const computeEnvCondition = useCallback((type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
-    const keywords = type === 'suhu'
-      ? ['suhu', 'temp', 'termometer', 'temperature', 'thermo']
-      : ['kelembab', 'hum', 'hygro', 'rh'];
-
+    // Gunakan unit_std / unit_uut dari raw data untuk identifikasi lebih akurat
+    // Format LaTeX units (e.g., ^\circ C) ke readable (°C) sebelum compare
     const matchedRows = sensorRawData.filter(r => {
-      const name = (r.sheet_name || '').toLowerCase();
-      return keywords.some(k => name.includes(k));
+      const rawUnit = String(r.unit_std || r.unit_uut || '');
+      const unit = formatLatexUnit(rawUnit).toLowerCase().trim();
+      const name = (r.sheet_name || r.name || r.category || '').toLowerCase();
+
+      if (type === 'suhu') {
+        // Unit-based: °C, C, celcius, celsius
+        const unitIsTemp = unit && (unit.includes('°c') || unit.includes('c') || unit.includes('celcius') || unit.includes('celsius'));
+        // Name-based fallback
+        const nameIsTemp = ['suhu', 'temp', 'termometer', 'temperature', 'thermo'].some(k => name.includes(k));
+        return unitIsTemp || (nameIsTemp && !unit); // prefer unit if present
+      } else {
+        // kelembaban
+        // Unit-based: %, RH, r.h, kelembaban, humidity
+        const unitIsHum = unit && (unit.includes('%') || unit.includes('rh') || unit.includes('r.h') || unit.includes('kelembaban') || unit.includes('humidity') || unit.includes('hum'));
+        // Name-based fallback
+        const nameIsHum = ['kelembab', 'lembab', 'humidity', 'hum', 'hygro', 'rh', 'r.h'].some(k => name.includes(k));
+        return unitIsHum || (nameIsHum && !unit);
+      }
     });
 
     if (matchedRows.length === 0) return '-';
 
+    // Robust number extraction: handle string values from API
     const values = matchedRows
-      .map(r => r.std_corrected ?? (r.standard_data + (r.std_correction ?? 0)))
+      .map(r => {
+        if (r.std_corrected != null) return Number(r.std_corrected);
+        const sd = Number(r.standard_data);
+        const sc = Number(r.std_correction ?? 0);
+        if (!isNaN(sd)) return sd + sc;
+        return NaN;
+      })
       .filter(v => typeof v === 'number' && !isNaN(v));
 
     if (values.length === 0) return '-';
@@ -278,37 +330,47 @@ const ViewCertificatePage: React.FC = () => {
     return `(${mean.toFixed(1)} ± ${halfRange.toFixed(1)}) ${unit}`;
   }, []);
 
-
   // Helper to resolve canonical sensor name
   const resolveSensorName = useCallback((res: any, fallbackIndex: number) => {
     const sd = res?.sensorDetails || {}
-    const sensorRecord = sensors.find((s: any) => s.id === res?.sensorId)
+    const targetId = res?.sensorId != null ? Number(res.sensorId) : null
+    const sensorRecord = targetId != null
+      ? sensors.find((s: any) => s.id != null && Number(s.id) === targetId)
+      : undefined
     let canonicalName = undefined
-    if (sensorRecord?.sensor_name_id) {
-      canonicalName = instrumentNames.find((n: any) => n.id === sensorRecord.sensor_name_id)?.name
+    if (sensorRecord?.sensor_name_id != null) {
+      canonicalName = instrumentNames.find((n: any) => n.id != null && Number(n.id) === Number(sensorRecord.sensor_name_id))?.name
     }
-    // Priority: canonical name from instrument_names table > sensorDetails.name fallback
-    return canonicalName || sensorRecord?.name || sd.name || sd.type || `Sensor ${fallbackIndex + 1}`
+    // Priority: canonical name from instrument_names table > sensorDetails.name > sensorDetails.id fallback
+    return canonicalName || sensorRecord?.name || sd.name || (targetId ? `Sensor ID ${targetId}` : null) || sd.type || `Sensor ${fallbackIndex + 1}`
   }, [sensors, instrumentNames])
 
   // Menggunakan useMemo untuk data turunan
-  const station = useMemo(() => stations.find(s => s.id === (cert?.station ?? -1)) || null, [stations, cert])
+  const station = useMemo(() => {
+    const targetId = cert?.station != null ? Number(cert.station) : null
+    return targetId != null ? stations.find(s => s.id != null && Number(s.id) === targetId) || null : null
+  }, [stations, cert])
   const resolvedStationAddress = useMemo(() => (cert?.station_address ?? null) || (station?.address ?? null), [cert, station])
-  const instrument = useMemo(() => instruments.find(i => i.id === (cert?.instrument ?? -1)) || null, [instruments, cert])
-  const authorized = useMemo(() => personel.find(p => p.id === (cert?.authorized_by ?? '')) || null, [personel, cert])
-  const verifikator1 = useMemo(() => personel.find(p => p.id === (cert?.verifikator_1 ?? '')) || null, [personel, cert])
-  const verifikator2 = useMemo(() => personel.find(p => p.id === (cert?.verifikator_2 ?? '')) || null, [personel, cert])
-  const verifikator3 = useMemo(() => personel.find(p => p.id === (cert?.verifikator_3 ?? '')) || null, [personel, cert])
+  const instrument = useMemo(() => {
+    const targetId = cert?.instrument != null ? Number(cert.instrument) : null
+    return targetId != null ? instruments.find(i => i.id != null && Number(i.id) === targetId) || null : null
+  }, [instruments, cert])
+  const authorized = useMemo(() => {
+    return findPersonelById(personel, cert?.authorized_by)
+  }, [personel, cert])
+  const verifikator1 = useMemo(() => {
+    return findPersonelById(personel, cert?.verifikator_1)
+  }, [personel, cert])
+  const verifikator2 = useMemo(() => {
+    return findPersonelById(personel, cert?.verifikator_2)
+  }, [personel, cert])
+  const verifikator3 = useMemo(() => {
+    return findPersonelById(personel, cert?.verifikator_3)
+  }, [personel, cert])
 
   // Data hasil kalibrasi (normalize ke array)
   const results = useMemo(() => {
-    const r: any = (cert as any)?.results
-    if (!r) return []
-    try {
-      return typeof r === 'string' ? JSON.parse(r) : r
-    } catch {
-      return []
-    }
+    return resultsToLegacyView((cert as any)?.results)
   }, [cert])
   const resultData = useMemo(() => (results && results.length > 0 ? results[0] : null), [results])
 
@@ -332,14 +394,8 @@ const ViewCertificatePage: React.FC = () => {
 
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
 
-    // Use public_id if available for secure verification
     if (cert.public_id) {
       return `${baseUrl}/verify/${cert.public_id}`
-    }
-
-    // Fallback to certificate number if public_id is missing (legacy)
-    if (cert.no_certificate) {
-      return `${baseUrl}/verify/${encodeURIComponent(cert.no_certificate)}`
     }
 
     return ''
@@ -358,19 +414,19 @@ const ViewCertificatePage: React.FC = () => {
     const load = async () => {
       try {
         // Fetch certificate dan personel
-        const [cRes, pRes, sRes, inRes] = await Promise.all([
-          fetch(`/api/certificates/${id}`),
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) throw new Error('Not authenticated')
+        const authHeaders = { 'Authorization': `Bearer ${session.access_token}` }
+        const [cRes, pRes, sensorsData, inRes] = await Promise.all([
+          fetch(`/api/certificates/${id}`, { headers: authHeaders }),
           fetch('/api/personel'),
-          fetch('/api/sensors'),
+          fetchAllSensors(),
           fetch('/api/instrument-names'),
         ])
         const c = await cRes.json()
         const p = await pRes.json()
 
-        if (sRes.ok) {
-          const sData = await sRes.json()
-          setSensors(Array.isArray(sData) ? sData : (sData?.data ?? []))
-        }
+        setSensors(sensorsData)
 
         if (inRes.ok) {
           const inData = await inRes.json()
@@ -382,8 +438,8 @@ const ViewCertificatePage: React.FC = () => {
 
         if (c?.results) {
           try {
-            const parsedResults = typeof c.results === 'string' ? JSON.parse(c.results) : c.results;
-            const sessionIds = parsedResults.map((r: any) => r.session_id).filter(Boolean);
+            const parsedResults = resultsToLegacyView(c.results)
+            const sessionIds = Array.from(new Set(parsedResults.map((r: any) => r.session_id).filter(Boolean)));
             if (sessionIds.length > 0) {
               const rawDataPromises = sessionIds.map((sid: string) =>
                 fetch(`/api/raw-data?session_id=${sid}`).then(res => res.ok ? res.json() : { data: [] })
@@ -457,8 +513,13 @@ const ViewCertificatePage: React.FC = () => {
         return
       }
 
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+
       // Use certificate ID for API call to ensure uniqueness
-      const res = await fetch(`/api/verify-certificate?id=${cert.id}`)
+      const res = await fetch(`/api/verify-certificate?id=${cert.id}`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      })
       if (res.ok) {
         const data = await res.json()
         console.log('🔍 [Print] verify-certificate response:', data)
@@ -625,14 +686,59 @@ const ViewCertificatePage: React.FC = () => {
       color: #000;
       list-style: none !important;
     }
+
+    .print-container,
+    .print-container * {
+      font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif !important;
+      color: #000 !important;
+    }
+
+    .page-container,
+    .page-container table,
+    .page-container td,
+    .page-container th,
+    .page-container p,
+    .page-container div {
+      font-size: 11pt !important;
+      line-height: 1.25 !important;
+      font-weight: 700 !important;
+    }
+
+    .cert-title-id {
+      font-size: 20pt !important;
+      line-height: 1.15 !important;
+      font-weight: 700 !important;
+      letter-spacing: 0 !important;
+      color: #000 !important;
+      text-transform: uppercase;
+    }
+
+    .cert-title-en,
+    .cert-text-en,
+    .page-container .italic {
+      font-size: 9pt !important;
+      line-height: 1.05 !important;
+      font-weight: 700 !important;
+      font-style: italic !important;
+      letter-spacing: 0.01em !important;
+      color: #000 !important;
+    }
+
+    .cert-text-id,
+    .cert-info-text,
+    .cert-info-text td {
+      font-size: 11pt !important;
+      line-height: 1.25 !important;
+      font-weight: 700 !important;
+      color: #000 !important;
+    }
     
     .page-container {
-      width: 100%;
-      max-width: 900px;
+      width: 210mm;
+      max-width: 210mm;
       /* Jangan pakai min-height tetap agar tidak melebihi tinggi A4 saat ditambah padding */
       min-height: auto;
-      padding: 24px; /* Padding standar dokumen untuk layar */
-      padding-bottom: 40mm; /* Ruang untuk footer static (halaman cover) */
+      padding: 5mm; /* Batas kiri/kanan/atas/bawah 0.5 cm dari tepi lembar kerja */
       margin: 0 auto;
       box-sizing: border-box;
       position: relative;
@@ -641,25 +747,82 @@ const ViewCertificatePage: React.FC = () => {
     
     /* Halaman hasil kalibrasi (dengan QR footer) butuh padding konsisten */
     .page-container.results-page {
-      padding-bottom: 30px; /* Space untuk QR code footer - KONSISTEN DI SEMUA HALAMAN */
-      min-height: auto;
+      padding: 5mm;
+      min-height: 297mm;
       box-sizing: border-box;
       position: relative;
     }
     
     /* Cover page ensuring exactly 1 full page height */
     .page-container.cover-page {
-      min-height: 280mm !important;
+      height: 297mm !important;
+      min-height: 297mm !important;
+      max-height: 297mm !important;
       position: relative;
+      padding: 5mm !important;
+      overflow: hidden !important;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .cover-content {
+      position: static !important;
+      z-index: 10;
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: flex-start !important;
+      padding-top: 0 !important;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .cover-header {
+      min-height: 25mm;
+      padding-bottom: 3mm;
+      align-items: center;
+      margin-top: 0;
+    }
+
+    .cover-logo-slot {
+      width: 26mm;
+      flex: 0 0 26mm;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .cover-logo-slot img {
+      width: 22mm !important;
+      height: auto !important;
+      max-height: 24mm !important;
+      object-fit: contain;
+    }
+
+    .cover-header-spacer {
+      width: 26mm;
+      flex: 0 0 26mm;
+    }
+
+    .cover-agency-title h1,
+    .cover-agency-title h2 {
+      font-size: 11.5pt !important;
+      line-height: 1.28 !important;
+      margin: 0 !important;
+    }
+
+    .cover-title-block {
+      margin: 6mm 0 6mm !important;
+    }
+
+    .cover-title-block .cert-info-text {
+      margin-top: 1.5mm !important;
     }
     
     /* Footer khusus untuk halaman 1 saja */
     .page-1-footer {
-      position: absolute !important;
-      bottom: 10mm !important;
-      left: 20mm !important;
-      right: 20mm !important;
+      position: static !important;
       z-index: 1000 !important;
+      flex: 0 0 auto;
       list-style-type: none !important;
       list-style: none !important;
       list-style-position: outside !important;
@@ -733,8 +896,8 @@ const ViewCertificatePage: React.FC = () => {
     /* QR code akan selalu di footer karena parent memiliki min-height penuh */
     .page-container.results-page .footer-qr-small.results-page-qr {
       position: absolute !important;
-      bottom: 4mm !important;
-      left: 4mm !important;
+      bottom: 0 !important;
+      left: 0 !important;
       width: 100px !important;
       height: 100px !important;
       z-index: 999 !important;
@@ -873,10 +1036,12 @@ const ViewCertificatePage: React.FC = () => {
       }
       .page-container {
         margin: 0;
-        padding: 20mm; /* Pastikan padding sama */
-        padding-bottom: 20mm; /* Padding bawah default untuk halaman cover */
+        width: 210mm !important;
+        max-width: 210mm !important;
+        padding: 5mm !important;
         border: none !important;
         box-shadow: none !important;
+        box-sizing: border-box !important;
         page-break-after: auto; /* Jangan paksa break di akhir container */
         break-after: auto;
       }
@@ -885,6 +1050,7 @@ const ViewCertificatePage: React.FC = () => {
       .page-container.results-page {
         min-height: 297mm !important;
         height: 297mm !important;
+        padding: 5mm !important;
         box-sizing: border-box !important;
         position: relative !important;
       }
@@ -894,9 +1060,67 @@ const ViewCertificatePage: React.FC = () => {
       }
       
       .page-container.cover-page {
-        height: 297mm !important; /* Force exact physical A4 height explicitly on print */
+        height: 297mm !important;
+        min-height: 297mm !important;
         max-height: 297mm !important;
         position: relative !important;
+        padding: 5mm !important;
+        overflow: hidden !important;
+        display: flex !important;
+        flex-direction: column !important;
+      }
+
+      .cover-content {
+        position: static !important;
+        z-index: 10 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+        padding-top: 0 !important;
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+      }
+
+      .cover-header {
+        min-height: 25mm !important;
+        padding-bottom: 3mm !important;
+        align-items: center !important;
+        margin-top: 0 !important;
+      }
+
+      .cover-logo-slot {
+        width: 26mm !important;
+        flex: 0 0 26mm !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+      }
+
+      .cover-logo-slot img {
+        width: 22mm !important;
+        height: auto !important;
+        max-height: 24mm !important;
+        object-fit: contain !important;
+      }
+
+      .cover-header-spacer {
+        width: 26mm !important;
+        flex: 0 0 26mm !important;
+      }
+
+      .cover-agency-title h1,
+      .cover-agency-title h2 {
+        font-size: 11.5pt !important;
+        line-height: 1.28 !important;
+        margin: 0 !important;
+      }
+
+      .cover-title-block {
+        margin: 6mm 0 6mm !important;
+      }
+
+      .cover-title-block .cert-info-text {
+        margin-top: 1.5mm !important;
       }
       
       /* Hindari page break setelah container terakhir */
@@ -907,17 +1131,15 @@ const ViewCertificatePage: React.FC = () => {
       
       /* Footer halaman 1 tetap static di mode print, jangan gunakan fixed karena akan duplikat di semua halaman */
       .page-1-footer {
-        position: absolute !important;
-        bottom: 8mm !important;
-        left: 20mm !important;
-        right: 20mm !important;
+        position: static !important;
         z-index: 1000 !important;
+        flex: 0 0 auto !important;
         background-color: white !important; /* Tutupi elemen fixed di belakangnya */
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
-        padding-top: 20px !important; /* Make white mask taller */
-        padding-bottom: 20px !important;
-        margin-bottom: -10px !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        margin-bottom: 0 !important;
         list-style-type: none !important;
         list-style: none !important;
         list-style-position: outside !important;
@@ -984,15 +1206,15 @@ const ViewCertificatePage: React.FC = () => {
       /* Gunakan absolute positioning dengan page-container yang memiliki min-height A4 */
       .page-container.results-page {
         position: relative !important;
-        min-height: 297mm !important; /* Tinggi A4 */
+        min-height: 297mm !important;
       }
       
       /* Hanya tampilkan di page-container dengan class results-page */
       /* QR code akan selalu di footer karena parent memiliki min-height penuh */
       .page-container.results-page .footer-qr-small.results-page-qr {
         position: absolute !important;
-        bottom: 4mm !important;
-        left: 4mm !important;
+        bottom: 0 !important;
+        left: 0 !important;
         width: 100px !important;
         height: 100px !important;
         z-index: 999 !important;
@@ -1100,9 +1322,9 @@ const ViewCertificatePage: React.FC = () => {
       /* Posisikan footer di bagian paling bawah untuk kontainer hasil kalibrasi di layar */
       tfoot.print-repeat-footer {
         position: absolute;
-        bottom: 24px;
-        left: 24px;
-        width: calc(100% - 48px);
+        bottom: 5mm;
+        left: 5mm;
+        width: calc(100% - 10mm);
         display: block;
       }
       
@@ -1112,7 +1334,7 @@ const ViewCertificatePage: React.FC = () => {
         width: 100%;
       }
       .page-container.results-page {
-        padding-bottom: 40mm !important; 
+        padding-bottom: 0 !important;
       }
       .print-container {
         padding: 40px 0;
@@ -1127,6 +1349,38 @@ const ViewCertificatePage: React.FC = () => {
         margin-right: auto !important;
         min-height: 297mm; /* Simulate A4 exact height for consistent element placement */
         border: 1px solid #e5e7eb;
+      }
+    }
+
+    @media print {
+      .print-container {
+        padding: 0 !important;
+        margin: 0 !important;
+        background: white !important;
+        box-shadow: none !important;
+      }
+
+      .page-container {
+        width: 210mm !important;
+        max-width: 210mm !important;
+        min-height: auto !important;
+        margin: 0 !important;
+        padding: 5mm !important;
+        border: none !important;
+        box-shadow: none !important;
+        box-sizing: border-box !important;
+      }
+
+      .page-container.cover-page {
+        height: 297mm !important;
+        min-height: 297mm !important;
+        max-height: 297mm !important;
+      }
+
+      .page-container.results-page {
+        height: 297mm !important;
+        min-height: 297mm !important;
+        padding: 5mm !important;
       }
     }
   `
@@ -1307,31 +1561,31 @@ const ViewCertificatePage: React.FC = () => {
               </div>
 
               {/* Konten halaman dengan z-index lebih tinggi */}
-              <div className="relative z-10">
+              <div className="cover-content">
                 {/* Header Halaman 1 */}
-                <header className="flex flex-row items-center justify-between border-b-[3px] border-double border-black pb-2">
-                  <div className="flex items-start w-[100px]">
+                <header className="cover-header flex flex-row justify-between border-b-[3px] border-double border-black">
+                  <div className="cover-logo-slot">
                     <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
                   </div>
-                  <div className="text-center leading-tight">
+                  <div className="cover-agency-title text-center leading-tight">
                     <h1 className="text-base font-bold">BADAN METEOROLOGI KLIMATOLOGI DAN GEOFISIKA</h1>
                     <h2 className="text-base font-bold">LABORATORIUM KALIBRASI BMKG</h2>
                   </div>
-                  <div className="w-[100px]"></div> {/* Spacer agar center */}
+                  <div className="cover-header-spacer"></div> {/* Spacer agar center */}
                 </header>
 
                 {/* Judul Sertifikat */}
-                <div className="text-center my-6">
-                  <h1 className="text-xl font-bold tracking-wide">SERTIFIKAT KALIBRASI</h1>
-                  <h2 className="text-base italic text-gray-700">CALIBRATION CERTIFICATE</h2>
-                  <div className="text-sm font-semibold mt-2">{cert.no_certificate}</div>
+                <div className="cover-title-block text-center">
+                  <h1 className="cert-title-id">SERTIFIKAT KALIBRASI</h1>
+                  <h2 className="cert-title-en">CALIBRATION CERTIFICATE</h2>
+                  <div className="cert-info-text mt-2">{cert.no_certificate}</div>
                 </div>
 
                 {/* Identitas Alat */}
                 <div className="mb-4">
-                  <h3 className="text-sm font-bold">IDENTITAS ALAT</h3>
-                  <h4 className="text-xs italic text-gray-700 mb-1">Instrument Details</h4>
-                  <table className="w-full text-xs">
+                  <h3 className="cert-text-id">IDENTITAS ALAT</h3>
+                  <h4 className="cert-text-en mb-1">Instrument Details</h4>
+                  <table className="w-full cert-info-text">
                     <tbody>
                       <tr>
                         <td className="w-[30%] align-top"><PdfLabel indo="Nama Alat" eng="Instrument Name" /></td>
@@ -1359,9 +1613,9 @@ const ViewCertificatePage: React.FC = () => {
 
                 {/* Identitas Pemilik */}
                 <div className="mb-4">
-                  <h3 className="text-sm font-bold underline leading-tight mb-0">IDENTITAS PEMILIK</h3>
-                  <h4 className="text-xs italic text-gray-700 leading-tight mb-1">Owner's Identification</h4>
-                  <table className="w-full text-xs">
+                  <h3 className="cert-text-id underline leading-tight mb-0">IDENTITAS PEMILIK</h3>
+                  <h4 className="cert-text-en leading-tight mb-1">Owner's Identification</h4>
+                  <table className="w-full cert-info-text">
                     <tbody>
                       <tr>
                         <td className="w-[30%] align-top"><PdfLabel indo="Nama" eng="Designation" /></td>
@@ -1379,9 +1633,9 @@ const ViewCertificatePage: React.FC = () => {
 
                 {/* Pengesahan */}
                 <div className="mb-8">
-                  <h3 className="text-sm font-bold underline leading-tight mb-0">PENGESAHAN</h3>
-                  <h4 className="text-[11px] italic text-gray-700 font-bold mb-2 leading-tight">Authorization</h4>
-                  <table className="w-full text-xs">
+                  <h3 className="cert-text-id underline leading-tight mb-0">PENGESAHAN</h3>
+                  <h4 className="cert-text-en mb-2 leading-tight">Authorization</h4>
+                  <table className="w-full cert-info-text">
                     <tbody>
                       <tr>
                         <td className="w-[30%] align-top"><PdfLabel indo="Pejabat Pengesahan" eng="Authorizing officer" /></td>
@@ -1633,7 +1887,7 @@ const ViewCertificatePage: React.FC = () => {
                                     { label: 'Tempat Kalibrasi / ', labelEng: 'Calibration Place', value: place },
                                   ]
                                   const sensorSessionId = res?.session_id;
-                                  const sensorRawData = sensorSessionId ? allRawData.filter(rd => rd.session_id === sensorSessionId) : [];
+                                  const sensorRawData = sensorSessionId ? allRawData.filter(rd => String(rd.session_id || '') === String(sensorSessionId)) : [];
                                   const rawSuhu = computeEnvCondition('suhu', sensorRawData);
                                   const rawHum = computeEnvCondition('kelembaban', sensorRawData);
 
@@ -1721,54 +1975,35 @@ const ViewCertificatePage: React.FC = () => {
                                 <div className="mt-6 space-y-3 w-[85%] mx-auto">
                                   <div className="text-[12px] font-bold text-center mb-1">Hasil Kalibrasi / <span className="italic font-normal">Calibration Result</span></div>
                                   {res.table.map((sec: any, sIdx: number) => {
-                                    const rows = Array.isArray(sec?.rows) ? sec.rows : []
-                                    const isDuplicateTitle = sec?.title?.toLowerCase().includes('hasil Kalibrasi') || sec?.title?.toLowerCase().includes('calibration result') || sec?.title?.toLowerCase().includes('hasil kalibrasi');
-                                    return (
+                                  const rows = Array.isArray(sec?.rows) ? sec.rows : []
+                                  const headers = Array.isArray(sec?.headers) && sec.headers.length > 0
+                                    ? sec.headers
+                                    : ['Penunjukan Alat / Instrument Reading', 'Koreksi / Correction', 'Ketidakpastian / Uncertainty']
+                                  const resultUnit = formatUnit(res?.unitUut || res?.sensorDetails?.graduating_unit || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || '')
+                                  const isDuplicateTitle = sec?.title?.toLowerCase().includes('hasil Kalibrasi') || sec?.title?.toLowerCase().includes('calibration result') || sec?.title?.toLowerCase().includes('hasil kalibrasi');
+                                  return (
                                       <div key={sIdx} className="mt-3 avoid-break">
                                         {sec?.title && sec.title.trim() !== '' && !isDuplicateTitle && <div className="text-xs font-bold mb-1 text-center">{sec.title}</div>}
                                         {(!sec?.title || sec.title.trim() === '') && <div className="text-xs font-bold mb-1 text-center">{`Tabel ${sIdx + 1}`}</div>}
                                         <table className="w-full text-xs border-[2px] border-black text-center border-collapse">
                                           <thead>
                                             <tr className="font-bold">
-                                              {/* Use explicit headers if available, otherwise fallback to Key/Unit/Value logic */}
-                                              {sec.headers ? (
-                                                sec.headers.map((h: string, i: number) => (
-                                                  <td key={i} className="p-1 border border-black text-center">{h}</td>
-                                                ))
-                                              ) : (
-                                                // Fallback for old data without headers
-                                                rows.length > 0 && (
-                                                  <>
-                                                    <td className="p-1 border border-black text-center">Parameter</td>
-                                                    <td className="p-1 border border-black text-center">Unit</td>
-                                                    <td className="p-1 border border-black text-center">Nilai</td>
-                                                  </>
-                                                )
-                                              )}
+                                              {headers.map((h: string, i: number) => (
+                                                <td key={i} className="p-1 border border-black text-center">
+                                                  {h}<br />{resultUnit ? `(${resultUnit})` : ''}
+                                                </td>
+                                              ))}
                                             </tr>
-                                            {/* Baris Unit Tambahan */}
-                                            {sec.headers && (
-                                              <tr className="font-bold bg-white">
-                                                {sec.headers.map((_: any, i: number) => {
-                                                  const unit = formatUnit(res?.unitUut || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit || '');
-                                                  return (
-                                                    <td key={`unit-${i}`} className="p-1 border border-black text-center">
-                                                      {unit || '-'}
-                                                    </td>
-                                                  );
-                                                })}
-                                              </tr>
-                                            )}
                                           </thead>
                                           <tbody>
                                             {rows.map((row: any, rIdx: number) => {
                                               const isBlank = (val: any) => !val || String(val).trim() === '' || String(val).trim() === '-';
                                               const isFirstEmptyRow = rIdx === 0 && isBlank(row.key) && isBlank(row.unit) && isBlank(row.value);
-                                              let unitDisplay = formatUnit(res?.unitUut || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || res?.sensorDetails?.graduating_unit || '-');
+                                              let unitDisplay = formatUnit(res?.unitUut || res?.sensorDetails?.graduating_unit || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || '-');
                                               return (
                                                 <tr key={rIdx}>
                                                   {/* If headers exist, map based on standard + extra values */}
-                                                  {sec.headers ? (
+                                                  {headers.length > 0 ? (
                                                     <>
                                                       <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
                                                       <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : formatUnit(row.unit || '-')}</td>
@@ -1844,10 +2079,14 @@ const ViewCertificatePage: React.FC = () => {
                                             <td className="w-[5%] align-top py-0">:</td>
                                             <td className="w-[55%] align-top whitespace-pre-line py-0">
                                               {nf.standardInstruments.map((sid: number) => {
-                                                const s = sensors.find((sensor: any) => sensor.id === sid)
+                                                const targetId = sid != null ? Number(sid) : null
+                                                const s = targetId != null
+                                                  ? sensors.find((sensor: any) => sensor.id != null && Number(sensor.id) === targetId)
+                                                  : undefined
                                                 if (!s) return null
-                                                const name = s.sensor_name_id
-                                                  ? instrumentNames.find((n: any) => n.id === s.sensor_name_id)?.name || s.name || s.type || '-'
+                                                const sensorNameId = s.sensor_name_id != null ? Number(s.sensor_name_id) : null
+                                                const name = sensorNameId != null
+                                                  ? instrumentNames.find((n: any) => n.id != null && Number(n.id) === sensorNameId)?.name || s.name || s.type || '-'
                                                   : s.name || s.type || '-'
                                                 const manufacturer = s.manufacturer || '-'
                                                 const type = s.type || '-'

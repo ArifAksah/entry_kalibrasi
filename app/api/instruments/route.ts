@@ -3,6 +3,18 @@ import { supabaseAdmin } from '../../../lib/supabase'
 
 // Menggunakan shared supabaseAdmin dari lib/supabase agar memiliki fallback env dan konfigurasi konsisten
 
+function getInstrumentErrorMessage(error: any) {
+  if (error?.code === '23502' && error?.message?.includes('column "id"')) {
+    return 'ID instrumen belum memiliki auto-increment. Jalankan script database/fix_instrument_id_sequence.sql di Supabase SQL Editor.'
+  }
+
+  if (error?.code === '23505' && error?.message?.includes('instrument_pkey')) {
+    return 'ID instrumen bentrok. Sequence auto-increment instrumen perlu disinkronkan.'
+  }
+
+  return error?.message || 'Gagal menyimpan instrumen'
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -187,7 +199,7 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error("POST Instrument Error:", error);
-      return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ error: getInstrumentErrorMessage(error) }, { status: 400 })
     }
     return NextResponse.json(data, { status: 201 })
   } catch (e) {

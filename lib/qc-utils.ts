@@ -144,7 +144,34 @@ export async function hitungKoreksiBatch(
     const unique = Array.from(
         new Map(pairs.map(p => [`${p.sensorStdId}:${p.reading}`, p])).values()
     )
-    await Promise.all(unique.map(p => hitungKoreksiDB(p.reading, p.sensorStdId)))
+    const missing = unique.filter(p => !hitungKoreksiCache.has(`${p.sensorStdId}:${p.reading}`))
+
+    if (missing.length > 0) {
+        try {
+            const res = await fetch('/api/hitung-koreksi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pairs: missing }),
+            })
+
+            if (res.ok) {
+                const json = await res.json()
+                const corrections = json?.corrections && typeof json.corrections === 'object'
+                    ? json.corrections
+                    : {}
+
+                missing.forEach(p => {
+                    const key = `${p.sensorStdId}:${p.reading}`
+                    const correction = Number(corrections[key] ?? 0)
+                    hitungKoreksiCache.set(key, Number.isFinite(correction) ? correction : 0)
+                })
+            } else {
+                await Promise.all(missing.map(p => hitungKoreksiDB(p.reading, p.sensorStdId)))
+            }
+        } catch {
+            await Promise.all(missing.map(p => hitungKoreksiDB(p.reading, p.sensorStdId)))
+        }
+    }
     // All results are now cached — build return map
     const result = new Map<string, number>()
     pairs.forEach(p => {
@@ -183,6 +210,7 @@ export function formatLatexUnit(raw: string): string {
         .replace(/\\mu/g, 'µ')
         .replace(/\\Omega/g, 'Ω')
         .replace(/\\%\s?RH/g, '%RH')
+        .replace(/\\%/g, '%')
         // Clean up any stray curly braces
         .replace(/[{}]/g, '')
         .trim();

@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '../../../../lib/supabase'
+import { supabaseAdmin as supabase } from '../../../../lib/supabase'
 import { createClient } from '@supabase/supabase-js'
 import { sendAssignmentNotificationEmail } from '../../../../lib/email'
+import {
+  normalizeResultsOnWrite,
+  ResultsValidationError,
+} from '../../../../lib/validators/certificate-results-normalize'
+import { authorizeCertificateAccess, canUserAccessCertificate, getUserRole } from '../../../../lib/certificate-access'
+import { verifyPdfRenderToken } from '../../../../lib/pdf-render-token'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,14 +21,34 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const { data, error } = await supabaseAdmin
-      .from('certificate')
-      .select('*')
-      .eq('id', id)
-      .single()
+    const renderToken = request.headers.get('x-pdf-render-token')
+    const renderTimestamp = request.headers.get('x-pdf-render-ts')
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data)
+    if (verifyPdfRenderToken(id, renderToken, renderTimestamp)) {
+      const { data: certificate, error } = await supabaseAdmin
+        .from('certificate')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle()
+
+      if (error) {
+        console.error('[certificates/:id] Internal PDF render query failed:', error)
+        return NextResponse.json({ error: 'Failed to fetch certificate' }, { status: 500 })
+      }
+
+      if (!certificate) {
+        return NextResponse.json({ error: 'Certificate not found' }, { status: 404 })
+      }
+
+      return NextResponse.json(certificate)
+    }
+
+    const access = await authorizeCertificateAccess(request, id)
+    if (!access.allowed) {
+      return NextResponse.json({ error: access.error }, { status: access.status })
+    }
+
+    return NextResponse.json(access.certificate)
   } catch (e) {
     return NextResponse.json({ error: 'Failed to fetch certificate' }, { status: 500 })
   }
@@ -53,7 +79,8 @@ export async function PUT(
       verifikator_2,
       verifikator_3,
       results,
-      station_address
+      station_address,
+      calibration_computed_at,
     } = body
 
     if (!no_certificate || !no_order || !no_identification || !issue_date) {
@@ -65,12 +92,18 @@ export async function PUT(
     // Get current certificate data before updating
     const { data: currentCertificate, error: currentError } = await supabaseAdmin
       .from('certificate')
-      .select('authorized_by, verifikator_1, verifikator_2, verifikator_3, version, status, rejection_history, no_certificate, no_order, no_identification, issue_date, station, instrument, station_address, results')
+      .select('authorized_by, verifikator_1, verifikator_2, verifikator_3, version, status, rejection_history, no_certificate, no_order, no_identification, issue_date, station, instrument, station_address, results, calibration_place, calibration_kind, results_frozen_at')
       .eq('id', id)
       .single();
 
     if (currentError) {
       return NextResponse.json({ error: 'Certificate not found' }, { status: 404 });
+    }
+
+    const userRole = await getUserRole(user.id)
+    const canAccess = await canUserAccessCertificate(user.id, userRole, currentCertificate)
+    if (!canAccess) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // Validate station foreign key if provided and fetch address
@@ -161,6 +194,46 @@ export async function PUT(
       v3 = verifikator_3
     }
 
+    // --- Normalisasi results (V0 → V1) ---------------------------------
+    // Hanya normalisasi & ikut-update kalau client mengirim key 'results'.
+    // Kalau tidak dikirim sama sekali, jangan sentuh kolomnya (selaras dengan
+    // pola calibration_computed_at di bawah).
+    const clientSentResults = 'results' in body
+    let resultsForUpdate: unknown = currentCertificate?.results ?? null
+    if (clientSentResults) {
+      try {
+        const outcome = normalizeResultsOnWrite(results, {
+          calibration_kind:
+            ((currentCertificate as any)?.calibration_kind ||
+             ((currentCertificate as any)?.calibration_place === 'LC' ? 'LC' : 'FC')
+            ) as 'FC' | 'LC',
+          certificate_id: id,
+        })
+        // `not_provided` berarti body mengirim results=null/undefined → simpan null
+        resultsForUpdate = outcome.kind === 'ok' ? outcome.value : null
+      } catch (err) {
+        if (err instanceof ResultsValidationError) {
+          return NextResponse.json(
+            { error: err.message, details: err.details },
+            { status: err.status }
+          )
+        }
+        throw err
+      }
+    }
+
+    const resultsChanged =
+      clientSentResults &&
+      JSON.stringify(currentCertificate?.results ?? null) !==
+        JSON.stringify(resultsForUpdate ?? null)
+
+    if (resultsChanged && currentCertificate?.results_frozen_at) {
+      return NextResponse.json({
+        error: 'Certificate results are frozen and can no longer be changed',
+        results_frozen_at: currentCertificate.results_frozen_at,
+      }, { status: 409 })
+    }
+
     // Auto-increment version when content changes meaningfully
     const nextVersion = (() => {
       const prev = currentCertificate?.version ?? 1
@@ -172,7 +245,7 @@ export async function PUT(
         (currentCertificate.station ?? null) !== (station ? parseInt(station) : null) ||
         (currentCertificate.instrument ?? null) !== (instrument ? parseInt(instrument) : null) ||
         (currentCertificate.station_address ?? null) !== ((resolvedStationAddress ?? station_address) ?? null) ||
-        JSON.stringify(currentCertificate.results ?? null) !== JSON.stringify(results ?? null)
+        resultsChanged
       return changed ? (prev + 1) : prev
     })()
 
@@ -191,8 +264,17 @@ export async function PUT(
         station: station ? parseInt(station) : null,
         instrument: instrument ? parseInt(instrument) : null,
         station_address: (resolvedStationAddress ?? station_address) ?? null,
-        results: results ?? null,
-        version: nextVersion
+        version: nextVersion,
+        // Hanya overwrite results kalau client eksplisit mengirim key 'results'.
+        // Update non-results (assign verifikator dsb.) tidak akan menyentuh kolom.
+        ...(clientSentResults ? { results: resultsForUpdate } : {}),
+        // Hanya overwrite calibration_computed_at jika client EKSPLISIT mengirim key ini
+        // (mis. setelah user klik "Hitung & Input Tabel ke Sertifikat" di QC Modal).
+        // Update dari sumber lain (assign verifikator, edit form, dll.) tidak
+        // akan menghapus timestamp yang sudah tersimpan.
+        ...('calibration_computed_at' in body
+          ? { calibration_computed_at: calibration_computed_at ?? null }
+          : {}),
       })
       .eq('id', id)
       .select()
@@ -344,21 +426,29 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader) return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+    if (authError || !user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
 
     // Get certificate data before deleting for log
     const { data: certData } = await supabaseAdmin
       .from('certificate')
-      .select('status, no_certificate')
+      .select('*')
       .eq('id', id)
       .single()
 
-    // Get user for log
-    const authHeader = request.headers.get('authorization')
-    let userId: string | null = null
-    if (authHeader) {
-      const token = authHeader.replace('Bearer ', '')
-      const { data: { user } } = await supabaseAdmin.auth.getUser(token)
-      userId = user?.id || null
+    if (!certData) return NextResponse.json({ error: 'Certificate not found' }, { status: 404 })
+
+    const userRole = await getUserRole(user.id)
+    const canAccess = await canUserAccessCertificate(user.id, userRole, certData)
+    if (!canAccess) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    if (userRole === 'user_station') {
+      return NextResponse.json({ error: 'User station cannot delete certificates' }, { status: 403 })
     }
 
     const { error } = await supabaseAdmin
@@ -369,23 +459,21 @@ export async function DELETE(
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     // Create log entry for certificate deletion
-    if (userId) {
-      try {
-        const { createCertificateLog } = await import('../../../../lib/certificate-log-helper')
-        await createCertificateLog({
-          certificate_id: parseInt(id),
-          action: 'deleted',
-          performed_by: userId,
-          previous_status: certData?.status || null,
-          new_status: null,
-          metadata: {
-            no_certificate: certData?.no_certificate || null
-          }
-        })
-      } catch (logError) {
-        console.error('Failed to create certificate log:', logError)
-        // Don't fail the request if logging fails
-      }
+    try {
+      const { createCertificateLog } = await import('../../../../lib/certificate-log-helper')
+      await createCertificateLog({
+        certificate_id: parseInt(id),
+        action: 'deleted',
+        performed_by: user.id,
+        previous_status: certData?.status || null,
+        new_status: null,
+        metadata: {
+          no_certificate: certData?.no_certificate || null
+        }
+      })
+    } catch (logError) {
+      console.error('Failed to create certificate log:', logError)
+      // Don't fail the request if logging fails
     }
 
     return NextResponse.json({ message: 'Certificate deleted successfully' })

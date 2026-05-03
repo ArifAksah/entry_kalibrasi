@@ -7,6 +7,7 @@ import {
   isStoragePdfPath,
   tryReadLocalPdf,
 } from '../../../../../lib/certificate-pdf-storage'
+import { authorizeCertificateAccess } from '../../../../../lib/certificate-access'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -24,6 +25,11 @@ export async function GET(
 
     if (isNaN(certificateId)) {
       return NextResponse.json({ error: 'Invalid certificate ID' }, { status: 400 })
+    }
+
+    const access = await authorizeCertificateAccess(request, certificateId)
+    if (!access.allowed) {
+      return NextResponse.json({ error: access.error }, { status: access.status })
     }
 
     const { data: cert, error } = await supabaseAdmin

@@ -6,6 +6,7 @@ import Loading from '../../../components/ui/Loading'
 import { useAlert } from '../../../hooks/useAlert'
 import Alert from '../../../components/ui/Alert'
 import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
+import { supabase } from '../../../lib/supabase'
 
 // Dynamic KaTeX import to avoid SSR issues
 let katex: any = null
@@ -107,6 +108,7 @@ export default function UnitsCRUD() {
     const [formUnitName, setFormUnitName] = useState('')
     const [submitting, setSubmitting] = useState(false)
     const [latexMode, setLatexMode] = useState(false)
+    const [confirmDelete, setConfirmDelete] = useState<Unit | null>(null)
     const inputRef = useRef<HTMLInputElement>(null)
 
     const { alert, showSuccess, showError, hideAlert } = useAlert()
@@ -164,13 +166,21 @@ export default function UnitsCRUD() {
 
         setSubmitting(true)
         try {
+            const { data: { session } } = await supabase.auth.getSession()
+            if (!session?.access_token) {
+                throw new Error('Sesi login tidak ditemukan. Silakan login ulang.')
+            }
+
             const url = '/api/units'
             const method = editing ? 'PUT' : 'POST'
             const body = editing ? { id: editing.id, unit: formUnitName } : { unit: formUnitName }
 
             const res = await fetch(url, {
                 method,
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`,
+                },
                 body: JSON.stringify(body)
             })
 
@@ -189,13 +199,25 @@ export default function UnitsCRUD() {
         }
     }
 
-    const handleDelete = async (id: number) => {
-        if (!confirm('Apakah Anda yakin ingin menghapus satuan ini?')) return
+    const handleDelete = (unit: Unit) => {
+        setConfirmDelete(unit)
+    }
 
+    const handleConfirmDelete = async () => {
+        if (!confirmDelete) return
         try {
-            const res = await fetch(`/api/units?id=${id}`, { method: 'DELETE' })
+            const { data: { session } } = await supabase.auth.getSession()
+            if (!session?.access_token) {
+                throw new Error('Sesi login tidak ditemukan. Silakan login ulang.')
+            }
+
+            const res = await fetch(`/api/units?id=${confirmDelete.id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${session.access_token}` },
+            })
             if (res.ok) {
                 showSuccess('Satuan berhasil dihapus')
+                setConfirmDelete(null)
                 fetchUnits()
             } else {
                 const err = await res.json()
@@ -312,7 +334,7 @@ export default function UnitsCRUD() {
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <div className="flex justify-end space-x-2">
                                                 <EditButton onClick={() => openModal(item)} />
-                                                <DeleteButton onClick={() => handleDelete(item.id)} />
+                                                <DeleteButton onClick={() => handleDelete(item)} />
                                             </div>
                                         </td>
                                     </tr>
@@ -464,6 +486,39 @@ export default function UnitsCRUD() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Confirm Delete Modal */}
+            {confirmDelete && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6">
+                        <div className="flex items-center space-x-3 mb-4">
+                            <div className="p-2 bg-yellow-50 rounded-full">
+                                <svg className="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900">Konfirmasi Hapus</h3>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-6">
+                            Apakah Anda yakin ingin menghapus satuan &quot;{confirmDelete.unit}&quot;? Data yang sudah dihapus tidak bisa dipulihkan.
+                        </p>
+                        <div className="flex justify-end space-x-2">
+                            <button
+                                onClick={() => setConfirmDelete(null)}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                onClick={handleConfirmDelete}
+                                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg"
+                            >
+                                Hapus
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

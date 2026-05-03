@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '../../../lib/supabase'
+import { supabaseAdmin as supabase } from '../../../lib/supabase'
 import { getSession } from '../../../lib/session'
 
 export async function GET(request: NextRequest) {
@@ -13,6 +13,17 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('user_id')
 
+    const { data: userRoles } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', session.user.id)
+      .maybeSingle()
+    const isAdmin = userRoles?.role === 'admin'
+
+    if (userId && userId !== session.user.id && !isAdmin) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     let query = supabase.from('user_stations').select(`
       id,
       user_id,
@@ -21,9 +32,10 @@ export async function GET(request: NextRequest) {
       station:station_id(id, name)
     `)
 
-    // Filter by user_id if provided
-    if (userId) {
-      query = query.eq('user_id', userId)
+    if (isAdmin) {
+      if (userId) query = query.eq('user_id', userId)
+    } else {
+      query = query.eq('user_id', session.user.id)
     }
 
     const { data, error } = await query
@@ -50,14 +62,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check if user has admin role
+    // Check if user has admin role (user_roles first, fallback to personel.role)
     const { data: userRoles } = await supabase
       .from('user_roles')
       .select('role')
-      .eq('id', session.user.id)
-      .single()
+      .eq('user_id', session.user.id)
+      .maybeSingle()
 
-    if (!userRoles || userRoles.role !== 'admin') {
+    let isAdmin = userRoles?.role === 'admin'
+
+    if (!isAdmin) {
+      const { data: personel } = await supabase
+        .from('personel')
+        .select('role')
+        .eq('id', session.user.id)
+        .maybeSingle()
+      isAdmin = personel?.role === 'admin'
+    }
+
+    if (!isAdmin) {
       return NextResponse.json(
         { error: 'Only admin can assign stations to users' },
         { status: 403 }

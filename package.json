@@ -13,6 +13,7 @@
     "test:ci": "jest --ci --coverage --watchAll=false"
   },
   "dependencies": {
+    "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@supabase/supabase-js": "^2.57.4",
     "@types/katex": "^0.16.8",
     "@types/nodemailer": "^7.0.2",
@@ -21,13 +22,15 @@
     "katex": "^0.16.33",
     "next": "latest",
     "nodemailer": "^7.0.9",
+    "pg": "^8.20.0",
     "playwright": "^1.56.1",
     "qr-code-styling": "^1.9.2",
     "react": "latest",
     "react-dom": "latest",
     "react-qr-code": "^2.0.18",
     "styled-components": "^6.1.19",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.13",
@@ -41,11 +44,13 @@
     "@typescript-eslint/eslint-plugin": "latest",
     "@typescript-eslint/parser": "latest",
     "autoprefixer": "^10.4.21",
+    "dotenv": "^17.4.2",
     "eslint": "latest",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
     "tailwindcss": "^3.4.14",
     "ts-jest": "^29.4.5",
+    "tsx": "^4.21.0",
     "typescript": "latest"
   }
 }

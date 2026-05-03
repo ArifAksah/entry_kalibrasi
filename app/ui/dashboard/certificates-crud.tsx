@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../../contexts/AuthContext'
 import { useCertificates } from '../../../hooks/useCertificates'
 import { useCertificateVerification } from '../../../hooks/useCertificateVerification'
-import { Certificate, CertificateInsert, Station, Instrument, Sensor, CertStandard, CalibrationSession, RawData } from '../../../lib/supabase'
+import { Certificate, CertificateInsert, Station, Instrument, Sensor, CertStandard, CalibrationSession, RawData, supabase } from '../../../lib/supabase'
 import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
@@ -21,6 +21,7 @@ import { calculateCalibrationResult } from '../../../lib/uncertainty-utils'
 import DateRangePicker from '../../../components/ui/DateRangePicker'
 import RichTextEditor from '../../../components/ui/RichTextEditor'
 import { DEFAULT_NOTES_OTHERS_HTML } from '../../../lib/rich-text'
+import { firstLegacyResult, resultsToLegacyView } from '../../../lib/validators/certificate-results-render-adapter'
 
 // Keep TrashIcon for backward compatibility in this file
 
@@ -366,6 +367,73 @@ const CertificatesCRUD: React.FC = () => {
   const { can, canEndpoint, role } = usePermissions()
   const { alert, showSuccess, showError, showWarning, hideAlert } = useAlert()
   const router = useRouter()
+
+  const fetchSignedPdf = async (item: Certificate, download = false) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) throw new Error('Not authenticated')
+
+    const pdfEndpoint = `/api/certificates/${item.id}/pdf?${download ? 'download=true&' : ''}t=${Date.now()}`
+    const response = await fetch(pdfEndpoint, {
+      cache: 'no-store',
+      headers: { 'Authorization': `Bearer ${session.access_token}` },
+    })
+
+    if (!response.ok) throw new Error('Failed to get PDF')
+
+    const contentType = response.headers.get('Content-Type') || ''
+    if (!contentType.toLowerCase().includes('application/pdf')) {
+      const errorText = await response.text().catch(() => '')
+      throw new Error(`Response download bukan PDF yang valid.${errorText ? ` ${errorText.slice(0, 160)}` : ''}`)
+    }
+
+    return response
+  }
+
+  const openSignedPdf = async (item: Certificate) => {
+    try {
+      const response = await fetchSignedPdf(item)
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      window.open(url, '_blank', 'noopener,noreferrer')
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000)
+      setActionDropdownOpenId(null)
+    } catch (err) {
+      console.error('Error opening PDF:', err)
+      showError('Failed to open PDF. Please try again.')
+    }
+  }
+
+  const downloadSignedPdf = async (item: Certificate) => {
+    try {
+      const response = await fetchSignedPdf(item, true)
+      const contentDisposition = response.headers.get('Content-Disposition')
+      let filename = `Certificate_${item.no_certificate || item.id}.pdf`
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i)
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].replace(/['"]/g, '')
+          if (filename.includes('%')) filename = decodeURIComponent(filename)
+        }
+      }
+
+      if (!filename.toLowerCase().endsWith('.pdf')) filename = `${filename}.pdf`
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.type = 'application/pdf'
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      setActionDropdownOpenId(null)
+    } catch (err) {
+      console.error('Error downloading PDF:', err)
+      showError('Failed to download PDF. Please try again.')
+    }
+  }
   const isCalibrator = role === 'calibrator'
 
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -421,6 +489,11 @@ const CertificatesCRUD: React.FC = () => {
   const [lhksCertificate, setLhksCertificate] = useState<Certificate | null>(null)
   const [lhksRawData, setLhksRawData] = useState<any[]>([])
 
+  const getAnyResultSessionId = (rawResults: unknown): string | null => {
+    const entries = resultsToLegacyView(rawResults)
+    return entries.map((r: any) => r.session_id).find((sid: any) => !!sid) ?? null
+  }
+
   const getVerificationLevelLabel = (level: number | null | undefined) => {
     switch (level) {
       case 1:
@@ -463,16 +536,14 @@ const CertificatesCRUD: React.FC = () => {
     setLhksCertificate(cert)
     setLhksRawData([])
 
-    if (cert.results && Array.isArray(cert.results) && cert.results.length > 0) {
-      const sessionId = (cert.results[0] as any).session_id
-      if (sessionId) {
-        try {
-          const res = await fetch(`/api/raw-data?session_id=${sessionId}`)
-          const json = await res.json()
-          setLhksRawData(json.data || [])
-        } catch (e) {
-          console.error("Failed to fetch raw data for LHKS", e)
-        }
+    const sessionId = getAnyResultSessionId(cert.results)
+    if (sessionId) {
+      try {
+        const res = await fetch(`/api/raw-data?session_id=${sessionId}`)
+        const json = await res.json()
+        setLhksRawData(json.data || [])
+      } catch (e) {
+        console.error("Failed to fetch raw data for LHKS", e)
       }
     }
     setShowLHKSModal(true)
@@ -486,6 +557,7 @@ const CertificatesCRUD: React.FC = () => {
     place: '',
     notes: ''
   })
+  const [useStationAddressForPlace, setUseStationAddressForPlace] = useState(false)
 
   // Toggle: false = tanggal tunggal, true = rentang (start + end)
   // (replaced by DateRangePicker component)
@@ -515,10 +587,20 @@ const CertificatesCRUD: React.FC = () => {
     station: null,
     instrument: null,
     station_address: null as any,
+    // Komponen format nomor sesuai IKK BMKG (fokus FC untuk saat ini).
+    certificate_type: 'sert',
+    calibration_place: 'FC',
+    instrument_code: null,
   })
 
   // Derived instrument details (read-only preview)
   const [instrumentPreview, setInstrumentPreview] = useState<{ manufacturer?: string; type?: string; serial?: string; other?: string }>({})
+
+  const resolveStationAddress = React.useCallback((stationId?: number | null, explicitAddress?: string | null) => {
+    const address = explicitAddress ?? (stationId ? (stations.find(s => s.id === stationId)?.address ?? '') : '')
+    return String(address || '')
+  }, [stations])
+  const selectedStationAddress = (form as any).station_address as string | null
 
   // Local UI state for calibration results blocks
   type KV = { key: string; value: string; enabled?: boolean }
@@ -601,6 +683,19 @@ type ResultItem = {
       showError('Minimal harus ada 1 input sensor.')
     }
   }
+
+  useEffect(() => {
+    if (!useStationAddressForPlace) return
+
+    const stationAddress = resolveStationAddress(form.station, selectedStationAddress)
+    setSessionDetails(prev => {
+      if (prev.place === stationAddress) return prev
+      return { ...prev, place: stationAddress }
+    })
+    setResults(prev => prev.map(result => (
+      result.place === stationAddress ? result : { ...result, place: stationAddress }
+    )))
+  }, [useStationAddressForPlace, form.station, selectedStationAddress, resolveStationAddress])
 
   const addImage = (resultIdx: number) => {
     setResults(prev => prev.map((r, i) =>
@@ -719,6 +814,165 @@ type ResultItem = {
   const [rawPreviewSheetIndex, setRawPreviewSheetIndex] = useState(0)
   const [isGenerating, setIsGenerating] = useState(false)
 
+  const decodeWorkbookFileText = (entry: any): string | null => {
+    if (!entry) return null
+    if (entry.content && entry.type) {
+      const content = entry.content
+      if (typeof content === 'string') return content
+      if (content instanceof Uint8Array || Array.isArray(content)) {
+        return new TextDecoder('utf-8').decode(content instanceof Uint8Array ? content : new Uint8Array(content))
+      }
+    }
+    if (typeof entry.data === 'string') return entry.data
+    if (typeof entry.asBinary === 'function') return entry.asBinary()
+    if (typeof entry.asNodeBuffer === 'function') {
+      const buffer = entry.asNodeBuffer()
+      return new TextDecoder('utf-8').decode(buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer))
+    }
+    if (entry._data?.getContent) {
+      const content = entry._data.getContent()
+      if (typeof content === 'string') return content
+      return new TextDecoder('utf-8').decode(content instanceof Uint8Array ? content : new Uint8Array(content))
+    }
+    return null
+  }
+
+  const findWorkbookFile = (workbook: any, targetPath: string): any | null => {
+    const files = workbook?.files
+    if (!files) return null
+    const normalizedTarget = targetPath.replace(/\\/g, '/').toLowerCase()
+
+    for (const key of Object.keys(files)) {
+      const normalizedKey = key.replace(/^Root Entry[\\/]/i, '').replace(/\\/g, '/').toLowerCase()
+      if (normalizedKey === normalizedTarget) return files[key]
+    }
+
+    return null
+  }
+
+  const decodeXmlEntities = (value: string): string =>
+    value
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, '&')
+
+  const getWorkbookSheetXmlPaths = (workbook: any): Record<string, string> => {
+    const workbookRelsXml = decodeWorkbookFileText(findWorkbookFile(workbook, 'xl/_rels/workbook.xml.rels'))
+    const workbookSheets = workbook?.Workbook?.Sheets
+    const pathsByName: Record<string, string> = {}
+    if (!Array.isArray(workbookSheets)) return pathsByName
+
+    if (!workbookRelsXml) {
+      workbookSheets.forEach((sheet: any, index: number) => {
+        const sheetName = workbook.SheetNames?.[index] || sheet?.name
+        if (!sheetName) return
+        pathsByName[sheetName] = `xl/worksheets/sheet${index + 1}.xml`
+      })
+      return pathsByName
+    }
+
+    const relTargetById: Record<string, string> = {}
+    const relationshipRegex = /<Relationship\b([^>]*)\/?>/g
+    const attrRegex = /([A-Za-z_:][\w:.-]*)="([^"]*)"/g
+    let relationshipMatch: RegExpExecArray | null
+
+    while ((relationshipMatch = relationshipRegex.exec(workbookRelsXml)) !== null) {
+      const attrsSource = relationshipMatch[1] || ''
+      const attrs: Record<string, string> = {}
+      let attrMatch: RegExpExecArray | null
+
+      while ((attrMatch = attrRegex.exec(attrsSource)) !== null) {
+        attrs[attrMatch[1]] = attrMatch[2]
+      }
+
+      const relType = attrs.Type || attrs.type || ''
+      const relId = attrs.Id || attrs.id || ''
+      const relTarget = attrs.Target || attrs.target || ''
+
+      if (relType.toLowerCase().includes('worksheet') && relId && relTarget) {
+        relTargetById[relId] = relTarget
+      }
+    }
+
+    workbookSheets.forEach((sheet: any, index: number) => {
+      const relId = sheet?.id || sheet?.strRelID
+      const target = relId ? relTargetById[relId] : null
+      const sheetName = workbook.SheetNames?.[index] || sheet?.name
+      if (!sheetName) return
+
+      if (target) {
+        pathsByName[sheetName] = `xl/${String(target).replace(/^\/?xl\//i, '').replace(/^\.\.\//, '')}`.replace(/\\/g, '/')
+        return
+      }
+
+      pathsByName[sheetName] = `xl/worksheets/sheet${index + 1}.xml`
+    })
+
+    return pathsByName
+  }
+
+  const extractRowsFromSheetXml = (sheetXml: string, sharedStrings: any[] = []): any[][] => {
+    const sheetDataMatch = sheetXml.match(/<(?:\w+:)?sheetData[^>]*>([\s\S]*?)<\/(?:\w+:)?sheetData>/i)
+    if (!sheetDataMatch?.[1]) return []
+
+    const rows: any[][] = []
+    const rowRegex = /<(?:\w+:)?row\b[^>]*>([\s\S]*?)<\/(?:\w+:)?row>/gi
+    const cellRegex = /<(?:\w+:)?c\b([^>]*)>([\s\S]*?)<\/(?:\w+:)?c>|<(?:\w+:)?c\b([^>]*)\/>/gi
+    const attrRegex = /([A-Za-z_:][\w:.-]*)="([^"]*)"/g
+
+    const readCellValue = (attrsSource: string, content: string): any => {
+      const attrs: Record<string, string> = {}
+      let attrMatch: RegExpExecArray | null
+      while ((attrMatch = attrRegex.exec(attrsSource)) !== null) {
+        attrs[attrMatch[1]] = attrMatch[2]
+      }
+
+      const cellType = attrs.t || ''
+      const valueMatch = content.match(/<(?:\w+:)?v[^>]*>([\s\S]*?)<\/(?:\w+:)?v>/i)
+      const inlineStringMatch = content.match(/<(?:\w+:)?t[^>]*>([\s\S]*?)<\/(?:\w+:)?t>/i)
+      const rawValue = valueMatch?.[1] ?? inlineStringMatch?.[1] ?? ''
+      const decodedValue = decodeXmlEntities(rawValue)
+
+      if (cellType === 's') {
+        const stringIndex = Number(decodedValue)
+        return Number.isFinite(stringIndex)
+          ? (sharedStrings?.[stringIndex]?.t ?? sharedStrings?.[stringIndex]?.r ?? decodedValue)
+          : decodedValue
+      }
+      if (cellType === 'inlineStr' || cellType === 'str') return decodedValue
+      if (cellType === 'b') return decodedValue === '1'
+      if (cellType === 'd') return decodedValue
+
+      const numericValue = Number(decodedValue)
+      return decodedValue !== '' && Number.isFinite(numericValue) ? numericValue : decodedValue
+    }
+
+    let rowMatch: RegExpExecArray | null
+    while ((rowMatch = rowRegex.exec(sheetDataMatch[1])) !== null) {
+      const rowCellsXml = rowMatch[1]
+      const row: any[] = []
+      let cellMatch: RegExpExecArray | null
+
+      while ((cellMatch = cellRegex.exec(rowCellsXml)) !== null) {
+        const attrsSource = cellMatch[1] || cellMatch[3] || ''
+        const content = cellMatch[2] || ''
+        const refMatch = attrsSource.match(/\br="([^"]+)"/)
+        if (!refMatch?.[1]) continue
+
+        const cellPos = utils.decode_cell(refMatch[1])
+        row[cellPos.c] = readCellValue(attrsSource, content)
+      }
+
+      if (row.some(val => val !== undefined && val !== null && val !== '')) {
+        rows.push(row)
+      }
+    }
+
+    return rows
+  }
+
   // Auto-Generate Table Result from QC Data
   const handleAutoGenerate = async (sectionIndex: number) => {
     if (tableEditIndex === null) return;
@@ -796,7 +1050,7 @@ type ResultItem = {
     setIsImporting(true)
     try {
       const data = await file.arrayBuffer()
-      const workbook = read(data)
+      const workbook = read(data, { raw: true, cellDates: true })
       const worksheet = workbook.Sheets[workbook.SheetNames[0]]
       const jsonData = utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
 
@@ -881,18 +1135,54 @@ type ResultItem = {
 
     try {
       const data = await file.arrayBuffer()
-      const workbook = read(data)
+      const workbook: any = read(data, { raw: true, cellDates: true, bookFiles: true })
+      const sheetXmlPaths = getWorkbookSheetXmlPaths(workbook)
+      const sharedStrings = Array.isArray(workbook.Strings) ? workbook.Strings : []
 
       const sheetsData: { name: string, data: any[][] }[] = []
       const invalidSheets: string[] = []
 
-      workbook.SheetNames.forEach(name => {
+      workbook.SheetNames.forEach((name: string) => {
         const worksheet = workbook.Sheets[name]
+        const sheetXmlPath = sheetXmlPaths[name]
+        const sheetXml = decodeWorkbookFileText(sheetXmlPath ? findWorkbookFile(workbook, sheetXmlPath) : null)
+        const xmlRows = sheetXml ? extractRowsFromSheetXml(sheetXml, sharedStrings) : []
 
         // Manual Extraction to bypass `sheet_to_json` format coercion and get pure `.v` (raw value)
         const jsonData: any[][] = [];
-        const ref = worksheet['!ref'];
-        if (ref) {
+        const refFromMetadata = worksheet['!ref'];
+        const cellAddresses = Object.keys(worksheet).filter(key => /^[A-Z]+[0-9]+$/i.test(key))
+        let ref = refFromMetadata
+        if (cellAddresses.length > 0) {
+          let minRow = Number.POSITIVE_INFINITY
+          let minCol = Number.POSITIVE_INFINITY
+          let maxRow = Number.NEGATIVE_INFINITY
+          let maxCol = Number.NEGATIVE_INFINITY
+
+          cellAddresses.forEach(addr => {
+            const cellPos = utils.decode_cell(addr)
+            if (cellPos.r < minRow) minRow = cellPos.r
+            if (cellPos.c < minCol) minCol = cellPos.c
+            if (cellPos.r > maxRow) maxRow = cellPos.r
+            if (cellPos.c > maxCol) maxCol = cellPos.c
+          })
+
+          const computedRef = utils.encode_range({
+            s: { r: minRow, c: minCol },
+            e: { r: maxRow, c: maxCol }
+          })
+
+          if (!ref || (utils.decode_range(computedRef).e.r > utils.decode_range(ref).e.r)) {
+            ref = computedRef
+          }
+
+          console.log(`[raw-upload] Sheet "${name}" ref metadata=${refFromMetadata || 'none'} computed=${computedRef} cells=${cellAddresses.length}`)
+        }
+
+        if (xmlRows.length > 0) {
+          jsonData.push(...xmlRows)
+          console.log(`[raw-upload] Sheet "${name}" xmlRows=${xmlRows.length} xmlPath=${sheetXmlPath || 'unknown'}`)
+        } else if (ref) {
           const range = utils.decode_range(ref);
           for (let R = range.s.r; R <= range.e.r; ++R) {
             const row: any[] = [];
@@ -921,26 +1211,50 @@ type ResultItem = {
         }
 
         if (jsonData.length > 0) {
-          // Validation: Check headers (Flexible)
-          const headers = (jsonData[0] as any[]).map(h => String(h).toLowerCase().trim())
+          // Validation: detect the actual header row in the first few rows.
+          // Some workbooks have stale ranges / blank rows above the real header.
+          let detectedHeaderIndex = -1
+          let detectedHeaders: string[] = []
 
-          const hasTimestamp = headers.some(h => h.includes('timestamp') || h.includes('waktu') || h.includes('time') || h.includes('tanggal'))
-          const hasStandard = headers.some(h => h.includes('standar') || h.includes('ref') || h.includes('master') || h.includes('std'))
-          const hasUUT = headers.some(h => h.includes('uut') || h.includes('bacaan') || h.includes('reading') || h.includes('alat'))
+          for (let i = 0; i < Math.min(jsonData.length, 10); i++) {
+            const headers = (jsonData[i] as any[]).map(h => String(h).toLowerCase().trim())
+            const hasTimestamp = headers.some(h => h.includes('timestamp') || h.includes('waktu') || h.includes('time') || h.includes('tanggal'))
+            const hasStandard = headers.some(h => h.includes('standar') || h.includes('standard') || h.includes('ref') || h.includes('master') || h.includes('std'))
+            const hasUUT = headers.some(h => h.includes('uut') || h.includes('bacaan') || h.includes('reading') || h.includes('alat'))
 
-          if (hasTimestamp && hasStandard && hasUUT) {
-            sheetsData.push({ name, data: jsonData })
+            if (hasTimestamp && hasStandard && hasUUT) {
+              detectedHeaderIndex = i
+              detectedHeaders = headers
+              break
+            }
+          }
+
+          if (detectedHeaderIndex !== -1) {
+            const normalizedData = detectedHeaderIndex === 0
+              ? jsonData
+              : jsonData.slice(detectedHeaderIndex)
+            console.log(`[raw-upload] Sheet "${name}" headerRow=${detectedHeaderIndex + 1}`, detectedHeaders)
+            sheetsData.push({ name, data: normalizedData })
           } else {
+            const previewHeaders = (jsonData[0] as any[]).map(h => String(h).toLowerCase().trim())
             const missing = []
-            if (!hasTimestamp) missing.push('Timestamp/Waktu')
-            if (!hasStandard) missing.push('Standard/Ref')
-            if (!hasUUT) missing.push('UUT/Reading')
-            invalidSheets.push(`${name} (Missing: ${missing.join(', ')})`)
+            if (!previewHeaders.some(h => h.includes('timestamp') || h.includes('waktu') || h.includes('time') || h.includes('tanggal'))) missing.push('Timestamp/Waktu')
+            if (!previewHeaders.some(h => h.includes('standar') || h.includes('standard') || h.includes('ref') || h.includes('master') || h.includes('std'))) missing.push('Standard/Ref')
+            if (!previewHeaders.some(h => h.includes('uut') || h.includes('bacaan') || h.includes('reading') || h.includes('alat'))) missing.push('UUT/Reading')
+            invalidSheets.push(`${name} (Missing: ${missing.join(', ') || 'Header tidak ditemukan pada 10 baris awal'})`)
           }
         }
       })
 
       console.log('Raw Data Sheets:', sheetsData)
+      console.log(
+        '[raw-upload] final sheet counts:',
+        sheetsData.map((sheet) => ({
+          name: sheet.name,
+          rowsIncludingHeader: sheet.data.length,
+          dataRows: Math.max(sheet.data.length - 1, 0),
+        }))
+      )
       setRawData(sheetsData)
 
       if (invalidSheets.length > 0) {
@@ -1078,6 +1392,33 @@ type ResultItem = {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+        const fetchWithRetry = async (url: string, attempts = 2): Promise<Response | null> => {
+          for (let attempt = 0; attempt < attempts; attempt += 1) {
+            try {
+              const response = await fetch(url, { cache: 'no-store' })
+              return response
+            } catch (error) {
+              if (attempt === attempts - 1) {
+                console.warn(`[certificates] Fetch failed for ${url}`, error)
+                return null
+              }
+              await sleep(400 * (attempt + 1))
+            }
+          }
+          return null
+        }
+
+        const fetchJsonSafe = async (url: string, fallback: any = null) => {
+          const response = await fetchWithRetry(url)
+          if (!response?.ok) return fallback
+          try {
+            return await response.json()
+          } catch {
+            return fallback
+          }
+        }
+
         // Fetch all stations across pages to ensure every certificate can resolve station name
         const fetchAllStations = async () => {
           if (!role) return { data: [], total: 0, pageSize: 100, totalPages: 0 } // Wait for role
@@ -1087,14 +1428,14 @@ type ResultItem = {
             baseUrl += `&user_id=${user.id}`
           }
 
-          const first = await fetch(`${baseUrl}&page=1`)
-          if (!first.ok) return { data: [], total: 0, pageSize: 100, totalPages: 1 }
+          const first = await fetchWithRetry(`${baseUrl}&page=1`)
+          if (!first?.ok) return { data: [], total: 0, pageSize: 100, totalPages: 1 }
           const firstJson = await first.json()
           const firstData = Array.isArray(firstJson) ? firstJson : (firstJson?.data ?? [])
           const totalPages = (Array.isArray(firstJson) ? 1 : (firstJson?.totalPages ?? 1)) as number
           if (totalPages <= 1) return { data: firstData, total: (firstJson?.total ?? firstData.length) as number, pageSize: 100, totalPages }
           const restPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-          const rest = await Promise.all(restPages.map(p => fetch(`${baseUrl}&page=${p}`).then(r => r.ok ? r.json() : { data: [] })))
+          const rest = await Promise.all(restPages.map(p => fetchJsonSafe(`${baseUrl}&page=${p}`, { data: [] })))
           const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
           return { data: [...firstData, ...restData], total: (firstJson?.total ?? (firstData.length + restData.length)) as number, pageSize: 100, totalPages }
         }
@@ -1107,69 +1448,49 @@ type ResultItem = {
             baseUrl += `&user_id=${user.id}`
           }
 
-          const first = await fetch(`${baseUrl}&page=1`)
-          if (!first.ok) return { data: [], total: 0, pageSize: 100, totalPages: 1 }
+          const first = await fetchWithRetry(`${baseUrl}&page=1`)
+          if (!first?.ok) return { data: [], total: 0, pageSize: 100, totalPages: 1 }
           const firstJson = await first.json()
           const firstData = Array.isArray(firstJson) ? firstJson : (firstJson?.data ?? [])
           const totalPages = (Array.isArray(firstJson) ? 1 : (firstJson?.totalPages ?? 1)) as number
           if (totalPages <= 1) return { data: firstData, total: (firstJson?.total ?? firstData.length) as number, pageSize: 100, totalPages }
           const restPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-          const rest = await Promise.all(restPages.map(p => fetch(`${baseUrl}&page=${p}`).then(r => r.ok ? r.json() : { data: [] })))
+          const rest = await Promise.all(restPages.map(p => fetchJsonSafe(`${baseUrl}&page=${p}`, { data: [] })))
           const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
           return { data: [...firstData, ...restData], total: (firstJson?.total ?? (firstData.length + restData.length)) as number, pageSize: 100, totalPages }
         }
 
         // Fetch all sensors across pages
         const fetchAllSensors = async () => {
-          const first = await fetch('/api/sensors?page=1&pageSize=100')
-          if (!first.ok) return { data: [], total: 0, pageSize: 100, totalPages: 1 }
+          const first = await fetchWithRetry('/api/sensors?page=1&pageSize=100')
+          if (!first?.ok) return { data: [], total: 0, pageSize: 100, totalPages: 1 }
           const firstJson = await first.json()
           const firstData = Array.isArray(firstJson) ? firstJson : (firstJson?.data ?? [])
           const totalPages = (Array.isArray(firstJson) ? 1 : (firstJson?.totalPages ?? 1)) as number
           if (totalPages <= 1) return { data: firstData, total: (firstJson?.total ?? firstData.length) as number, pageSize: 100, totalPages }
           const restPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-          const rest = await Promise.all(restPages.map(p => fetch(`/api/sensors?page=${p}&pageSize=100`).then(r => r.ok ? r.json() : { data: [] })))
+          const rest = await Promise.all(restPages.map(p => fetchJsonSafe(`/api/sensors?page=${p}&pageSize=100`, { data: [] })))
           const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
           return { data: [...firstData, ...restData], total: (firstJson?.total ?? (firstData.length + restData.length)) as number, pageSize: 100, totalPages }
         }
 
-        const [stationsAll, instrumentsAll, sensorsAll, personelRes, certStandardsRes, instrNamesRes, unitsRes] = await Promise.all([
+        const [stationsAll, instrumentsAll, sensorsAll, personelData, certStandardsData, instrNamesData, unitsData] = await Promise.all([
           fetchAllStations(),
           fetchAllInstruments(),
           fetchAllSensors(),
-          fetch('/api/personel'),
-          fetch('/api/cert-standards'),
-          fetch('/api/instrument-names'),
-          fetch('/api/units'),
+          fetchJsonSafe('/api/personel', []),
+          fetchJsonSafe('/api/cert-standards', []),
+          fetchJsonSafe('/api/instrument-names', []),
+          fetchJsonSafe('/api/units', []),
         ])
 
         setStations(Array.isArray(stationsAll) ? stationsAll : (stationsAll as any)?.data ?? [])
         setInstruments(Array.isArray(instrumentsAll) ? instrumentsAll : (instrumentsAll as any)?.data ?? [])
         setSensors(Array.isArray(sensorsAll) ? sensorsAll : (sensorsAll as any)?.data ?? [])
-        if ((instrNamesRes as Response).ok) {
-          const inNames = await (instrNamesRes as Response).json()
-          setInstrumentNames(Array.isArray(inNames) ? inNames : (inNames?.data ?? []))
-        }
-
-        if (personelRes.ok) {
-          const p = await personelRes.json()
-          setPersonel(Array.isArray(p) ? p : [])
-        }
-
-        if (unitsRes.ok) {
-          const u = await unitsRes.json()
-          setUnits(Array.isArray(u) ? u : [])
-        }
-
-        // Handle standard certs
-        try {
-          if (certStandardsRes.ok) {
-            const certs = await certStandardsRes.json()
-            setStandardCerts(Array.isArray(certs) ? certs : [])
-          }
-        } catch (e) {
-          console.error('Failed to load standard certs', e)
-        }
+        setInstrumentNames(Array.isArray(instrNamesData) ? instrNamesData : (instrNamesData?.data ?? []))
+        setPersonel(Array.isArray(personelData) ? personelData : [])
+        setUnits(Array.isArray(unitsData) ? unitsData : [])
+        setStandardCerts(Array.isArray(certStandardsData) ? certStandardsData : [])
 
       } catch (e) {
         console.error('Failed to fetch data:', e)
@@ -1233,6 +1554,32 @@ type ResultItem = {
     setInstrumentPreview({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.instrument, sensors.length, instruments.length]);
+
+  // Auto-resolve instrument_code saat user memilih INSTRUMEN UUT di dropdown
+  // "Pilih Instrument (UUT)". Chain:
+  //   form.instrument (= certificate.instrument = instrument.id)
+  //   → instruments[].instrument_names_id (FK ke instrument_names)
+  //   → instrument_names[].code_alat  (kolom yang dikelola admin di menu
+  //                                    "Master Daftar Alat")
+  // Hanya aktif di mode CREATE supaya nilai existing tidak ter-override saat EDIT.
+  useEffect(() => {
+    if (editing) return
+    if (!form.instrument) {
+      if ((form as any).instrument_code) {
+        setForm(prev => ({ ...prev, instrument_code: null }))
+      }
+      return
+    }
+    const inst = instruments.find(i => i.id === form.instrument) as any
+    const nameId = inst?.instrument_names_id ?? null
+    const nm = nameId ? (instrumentNames.find(n => n.id === nameId) as any) : null
+    const resolvedCode: string | null = nm?.code_alat?.toString().trim() || null
+
+    if ((form as any).instrument_code !== resolvedCode) {
+      setForm(prev => ({ ...prev, instrument_code: resolvedCode }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.instrument, instruments.length, instrumentNames.length, editing])
 
   // Pagination + personalization
   const isUserAssigned = (item: Certificate) => {
@@ -1338,20 +1685,13 @@ type ResultItem = {
         station: item.station,
         instrument: item.instrument,
         station_address: (item as any).station_address ?? (item.station ? stations.find(s => s.id === item.station)?.address ?? null : null),
+        // Format nomor (IKK): isi dari item kalau sudah di-backfill, fallback default.
+        certificate_type:  (item as any).certificate_type  ?? 'sert',
+        calibration_place: (item as any).calibration_place ?? 'FC',
+        instrument_code:   (item as any).instrument_code   ?? null,
       })
       // Parse results - can be JSON string or array from DB
-      let parsedResults: any[] = []
-      try {
-        const raw = (item as any).results
-        if (Array.isArray(raw)) {
-          parsedResults = raw
-        } else if (typeof raw === 'string' && raw.trim()) {
-          parsedResults = JSON.parse(raw)
-        }
-      } catch (e) {
-        console.warn('Failed to parse results JSON:', e)
-        parsedResults = []
-      }
+      const parsedResults = resultsToLegacyView((item as any).results)
 
       const savedResults = Array.isArray(parsedResults) && parsedResults.length > 0 ? parsedResults : [{
         sensorId: null,
@@ -1365,16 +1705,70 @@ type ResultItem = {
         unitUut: null,
         unitStd: null
       }]
-      setResults(savedResults)
+
+      // Enrich savedResults with standardInstrumentId/standardCertificateId from original raw data
+      // (these fields are stripped during V0→V1 conversion, so we re-derive them here)
+      const originalSensors = (() => {
+        try {
+          const r = (item as any).results
+          const p = typeof r === 'string' ? JSON.parse(r) : r
+          return Array.isArray(p?.sensors) ? p.sensors : (Array.isArray(p) ? p : [])
+        } catch { return [] }
+      })()
+
+      const resolveStandardInstrumentId = (rawId: unknown): number | null => {
+        const numericId = typeof rawId === 'number'
+          ? rawId
+          : (typeof rawId === 'string' && rawId.trim() !== '' && !Number.isNaN(Number(rawId)) ? Number(rawId) : null)
+        if (!numericId) return null
+
+        // Preferred: value already references instrument.id
+        const instrumentMatch = instruments.find((inst: any) => inst.id === numericId)
+        if (instrumentMatch) return numericId
+
+        // Legacy fallback: value actually points to sensor.id
+        const sensorMatch = sensors.find((sensor: any) => sensor.id === numericId)
+        return sensorMatch?.instrument_id ?? null
+      }
+
+      const enrichedResults = savedResults.map((r: any, idx: number) => {
+        const orig = originalSensors[idx]
+        if (!orig) return r
+        // V1 entry: extract from setup.standard_instruments
+        if (orig.links) {
+          const std = orig.setup?.standard_instruments?.[0] ?? null
+          const resolvedStandardInstrumentId = resolveStandardInstrumentId(std?.instrument_id ?? std?.sensor_id)
+          const matchedCert = std?.certificate_no
+            ? standardCerts.find((c: any) =>
+                c.no_certificate === std.certificate_no &&
+                (std?.sensor_id ? c.sensor_id === std.sensor_id : true)
+              ) ?? standardCerts.find((c: any) => c.no_certificate === std.certificate_no) ?? null
+            : null
+          return {
+            ...r,
+            standardInstrumentId: resolvedStandardInstrumentId,
+            standardCertificateId: matchedCert?.id ?? null,
+            standardCertificateNumber: std?.certificate_no ?? null,
+          }
+        }
+        // V0 entry: these fields are already in r (passthrough from resultsToLegacyView)
+        // Also restore unitUut/unitStd from V0 if present (fallback when raw data not loaded yet)
+        return {
+          ...r,
+          standardInstrumentId: orig.standardInstrumentId ?? r.standardInstrumentId ?? null,
+          standardCertificateId: orig.standardCertificateId ?? r.standardCertificateId ?? null,
+          standardCertificateNumber: orig.standardCertificateNumber ?? r.standardCertificateNumber ?? null,
+          unitUut: orig.unitUut ?? r.unitUut ?? null,
+          unitStd: orig.unitStd ?? r.unitStd ?? null,
+        }
+      })
+
+      setResults(enrichedResults as unknown as ResultItem[])
 
       // Restore global standard instrument from first result (if available)
-      const firstResult = savedResults[0] as any
-      if (firstResult?.standardInstrumentId) {
-        setGlobalStandardInstrumentId(firstResult.standardInstrumentId)
-      }
-      if (firstResult?.standardCertificateNumber) {
-        setGlobalStandardCertificateNumber(firstResult.standardCertificateNumber)
-      }
+      const firstResult = enrichedResults[0] as any
+      setGlobalStandardInstrumentId(firstResult?.standardInstrumentId ?? null)
+      setGlobalStandardCertificateNumber(firstResult?.standardCertificateNumber ?? null)
 
       // Restore sessionDetails from first result
       if (firstResult?.startDate || firstResult?.endDate || firstResult?.place) {
@@ -1385,6 +1779,7 @@ type ResultItem = {
           notes: ''
         })
       }
+      setUseStationAddressForPlace(false)
 
 
       // Fetch Raw Data: session_id is stored inside each result item (results[i].session_id, a JSON field)
@@ -1393,18 +1788,34 @@ type ResultItem = {
         .map((r: any) => r.session_id)
         .find((sid: any) => !!sid) ?? (item as any).session_id ?? null;
 
+      console.log('[edit-open] certificate session ids:', savedResults.map((r: any) => ({
+        sensorId: r.sensorId ?? r.sensor_id ?? null,
+        session_id: r.session_id ?? null,
+      })))
+      console.log('[edit-open] selected session id:', sessionId)
+
       if (sessionId) {
         setRawDataFilename(`Memuat data session ${sessionId}...`)
         fetch(`/api/raw-data?session_id=${sessionId}`)
           .then(res => res.json())
           .then(data => {
             if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-              // Group flat raw_data rows back into sheets by sensor_id_uut
+              // Group by persisted sheet name first. Fallback to sensor_id_uut only when
+              // old records do not have sheet_name. This prevents multiple sheets with
+              // the same UUT sensor from being merged during edit.
               const grouped: Record<string, any[]> = {};
+              const groupedMeta: Record<string, { sensorId: number | null }> = {};
               data.data.forEach((row: any) => {
-                const key = String(row.sensor_id_uut ?? 'unknown');
-                if (!grouped[key]) grouped[key] = [['Timestamp', 'Standard', 'UUT']]; // Headers
-                grouped[key].push([
+                const sheetKey = row.sheet_name && String(row.sheet_name).trim() !== ''
+                  ? `sheet:${String(row.sheet_name).trim()}`
+                  : `sensor:${String(row.sensor_id_uut ?? 'unknown')}`;
+                if (!grouped[sheetKey]) {
+                  grouped[sheetKey] = [['Timestamp', 'Standard', 'UUT']];
+                  groupedMeta[sheetKey] = {
+                    sensorId: row.sensor_id_uut == null ? null : Number(row.sensor_id_uut),
+                  };
+                }
+                grouped[sheetKey].push([
                   row.timestamp,
                   row.standard_data,
                   row.uut_data
@@ -1412,10 +1823,16 @@ type ResultItem = {
               });
 
               const reconstructedSheets = Object.keys(grouped).map((key) => {
-                const sensorId = key === 'unknown' ? null : Number(key);
+                const sensorId = groupedMeta[key]?.sensorId ?? null;
                 const matchedSensor = sensorId ? sensors.find((s: any) => s.id === sensorId) : null;
-                // Get the actual sheet_name stored in DB from the first row of this group
-                const storedSheetName = data.data.find((d: any) => String(d.sensor_id_uut) === key)?.sheet_name;
+                const rowsForKey = data.data.filter((d: any) => {
+                  const candidateKey = d.sheet_name && String(d.sheet_name).trim() !== ''
+                    ? `sheet:${String(d.sheet_name).trim()}`
+                    : `sensor:${String(d.sensor_id_uut ?? 'unknown')}`;
+                  return candidateKey === key;
+                });
+                const firstRow = rowsForKey[0];
+                const storedSheetName = firstRow?.sheet_name;
 
                 // Resolve label: prioritize stored sheet_name, then lookup, skip numeric-only names
                 let sensorLabel: string;
@@ -1423,7 +1840,7 @@ type ResultItem = {
                 if (storedSheetName && !/^\d+$/.test(String(storedSheetName).trim())) {
                   sensorLabel = storedSheetName;
                 } else if (!matchedSensor) {
-                  sensorLabel = key === 'unknown' ? 'Unknown' : `Sensor ${key}`;
+                  sensorLabel = sensorId == null ? 'Unknown' : `Sensor ${sensorId}`;
                 } else {
                   const fromLookup = matchedSensor.sensor_name_id
                     ? instrumentNames.find((n: any) => n.id === matchedSensor.sensor_name_id)?.name
@@ -1442,11 +1859,34 @@ type ResultItem = {
                   name: sensorLabel,
                   data: grouped[key] as any[],
                   sensor_id_uut: sensorId,
-                  sensor_id_std: data.data.find((d: any) => String(d.sensor_id_uut) === key)?.sensor_id_std
+                  sensor_id_std: firstRow?.sensor_id_std,
+                  unit_uut: firstRow?.unit_uut,
+                  unit_std: firstRow?.unit_std,
                 };
               });
 
+              console.log(
+                '[edit-open] reconstructed sheet counts:',
+                reconstructedSheets.map((sheet) => ({
+                  name: sheet.name,
+                  rowsIncludingHeader: Array.isArray(sheet.data) ? sheet.data.length : 0,
+                  dataRows: Array.isArray(sheet.data) ? Math.max(sheet.data.length - 1, 0) : 0,
+                  sensor_id_uut: sheet.sensor_id_uut ?? null,
+                }))
+              )
+
               setRawData(reconstructedSheets);
+
+              // Inject unit_uut/unit_std from reconstructed sheets into results
+              setResults(prev => prev.map((r, idx) => {
+                const sheet = reconstructedSheets[idx];
+                if (!sheet) return r;
+                return {
+                  ...r,
+                  unitUut: sheet.unit_uut ?? r.unitUut ?? null,
+                  unitStd: sheet.unit_std ?? r.unitStd ?? null,
+                };
+              }));
               setRawDataFilename(`Data Session ${sessionId} (${reconstructedSheets.length} sensor)`);
             } else {
               setRawData([]);
@@ -1471,11 +1911,12 @@ type ResultItem = {
         place: '',
         notes: ''
       })
+      setUseStationAddressForPlace(false)
       setGlobalStandardInstrumentId(null)
       setGlobalStandardCertificateNumber(null)
       setInstrumentPreview({})
       setForm({
-        no_certificate: 'Membuat nomor otomatis...',
+        no_certificate: 'Pilih Instrumen UUT & isi No. Identifikasi untuk preview…',
         no_order: '...',
         no_identification: '',
         authorized_by: null,
@@ -1486,25 +1927,12 @@ type ResultItem = {
         station: null,
         instrument: null,
         station_address: null as any,
+        certificate_type: 'sert',
+        calibration_place: 'FC',
+        instrument_code: null,
       })
-
-      fetch('/api/certificates/generate-number')
-        .then(res => res.json())
-        .then(data => {
-          setForm(prev => ({
-            ...prev,
-            no_certificate: data.no_certificate || '',
-            no_order: data.no_order || ''
-          }));
-        })
-        .catch(err => {
-          console.error("Failed to fetch generated numbers", err);
-          setForm(prev => ({
-            ...prev,
-            no_certificate: '',
-            no_order: ''
-          }));
-        });
+      // Preview nomor akan di-fetch oleh useEffect di bawah setiap kali
+      // code_alat / no_identification / place / cert_type berubah.
 
       setResults([{
         sensorId: null,
@@ -1528,14 +1956,87 @@ type ResultItem = {
 
   }
 
+  // Re-fetch preview nomor sertifikat setiap kali komponen format berubah
+  // (hanya di mode CREATE, saat modal terbuka, dan setelah code + no_ident diisi).
+  // Nomor yang ditampilkan cuma preview — server tetap meng-assign nomor final
+  // secara atomik saat submit untuk mencegah race condition.
+  useEffect(() => {
+    if (!isModalOpen) return
+    if (editing) return              // mode edit: pakai nomor existing
+    const code    = (form as any).instrument_code
+    const noIdent = form.no_identification
+    const place   = (form as any).calibration_place || 'FC'
+    const ctype   = (form as any).certificate_type  || 'sert'
+
+    // Butuh code & no_ident terisi untuk preview yang meaningful (khusus FC)
+    if (!code || !noIdent) {
+      setForm(prev => ({
+        ...prev,
+        no_certificate: 'Pilih Instrumen UUT & isi No. Identifikasi untuk preview…',
+        no_order: '...',
+      }))
+      return
+    }
+
+    const controller = new AbortController()
+    const handle = setTimeout(() => {
+      const qs = new URLSearchParams({
+        cert_type: ctype,
+        place,
+        code,
+        no_ident: noIdent,
+      }).toString()
+
+      fetch(`/api/certificates/generate-number?${qs}`, { signal: controller.signal })
+        .then(r => r.ok ? r.json() : Promise.reject(r))
+        .then(data => {
+          setForm(prev => ({
+            ...prev,
+            no_certificate: data.no_certificate || '',
+            no_order: data.no_order || '',
+          }))
+        })
+        .catch(err => {
+          if (err?.name === 'AbortError') return
+          console.error('Failed to fetch preview number:', err)
+        })
+    }, 250)
+
+    return () => {
+      clearTimeout(handle)
+      controller.abort()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isModalOpen,
+    editing,
+    (form as any).instrument_code,
+    form.no_identification,
+    (form as any).calibration_place,
+    (form as any).certificate_type,
+  ])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     // Prevent multiple submissions
     if (submitDisabled || isSubmitting) return
 
-    if (!form.no_certificate || !form.no_order || !form.no_identification || !form.issue_date) {
-      showError('Semua field yang wajib diisi harus diisi')
+    // Saat CREATE, no_certificate & no_order digenerate atomik di server
+    // (create_certificate_with_auto_number), jadi nilai di form hanya preview
+    // dan TIDAK WAJIB ada. Saat EDIT, kedua kolom tersebut harus ada.
+    if (editing && (!form.no_certificate || !form.no_order)) {
+      showError('Nomor sertifikat dan nomor order wajib diisi')
+      return
+    }
+    if (!form.no_identification || !form.issue_date) {
+      showError('No. Identifikasi dan Tanggal Terbit wajib diisi')
+      return
+    }
+
+    // Saat CREATE, kode alat ikut ke format nomor (IKK). Auto-resolve dari UUT.
+    if (!editing && !(form as any).instrument_code) {
+      showError('Kode Alat belum tersedia. Pilih Instrumen UUT yang Nama Instrumen-nya sudah punya "Kode Alat" di menu Master Daftar Alat.')
       return
     }
 
@@ -1618,7 +2119,9 @@ type ResultItem = {
       // Helper to save session and raw data (reused for create and update)
       const saveSessionAndRawData = async () => {
         try {
+          const existingSessionId = editing ? getAnyResultSessionId(editing.results) : null
           const sessionPayload = {
+            ...(existingSessionId ? { session_id: existingSessionId } : {}),
             station_id: form.station,
             instrument_id: form.instrument, // Pass instrument ID for uut_instrument_id
             start_date: sessionDetails.start_date || new Date().toISOString(), // Ensure start_date (mapped to tgl_kalibrasi)
@@ -1629,12 +2132,18 @@ type ResultItem = {
           }
 
           const sessionRes = await fetch('/api/calibration-sessions', {
-            method: 'POST',
+            method: existingSessionId ? 'PUT' : 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(sessionPayload)
           })
 
-          if (sessionRes.ok) {
+          if (!sessionRes.ok) {
+            const errData = await sessionRes.json().catch(() => ({}))
+            const errMsg = errData.error || errData.message || sessionRes.statusText || 'Unknown error'
+            throw new Error(`Gagal membuat sesi kalibrasi: ${errMsg} (Status: ${sessionRes.status})`)
+          }
+
+          {
             const sessionData = await sessionRes.json()
             console.log('Session Created/Found:', sessionData)
 
@@ -1643,8 +2152,7 @@ type ResultItem = {
               // Validate: Ensure all sheets have a selected UUT Sensor
               const missingUUT = rawData.some((_, idx) => !results[idx]?.sensorId);
               if (missingUUT) {
-                showError("Mohon pilih Sensor UUT untuk setiap sheet data mentah sebelum menyimpan.");
-                return null;
+                throw new Error("Mohon pilih Sensor UUT untuk setiap sheet data mentah sebelum menyimpan.");
               }
 
               const rawDataPayload = {
@@ -1712,9 +2220,18 @@ type ResultItem = {
               };
 
               console.log('DEBUG: Sending Raw Data Payload:', JSON.stringify(rawDataPayload, null, 2));
+              console.log(
+                '[raw-save] sheet counts:',
+                rawDataPayload.data.map((sheet: any) => ({
+                  name: sheet.name,
+                  rowsIncludingHeader: Array.isArray(sheet.data) ? sheet.data.length : 0,
+                  dataRows: Array.isArray(sheet.data) ? Math.max(sheet.data.length - 1, 0) : 0,
+                  sensor_id_uut: sheet.sensor_id_uut,
+                }))
+              )
 
               const rawRes = await fetch('/api/raw-data', {
-                method: 'POST',
+                method: existingSessionId ? 'PUT' : 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   ...rawDataPayload,
@@ -1737,8 +2254,8 @@ type ResultItem = {
           }
         } catch (sessionErr) {
           console.error('Failed to save session/raw data', sessionErr)
+          throw sessionErr
         }
-        return null
       }
 
       if (editing) {
@@ -1755,6 +2272,11 @@ type ResultItem = {
         const finalResults = sessionId
           ? results.map(r => ({ ...r, session_id: sessionId }))
           : results;
+
+        console.log('[certificate-update] final results session ids:', finalResults.map((r: any) => ({
+          sensorId: r.sensorId,
+          session_id: r.session_id ?? null,
+        })))
 
         // Update Certificate
         await updateCertificate(editing.id, { ...payload, results: finalResults } as any)
@@ -1861,9 +2383,9 @@ type ResultItem = {
       )}
 
       {/* Header dengan background putih dan aksen biru elegan */}
-      <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-4 relative overflow-hidden">
+      <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-4 relative overflow-hidden z-0">
         <BatikBackground />
-        <div className="relative z-10 flex justify-between items-center">
+        <div className="relative z-[1] flex justify-between items-center">
           <div>
             <Breadcrumb items={[{ label: 'Documents', href: '#' }, { label: 'Certificates' }]} />
           </div>
@@ -2131,15 +2653,27 @@ type ResultItem = {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${item.status === 'draft' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                      item.status === 'sent' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                        item.status === 'verified' ? 'bg-green-50 text-green-700 border-green-200' :
-                          item.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
-                            item.status === 'completed' ? 'bg-purple-50 text-purple-700 border-purple-200' :
-                              'bg-gray-50 text-gray-700 border-gray-200'
-                      }`}>
-                      {item.status || 'draft'}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${item.status === 'draft' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                        item.status === 'sent' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                          item.status === 'verified' ? 'bg-green-50 text-green-700 border-green-200' :
+                            item.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
+                              item.status === 'completed' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                                'bg-gray-50 text-gray-700 border-gray-200'
+                        }`}>
+                        {item.status || 'draft'}
+                      </span>
+                      {(item as any).calibration_kind && (
+                        <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded border ${(item as any).calibration_kind === 'LC' ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-sky-50 text-sky-700 border-sky-200'}`}>
+                          {(item as any).calibration_kind}
+                        </span>
+                      )}
+                      {(item as any).results_frozen_at && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded border bg-gray-100 text-gray-500 border-gray-300" title={`Results dibekukan: ${new Date((item as any).results_frozen_at).toLocaleString('id-ID')}`}>
+                          🔒
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-sm font-medium">
                     <div className="relative inline-block text-left" data-action-menu="true">
@@ -2160,58 +2694,18 @@ type ResultItem = {
                           <div className="py-1">
                             {item.pdf_path ? (
                               <>
-                                <a
-                                  href={`/api/certificates/${item.id}/pdf?t=${encodeURIComponent(String((item as any).pdf_generated_at || Date.now()))}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
+                                <button
+                                  type="button"
+                                  onClick={() => openSignedPdf(item)}
                                   className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
                                 >
                                   <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                   </svg>
                                   View Signed PDF
-                                </a>
+                                </button>
                                 <button
-                                  onClick={async () => {
-                                    try {
-                                      const pdfEndpoint = `/api/certificates/${item.id}/pdf?download=true&t=${Date.now()}`
-                                      const response = await fetch(pdfEndpoint, { cache: 'no-store' })
-                                      if (!response.ok) throw new Error('Failed to get PDF')
-
-                                      const contentType = response.headers.get('Content-Type') || ''
-                                      if (!contentType.toLowerCase().includes('application/pdf')) {
-                                        const errorText = await response.text().catch(() => '')
-                                        throw new Error(`Response download bukan PDF yang valid.${errorText ? ` ${errorText.slice(0, 160)}` : ''}`)
-                                      }
-
-                                      const contentDisposition = response.headers.get('Content-Disposition')
-                                      let filename = `Certificate_${item.no_certificate || item.id}.pdf`
-                                      if (contentDisposition) {
-                                        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i)
-                                        if (filenameMatch && filenameMatch[1]) {
-                                          filename = filenameMatch[1].replace(/['"]/g, '')
-                                          if (filename.includes('%')) filename = decodeURIComponent(filename)
-                                        }
-                                      }
-
-                                      if (!filename.toLowerCase().endsWith('.pdf')) filename = `${filename}.pdf`
-
-                                      const blob = await response.blob()
-                                      const url = window.URL.createObjectURL(blob)
-                                      const a = document.createElement('a')
-                                      a.href = url
-                                      a.download = filename
-                                      a.type = 'application/pdf'
-                                      document.body.appendChild(a)
-                                      a.click()
-                                      window.URL.revokeObjectURL(url)
-                                      document.body.removeChild(a)
-                                      setActionDropdownOpenId(null)
-                                    } catch (err) {
-                                      console.error('Error downloading PDF:', err)
-                                      showError('Failed to download PDF. Please try again.')
-                                    }
-                                  }}
+                                  onClick={() => downloadSignedPdf(item)}
                                   className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
                                 >
                                   <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2257,17 +2751,16 @@ type ResultItem = {
                               View Certificate
                             </a>
                             {item.pdf_path && (
-                              <a
-                                href={`/api/certificates/${item.id}/pdf?t=${encodeURIComponent(String((item as any).pdf_generated_at || Date.now()))}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                              <button
+                                type="button"
+                                onClick={() => openSignedPdf(item)}
                                 className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
                               >
                                 <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                 </svg>
                                 View Saved PDF
-                              </a>
+                              </button>
                             )}
                           </div>
 
@@ -2282,46 +2775,7 @@ type ResultItem = {
                             </button>
                             {item.pdf_path && (
                               <button
-                                onClick={async () => {
-                                  try {
-                                    const pdfEndpoint = `/api/certificates/${item.id}/pdf?download=true&t=${Date.now()}`
-
-                                    const response = await fetch(pdfEndpoint, { cache: 'no-store' })
-                                    if (!response.ok) throw new Error('Failed to get PDF')
-
-                                    const contentType = response.headers.get('Content-Type') || ''
-                                    if (!contentType.toLowerCase().includes('application/pdf')) {
-                                      const errorText = await response.text().catch(() => '')
-                                      throw new Error(`Response download bukan PDF yang valid.${errorText ? ` ${errorText.slice(0, 160)}` : ''}`)
-                                    }
-
-                                    const contentDisposition = response.headers.get('Content-Disposition')
-                                    let filename = `Certificate_${item.no_certificate || item.id}.pdf`
-                                    if (contentDisposition) {
-                                      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i)
-                                      if (filenameMatch && filenameMatch[1]) {
-                                        filename = filenameMatch[1].replace(/['"]/g, '')
-                                        if (filename.includes('%')) filename = decodeURIComponent(filename)
-                                      }
-                                    }
-
-                                    if (!filename.toLowerCase().endsWith('.pdf')) filename = `${filename}.pdf`
-
-                                    const blob = await response.blob()
-                                    const url = window.URL.createObjectURL(blob)
-                                    const a = document.createElement('a')
-                                    a.href = url
-                                    a.download = filename
-                                    a.type = 'application/pdf'
-                                    document.body.appendChild(a)
-                                    a.click()
-                                    window.URL.revokeObjectURL(url)
-                                    document.body.removeChild(a)
-                                  } catch (err) {
-                                    console.error('Error downloading PDF:', err)
-                                    showError('Failed to download PDF. Please try again.')
-                                  }
-                                }}
+                                onClick={() => downloadSignedPdf(item)}
                                 className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
                               >
                                 <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2333,9 +2787,7 @@ type ResultItem = {
 
                             <button
                               onClick={() => {
-                                const sessionId = Array.isArray(item.results) && item.results.length > 0
-                                  ? (item.results[0] as any).session_id
-                                  : null;
+                                const sessionId = getAnyResultSessionId(item.results);
 
                                 if (sessionId) {
                                   setQcModalCertificate(item);
@@ -2354,9 +2806,7 @@ type ResultItem = {
                             </button>
                             <button
                               onClick={async () => {
-                                const sessionId = Array.isArray(item.results) && item.results.length > 0
-                                  ? (item.results[0] as any).session_id
-                                  : null;
+                                const sessionId = getAnyResultSessionId(item.results);
 
                                 if (sessionId) {
                                   setUncertaintyModalCertificate(item);
@@ -2574,11 +3024,16 @@ type ResultItem = {
                         onChange={(value) => {
                           const selectedId = (value as number | null)
                           const st = stations.find(s => s.id === selectedId)
+                          const stationAddress = st ? String((st as any).address ?? '') : ''
                           setForm({
                             ...form,
                             station: selectedId,
-                            station_address: st ? (st as any).address ?? null : null
+                            station_address: stationAddress || null
                           })
+                          if (useStationAddressForPlace) {
+                            setSessionDetails(prev => ({ ...prev, place: stationAddress }))
+                            setResults(prev => prev.map(result => ({ ...result, place: stationAddress })))
+                          }
                         }}
                         options={stations.map(s => ({ id: s.id, name: s.name, station_id: s.station_id }))}
                         placeholder="Pilih Stasiun"
@@ -2595,10 +3050,88 @@ type ResultItem = {
                       />
                     </div>
 
-                    {/* Certificate Numbers */}
+                    {/* Komponen format nomor sertifikat sesuai IKK BMKG.
+                        Hanya ditampilkan saat CREATE; saat EDIT nomor sudah ada.
+                        - Jenis Kalibrasi: FC (Field) saat ini; LC disiapkan untuk tahap berikut.
+                        - Kode Alat: auto-resolve dari instrument (UUT) yang dipilih,
+                          via relasi instrument.instrument_names_id → instrument_names.code_alat. */}
+                    {!editing && (
+                      <>
+                        <div className="space-y-1">
+                          <label className="block text-xs font-semibold text-gray-700">Jenis Kalibrasi *</label>
+                          <select
+                            value={(form as any).calibration_place || 'FC'}
+                            onChange={(e) => setForm({ ...form, calibration_place: e.target.value as any })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                          >
+                            <option value="FC">Field Calibration (FC)</option>
+                            <option value="LC" disabled>Lab Calibration (LC) — belum aktif</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-xs font-semibold text-gray-700">
+                            Kode Alat <span className="font-normal text-gray-500">(auto dari UUT)</span>
+                          </label>
+                          <input
+                            type="text"
+                            readOnly
+                            value={(form as any).instrument_code || ''}
+                            placeholder={form.instrument ? 'Kode alat tidak tersedia untuk instrumen ini' : 'Pilih Instrumen UUT dulu…'}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700 text-sm"
+                          />
+                          {form.instrument && !(form as any).instrument_code && (
+                            <p className="text-[11px] text-red-500 italic">
+                              Nama Instrumen terhubung ke instrumen ini belum punya "Kode Alat". Minta admin isi di menu "Master Daftar Alat".
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {/* Certificate Numbers
+                        Saat CREATE, no_certificate & no_order digenerate atomik di server
+                        (create_certificate_with_auto_number) sehingga read-only & berperan
+                        sebagai preview saja. Saat EDIT, keduanya editable normal. */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700">
+                        {editing ? 'No. Sertifikat *' : 'No. Sertifikat (otomatis)'}
+                      </label>
+                      <input
+                        required={!!editing}
+                        readOnly={!editing}
+                        type="text"
+                        value={form.no_certificate}
+                        onChange={(e) => setForm({ ...form, no_certificate: e.target.value })}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] ${
+                          editing
+                            ? 'border-gray-300'
+                            : 'border-gray-200 bg-gray-50 text-gray-700 cursor-not-allowed'
+                        }`}
+                      />
+                      {!editing && (
+                        <p className="text-[11px] text-gray-500 italic">
+                          Nomor final akan ditetapkan otomatis saat disimpan untuk mencegah duplikasi.
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700">
+                        {editing ? 'No. Order *' : 'No. Order (otomatis)'}
+                      </label>
+                      <input
+                        required={!!editing}
+                        readOnly={!editing}
+                        type="text"
+                        value={form.no_order}
+                        onChange={(e) => setForm({ ...form, no_order: e.target.value })}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] ${
+                          editing
+                            ? 'border-gray-300'
+                            : 'border-gray-200 bg-gray-50 text-gray-700 cursor-not-allowed'
+                        }`}
+                      />
+                    </div>
                     {[
-                      { label: 'No. Sertifikat *', value: form.no_certificate, onChange: (e: any) => setForm({ ...form, no_certificate: e.target.value }), type: 'text', required: true },
-                      { label: 'No. Order *', value: form.no_order, onChange: (e: any) => setForm({ ...form, no_order: e.target.value }), type: 'text', required: true },
                       { label: 'No. Identifikasi *', value: form.no_identification, onChange: (e: any) => setForm({ ...form, no_identification: e.target.value }), type: 'text', required: true },
                       { label: 'Tanggal Terbit *', value: form.issue_date, onChange: (e: any) => setForm({ ...form, issue_date: e.target.value }), type: 'date', required: true },
                     ].map((field, index) => (
@@ -2690,6 +3223,23 @@ type ResultItem = {
                   </div>
                 </div>
 
+                {/* Frozen banner — tampil jika results sudah dibekukan */}
+                {(editing as any)?.results_frozen_at && (
+                  <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                    <span className="text-lg leading-none">🔒</span>
+                    <div>
+                      <p className="text-sm font-semibold text-amber-800">Hasil kalibrasi telah dibekukan</p>
+                      <p className="text-xs text-amber-700 mt-0.5">
+                        Dibekukan sejak {new Date((editing as any).results_frozen_at).toLocaleString('id-ID')}.
+                        Bagian II dan III tidak dapat diedit. Untuk membuka kembali, sertifikat harus dikembalikan ke status Draft melalui alur penolakan verifikator.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Wrapper disabled untuk Bagian II & III saat frozen */}
+                <div className={(editing as any)?.results_frozen_at ? 'pointer-events-none opacity-50 select-none' : ''}>
+
                 {/* Bagian II – Detail Sesi Kalibrasi (Global Session Info) */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-6">
                   <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100 flex items-center gap-2">
@@ -2726,10 +3276,35 @@ type ResultItem = {
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Tempat Kalibrasi</label>
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="block text-xs font-semibold text-gray-700">Tempat Kalibrasi</label>
+                        <label className="inline-flex items-center gap-2 text-[11px] font-medium text-gray-600">
+                          <span>Sama dengan alamat stasiun</span>
+                          <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={useStationAddressForPlace}
+                            onChange={(e) => {
+                              const checked = e.target.checked
+                              setUseStationAddressForPlace(checked)
+                              if (checked) {
+                                const stationAddress = resolveStationAddress(form.station, (form as any).station_address)
+                                setSessionDetails(prev => ({ ...prev, place: stationAddress }))
+                                setResults(prev => prev.map(r => ({ ...r, place: stationAddress })))
+                              }
+                            }}
+                          />
+                          <span className="relative h-5 w-9 rounded-full bg-gray-300 transition-colors peer-checked:bg-[#1e377c] after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-4" />
+                        </label>
+                      </div>
                       <input
                         type="text"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                        readOnly={useStationAddressForPlace}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] ${
+                          useStationAddressForPlace
+                            ? 'border-gray-200 bg-gray-50 text-gray-700'
+                            : 'border-gray-300'
+                        }`}
                         placeholder="Laboratorium Kalibrasi BMKG..."
                         value={sessionDetails.place}
                         onChange={e => {
@@ -2760,9 +3335,6 @@ type ResultItem = {
                         <InstrumentIcon className="w-5 h-5 text-[#1e377c]" />
                         Pilih Instrument (UUT)
                       </h3>
-                      <a href="/instruments" target="_blank" className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded hover:bg-blue-100 transition-colors">
-                        + Tambah Instrument Baru
-                      </a>
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-gray-600">Instrument *</label>
@@ -2806,9 +3378,6 @@ type ResultItem = {
                         <CertificateIcon className="w-5 h-5 text-green-600" />
                         Alat Standar
                       </h3>
-                      <button type="button" className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded hover:bg-green-100 transition-colors">
-                        + Tambah Sertifikat
-                      </button>
                     </div>
 
                     <div className="space-y-4">
@@ -3504,6 +4073,8 @@ type ResultItem = {
 
 
 
+
+                </div>{/* end frozen wrapper */}
 
                 {/* Footer Action Buttons */}
                 <div className="sticky bottom-0 bg-white/90 backdrop-blur-sm border-t border-gray-200 p-4 -mx-4 -mb-4 flex justify-between items-center z-10">
@@ -4641,11 +5212,7 @@ type ResultItem = {
               setQcModalCertificate(null);
             }}
             title={qcModalCertificate.no_certificate}
-            sessionId={
-              Array.isArray(qcModalCertificate.results) && qcModalCertificate.results.length > 0
-                ? (qcModalCertificate.results[0] as any).session_id
-                : undefined
-            }
+            sessionId={getAnyResultSessionId(qcModalCertificate.results) ?? undefined}
             certificateId={String(qcModalCertificate.id)}
             certificateInstrumentId={qcModalCertificate.instrument || undefined}
             instruments={instruments}
@@ -4654,8 +5221,14 @@ type ResultItem = {
             }
             instrumentNames={instrumentNames}
             standardCerts={standardCerts}
+            resultEntries={resultsToLegacyView(qcModalCertificate.results).map((r: any) => ({
+              sensorId: r.sensorId ?? r.sensor_id ?? null,
+              unitUut: r.unitUut ?? r.unit_uut ?? null,
+              unitStd: r.unitStd ?? r.unit_std ?? null,
+            }))}
+            certificateStatus={qcModalCertificate.status}
             onCalculateSaved={async (updates) => {
-              const results = Array.isArray(qcModalCertificate.results) ? [...qcModalCertificate.results] : [];
+              const results = resultsToLegacyView(qcModalCertificate.results);
 
               updates.forEach(update => {
                 const targetIdx = update.sensorId === 'unknown'
@@ -4671,7 +5244,10 @@ type ResultItem = {
                 // Gunakan updateCertificate dari hook (yg memakai PUT dengan full object)
                 await updateCertificate(qcModalCertificate.id, {
                   ...qcModalCertificate,
-                  results: results
+                  results: results,
+                  // Tandai bahwa user sudah "Hitung & Input Tabel ke Sertifikat".
+                  // Flag ini yang dipakai halaman draft-view untuk unlock KIRIM KONSEP.
+                  calibration_computed_at: new Date().toISOString(),
                 } as any);
                 showSuccess(`✅ Tabel hasil berhasil di-generate & disimpan ke sertifikat ${qcModalCertificate.no_certificate}!`);
               } catch (err) {
@@ -4686,7 +5262,10 @@ type ResultItem = {
 
       {/* LHKS Modal */}
       {
-        lhksCertificate && (
+        lhksCertificate && (() => {
+          const sessionResults = resultsToLegacyView(lhksCertificate.results)
+          const firstResult = sessionResults[0]
+          return (
           <LHKSReport
             isOpen={showLHKSModal}
             onClose={() => {
@@ -4701,20 +5280,21 @@ type ResultItem = {
             }
             rawData={lhksRawData}
             standardCerts={standardCerts}
-            calibrationDate={(lhksCertificate.results as any)?.[0]?.startDate || lhksCertificate.issue_date}
-            calibrationLocation={(lhksCertificate.results as any)?.[0]?.place || ''}
+            calibrationDate={firstResult?.startDate || lhksCertificate.issue_date}
+            calibrationLocation={firstResult?.place || ''}
             environmentConditions={(() => {
-              const envs = (lhksCertificate.results as any)?.[0]?.environment || [];
+              const envs = firstResult?.environment || [];
               const temp = envs.find((e: any) => e.key.toLowerCase().includes('suhu') || e.key.toLowerCase().includes('temp'))?.value;
               const hum = envs.find((e: any) => e.key.toLowerCase().includes('kelembapan') || e.key.toLowerCase().includes('humidity') || e.key.toLowerCase().includes('rh'))?.value;
               return { temperature: temp || '-', humidity: hum || '-' };
             })()}
-            sessionResults={(lhksCertificate.results as any) || []}
+            sessionResults={sessionResults}
             allInstruments={instruments}
             allSensors={sensors}
             instrumentNames={instrumentNames}
           />
-        )
+          )
+        })()
       }
 
       {/* Uncertainty Modal */}

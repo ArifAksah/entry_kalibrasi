@@ -15,6 +15,7 @@ import { useCertificateRejection } from '../../../hooks/useCertificateRejection'
 import LHKSReport from '../../../components/features/LHKSReport'
 import UncertaintyModal from '../../../components/features/UncertaintyModal'
 import { Certificate } from '../../../lib/supabase'
+import { resultsToLegacyView } from '../../../lib/validators/certificate-results-render-adapter'
 import { ViewIcon, CloseIcon, CheckIcon } from '../../../components/ui/ActionIcons'
 import Dropdown, { DropdownItem } from '../../../components/ui/Dropdown'
 import { supabase } from '../../../lib/supabase'
@@ -140,9 +141,9 @@ const CertificateVerificationCRUD: React.FC = () => {
     setLhksRawData([])
     setLhksStandardCerts([])
     try {
-      const sessionId = (fullCert.results && Array.isArray(fullCert.results) && fullCert.results.length > 0)
-        ? (fullCert.results[0] as any).session_id
-        : null
+      // Extract session_id from results — works for both V0 (flat array) and V1 (object with sensors[])
+      const legacyView = resultsToLegacyView(fullCert.results)
+      const sessionId = legacyView.map((r: any) => r.session_id).find((sid: any) => !!sid) ?? null
 
       const fetchPromises = []
       if (sessionId) {
@@ -195,9 +196,9 @@ const CertificateVerificationCRUD: React.FC = () => {
 
   const handleOpenUncertainty = async (cert: PendingCertificate) => {
     const fullCert = cert as unknown as Certificate
-    const sessionId = Array.isArray(fullCert.results) && fullCert.results.length > 0
-      ? (fullCert.results[0] as any).session_id
-      : null
+    // Extract session_id from results — works for both V0 (flat array) and V1 (object with sensors[])
+    const legacyView = resultsToLegacyView(fullCert.results)
+    const sessionId = legacyView.map((r: any) => r.session_id).find((sid: any) => !!sid) ?? null
 
     if (!sessionId) {
       showError('Data QC tidak tersedia. Pastikan sertifikat ini memiliki data mentah yang tersimpan (session_id).')
@@ -637,20 +638,9 @@ const CertificateVerificationCRUD: React.FC = () => {
     openModal(cert)
   }
 
-  const getPrimaryActionLabel = (cert: PendingCertificate) => {
-    if (canEditOwnVerification(cert)) {
-      return 'Ubah'
-    }
-
-    if (cert.verification_status.user_verification_level === 3 && cert.verification_status.user_can_act) {
-      return 'Ubah'
-    }
-
-    if (cert.verification_status.user_verification_status === 'pending') {
-      return 'Verifikasi'
-    }
-
-    return cert.verification_status.user_verification_id ? 'Ubah' : 'Verifikasi'
+  const getPrimaryActionLabel = (_cert: PendingCertificate) => {
+    // Seragamkan label tombol aksi utama → selalu 'Verifikasi'
+    return 'Verifikasi'
   }
 
   const renderVerificationProgress = (verificationStatus: PendingCertificate['verification_status']) => (
@@ -950,8 +940,24 @@ const CertificateVerificationCRUD: React.FC = () => {
                       {cert.verification_status.authorized_by === 'approved' && (cert as any).pdf_path && (
                         <>
                           <DropdownItem
-                            href={`/api/certificates/${cert.id}/pdf?t=${encodeURIComponent(String((cert as any).pdf_generated_at || Date.now()))}`}
-                            target="_blank"
+                            onClick={async () => {
+                              try {
+                                const { data: { session } } = await supabase.auth.getSession()
+                                if (!session?.access_token) throw new Error('Not authenticated')
+                                const response = await fetch(`/api/certificates/${cert.id}/pdf?t=${Date.now()}`, {
+                                  cache: 'no-store',
+                                  headers: { 'Authorization': `Bearer ${session.access_token}` }
+                                })
+                                if (!response.ok) throw new Error('Gagal membuka PDF')
+                                const blob = await response.blob()
+                                const url = window.URL.createObjectURL(blob)
+                                window.open(url, '_blank', 'noopener,noreferrer')
+                                window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000)
+                              } catch (err) {
+                                console.error('Error opening PDF:', err)
+                                showError('Gagal membuka PDF.')
+                              }
+                            }}
                             icon={
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -963,7 +969,12 @@ const CertificateVerificationCRUD: React.FC = () => {
                           <DropdownItem
                             onClick={async () => {
                               try {
-                                const response = await fetch(`/api/certificates/${cert.id}/pdf?download=true&t=${Date.now()}`, { cache: 'no-store' })
+                                const { data: { session } } = await supabase.auth.getSession()
+                                if (!session?.access_token) throw new Error('Not authenticated')
+                                const response = await fetch(`/api/certificates/${cert.id}/pdf?download=true&t=${Date.now()}`, {
+                                  cache: 'no-store',
+                                  headers: { 'Authorization': `Bearer ${session.access_token}` }
+                                })
                                 if (!response.ok) {
                                   const errorData = await response.json().catch(() => ({ error: 'Gagal mengunduh PDF' }))
                                   showError(errorData.error || 'Gagal mengunduh PDF.')
@@ -1678,7 +1689,7 @@ const CertificateVerificationCRUD: React.FC = () => {
 
 
       {isPassphraseModalOpen && selectedCertificate && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[150] p-4">
           <div className="w-full max-w-md bg-white rounded-xl shadow-2xl">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
@@ -2077,7 +2088,13 @@ const CertificateVerificationCRUD: React.FC = () => {
       )}
 
       {/* LHKS Modal */}
-      {showLHKSModal && lhksCertificate && (
+      {showLHKSModal && lhksCertificate && (() => {
+        const legacyView = resultsToLegacyView(lhksCertificate.results)
+        const firstResult = legacyView[0]
+        const envs = firstResult?.environment || []
+        const temp = envs.find((e: any) => e.key?.toLowerCase().includes('suhu') || e.key?.toLowerCase().includes('temp'))?.value
+        const hum = envs.find((e: any) => e.key?.toLowerCase().includes('kelembapan') || e.key?.toLowerCase().includes('humidity') || e.key?.toLowerCase().includes('rh'))?.value
+        return (
         <LHKSReport
           isOpen={showLHKSModal}
           onClose={() => { setShowLHKSModal(false); setLhksCertificate(null) }}
@@ -2087,20 +2104,16 @@ const CertificateVerificationCRUD: React.FC = () => {
           sensors={instruments.find(i => i.id === (typeof lhksCertificate.instrument === 'object' ? (lhksCertificate.instrument as any)?.id : lhksCertificate.instrument))?.sensor || []}
           rawData={lhksRawData}
           standardCerts={lhksStandardCerts}
-          calibrationDate={(lhksCertificate.results as any)?.[0]?.startDate || lhksCertificate.issue_date || ''}
-          calibrationLocation={(lhksCertificate.results as any)?.[0]?.place || ''}
-          environmentConditions={(() => {
-            const envs = (lhksCertificate.results as any)?.[0]?.environment || []
-            const temp = envs.find((e: any) => e.key?.toLowerCase().includes('suhu') || e.key?.toLowerCase().includes('temp'))?.value
-            const hum = envs.find((e: any) => e.key?.toLowerCase().includes('kelembapan') || e.key?.toLowerCase().includes('humidity') || e.key?.toLowerCase().includes('rh'))?.value
-            return { temperature: temp || '-', humidity: hum || '-' }
-          })()}
-          sessionResults={(lhksCertificate.results as any) || []}
+          calibrationDate={firstResult?.startDate || lhksCertificate.issue_date || ''}
+          calibrationLocation={firstResult?.place || ''}
+          environmentConditions={{ temperature: temp || '-', humidity: hum || '-' }}
+          sessionResults={legacyView}
           allInstruments={instruments}
           allSensors={sensors}
           instrumentNames={instrumentNames}
         />
-      )}
+        )
+      })()}
 
       {showUncertaintyModal && uncertaintyCertificate && (
         <UncertaintyModal
@@ -2122,4 +2135,3 @@ const CertificateVerificationCRUD: React.FC = () => {
 }
 
 export default CertificateVerificationCRUD
-

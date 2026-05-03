@@ -5,6 +5,7 @@ import { Certificate, Instrument, Sensor } from '../../lib/supabase';
 import { calculateUncertaintyBudget, UncertaintyResult, interpolateU95FromPoints } from '../../lib/uncertainty-utils';
 import { parseCertCorrectionPoints, interpolateCorrectionFromPoints } from '../../lib/qc-utils';
 import { convertUnit } from '../../lib/unitConversion';
+import { resultsToLegacyView } from '../../lib/validators/certificate-results-render-adapter';
 // RawDataRow defined locally to avoid circular imports
 interface RawDataRow {
     id: any;
@@ -202,18 +203,21 @@ function UncertaintyContent({
     // 1. Preparation
     const uutSensor = activeTab !== 'unknown' ? sensors.find(s => s.id === activeTab) : null;
     const stdSensorId = currentData.length > 0 ? currentData[0].sensor_id_std : null;
-    const certMatches = certificate.results?.filter((r: any) => {
-        // Strictly match the current UUT sensor or the standard sensor used in the data
-        // Do NOT use `|| r.standardInstrumentId` generically as it will match the first cert (e.g. Pressure) for all tabs
-        return (r.sensor_id_uut === activeTab) || (stdSensorId && r.sensor_id_std === stdSensorId);
-    });
 
+    // Normalize V0/V1 results to a flat legacy view array so .filter works regardless of format
+    const legacyResults = resultsToLegacyView(certificate.results);
+    const certMatches = legacyResults.filter((r: any) => {
+        // V0 had sensor_id_uut/sensor_id_std at top level; V1 puts UUT in links.sensor_id (mapped to sensorId by adapter).
+        // Match by UUT sensor (current active tab) since standard cert is determined by UUT here.
+        return r.sensorId === activeTab || (r as any).sensor_id_uut === activeTab;
+    });
 
     let standardCertRecord = null;
     if (currentData.length > 0 && certMatches && certMatches.length > 0) {
-        const stdCertId = certMatches[0].standardCertificateId;
-        if (stdCertId) {
-            standardCertRecord = standardCerts.find(c => c.id === stdCertId);
+        // Try cert_no from V1 standardInstruments (resolved via standardCerts), then legacy standardCertificateId
+        const m = certMatches[0] as any;
+        if (m.standardCertificateId) {
+            standardCertRecord = standardCerts.find(c => c.id === m.standardCertificateId) ?? null;
         }
     }
 

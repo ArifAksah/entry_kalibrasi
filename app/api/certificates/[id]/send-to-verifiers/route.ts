@@ -151,6 +151,7 @@ export async function POST(
       .update({
         status: 'sent',
         sent_to_verifiers_at: sentAt,
+        results_frozen_at: certificate.results_frozen_at ?? sentAt,
         sent_by: sent_by,
         repair_status: 'none'
       })
@@ -183,6 +184,7 @@ export async function POST(
         id: certificateId,
         status: 'sent',
         sent_to_verifiers_at: sentAt,
+        results_frozen_at: certificate.results_frozen_at ?? sentAt,
         sent_by: sent_by,
         reset_from_level: resetFromLevel
       }

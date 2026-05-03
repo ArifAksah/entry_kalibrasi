@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { canUserAccessCertificate, filterCertificatesForUser } from '../../../../lib/certificate-access';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -67,8 +68,7 @@ export async function GET(request: NextRequest) {
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       certificates = data;
-    } else {
-      // Other roles see all certificates
+    } else if (userRole === 'calibrator') {
       const { data, error } = await supabaseAdmin
         .from('certificate')
         .select('*')
@@ -76,6 +76,14 @@ export async function GET(request: NextRequest) {
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       certificates = data;
+    } else {
+      const { data, error } = await supabaseAdmin
+        .from('certificate')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      certificates = await filterCertificatesForUser(user.id, userRole, data || []);
     }
 
     // Get verification status for each certificate
@@ -146,6 +154,18 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Certificate ID is required' }, { status: 400 });
     }
 
+    const { data: existingCertificate, error: fetchError } = await supabaseAdmin
+      .from('certificate')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    if (!existingCertificate) return NextResponse.json({ error: 'Certificate not found' }, { status: 404 });
+
+    const allowed = await canUserAccessCertificate(user.id, userRole, existingCertificate);
+    if (!allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
     const { data, error } = await supabaseAdmin
       .from('certificate')
       .update(updateData)
@@ -183,6 +203,18 @@ export async function DELETE(request: NextRequest) {
     if (!id) {
       return NextResponse.json({ error: 'Certificate ID is required' }, { status: 400 });
     }
+
+    const { data: existingCertificate, error: fetchError } = await supabaseAdmin
+      .from('certificate')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    if (!existingCertificate) return NextResponse.json({ error: 'Certificate not found' }, { status: 404 });
+
+    const allowed = await canUserAccessCertificate(user.id, userRole, existingCertificate);
+    if (!allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { error } = await supabaseAdmin
       .from('certificate')

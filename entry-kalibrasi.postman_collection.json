@@ -1,0 +1,270 @@
+{
+  "info": {
+    "_postman_id": "entry-kalibrasi-api",
+    "name": "Entry Kalibrasi API",
+    "description": "API Collection for Entry Kalibrasi Dashboard. Import di Postman lalu set Environment variables.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "apikey", "value": "{{supabase_anon_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"email\": \"{{email}}\", \"password\": \"{{password}}\" }"
+            },
+            "url": {
+              "raw": "{{supabase_url}}/auth/v1/token?grant_type=password",
+              "host": ["{{supabase_url}}"],
+              "path": ["auth", "v1", "token"],
+              "query": [{ "key": "grant_type", "value": "password" }]
+            },
+            "description": "Login via Supabase Auth. Copy access_token ke variable 'token'"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Stations",
+      "item": [
+        {
+          "name": "List Stations",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/stations",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stations"]
+            }
+          }
+        },
+        {
+          "name": "Create Station",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"name\": \"Test Station\", \"address\": \"Jl. Test\", \"time_zone\": \"UTC+07:00\", \"region\": \"Region A\", \"province\": \"Prov B\", \"regency\": \"Reg C\", \"type\": \"AWS\" }"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/stations",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stations"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Personel",
+      "item": [
+        {
+          "name": "List Personel",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/personel",
+              "host": ["{{base_url}}"],
+              "path": ["api", "personel"]
+            }
+          }
+        },
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"email\": \"new@example.com\", \"password\": \"pass123\", \"name\": \"New User\", \"role\": \"calibrator\", \"station_id\": 1 }"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/personel/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "personel", "register"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Instruments",
+      "item": [
+        {
+          "name": "List Instruments",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/instruments",
+              "host": ["{{base_url}}"],
+              "path": ["api", "instruments"]
+            }
+          }
+        },
+        {
+          "name": "Create Instrument",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"manufacturer\": \"Mfg A\", \"type\": \"Thermo\", \"serial_number\": \"SN001\", \"name\": \"Inst 1\" }"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/instruments",
+              "host": ["{{base_url}}"],
+              "path": ["api", "instruments"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Sensors",
+      "item": [
+        {
+          "name": "List Sensors",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/sensors",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sensors"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Certificates",
+      "item": [
+        {
+          "name": "List Certificates",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/certificates",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificates"]
+            }
+          }
+        },
+        {
+          "name": "Create Certificate",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"no_identification\": \"ID-001\", \"issue_date\": \"2024-01-01\", \"instrument_code\": \"AWS\", \"certificate_type\": \"sert\", \"calibration_place\": \"FC\" }"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/certificates",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificates"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Calibration",
+      "item": [
+        {
+          "name": "List Sessions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/calibration-sessions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calibration-sessions"]
+            }
+          }
+        },
+        {
+          "name": "Insert Raw Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"session_id\": 1, \"rows\": [{ \"sheet_name\": \"S1\", \"point_uut\": 10, \"point_std\": 10.1, \"unit_uut\": \"C\", \"unit_std\": \"C\" }] }"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/raw-data",
+              "host": ["{{base_url}}"],
+              "path": ["api", "raw-data"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. User Management",
+      "item": [
+        {
+          "name": "Get User Roles",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/user-roles",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user-roles"]
+            }
+          }
+        },
+        {
+          "name": "Assign Stations",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"user_id\": \"uuid-here\", \"station_ids\": [1, 2] }"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/user-stations",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user-stations"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000", "type": "string" },
+    { "key": "supabase_url", "value": "https://your-project.supabase.co", "type": "string" },
+    { "key": "supabase_anon_key", "value": "your-anon-key", "type": "string" },
+    { "key": "token", "value": "", "type": "string" },
+    { "key": "email", "value": "user@example.com", "type": "string" },
+    { "key": "password", "value": "password", "type": "string" }
+  ]
+}

@@ -16,13 +16,19 @@ export async function GET(request: NextRequest) {
 
     const userId = searchParams.get('user_id')
 
-    let query = supabaseAdmin
-      .from('station')
-      .select('*, user_stations!inner(user_id)', { count: 'exact' })
+    let query
 
     if (userId) {
-      // If filtering by user, use inner join on user_stations
-      query = query.eq('user_stations.user_id', userId)
+      // Filter by user: use inner join so only assigned stations are returned
+      query = supabaseAdmin
+        .from('station')
+        .select('*, user_stations!inner(user_id)', { count: 'exact' })
+        .eq('user_stations.user_id', userId)
+    } else {
+      // No user filter: left join so stations without assignments are also included
+      query = supabaseAdmin
+        .from('station')
+        .select('*', { count: 'exact' })
     }
 
     if (search) {
