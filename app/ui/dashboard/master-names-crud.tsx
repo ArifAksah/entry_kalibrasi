@@ -27,6 +27,7 @@ const MasterNamesCRUD: React.FC = () => {
     const [codeInput, setCodeInput] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [search, setSearch] = useState('')
+    const [confirmDelete, setConfirmDelete] = useState<NameItem | null>(null)
     const pageSize = 10
     const [currentPage, setCurrentPage] = useState(1)
 
@@ -114,8 +115,13 @@ const MasterNamesCRUD: React.FC = () => {
         }
     }
 
-    const handleDelete = async (item: NameItem) => {
-        if (!confirm(`Hapus "${item.name}"? Data yang sudah dihapus tidak bisa dipulihkan.`)) return
+    const handleDelete = (item: NameItem) => {
+        setConfirmDelete(item)
+    }
+
+    const handleConfirmDelete = async () => {
+        if (!confirmDelete) return
+        const item = confirmDelete
         try {
             const idPath = activeTab === 'instrument_names'
                 ? `/api/instrument-names/${item.id}`
@@ -126,6 +132,7 @@ const MasterNamesCRUD: React.FC = () => {
                 throw new Error(err.error || 'Gagal menghapus data')
             }
             showSuccess(`${label} berhasil dihapus`)
+            setConfirmDelete(null)
             fetchItems()
         } catch (e: any) {
             showError(e.message || 'Gagal menghapus data')
@@ -369,6 +376,39 @@ const MasterNamesCRUD: React.FC = () => {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Confirm Delete Modal */}
+            {confirmDelete && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6">
+                        <div className="flex items-center space-x-3 mb-4">
+                            <div className="p-2 bg-yellow-50 rounded-full">
+                                <svg className="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900">Konfirmasi Hapus</h3>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-6">
+                            Hapus &quot;{confirmDelete.name}&quot;? Data yang sudah dihapus tidak bisa dipulihkan.
+                        </p>
+                        <div className="flex justify-end space-x-2">
+                            <button
+                                onClick={() => setConfirmDelete(null)}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                onClick={handleConfirmDelete}
+                                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg"
+                            >
+                                Hapus
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

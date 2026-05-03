@@ -9,6 +9,8 @@ import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
 import { formatUnit, needsConversion } from '../../../../lib/unitConversion'
 import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClassName } from '../../../../lib/rich-text'
 import { resultsToLegacyView } from '../../../../lib/validators/certificate-results-render-adapter'
+import { formatLatexUnit } from '../../../../lib/qc-utils'
+import { supabase } from '../../../../lib/supabase'
 
 // --- TIPE DATA KOMPREHENSIF ---
 // Saya gabungkan tipe dari ViewCertificatePage.tsx Anda ke sini
@@ -261,19 +263,31 @@ const PrintCertificatePage: React.FC = () => {
   const [allRawData, setAllRawData] = useState<any[]>([])
 
   const computeEnvCondition = useCallback((type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
-    const keywords = type === 'suhu'
-      ? ['suhu', 'temp', 'termometer', 'temperature', 'thermo']
-      : ['kelembab', 'hum', 'hygro', 'rh'];
-
     const matchedRows = sensorRawData.filter(r => {
-      const name = (r.sheet_name || '').toLowerCase();
-      return keywords.some(k => name.includes(k));
+      const rawUnit = String(r.unit_std || r.unit_uut || '');
+      const unit = formatLatexUnit(rawUnit).toLowerCase().trim();
+      const name = (r.sheet_name || r.name || r.category || '').toLowerCase();
+
+      if (type === 'suhu') {
+        const unitIsTemp = unit && (unit.includes('°c') || unit.includes('c') || unit.includes('celcius') || unit.includes('celsius'));
+        const nameIsTemp = ['suhu', 'temp', 'termometer', 'temperature', 'thermo'].some(k => name.includes(k));
+        return unitIsTemp || (nameIsTemp && !unit);
+      }
+
+      const unitIsHum = unit && (unit.includes('%') || unit.includes('rh') || unit.includes('r.h') || unit.includes('kelembaban') || unit.includes('humidity') || unit.includes('hum'));
+      const nameIsHum = ['kelembab', 'lembab', 'humidity', 'hum', 'hygro', 'rh', 'r.h'].some(k => name.includes(k));
+      return unitIsHum || (nameIsHum && !unit);
     });
 
     if (matchedRows.length === 0) return '-';
 
     const values = matchedRows
-      .map(r => r.std_corrected ?? (r.standard_data + (r.std_correction ?? 0)))
+      .map(r => {
+        if (r.std_corrected != null) return Number(r.std_corrected);
+        const standardData = Number(r.standard_data);
+        const stdCorrection = Number(r.std_correction ?? 0);
+        return Number.isFinite(standardData) ? standardData + stdCorrection : NaN;
+      })
       .filter(v => typeof v === 'number' && !isNaN(v));
 
     if (values.length === 0) return '-';
@@ -332,6 +346,38 @@ const PrintCertificatePage: React.FC = () => {
   }, [cert])
   const resultData = useMemo(() => (results && results.length > 0 ? results[0] : null), [results])
 
+  useEffect(() => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return
+
+    const urlParams = new URLSearchParams(window.location.search)
+    const isPdfRender = urlParams.get('pdf') === 'true'
+    if (!isPdfRender) {
+      document.body.dataset.printDataReady = 'true'
+      return
+    }
+
+    const resultSensorIds = (results || [])
+      .map((result: any) => result?.sensorId)
+      .filter((sensorId: any) => sensorId !== null && sensorId !== undefined)
+      .map((sensorId: any) => Number(sensorId))
+      .filter(Number.isFinite)
+    const resultSessionIds = Array.from(new Set((results || [])
+      .map((result: any) => result?.session_id)
+      .filter(Boolean)))
+
+    const hasInstrument = cert?.instrument == null || Boolean(instrument)
+    const hasStation = cert?.station == null || Boolean(station) || Boolean(cert?.station_address)
+    const hasAuthorized = cert?.authorized_by == null || Boolean(authorized) || personel.length > 0
+    const hasSensorLookups = resultSensorIds.length === 0 || resultSensorIds.every((sensorId: number) =>
+      sensors.some((sensor: any) => Number(sensor.id) === sensorId)
+    )
+    const hasRawData = resultSessionIds.length === 0 || allRawData.length > 0
+
+    document.body.dataset.printDataReady = cert && hasInstrument && hasStation && hasAuthorized && hasSensorLookups && hasRawData
+      ? 'true'
+      : 'false'
+  }, [cert, instrument, station, authorized, personel.length, results, sensors, allRawData.length])
+
   // Ringkasan sensor untuk field "Lain-lain / Others" di halaman 1
   const sensorsSummary = useMemo(() => {
     if (!results || results.length === 0) return ''
@@ -352,14 +398,8 @@ const PrintCertificatePage: React.FC = () => {
 
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
 
-    // Use public_id if available for secure verification
     if (cert.public_id) {
       return `${baseUrl}/verify/${cert.public_id}`
-    }
-
-    // Fallback to certificate number if public_id is missing (legacy)
-    if (cert.no_certificate) {
-      return `${baseUrl}/verify/${encodeURIComponent(cert.no_certificate)}`
     }
 
     return ''
@@ -377,11 +417,11 @@ const PrintCertificatePage: React.FC = () => {
     }
 
     // Helper: fetch with timeout to prevent any single hung request from blocking page
-    const fetchWithTimeout = async (url: string, timeoutMs = 12000): Promise<Response | null> => {
+    const fetchWithTimeout = async (url: string, timeoutMs = 12000, headers?: HeadersInit): Promise<Response | null> => {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), timeoutMs)
       try {
-        return await fetch(url, { signal: controller.signal })
+        return await fetch(url, { signal: controller.signal, headers })
       } catch (e) {
         console.warn(`[Print] fetch failed/timeout: ${url}`, e)
         return null
@@ -397,9 +437,26 @@ const PrintCertificatePage: React.FC = () => {
 
     const load = async () => {
       console.log('[Print] Starting load for cert id:', id)
+      if (typeof document !== 'undefined') {
+        document.body.dataset.printDataReady = 'false'
+      }
       try {
         // CRITICAL PATH: certificate must load first — page can't render without it
-        const cRes = await fetchWithTimeout(`/api/certificates/${id}`, 15000)
+        const urlParams = new URLSearchParams(window.location.search)
+        const renderToken = urlParams.get('render_token')
+        const renderTimestamp = urlParams.get('render_ts')
+        const certificateHeaders: HeadersInit = {}
+
+        if (renderToken && renderTimestamp) {
+          certificateHeaders['x-pdf-render-token'] = renderToken
+          certificateHeaders['x-pdf-render-ts'] = renderTimestamp
+        } else {
+          const { data: { session } } = await supabase.auth.getSession()
+          if (!session?.access_token) throw new Error('Not authenticated')
+          certificateHeaders['Authorization'] = `Bearer ${session.access_token}`
+        }
+
+        const cRes = await fetchWithTimeout(`/api/certificates/${id}`, 15000, certificateHeaders)
         if (!cRes) throw new Error('Timeout: gagal memuat data sertifikat')
         const c = await safeJson(cRes)
         if (!cRes.ok) throw new Error(c?.error || `Failed to load certificate (HTTP ${cRes.status})`)
@@ -543,8 +600,13 @@ const PrintCertificatePage: React.FC = () => {
         return
       }
 
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+
       // Use certificate ID for API call to ensure uniqueness
-      const res = await fetch(`/api/verify-certificate?id=${cert.id}`)
+      const res = await fetch(`/api/verify-certificate?id=${cert.id}`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      })
       if (res.ok) {
         const data = await res.json()
         console.log('🔍 [Print] verify-certificate response:', data)
@@ -776,6 +838,67 @@ const PrintCertificatePage: React.FC = () => {
       position: relative;
       /* Jangan paksa page break di semua container; kita atur manual di elemen tertentu */
     }
+
+    .page-container.cover-page {
+      height: 297mm;
+      padding: 5mm;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .cover-content {
+      position: static !important;
+      z-index: 10;
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: flex-start !important;
+      padding-top: 0 !important;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .cover-header {
+      min-height: 25mm;
+      padding-bottom: 3mm;
+      align-items: center;
+      margin-top: 0;
+    }
+
+    .cover-logo-slot {
+      width: 26mm;
+      flex: 0 0 26mm;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .cover-logo-slot img {
+      width: 22mm !important;
+      height: auto !important;
+      max-height: 24mm !important;
+      object-fit: contain;
+    }
+
+    .cover-header-spacer {
+      width: 26mm;
+      flex: 0 0 26mm;
+    }
+
+    .cover-agency-title h1,
+    .cover-agency-title h2 {
+      font-size: 11.5pt !important;
+      line-height: 1.28 !important;
+      margin: 0 !important;
+    }
+
+    .cover-title-block {
+      margin: 6mm 0 6mm !important;
+    }
+
+    .cover-title-block .cert-info-text {
+      margin-top: 1.5mm !important;
+    }
     
     /* Halaman hasil kalibrasi (dengan QR footer) — margin uniform 5mm (0.5 cm) di semua sisi */
     .page-container.results-page {
@@ -802,11 +925,9 @@ const PrintCertificatePage: React.FC = () => {
     
     /* Footer khusus untuk halaman 1 saja */
     .page-1-footer {
-      position: absolute !important;
-      bottom: 5mm !important;
-      left: 5mm !important;
-      right: 5mm !important;
+      position: static !important;
       z-index: 1000 !important;
+      flex: 0 0 auto;
       list-style-type: none !important;
       list-style: none !important;
       list-style-position: outside !important;
@@ -880,8 +1001,8 @@ const PrintCertificatePage: React.FC = () => {
     /* QR code akan selalu di footer karena parent memiliki min-height penuh */
     .page-container.results-page .footer-qr-small.results-page-qr {
       position: absolute !important;
-      bottom: 5mm !important;
-      left: 5mm !important;
+      bottom: 0 !important;
+      left: 0 !important;
       width: 100px !important;
       height: 100px !important;
       z-index: 999 !important;
@@ -907,7 +1028,7 @@ const PrintCertificatePage: React.FC = () => {
 
     .results-footer-shell {
       width: 100%;
-      padding-top: 4.5mm;
+      padding-top: 3mm;
     }
 
     .results-footer-grid {
@@ -919,55 +1040,68 @@ const PrintCertificatePage: React.FC = () => {
     .results-footer-grid td {
       vertical-align: middle;
       color: #000;
-      font-size: 9.5px;
-      line-height: 1.22;
+      font-size: 8.5pt !important;
+      line-height: 1.18 !important;
+      font-weight: 700 !important;
       padding: 0;
     }
 
     .results-footer-qr-cell {
-      width: 15%;
+      width: 22mm;
+      text-align: left;
     }
 
     .results-footer-note-cell {
-      width: 63%;
+      width: auto;
       text-align: center;
-      font-weight: 600;
-      padding: 0 2mm !important;
+      font-weight: 700;
+      padding: 0 4mm !important;
       vertical-align: middle !important;
     }
 
     .results-footer-meta-cell {
-      width: 22%;
+      width: 34mm;
       text-align: right;
       font-weight: 700;
       white-space: nowrap;
       vertical-align: middle !important;
-      padding-top: 2mm !important;
+      padding-top: 0 !important;
     }
 
     .results-footer-qr-wrap {
       display: flex;
       flex-direction: column;
       align-items: flex-start;
-      gap: 0.6mm;
+      gap: 0.8mm;
     }
 
     .results-footer-qr-box {
-      width: 36px;
-      height: 36px;
-      flex: 0 0 36px;
+      width: 12mm;
+      height: 12mm;
+      flex: 0 0 12mm;
     }
 
     .results-footer-form-code {
-      font-size: 9.5px;
-      line-height: 1.1;
-      font-weight: 700;
+      font-size: 7.5pt !important;
+      line-height: 1 !important;
+      font-weight: 700 !important;
+      white-space: nowrap;
     }
 
     .results-footer-note-copy {
-      max-width: 88mm;
+      max-width: 112mm;
       margin: 0 auto;
       text-align: center;
+      font-size: 8.2pt !important;
+      line-height: 1.18 !important;
+      font-weight: 700 !important;
+    }
+
+    .results-footer-meta-cell,
+    .results-footer-meta-cell * {
+      font-size: 8.3pt !important;
+      line-height: 1.15 !important;
+      font-weight: 700 !important;
     }
     
     /* Hapus aturan last-child; break diatur manual dengan kelas */
@@ -1013,9 +1147,12 @@ const PrintCertificatePage: React.FC = () => {
       }
       .page-container {
         margin: 0;
-        padding: 5mm; /* Batas kiri/kanan/atas/bawah 0.5 cm dari tepi lembar kerja */
+        width: 210mm !important;
+        max-width: 210mm !important;
+        padding: 5mm !important;
         border: none !important;
         box-shadow: none !important;
+        box-sizing: border-box !important;
         page-break-after: auto; /* Jangan paksa break di akhir container */
         break-after: auto;
       }
@@ -1042,9 +1179,66 @@ const PrintCertificatePage: React.FC = () => {
       }
       
       .page-container.cover-page {
-        height: 297mm !important; /* Force exact physical A4 height explicitly on print */
+        height: 297mm !important;
+        min-height: 297mm !important;
         max-height: 297mm !important;
         position: relative !important;
+        padding: 5mm !important;
+        overflow: hidden !important;
+        display: flex !important;
+        flex-direction: column !important;
+      }
+
+      .cover-content {
+        position: static !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+        padding-top: 0 !important;
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+      }
+
+      .cover-header {
+        min-height: 25mm !important;
+        padding-bottom: 3mm !important;
+        align-items: center !important;
+        margin-top: 0 !important;
+      }
+
+      .cover-logo-slot {
+        width: 26mm !important;
+        flex: 0 0 26mm !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+      }
+
+      .cover-logo-slot img {
+        width: 22mm !important;
+        height: auto !important;
+        max-height: 24mm !important;
+        object-fit: contain !important;
+      }
+
+      .cover-header-spacer {
+        width: 26mm !important;
+        flex: 0 0 26mm !important;
+      }
+
+      .cover-agency-title h1,
+      .cover-agency-title h2 {
+        font-size: 11.5pt !important;
+        line-height: 1.28 !important;
+        margin: 0 !important;
+      }
+
+      .cover-title-block {
+        margin: 6mm 0 6mm !important;
+      }
+
+      .cover-title-block .cert-info-text {
+        margin-top: 1.5mm !important;
       }
       
       /* Hindari page break setelah container terakhir */
@@ -1055,17 +1249,15 @@ const PrintCertificatePage: React.FC = () => {
       
       /* Footer halaman 1 tetap static di mode print, jangan gunakan fixed karena akan duplikat di semua halaman */
       .page-1-footer {
-        position: absolute !important;
-        bottom: 5mm !important;
-        left: 5mm !important;
-        right: 5mm !important;
+        position: static !important;
         z-index: 1000 !important;
+        flex: 0 0 auto !important;
         background-color: white !important; /* Tutupi elemen fixed di belakangnya */
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
-        padding-top: 20px !important; /* Make white mask taller */
-        padding-bottom: 20px !important;
-        margin-bottom: -10px !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        margin-bottom: 0 !important;
         list-style-type: none !important;
         list-style: none !important;
         list-style-position: outside !important;
@@ -1132,15 +1324,15 @@ const PrintCertificatePage: React.FC = () => {
       /* Gunakan absolute positioning dengan page-container yang memiliki min-height A4 */
       .page-container.results-page {
         position: relative !important;
-        min-height: 297mm !important; /* Tinggi A4 */
+        min-height: 297mm !important;
       }
       
       /* Hanya tampilkan di page-container dengan class results-page */
       /* QR code akan selalu di footer karena parent memiliki min-height penuh */
       .page-container.results-page .footer-qr-small.results-page-qr {
         position: absolute !important;
-        bottom: 5mm !important;
-        left: 5mm !important;
+        bottom: 0 !important;
+        left: 0 !important;
         width: 100px !important;
         height: 100px !important;
         z-index: 999 !important;
@@ -1271,8 +1463,8 @@ const PrintCertificatePage: React.FC = () => {
         padding-top: 3mm !important;
       }
       .page-container.results-page {
-        padding-bottom: 5mm !important; 
-        min-height: 297mm !important;
+        padding-bottom: 0 !important;
+        min-height: 287mm !important;
       }
     }
   `
@@ -1290,7 +1482,7 @@ const PrintCertificatePage: React.FC = () => {
                       value={qrCodeData}
                       fgColor={isSigned ? '#000000' : '#B91C1C'}
                       onRendered={handleQRRendered}
-                      size={40}
+                      size={45}
                     />
                   </div>
                 ) : (
@@ -1342,21 +1534,21 @@ const PrintCertificatePage: React.FC = () => {
         </div>
 
         {/* Konten halaman dengan z-index lebih tinggi */}
-        <div className="relative z-10">
+        <div className="cover-content">
           {/* Header Halaman 1 */}
-          <header className="flex flex-row items-center justify-between border-b-[3px] border-double border-black pb-2">
-            <div className="flex items-start w-[100px]">
+          <header className="cover-header flex flex-row justify-between border-b-[3px] border-double border-black">
+            <div className="cover-logo-slot">
               <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
             </div>
-            <div className="text-center leading-tight">
+            <div className="cover-agency-title text-center leading-tight">
               <h1 className="text-base font-bold">BADAN METEOROLOGI KLIMATOLOGI DAN GEOFISIKA</h1>
               <h2 className="text-base font-bold">LABORATORIUM KALIBRASI BMKG</h2>
             </div>
-            <div className="w-[100px]"></div> {/* Spacer agar center */}
+            <div className="cover-header-spacer"></div> {/* Spacer agar center */}
           </header>
 
           {/* Judul Sertifikat */}
-          <div className="text-center my-6">
+          <div className="cover-title-block text-center">
             <h1 className="cert-title-id">SERTIFIKAT KALIBRASI</h1>
             <h2 className="cert-title-en">CALIBRATION CERTIFICATE</h2>
             <div className="cert-info-text mt-2">{cert.no_certificate}</div>

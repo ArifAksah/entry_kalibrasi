@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     // Validate certificate exists
     const { data: certData, error: certError } = await supabaseAdmin
       .from('certificate')
-      .select('id, no_certificate, verifikator_1, verifikator_2, verifikator_3, authorized_by, version')
+      .select('id, no_certificate, verifikator_1, verifikator_2, verifikator_3, authorized_by, sent_by, version')
       .eq('id', certificate_id)
       .single()
 
@@ -293,10 +293,10 @@ export async function POST(request: NextRequest) {
             }
         }
     } else if (status === 'rejected') {
-        const recipients = Array.from(new Set([certData.verifikator_1, certData.verifikator_2, certData.verifikator_3, certData.authorized_by]));
+        const recipients = Array.from(new Set([certData.sent_by, certData.verifikator_1, certData.verifikator_2, certData.verifikator_3, certData.authorized_by]));
         for (const recipientId of recipients) {
             if (recipientId) {
-                await createNotification(recipientId as string, `Sertifikat ${certData.no_certificate} telah ditolak oleh ${user.email}.`, link);
+                await createNotification(recipientId as string, `Sertifikat ${certData.no_certificate} telah ditolak oleh ${user.email}. Buka catatan reject untuk melihat detail revisi.`, link);
             }
         }
     }

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../../contexts/AuthContext'
 import { useCertificates } from '../../../hooks/useCertificates'
 import { useCertificateVerification } from '../../../hooks/useCertificateVerification'
-import { Certificate, CertificateInsert, Station, Instrument, Sensor, CertStandard, CalibrationSession, RawData } from '../../../lib/supabase'
+import { Certificate, CertificateInsert, Station, Instrument, Sensor, CertStandard, CalibrationSession, RawData, supabase } from '../../../lib/supabase'
 import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
@@ -367,6 +367,73 @@ const CertificatesCRUD: React.FC = () => {
   const { can, canEndpoint, role } = usePermissions()
   const { alert, showSuccess, showError, showWarning, hideAlert } = useAlert()
   const router = useRouter()
+
+  const fetchSignedPdf = async (item: Certificate, download = false) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) throw new Error('Not authenticated')
+
+    const pdfEndpoint = `/api/certificates/${item.id}/pdf?${download ? 'download=true&' : ''}t=${Date.now()}`
+    const response = await fetch(pdfEndpoint, {
+      cache: 'no-store',
+      headers: { 'Authorization': `Bearer ${session.access_token}` },
+    })
+
+    if (!response.ok) throw new Error('Failed to get PDF')
+
+    const contentType = response.headers.get('Content-Type') || ''
+    if (!contentType.toLowerCase().includes('application/pdf')) {
+      const errorText = await response.text().catch(() => '')
+      throw new Error(`Response download bukan PDF yang valid.${errorText ? ` ${errorText.slice(0, 160)}` : ''}`)
+    }
+
+    return response
+  }
+
+  const openSignedPdf = async (item: Certificate) => {
+    try {
+      const response = await fetchSignedPdf(item)
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      window.open(url, '_blank', 'noopener,noreferrer')
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000)
+      setActionDropdownOpenId(null)
+    } catch (err) {
+      console.error('Error opening PDF:', err)
+      showError('Failed to open PDF. Please try again.')
+    }
+  }
+
+  const downloadSignedPdf = async (item: Certificate) => {
+    try {
+      const response = await fetchSignedPdf(item, true)
+      const contentDisposition = response.headers.get('Content-Disposition')
+      let filename = `Certificate_${item.no_certificate || item.id}.pdf`
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i)
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].replace(/['"]/g, '')
+          if (filename.includes('%')) filename = decodeURIComponent(filename)
+        }
+      }
+
+      if (!filename.toLowerCase().endsWith('.pdf')) filename = `${filename}.pdf`
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.type = 'application/pdf'
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      setActionDropdownOpenId(null)
+    } catch (err) {
+      console.error('Error downloading PDF:', err)
+      showError('Failed to download PDF. Please try again.')
+    }
+  }
   const isCalibrator = role === 'calibrator'
 
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -490,6 +557,7 @@ const CertificatesCRUD: React.FC = () => {
     place: '',
     notes: ''
   })
+  const [useStationAddressForPlace, setUseStationAddressForPlace] = useState(false)
 
   // Toggle: false = tanggal tunggal, true = rentang (start + end)
   // (replaced by DateRangePicker component)
@@ -527,6 +595,12 @@ const CertificatesCRUD: React.FC = () => {
 
   // Derived instrument details (read-only preview)
   const [instrumentPreview, setInstrumentPreview] = useState<{ manufacturer?: string; type?: string; serial?: string; other?: string }>({})
+
+  const resolveStationAddress = React.useCallback((stationId?: number | null, explicitAddress?: string | null) => {
+    const address = explicitAddress ?? (stationId ? (stations.find(s => s.id === stationId)?.address ?? '') : '')
+    return String(address || '')
+  }, [stations])
+  const selectedStationAddress = (form as any).station_address as string | null
 
   // Local UI state for calibration results blocks
   type KV = { key: string; value: string; enabled?: boolean }
@@ -609,6 +683,19 @@ type ResultItem = {
       showError('Minimal harus ada 1 input sensor.')
     }
   }
+
+  useEffect(() => {
+    if (!useStationAddressForPlace) return
+
+    const stationAddress = resolveStationAddress(form.station, selectedStationAddress)
+    setSessionDetails(prev => {
+      if (prev.place === stationAddress) return prev
+      return { ...prev, place: stationAddress }
+    })
+    setResults(prev => prev.map(result => (
+      result.place === stationAddress ? result : { ...result, place: stationAddress }
+    )))
+  }, [useStationAddressForPlace, form.station, selectedStationAddress, resolveStationAddress])
 
   const addImage = (resultIdx: number) => {
     setResults(prev => prev.map((r, i) =>
@@ -1305,6 +1392,33 @@ type ResultItem = {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+        const fetchWithRetry = async (url: string, attempts = 2): Promise<Response | null> => {
+          for (let attempt = 0; attempt < attempts; attempt += 1) {
+            try {
+              const response = await fetch(url, { cache: 'no-store' })
+              return response
+            } catch (error) {
+              if (attempt === attempts - 1) {
+                console.warn(`[certificates] Fetch failed for ${url}`, error)
+                return null
+              }
+              await sleep(400 * (attempt + 1))
+            }
+          }
+          return null
+        }
+
+        const fetchJsonSafe = async (url: string, fallback: any = null) => {
+          const response = await fetchWithRetry(url)
+          if (!response?.ok) return fallback
+          try {
+            return await response.json()
+          } catch {
+            return fallback
+          }
+        }
+
         // Fetch all stations across pages to ensure every certificate can resolve station name
         const fetchAllStations = async () => {
           if (!role) return { data: [], total: 0, pageSize: 100, totalPages: 0 } // Wait for role
@@ -1314,14 +1428,14 @@ type ResultItem = {
             baseUrl += `&user_id=${user.id}`
           }
 
-          const first = await fetch(`${baseUrl}&page=1`)
-          if (!first.ok) return { data: [], total: 0, pageSize: 100, totalPages: 1 }
+          const first = await fetchWithRetry(`${baseUrl}&page=1`)
+          if (!first?.ok) return { data: [], total: 0, pageSize: 100, totalPages: 1 }
           const firstJson = await first.json()
           const firstData = Array.isArray(firstJson) ? firstJson : (firstJson?.data ?? [])
           const totalPages = (Array.isArray(firstJson) ? 1 : (firstJson?.totalPages ?? 1)) as number
           if (totalPages <= 1) return { data: firstData, total: (firstJson?.total ?? firstData.length) as number, pageSize: 100, totalPages }
           const restPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-          const rest = await Promise.all(restPages.map(p => fetch(`${baseUrl}&page=${p}`).then(r => r.ok ? r.json() : { data: [] })))
+          const rest = await Promise.all(restPages.map(p => fetchJsonSafe(`${baseUrl}&page=${p}`, { data: [] })))
           const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
           return { data: [...firstData, ...restData], total: (firstJson?.total ?? (firstData.length + restData.length)) as number, pageSize: 100, totalPages }
         }
@@ -1334,69 +1448,49 @@ type ResultItem = {
             baseUrl += `&user_id=${user.id}`
           }
 
-          const first = await fetch(`${baseUrl}&page=1`)
-          if (!first.ok) return { data: [], total: 0, pageSize: 100, totalPages: 1 }
+          const first = await fetchWithRetry(`${baseUrl}&page=1`)
+          if (!first?.ok) return { data: [], total: 0, pageSize: 100, totalPages: 1 }
           const firstJson = await first.json()
           const firstData = Array.isArray(firstJson) ? firstJson : (firstJson?.data ?? [])
           const totalPages = (Array.isArray(firstJson) ? 1 : (firstJson?.totalPages ?? 1)) as number
           if (totalPages <= 1) return { data: firstData, total: (firstJson?.total ?? firstData.length) as number, pageSize: 100, totalPages }
           const restPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-          const rest = await Promise.all(restPages.map(p => fetch(`${baseUrl}&page=${p}`).then(r => r.ok ? r.json() : { data: [] })))
+          const rest = await Promise.all(restPages.map(p => fetchJsonSafe(`${baseUrl}&page=${p}`, { data: [] })))
           const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
           return { data: [...firstData, ...restData], total: (firstJson?.total ?? (firstData.length + restData.length)) as number, pageSize: 100, totalPages }
         }
 
         // Fetch all sensors across pages
         const fetchAllSensors = async () => {
-          const first = await fetch('/api/sensors?page=1&pageSize=100')
-          if (!first.ok) return { data: [], total: 0, pageSize: 100, totalPages: 1 }
+          const first = await fetchWithRetry('/api/sensors?page=1&pageSize=100')
+          if (!first?.ok) return { data: [], total: 0, pageSize: 100, totalPages: 1 }
           const firstJson = await first.json()
           const firstData = Array.isArray(firstJson) ? firstJson : (firstJson?.data ?? [])
           const totalPages = (Array.isArray(firstJson) ? 1 : (firstJson?.totalPages ?? 1)) as number
           if (totalPages <= 1) return { data: firstData, total: (firstJson?.total ?? firstData.length) as number, pageSize: 100, totalPages }
           const restPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-          const rest = await Promise.all(restPages.map(p => fetch(`/api/sensors?page=${p}&pageSize=100`).then(r => r.ok ? r.json() : { data: [] })))
+          const rest = await Promise.all(restPages.map(p => fetchJsonSafe(`/api/sensors?page=${p}&pageSize=100`, { data: [] })))
           const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
           return { data: [...firstData, ...restData], total: (firstJson?.total ?? (firstData.length + restData.length)) as number, pageSize: 100, totalPages }
         }
 
-        const [stationsAll, instrumentsAll, sensorsAll, personelRes, certStandardsRes, instrNamesRes, unitsRes] = await Promise.all([
+        const [stationsAll, instrumentsAll, sensorsAll, personelData, certStandardsData, instrNamesData, unitsData] = await Promise.all([
           fetchAllStations(),
           fetchAllInstruments(),
           fetchAllSensors(),
-          fetch('/api/personel'),
-          fetch('/api/cert-standards'),
-          fetch('/api/instrument-names'),
-          fetch('/api/units'),
+          fetchJsonSafe('/api/personel', []),
+          fetchJsonSafe('/api/cert-standards', []),
+          fetchJsonSafe('/api/instrument-names', []),
+          fetchJsonSafe('/api/units', []),
         ])
 
         setStations(Array.isArray(stationsAll) ? stationsAll : (stationsAll as any)?.data ?? [])
         setInstruments(Array.isArray(instrumentsAll) ? instrumentsAll : (instrumentsAll as any)?.data ?? [])
         setSensors(Array.isArray(sensorsAll) ? sensorsAll : (sensorsAll as any)?.data ?? [])
-        if ((instrNamesRes as Response).ok) {
-          const inNames = await (instrNamesRes as Response).json()
-          setInstrumentNames(Array.isArray(inNames) ? inNames : (inNames?.data ?? []))
-        }
-
-        if (personelRes.ok) {
-          const p = await personelRes.json()
-          setPersonel(Array.isArray(p) ? p : [])
-        }
-
-        if (unitsRes.ok) {
-          const u = await unitsRes.json()
-          setUnits(Array.isArray(u) ? u : [])
-        }
-
-        // Handle standard certs
-        try {
-          if (certStandardsRes.ok) {
-            const certs = await certStandardsRes.json()
-            setStandardCerts(Array.isArray(certs) ? certs : [])
-          }
-        } catch (e) {
-          console.error('Failed to load standard certs', e)
-        }
+        setInstrumentNames(Array.isArray(instrNamesData) ? instrNamesData : (instrNamesData?.data ?? []))
+        setPersonel(Array.isArray(personelData) ? personelData : [])
+        setUnits(Array.isArray(unitsData) ? unitsData : [])
+        setStandardCerts(Array.isArray(certStandardsData) ? certStandardsData : [])
 
       } catch (e) {
         console.error('Failed to fetch data:', e)
@@ -1685,6 +1779,7 @@ type ResultItem = {
           notes: ''
         })
       }
+      setUseStationAddressForPlace(false)
 
 
       // Fetch Raw Data: session_id is stored inside each result item (results[i].session_id, a JSON field)
@@ -1816,6 +1911,7 @@ type ResultItem = {
         place: '',
         notes: ''
       })
+      setUseStationAddressForPlace(false)
       setGlobalStandardInstrumentId(null)
       setGlobalStandardCertificateNumber(null)
       setInstrumentPreview({})
@@ -2598,58 +2694,18 @@ type ResultItem = {
                           <div className="py-1">
                             {item.pdf_path ? (
                               <>
-                                <a
-                                  href={`/api/certificates/${item.id}/pdf?t=${encodeURIComponent(String((item as any).pdf_generated_at || Date.now()))}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
+                                <button
+                                  type="button"
+                                  onClick={() => openSignedPdf(item)}
                                   className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
                                 >
                                   <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                   </svg>
                                   View Signed PDF
-                                </a>
+                                </button>
                                 <button
-                                  onClick={async () => {
-                                    try {
-                                      const pdfEndpoint = `/api/certificates/${item.id}/pdf?download=true&t=${Date.now()}`
-                                      const response = await fetch(pdfEndpoint, { cache: 'no-store' })
-                                      if (!response.ok) throw new Error('Failed to get PDF')
-
-                                      const contentType = response.headers.get('Content-Type') || ''
-                                      if (!contentType.toLowerCase().includes('application/pdf')) {
-                                        const errorText = await response.text().catch(() => '')
-                                        throw new Error(`Response download bukan PDF yang valid.${errorText ? ` ${errorText.slice(0, 160)}` : ''}`)
-                                      }
-
-                                      const contentDisposition = response.headers.get('Content-Disposition')
-                                      let filename = `Certificate_${item.no_certificate || item.id}.pdf`
-                                      if (contentDisposition) {
-                                        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i)
-                                        if (filenameMatch && filenameMatch[1]) {
-                                          filename = filenameMatch[1].replace(/['"]/g, '')
-                                          if (filename.includes('%')) filename = decodeURIComponent(filename)
-                                        }
-                                      }
-
-                                      if (!filename.toLowerCase().endsWith('.pdf')) filename = `${filename}.pdf`
-
-                                      const blob = await response.blob()
-                                      const url = window.URL.createObjectURL(blob)
-                                      const a = document.createElement('a')
-                                      a.href = url
-                                      a.download = filename
-                                      a.type = 'application/pdf'
-                                      document.body.appendChild(a)
-                                      a.click()
-                                      window.URL.revokeObjectURL(url)
-                                      document.body.removeChild(a)
-                                      setActionDropdownOpenId(null)
-                                    } catch (err) {
-                                      console.error('Error downloading PDF:', err)
-                                      showError('Failed to download PDF. Please try again.')
-                                    }
-                                  }}
+                                  onClick={() => downloadSignedPdf(item)}
                                   className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
                                 >
                                   <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2695,17 +2751,16 @@ type ResultItem = {
                               View Certificate
                             </a>
                             {item.pdf_path && (
-                              <a
-                                href={`/api/certificates/${item.id}/pdf?t=${encodeURIComponent(String((item as any).pdf_generated_at || Date.now()))}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                              <button
+                                type="button"
+                                onClick={() => openSignedPdf(item)}
                                 className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
                               >
                                 <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                 </svg>
                                 View Saved PDF
-                              </a>
+                              </button>
                             )}
                           </div>
 
@@ -2720,46 +2775,7 @@ type ResultItem = {
                             </button>
                             {item.pdf_path && (
                               <button
-                                onClick={async () => {
-                                  try {
-                                    const pdfEndpoint = `/api/certificates/${item.id}/pdf?download=true&t=${Date.now()}`
-
-                                    const response = await fetch(pdfEndpoint, { cache: 'no-store' })
-                                    if (!response.ok) throw new Error('Failed to get PDF')
-
-                                    const contentType = response.headers.get('Content-Type') || ''
-                                    if (!contentType.toLowerCase().includes('application/pdf')) {
-                                      const errorText = await response.text().catch(() => '')
-                                      throw new Error(`Response download bukan PDF yang valid.${errorText ? ` ${errorText.slice(0, 160)}` : ''}`)
-                                    }
-
-                                    const contentDisposition = response.headers.get('Content-Disposition')
-                                    let filename = `Certificate_${item.no_certificate || item.id}.pdf`
-                                    if (contentDisposition) {
-                                      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i)
-                                      if (filenameMatch && filenameMatch[1]) {
-                                        filename = filenameMatch[1].replace(/['"]/g, '')
-                                        if (filename.includes('%')) filename = decodeURIComponent(filename)
-                                      }
-                                    }
-
-                                    if (!filename.toLowerCase().endsWith('.pdf')) filename = `${filename}.pdf`
-
-                                    const blob = await response.blob()
-                                    const url = window.URL.createObjectURL(blob)
-                                    const a = document.createElement('a')
-                                    a.href = url
-                                    a.download = filename
-                                    a.type = 'application/pdf'
-                                    document.body.appendChild(a)
-                                    a.click()
-                                    window.URL.revokeObjectURL(url)
-                                    document.body.removeChild(a)
-                                  } catch (err) {
-                                    console.error('Error downloading PDF:', err)
-                                    showError('Failed to download PDF. Please try again.')
-                                  }
-                                }}
+                                onClick={() => downloadSignedPdf(item)}
                                 className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-green-50 hover:text-green-700 transition-colors"
                               >
                                 <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3008,11 +3024,16 @@ type ResultItem = {
                         onChange={(value) => {
                           const selectedId = (value as number | null)
                           const st = stations.find(s => s.id === selectedId)
+                          const stationAddress = st ? String((st as any).address ?? '') : ''
                           setForm({
                             ...form,
                             station: selectedId,
-                            station_address: st ? (st as any).address ?? null : null
+                            station_address: stationAddress || null
                           })
+                          if (useStationAddressForPlace) {
+                            setSessionDetails(prev => ({ ...prev, place: stationAddress }))
+                            setResults(prev => prev.map(result => ({ ...result, place: stationAddress })))
+                          }
                         }}
                         options={stations.map(s => ({ id: s.id, name: s.name, station_id: s.station_id }))}
                         placeholder="Pilih Stasiun"
@@ -3255,10 +3276,35 @@ type ResultItem = {
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Tempat Kalibrasi</label>
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="block text-xs font-semibold text-gray-700">Tempat Kalibrasi</label>
+                        <label className="inline-flex items-center gap-2 text-[11px] font-medium text-gray-600">
+                          <span>Sama dengan alamat stasiun</span>
+                          <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={useStationAddressForPlace}
+                            onChange={(e) => {
+                              const checked = e.target.checked
+                              setUseStationAddressForPlace(checked)
+                              if (checked) {
+                                const stationAddress = resolveStationAddress(form.station, (form as any).station_address)
+                                setSessionDetails(prev => ({ ...prev, place: stationAddress }))
+                                setResults(prev => prev.map(r => ({ ...r, place: stationAddress })))
+                              }
+                            }}
+                          />
+                          <span className="relative h-5 w-9 rounded-full bg-gray-300 transition-colors peer-checked:bg-[#1e377c] after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-4" />
+                        </label>
+                      </div>
                       <input
                         type="text"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                        readOnly={useStationAddressForPlace}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] ${
+                          useStationAddressForPlace
+                            ? 'border-gray-200 bg-gray-50 text-gray-700'
+                            : 'border-gray-300'
+                        }`}
                         placeholder="Laboratorium Kalibrasi BMKG..."
                         value={sessionDetails.place}
                         onChange={e => {
@@ -3289,9 +3335,6 @@ type ResultItem = {
                         <InstrumentIcon className="w-5 h-5 text-[#1e377c]" />
                         Pilih Instrument (UUT)
                       </h3>
-                      <a href="/instruments" target="_blank" className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded hover:bg-blue-100 transition-colors">
-                        + Tambah Instrument Baru
-                      </a>
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-gray-600">Instrument *</label>
@@ -3335,9 +3378,6 @@ type ResultItem = {
                         <CertificateIcon className="w-5 h-5 text-green-600" />
                         Alat Standar
                       </h3>
-                      <button type="button" className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded hover:bg-green-100 transition-colors">
-                        + Tambah Sertifikat
-                      </button>
                     </div>
 
                     <div className="space-y-4">

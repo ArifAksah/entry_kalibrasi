@@ -88,6 +88,7 @@ export function formatUnit(unit: string): string {
     // Replace Greek letters
     formatted = formatted.replace(/\\mu\b/g, 'µ');
     formatted = formatted.replace(/\\Omega\b/g, 'Ω');
+    formatted = formatted.replace(/\\%/g, '%');
     
     // Replace \mathrm and \text
     formatted = formatted.replace(/\\mathrm\{([^}]+)\}/g, '$1');

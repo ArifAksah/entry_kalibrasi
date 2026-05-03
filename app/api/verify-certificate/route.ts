@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { authorizeCertificateAccess } from '../../../lib/certificate-access'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,6 +16,13 @@ export async function GET(request: NextRequest) {
     
     if (!no && !id) {
       return NextResponse.json({ error: 'Either "no" or "id" parameter is required' }, { status: 400 })
+    }
+
+    if (id) {
+      const access = await authorizeCertificateAccess(request, id)
+      if (!access.allowed) {
+        return NextResponse.json({ error: access.error }, { status: access.status })
+      }
     }
 
     console.log('🔍 [API] Checking verification for certificate:', id ? `ID=${id}` : `NO=${no}`)
@@ -53,6 +61,11 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('✅ [API] Certificate found, ID:', cert.id, 'Version:', cert.version ?? 1)
+
+    const access = await authorizeCertificateAccess(request, cert.id)
+    if (!access.allowed) {
+      return NextResponse.json({ error: access.error }, { status: access.status })
+    }
 
     // Check level 3 verification approved
     // Query ALL verification records for level 3 first, then filter by status

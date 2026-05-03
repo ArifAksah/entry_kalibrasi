@@ -7,7 +7,9 @@ export type Person = {
   phone?: string
   position?: string
   nip?: string
+  nik?: string
   role?: 'admin' | 'calibrator' | 'verifikator' | 'assignor' | 'user_station' | ''
+  station_id?: string | number | null
 }
 
 export type UsePersonelReturn = {
@@ -70,10 +72,15 @@ const usePersonel = (initialPage = 1, pageSize = 10): UsePersonelReturn => {
         const rRoles = await fetch('/api/user-roles')
         if (rRoles.ok) {
           const rolesJson = await rRoles.json()
-          const rows: Array<{ user_id: string; role: Person['role'] }> = Array.isArray(rolesJson) ? rolesJson : (rolesJson?.data ?? [])
-          const roleMap = new Map<string, Person['role']>()
-          rows.forEach(row => { if (row?.user_id) roleMap.set(row.user_id, (row.role ?? '') as any) })
-          list = list.map(p => ({ ...p, role: roleMap.get(p.id) ?? p.role ?? '' }))
+          const rows: Array<{ user_id: string; role: Person['role']; station_id?: string | number | null }> = Array.isArray(rolesJson) ? rolesJson : (rolesJson?.data ?? [])
+          const roleMap = new Map<string, { role: Person['role']; station_id?: string | number | null }>()
+          rows.forEach(row => {
+            if (row?.user_id) roleMap.set(row.user_id, { role: (row.role ?? '') as any, station_id: row.station_id ?? null })
+          })
+          list = list.map(p => {
+            const roleInfo = roleMap.get(p.id)
+            return { ...p, role: roleInfo?.role ?? p.role ?? '', station_id: roleInfo?.station_id ?? p.station_id ?? null }
+          })
         }
       } catch {}
       const total = Array.isArray(json) ? list.length : (json?.total ?? list.length)

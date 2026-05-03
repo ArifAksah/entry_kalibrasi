@@ -9,6 +9,8 @@ import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
 import { formatUnit, needsConversion } from '../../../../lib/unitConversion'
 import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClassName } from '../../../../lib/rich-text'
 import { resultsToLegacyView } from '../../../../lib/validators/certificate-results-render-adapter'
+import { formatLatexUnit } from '../../../../lib/qc-utils'
+import { supabase } from '../../../../lib/supabase'
 
 // --- TIPE DATA KOMPREHENSIF ---
 // Saya gabungkan tipe dari ViewCertificatePage.tsx Anda ke sini
@@ -281,19 +283,40 @@ const ViewCertificatePage: React.FC = () => {
   const [allRawData, setAllRawData] = useState<any[]>([])
 
   const computeEnvCondition = useCallback((type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
-    const keywords = type === 'suhu'
-      ? ['suhu', 'temp', 'termometer', 'temperature', 'thermo']
-      : ['kelembab', 'hum', 'hygro', 'rh'];
-
+    // Gunakan unit_std / unit_uut dari raw data untuk identifikasi lebih akurat
+    // Format LaTeX units (e.g., ^\circ C) ke readable (°C) sebelum compare
     const matchedRows = sensorRawData.filter(r => {
-      const name = (r.sheet_name || '').toLowerCase();
-      return keywords.some(k => name.includes(k));
+      const rawUnit = String(r.unit_std || r.unit_uut || '');
+      const unit = formatLatexUnit(rawUnit).toLowerCase().trim();
+      const name = (r.sheet_name || r.name || r.category || '').toLowerCase();
+
+      if (type === 'suhu') {
+        // Unit-based: °C, C, celcius, celsius
+        const unitIsTemp = unit && (unit.includes('°c') || unit.includes('c') || unit.includes('celcius') || unit.includes('celsius'));
+        // Name-based fallback
+        const nameIsTemp = ['suhu', 'temp', 'termometer', 'temperature', 'thermo'].some(k => name.includes(k));
+        return unitIsTemp || (nameIsTemp && !unit); // prefer unit if present
+      } else {
+        // kelembaban
+        // Unit-based: %, RH, r.h, kelembaban, humidity
+        const unitIsHum = unit && (unit.includes('%') || unit.includes('rh') || unit.includes('r.h') || unit.includes('kelembaban') || unit.includes('humidity') || unit.includes('hum'));
+        // Name-based fallback
+        const nameIsHum = ['kelembab', 'lembab', 'humidity', 'hum', 'hygro', 'rh', 'r.h'].some(k => name.includes(k));
+        return unitIsHum || (nameIsHum && !unit);
+      }
     });
 
     if (matchedRows.length === 0) return '-';
 
+    // Robust number extraction: handle string values from API
     const values = matchedRows
-      .map(r => r.std_corrected ?? (r.standard_data + (r.std_correction ?? 0)))
+      .map(r => {
+        if (r.std_corrected != null) return Number(r.std_corrected);
+        const sd = Number(r.standard_data);
+        const sc = Number(r.std_correction ?? 0);
+        if (!isNaN(sd)) return sd + sc;
+        return NaN;
+      })
       .filter(v => typeof v === 'number' && !isNaN(v));
 
     if (values.length === 0) return '-';
@@ -306,7 +329,6 @@ const ViewCertificatePage: React.FC = () => {
     const unit = type === 'suhu' ? '°C' : '%';
     return `(${mean.toFixed(1)} ± ${halfRange.toFixed(1)}) ${unit}`;
   }, []);
-
 
   // Helper to resolve canonical sensor name
   const resolveSensorName = useCallback((res: any, fallbackIndex: number) => {
@@ -372,14 +394,8 @@ const ViewCertificatePage: React.FC = () => {
 
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
 
-    // Use public_id if available for secure verification
     if (cert.public_id) {
       return `${baseUrl}/verify/${cert.public_id}`
-    }
-
-    // Fallback to certificate number if public_id is missing (legacy)
-    if (cert.no_certificate) {
-      return `${baseUrl}/verify/${encodeURIComponent(cert.no_certificate)}`
     }
 
     return ''
@@ -398,8 +414,11 @@ const ViewCertificatePage: React.FC = () => {
     const load = async () => {
       try {
         // Fetch certificate dan personel
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) throw new Error('Not authenticated')
+        const authHeaders = { 'Authorization': `Bearer ${session.access_token}` }
         const [cRes, pRes, sensorsData, inRes] = await Promise.all([
-          fetch(`/api/certificates/${id}`),
+          fetch(`/api/certificates/${id}`, { headers: authHeaders }),
           fetch('/api/personel'),
           fetchAllSensors(),
           fetch('/api/instrument-names'),
@@ -494,8 +513,13 @@ const ViewCertificatePage: React.FC = () => {
         return
       }
 
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+
       // Use certificate ID for API call to ensure uniqueness
-      const res = await fetch(`/api/verify-certificate?id=${cert.id}`)
+      const res = await fetch(`/api/verify-certificate?id=${cert.id}`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      })
       if (res.ok) {
         const data = await res.json()
         console.log('🔍 [Print] verify-certificate response:', data)
@@ -731,17 +755,74 @@ const ViewCertificatePage: React.FC = () => {
     
     /* Cover page ensuring exactly 1 full page height */
     .page-container.cover-page {
+      height: 297mm !important;
       min-height: 297mm !important;
+      max-height: 297mm !important;
       position: relative;
+      padding: 5mm !important;
+      overflow: hidden !important;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .cover-content {
+      position: static !important;
+      z-index: 10;
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: flex-start !important;
+      padding-top: 0 !important;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .cover-header {
+      min-height: 25mm;
+      padding-bottom: 3mm;
+      align-items: center;
+      margin-top: 0;
+    }
+
+    .cover-logo-slot {
+      width: 26mm;
+      flex: 0 0 26mm;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .cover-logo-slot img {
+      width: 22mm !important;
+      height: auto !important;
+      max-height: 24mm !important;
+      object-fit: contain;
+    }
+
+    .cover-header-spacer {
+      width: 26mm;
+      flex: 0 0 26mm;
+    }
+
+    .cover-agency-title h1,
+    .cover-agency-title h2 {
+      font-size: 11.5pt !important;
+      line-height: 1.28 !important;
+      margin: 0 !important;
+    }
+
+    .cover-title-block {
+      margin: 6mm 0 6mm !important;
+    }
+
+    .cover-title-block .cert-info-text {
+      margin-top: 1.5mm !important;
     }
     
     /* Footer khusus untuk halaman 1 saja */
     .page-1-footer {
-      position: absolute !important;
-      bottom: 5mm !important;
-      left: 5mm !important;
-      right: 5mm !important;
+      position: static !important;
       z-index: 1000 !important;
+      flex: 0 0 auto;
       list-style-type: none !important;
       list-style: none !important;
       list-style-position: outside !important;
@@ -815,8 +896,8 @@ const ViewCertificatePage: React.FC = () => {
     /* QR code akan selalu di footer karena parent memiliki min-height penuh */
     .page-container.results-page .footer-qr-small.results-page-qr {
       position: absolute !important;
-      bottom: 5mm !important;
-      left: 5mm !important;
+      bottom: 0 !important;
+      left: 0 !important;
       width: 100px !important;
       height: 100px !important;
       z-index: 999 !important;
@@ -955,9 +1036,12 @@ const ViewCertificatePage: React.FC = () => {
       }
       .page-container {
         margin: 0;
-        padding: 5mm; /* Batas kiri/kanan/atas/bawah 0.5 cm dari tepi lembar kerja */
+        width: 210mm !important;
+        max-width: 210mm !important;
+        padding: 5mm !important;
         border: none !important;
         box-shadow: none !important;
+        box-sizing: border-box !important;
         page-break-after: auto; /* Jangan paksa break di akhir container */
         break-after: auto;
       }
@@ -966,6 +1050,7 @@ const ViewCertificatePage: React.FC = () => {
       .page-container.results-page {
         min-height: 297mm !important;
         height: 297mm !important;
+        padding: 5mm !important;
         box-sizing: border-box !important;
         position: relative !important;
       }
@@ -975,9 +1060,67 @@ const ViewCertificatePage: React.FC = () => {
       }
       
       .page-container.cover-page {
-        height: 297mm !important; /* Force exact physical A4 height explicitly on print */
+        height: 297mm !important;
+        min-height: 297mm !important;
         max-height: 297mm !important;
         position: relative !important;
+        padding: 5mm !important;
+        overflow: hidden !important;
+        display: flex !important;
+        flex-direction: column !important;
+      }
+
+      .cover-content {
+        position: static !important;
+        z-index: 10 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+        padding-top: 0 !important;
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+      }
+
+      .cover-header {
+        min-height: 25mm !important;
+        padding-bottom: 3mm !important;
+        align-items: center !important;
+        margin-top: 0 !important;
+      }
+
+      .cover-logo-slot {
+        width: 26mm !important;
+        flex: 0 0 26mm !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+      }
+
+      .cover-logo-slot img {
+        width: 22mm !important;
+        height: auto !important;
+        max-height: 24mm !important;
+        object-fit: contain !important;
+      }
+
+      .cover-header-spacer {
+        width: 26mm !important;
+        flex: 0 0 26mm !important;
+      }
+
+      .cover-agency-title h1,
+      .cover-agency-title h2 {
+        font-size: 11.5pt !important;
+        line-height: 1.28 !important;
+        margin: 0 !important;
+      }
+
+      .cover-title-block {
+        margin: 6mm 0 6mm !important;
+      }
+
+      .cover-title-block .cert-info-text {
+        margin-top: 1.5mm !important;
       }
       
       /* Hindari page break setelah container terakhir */
@@ -988,17 +1131,15 @@ const ViewCertificatePage: React.FC = () => {
       
       /* Footer halaman 1 tetap static di mode print, jangan gunakan fixed karena akan duplikat di semua halaman */
       .page-1-footer {
-        position: absolute !important;
-        bottom: 5mm !important;
-        left: 5mm !important;
-        right: 5mm !important;
+        position: static !important;
         z-index: 1000 !important;
+        flex: 0 0 auto !important;
         background-color: white !important; /* Tutupi elemen fixed di belakangnya */
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
-        padding-top: 20px !important; /* Make white mask taller */
-        padding-bottom: 20px !important;
-        margin-bottom: -10px !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        margin-bottom: 0 !important;
         list-style-type: none !important;
         list-style: none !important;
         list-style-position: outside !important;
@@ -1065,15 +1206,15 @@ const ViewCertificatePage: React.FC = () => {
       /* Gunakan absolute positioning dengan page-container yang memiliki min-height A4 */
       .page-container.results-page {
         position: relative !important;
-        min-height: 297mm !important; /* Tinggi A4 */
+        min-height: 297mm !important;
       }
       
       /* Hanya tampilkan di page-container dengan class results-page */
       /* QR code akan selalu di footer karena parent memiliki min-height penuh */
       .page-container.results-page .footer-qr-small.results-page-qr {
         position: absolute !important;
-        bottom: 5mm !important;
-        left: 5mm !important;
+        bottom: 0 !important;
+        left: 0 !important;
         width: 100px !important;
         height: 100px !important;
         z-index: 999 !important;
@@ -1193,7 +1334,7 @@ const ViewCertificatePage: React.FC = () => {
         width: 100%;
       }
       .page-container.results-page {
-        padding-bottom: 5mm !important; 
+        padding-bottom: 0 !important;
       }
       .print-container {
         padding: 40px 0;
@@ -1208,6 +1349,38 @@ const ViewCertificatePage: React.FC = () => {
         margin-right: auto !important;
         min-height: 297mm; /* Simulate A4 exact height for consistent element placement */
         border: 1px solid #e5e7eb;
+      }
+    }
+
+    @media print {
+      .print-container {
+        padding: 0 !important;
+        margin: 0 !important;
+        background: white !important;
+        box-shadow: none !important;
+      }
+
+      .page-container {
+        width: 210mm !important;
+        max-width: 210mm !important;
+        min-height: auto !important;
+        margin: 0 !important;
+        padding: 5mm !important;
+        border: none !important;
+        box-shadow: none !important;
+        box-sizing: border-box !important;
+      }
+
+      .page-container.cover-page {
+        height: 297mm !important;
+        min-height: 297mm !important;
+        max-height: 297mm !important;
+      }
+
+      .page-container.results-page {
+        height: 297mm !important;
+        min-height: 297mm !important;
+        padding: 5mm !important;
       }
     }
   `
@@ -1388,21 +1561,21 @@ const ViewCertificatePage: React.FC = () => {
               </div>
 
               {/* Konten halaman dengan z-index lebih tinggi */}
-              <div className="relative z-10">
+              <div className="cover-content">
                 {/* Header Halaman 1 */}
-                <header className="flex flex-row items-center justify-between border-b-[3px] border-double border-black pb-2">
-                  <div className="flex items-start w-[100px]">
+                <header className="cover-header flex flex-row justify-between border-b-[3px] border-double border-black">
+                  <div className="cover-logo-slot">
                     <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
                   </div>
-                  <div className="text-center leading-tight">
+                  <div className="cover-agency-title text-center leading-tight">
                     <h1 className="text-base font-bold">BADAN METEOROLOGI KLIMATOLOGI DAN GEOFISIKA</h1>
                     <h2 className="text-base font-bold">LABORATORIUM KALIBRASI BMKG</h2>
                   </div>
-                  <div className="w-[100px]"></div> {/* Spacer agar center */}
+                  <div className="cover-header-spacer"></div> {/* Spacer agar center */}
                 </header>
 
                 {/* Judul Sertifikat */}
-                <div className="text-center my-6">
+                <div className="cover-title-block text-center">
                   <h1 className="cert-title-id">SERTIFIKAT KALIBRASI</h1>
                   <h2 className="cert-title-en">CALIBRATION CERTIFICATE</h2>
                   <div className="cert-info-text mt-2">{cert.no_certificate}</div>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { authorizeCertificateAccess } from '../../../../../lib/certificate-access'
 
 export async function GET(
   request: NextRequest,
@@ -12,6 +13,12 @@ export async function GET(
     if (isNaN(certificateId)) {
       return NextResponse.json({ error: 'Invalid certificate ID' }, { status: 400 })
     }
+
+    const access = await authorizeCertificateAccess(request, certificateId)
+    if (!access.allowed) {
+      return NextResponse.json({ error: access.error }, { status: access.status })
+    }
+    const certificate = access.certificate
 
     // Dynamic import playwright to handle cases where it's not installed
     let playwright: any
@@ -306,16 +313,8 @@ export async function GET(
 
       // Get certificate number for filename
       let filename = `Certificate_${certificateId}.pdf`
-      try {
-        const certRes = await fetch(`${baseUrl}/api/certificates/${certificateId}`)
-        if (certRes.ok) {
-          const cert = await certRes.json()
-          if (cert?.no_certificate) {
-            filename = `Certificate_${cert.no_certificate.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
-          }
-        }
-      } catch {
-        // Use default filename
+      if (certificate?.no_certificate) {
+        filename = `Certificate_${certificate.no_certificate.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
       }
 
       return new NextResponse(pdf, {

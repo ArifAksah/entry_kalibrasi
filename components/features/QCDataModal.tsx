@@ -303,6 +303,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
      */
     const handleSaveToTable = async () => {
         if (sensorKeys.length === 0) return;
+        if (correctionLoading) return;
         setIsSavingToTable(true);
         try {
             const updates: Array<{ sensorId: number | string, table: any[] }> = [];
@@ -386,6 +387,8 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
             setIsSavingToTable(false);
         }
     };
+
+    const isCalculateDisabled = isSavingToTable || correctionLoading;
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] backdrop-blur-sm">
@@ -650,17 +653,28 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                         {currentData.length > 0 && (!certificateStatus || certificateStatus === 'draft') && (
                             <button
                                 onClick={handleSaveToTable}
-                                disabled={isSavingToTable}
-                                title={hasSavedToTable ? 'Sudah pernah dijalankan. Klik lagi untuk memperbarui.' : 'Hitung dan simpan hasil ke tabel sertifikat'}
+                                disabled={isCalculateDisabled}
+                                title={
+                                    correctionLoading
+                                        ? 'Tunggu sampai perhitungan koreksi standar selesai.'
+                                        : hasSavedToTable
+                                            ? 'Sudah pernah dijalankan. Klik lagi untuk memperbarui.'
+                                            : 'Hitung dan simpan hasil ke tabel sertifikat'
+                                }
                                 className={`px-5 py-2 text-sm font-semibold rounded-lg transition-all flex items-center gap-2 ${
-                                    isSavingToTable
+                                    isCalculateDisabled
                                         ? 'bg-gray-100 text-gray-400 cursor-wait'
                                         : hasSavedToTable
                                             ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-sm ring-2 ring-green-300'
                                             : 'bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-white shadow-sm'
                                 }`}
                             >
-                                {isSavingToTable ? (
+                                {correctionLoading ? (
+                                    <>
+                                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-transparent" />
+                                        <span>Menghitung koreksi...</span>
+                                    </>
+                                ) : isSavingToTable ? (
                                     <>
                                         <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-transparent" />
                                         <span>Menyimpan...</span>

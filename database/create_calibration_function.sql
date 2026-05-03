@@ -25,16 +25,22 @@ BEGIN
         RETURN 0;
     END IF;
 
-    -- Parse JSON arrays into DOUBLE PRECISION arrays
-    SELECT ARRAY(
-        SELECT (elem #>> '{}')::DOUBLE PRECISION
-        FROM jsonb_array_elements(cert_record.setpoint::jsonb) AS elem
-    ) INTO setpoints;
-
-    SELECT ARRAY(
-        SELECT (elem #>> '{}')::DOUBLE PRECISION
-        FROM jsonb_array_elements(cert_record.correction_std::jsonb) AS elem
-    ) INTO corrections;
+    -- Parse JSON arrays into paired DOUBLE PRECISION arrays, sorted by setpoint.
+    -- The certificate input order can be arbitrary, so keep correction_std paired
+    -- by original array index, then sort both arrays by setpoint before interpolating.
+    WITH sorted_points AS (
+        SELECT
+            (sp.elem #>> '{}')::DOUBLE PRECISION AS setpoint,
+            (cs.elem #>> '{}')::DOUBLE PRECISION AS correction
+        FROM jsonb_array_elements(cert_record.setpoint::jsonb) WITH ORDINALITY AS sp(elem, idx)
+        JOIN jsonb_array_elements(cert_record.correction_std::jsonb) WITH ORDINALITY AS cs(elem, idx)
+            USING (idx)
+    )
+    SELECT
+        array_agg(setpoint ORDER BY setpoint),
+        array_agg(correction ORDER BY setpoint)
+    INTO setpoints, corrections
+    FROM sorted_points;
 
     len := array_length(setpoints, 1);
 

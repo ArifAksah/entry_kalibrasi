@@ -3,6 +3,18 @@ import { supabaseAdmin } from '../../../lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
+function getCertificateStandardErrorMessage(error: any) {
+    if (error?.code === '23502' && error?.message?.includes('column "id"')) {
+        return 'ID sertifikat standar belum memiliki auto-increment. Jalankan script database/fix_certificate_standard_id_sequence.sql di Supabase SQL Editor.'
+    }
+
+    if (error?.code === '23505' && error?.message?.includes('cert_standard_pkey')) {
+        return 'ID sertifikat standar bentrok. Sequence auto-increment sertifikat standar perlu disinkronkan.'
+    }
+
+    return error?.message || 'Gagal menyimpan sertifikat standar'
+}
+
 export async function GET(request: NextRequest) {
     try {
         const { searchParams } = new URL(request.url)
@@ -70,7 +82,7 @@ export async function POST(request: NextRequest) {
 
         if (error) {
             console.error('Error creating standard cert:', error)
-            return NextResponse.json({ error: error.message }, { status: 500 })
+            return NextResponse.json({ error: getCertificateStandardErrorMessage(error) }, { status: 500 })
         }
 
         return NextResponse.json(data)

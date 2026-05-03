@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import QRCodeStyling from 'qr-code-styling'
 import bmkgLogo from '../bmkg.png'
 import { useRouter } from 'next/navigation'
@@ -304,14 +304,23 @@ const CertificatePreview: React.FC<{
   const totalPrintedPages = results.length + 2
 
   // QR verification URL and signing status
-  const qrUrl = certificate.no_certificate ? `/verify/${encodeURIComponent(certificate.no_certificate)}` : ''
+  const qrUrl = useMemo(() => {
+    const identifier = (certificate as any).public_id
+    if (!identifier) return ''
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+    return `${baseUrl}/verify/${encodeURIComponent(identifier)}`
+  }, [certificate])
   const [isSigned, setIsSigned] = useState<boolean>(false)
 
   const checkVerificationStatus = async () => {
     try {
       if (!certificate.id) return
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
       // Use certificate ID for API call to ensure uniqueness
-      const res = await fetch(`/api/verify-certificate?id=${certificate.id}`)
+      const res = await fetch(`/api/verify-certificate?id=${certificate.id}`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      })
       if (res.ok) {
         const data = await res.json()
         console.log('🔍 [Draft] verify-certificate response:', data)

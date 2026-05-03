@@ -5,11 +5,19 @@ import {
   normalizeResultsOnWrite,
   ResultsValidationError,
 } from '../../../lib/validators/certificate-results-normalize'
+import { authenticateRequest, filterCertificatesForUser, getUserRole } from '../../../lib/certificate-access'
 
 // Using shared supabaseAdmin with env fallbacks for consistency
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { user, error: authError } = await authenticateRequest(request)
+    if (authError || !user) {
+      return NextResponse.json({ error: authError || 'Unauthorized' }, { status: 401 })
+    }
+
+    const role = await getUserRole(user.id)
+
     const { data, error } = await supabaseAdmin
       .from('certificate')
       .select('*')
@@ -23,8 +31,10 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    const visibleCertificates = await filterCertificatesForUser(user.id, role, data || [])
+
     // Get verification status for each certificate (gracefully handle missing table)
-    const certificateIds = data?.map(c => c.id) || []
+    const certificateIds = visibleCertificates.map(c => c.id) || []
     let verifications: Array<{ certificate_id: number; verification_level: number; status: string; certificate_version?: number }> = []
 
     if (certificateIds.length) {
@@ -42,7 +52,7 @@ export async function GET() {
     }
 
     // Combine certificates with verification status
-    const certificatesWithStatus = (data || []).map(cert => {
+    const certificatesWithStatus = visibleCertificates.map(cert => {
       const certVersion = (cert as any).version ?? 1
       const verif1 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 1 && (v.certificate_version ?? 1) === certVersion)
       const verif2 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 2 && (v.certificate_version ?? 1) === certVersion)

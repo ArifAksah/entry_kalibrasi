@@ -54,8 +54,12 @@ type ExpiringInstrumentItem = {
   id: number
   instrument_name: string
   instrument_code: string
+  valid_from: string | null
   expires_at: string | null
   certificate_no: string
+  certificate_order: string | null
+  no_identification: string | null
+  issue_date: string | null
   status: 'expired' | 'warning' | 'valid' | 'missing'
   days_remaining: number | null
   certificate_id?: number | null
@@ -341,8 +345,8 @@ const UserStationDashboard: React.FC<{
     <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.25fr_0.95fr]">
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div>
-          <h3 className="text-base font-semibold text-slate-950">Butuh Aksi Saya: Sertifikat Akan Jatuh Tempo</h3>
-          <p className="mt-1 text-xs text-slate-500">Top 5 instrumen dengan masa berlaku sertifikat terdekat.</p>
+          <h3 className="text-base font-semibold text-slate-950">Butuh Aksi Saya: Sertifikat UUT Akan Jatuh Tempo</h3>
+          <p className="mt-1 text-xs text-slate-500">Top 5 sertifikat UUT dengan masa berlaku terdekat.</p>
         </div>
 
         <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
@@ -351,6 +355,8 @@ const UserStationDashboard: React.FC<{
               <tr>
                 <th className="px-4 py-3 font-semibold">Nama Alat</th>
                 <th className="px-4 py-3 font-semibold">Kode Alat</th>
+                <th className="px-4 py-3 font-semibold">Identifikasi</th>
+                <th className="px-4 py-3 font-semibold">Mulai Berlaku</th>
                 <th className="px-4 py-3 font-semibold">Tanggal Berakhir</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
                 <th className="px-4 py-3 text-right font-semibold">Sertifikat</th>
@@ -359,8 +365,8 @@ const UserStationDashboard: React.FC<{
             <tbody className="divide-y divide-slate-100">
               {data.expiringInstruments.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">
-                    Tidak ada sertifikat yang mendekati jatuh tempo.
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500">
+                    Tidak ada data sertifikat UUT untuk ditampilkan.
                   </td>
                 </tr>
               ) : (
@@ -368,15 +374,32 @@ const UserStationDashboard: React.FC<{
                   <tr key={item.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-semibold text-slate-900">{item.instrument_name}</td>
                     <td className="px-4 py-3 text-slate-600">{item.instrument_code}</td>
+                    <td className="px-4 py-3 text-slate-600">{item.no_identification || '-'}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      <div>{formatCompactDate(item.valid_from)}</div>
+                      {item.issue_date && (
+                        <div className="mt-0.5 text-[11px] text-slate-400">Terbit {formatCompactDate(item.issue_date)}</div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-slate-600">{formatCompactDate(item.expires_at)}</td>
-                    <td className="px-4 py-3"><StatusPill status={item.status} /></td>
+                    <td className="px-4 py-3">
+                      <StatusPill status={item.status} />
+                      {item.days_remaining != null && (
+                        <div className="mt-1 text-[11px] text-slate-500">
+                          {item.days_remaining < 0 ? `${Math.abs(item.days_remaining)} hari lewat` : `${item.days_remaining} hari lagi`}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       {item.certificate_no !== '-' ? (
-                        <a href="/instruments" className="inline-flex items-center justify-end gap-2 text-xs font-semibold text-blue-600 hover:text-blue-800">
-                          <span>{item.certificate_no}</span>
-                          <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
+                        <a
+                          href={item.certificate_id ? `/certificates/${item.certificate_id}/view` : '/certificates'}
+                          className="inline-flex flex-col items-end justify-center gap-0.5 text-xs font-semibold text-blue-600 hover:text-blue-800"
+                        >
+                          <span className="max-w-[150px] truncate">{item.certificate_no}</span>
+                          {item.certificate_order && (
+                            <span className="max-w-[150px] truncate font-normal text-slate-500">{item.certificate_order}</span>
+                          )}
                         </a>
                       ) : (
                         <span className="text-xs text-slate-400">-</span>

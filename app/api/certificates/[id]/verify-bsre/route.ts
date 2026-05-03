@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { isStoragePdfPath, tryDownloadPdfByFileNameFromStorage, tryReadLocalPdf } from '../../../../../lib/certificate-pdf-storage'
+import { authorizeCertificateAccess } from '../../../../../lib/certificate-access'
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,6 +19,11 @@ export async function POST(
 
         if (isNaN(certificateId)) {
             return NextResponse.json({ error: 'Invalid certificate ID' }, { status: 400 })
+        }
+
+        const access = await authorizeCertificateAccess(request, certificateId)
+        if (!access.allowed) {
+            return NextResponse.json({ error: access.error }, { status: access.status })
         }
 
         // 1. Get certificate info

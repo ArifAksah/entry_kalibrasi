@@ -1,6 +1,22 @@
 
-import { supabase, supabaseAdmin } from '../../../lib/supabase';
+import { supabaseAdmin } from '../../../lib/supabase';
 import { NextResponse } from 'next/server';
+
+async function requireAuthenticatedUser(request: Request) {
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+        return { user: null, response: NextResponse.json({ error: 'Authorization header required' }, { status: 401 }) };
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+
+    if (error || !user) {
+        return { user: null, response: NextResponse.json({ error: 'Invalid token' }, { status: 401 }) };
+    }
+
+    return { user, response: null };
+}
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
@@ -26,6 +42,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
     try {
+        const auth = await requireAuthenticatedUser(request);
+        if (auth.response) return auth.response;
+
         const json = await request.json();
         const { unit } = json;
 
@@ -33,7 +52,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Unit name is required' }, { status: 400 });
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await supabaseAdmin
             .from('ref_unit')
             .insert([{ unit }])
             .select()
@@ -51,6 +70,9 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
     try {
+        const auth = await requireAuthenticatedUser(request);
+        if (auth.response) return auth.response;
+
         const json = await request.json();
         const { id, unit } = json;
 
@@ -58,7 +80,7 @@ export async function PUT(request: Request) {
             return NextResponse.json({ error: 'ID and Unit name are required' }, { status: 400 });
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await supabaseAdmin
             .from('ref_unit')
             .update({ unit })
             .eq('id', id)
@@ -76,6 +98,9 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+    const auth = await requireAuthenticatedUser(request);
+    if (auth.response) return auth.response;
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -83,7 +108,7 @@ export async function DELETE(request: Request) {
         return NextResponse.json({ error: 'ID is required' }, { status: 400 });
     }
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
         .from('ref_unit')
         .delete()
         .eq('id', id);

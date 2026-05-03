@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import fs from 'fs'
 import path from 'path'
 import { buildLocalPdfPath, isStoragePdfPath, uploadPdfToStorage } from './certificate-pdf-storage'
+import { createPdfRenderToken } from './pdf-render-token'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -171,8 +172,10 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
       let printResponse: any = null
       let lastPrintError = ''
 
+      const renderAuth = createPdfRenderToken(certificateId)
+
       for (const candidateBaseUrl of baseUrlCandidates) {
-        let candidatePrintUrl = `${candidateBaseUrl}/certificates/${certificateId}/print?pdf=true`
+        let candidatePrintUrl = `${candidateBaseUrl}/certificates/${certificateId}/print?pdf=true&render_token=${encodeURIComponent(renderAuth.token)}&render_ts=${encodeURIComponent(String(renderAuth.timestamp))}`
         if (simulateSigned) {
           candidatePrintUrl += '&signed=true'
         }
@@ -230,6 +233,8 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
           el.textContent?.trim() === 'Memuat data sertifikat untuk dicetak...'
         )
         if (hasLoading) return false
+        const urlParams = new URLSearchParams(window.location.search)
+        if (urlParams.get('pdf') === 'true' && document.body?.dataset.printDataReady !== 'true') return false
         // Harus ada minimal satu .page-container
         if (!document.querySelector('.page-container')) return false
         // Halaman dianggap siap jika ada .page-1-footer (cover) ATAU .print-repeat-footer (results)
@@ -320,8 +325,11 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
           .page-container {
             margin: 0 !important;
             padding: 5mm !important; /* Uniform 5mm (0.5 cm) di semua sisi */
+            width: 210mm !important;
+            max-width: 210mm !important;
             border: none !important;
             box-shadow: none !important;
+            box-sizing: border-box !important;
             page-break-after: auto !important;
             break-after: auto !important;
           }
@@ -364,17 +372,15 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
 
           /* ── Page-1 footer (cover page footer masking) ── */
           .page-1-footer {
-            position: absolute !important;
-            bottom: 5mm !important;
-            left: 5mm !important;
-            right: 5mm !important;
+            position: static !important;
             z-index: 1000 !important;
+            flex: 0 0 auto !important;
             background-color: white !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
-            padding-top: 20px !important;
-            padding-bottom: 20px !important;
-            margin-bottom: -10px !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            margin-bottom: 0 !important;
             list-style-type: none !important;
             list-style: none !important;
             list-style-position: outside !important;
@@ -435,30 +441,48 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
             position: relative !important;
             min-height: 297mm !important;
             height: 297mm !important;
+            width: 210mm !important;
+            max-width: 210mm !important;
             padding: 5mm !important;
             box-sizing: border-box !important;
           }
           .page-container.cover-page {
             height: 297mm !important;
+            min-height: 297mm !important;
             max-height: 297mm !important;
+            width: 210mm !important;
+            max-width: 210mm !important;
             position: relative !important;
+            display: flex !important;
+            flex-direction: column !important;
             box-sizing: border-box !important;
+            padding: 5mm !important;
+            overflow: hidden !important;
           }
+          .cover-content { position: static !important; z-index: 10 !important; display: flex !important; flex-direction: column !important; justify-content: flex-start !important; padding-top: 0 !important; flex: 1 1 auto !important; min-height: 0 !important; }
+          .cover-header { min-height: 25mm !important; padding-bottom: 3mm !important; align-items: center !important; margin-top: 0 !important; }
+          .cover-logo-slot { width: 26mm !important; flex: 0 0 26mm !important; display: flex !important; justify-content: center !important; align-items: center !important; }
+          .cover-logo-slot img { width: 22mm !important; height: auto !important; max-height: 24mm !important; object-fit: contain !important; }
+          .cover-header-spacer { width: 26mm !important; flex: 0 0 26mm !important; }
+          .cover-agency-title h1, .cover-agency-title h2 { font-size: 11.5pt !important; line-height: 1.28 !important; margin: 0 !important; }
+          .cover-title-block { margin: 6mm 0 6mm !important; }
+          .cover-title-block .cert-info-text { margin-top: 1.5mm !important; }
           
           /* Thead padding top handle — page-container sudah 5mm, thead tidak perlu offset */
           .page-container.results-page thead.print-repeat-header > tr > td { padding: 0 !important; }
           .page-container.results-page tbody.print-content > tr > td { padding-top: 3mm !important; vertical-align: top !important; }
           .results-header-table td { vertical-align: top !important; }
-          .results-footer-shell { width: 100% !important; padding-top: 4.5mm !important; }
+          .results-footer-shell { width: 100% !important; padding-top: 3mm !important; }
           .results-footer-grid { width: 100% !important; border-collapse: collapse !important; table-layout: fixed !important; }
-          .results-footer-grid td { padding: 0 !important; vertical-align: middle !important; color: #000 !important; font-size: 9.5px !important; line-height: 1.22 !important; }
-          .results-footer-qr-cell { width: 15% !important; }
-          .results-footer-note-cell { width: 63% !important; text-align: center !important; font-weight: 600 !important; padding: 0 2mm !important; vertical-align: middle !important; }
-          .results-footer-meta-cell { width: 22% !important; text-align: right !important; font-weight: 700 !important; white-space: nowrap !important; vertical-align: middle !important; padding-top: 2mm !important; }
-          .results-footer-qr-wrap { display: flex !important; flex-direction: column !important; align-items: flex-start !important; gap: 0.6mm !important; }
-          .results-footer-qr-box { width: 36px !important; height: 36px !important; }
-          .results-footer-form-code { font-size: 9.5px !important; line-height: 1.1 !important; font-weight: 700 !important; }
-          .results-footer-note-copy { max-width: 88mm !important; margin: 0 auto !important; text-align: center !important; }
+          .results-footer-grid td { padding: 0 !important; vertical-align: middle !important; color: #000 !important; font-size: 8.5pt !important; line-height: 1.18 !important; font-weight: 700 !important; }
+          .results-footer-qr-cell { width: 22mm !important; text-align: left !important; }
+          .results-footer-note-cell { width: auto !important; text-align: center !important; font-weight: 700 !important; padding: 0 4mm !important; vertical-align: middle !important; }
+          .results-footer-meta-cell { width: 34mm !important; text-align: right !important; font-weight: 700 !important; white-space: nowrap !important; vertical-align: middle !important; padding-top: 0 !important; }
+          .results-footer-qr-wrap { display: flex !important; flex-direction: column !important; align-items: flex-start !important; gap: 0.8mm !important; }
+          .results-footer-qr-box { width: 12mm !important; height: 12mm !important; flex: 0 0 12mm !important; }
+          .results-footer-form-code { font-size: 7.5pt !important; line-height: 1 !important; font-weight: 700 !important; white-space: nowrap !important; }
+          .results-footer-note-copy { max-width: 112mm !important; margin: 0 auto !important; text-align: center !important; font-size: 8.2pt !important; line-height: 1.18 !important; font-weight: 700 !important; }
+          .results-footer-meta-cell, .results-footer-meta-cell * { font-size: 8.3pt !important; line-height: 1.15 !important; font-weight: 700 !important; }
 
           /* ── Avoid page break after last container ── */
           .page-container:last-of-type { page-break-after: avoid !important; break-after: avoid !important; }
@@ -624,14 +648,14 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
             // Tetap dikirim dengan nilai default untuk kompatibilitas dengan BSrE API
             // linkQR, xAxis, yAxis, width, height hanya digunakan jika tampilan='visible' dan image='true'
 
-            // Use public_id for QR link if available, otherwise fallback to certificate ID
+            // Use only public_id for QR links; numeric certificate IDs are not public-safe.
             // Note: This linkQR parameter is for BSrE to embed QR, but we are using 'invisible' mode
             // so this might not be used by BSrE, but good to keep consistent.
             // The ACTUAL QR code on the PDF is generated by the print page.
             // We need to make sure the print page uses the public_id for its QR code.
             const qrLink = existingCert?.public_id
               ? `${publicBaseUrl}/verify/${existingCert.public_id}`
-              : `${publicBaseUrl}/certificates/${certificateId}/verify`
+              : ''
 
             const linkQR = process.env.BSRE_QR_LINK || qrLink
             addTextField('linkQR', linkQR)

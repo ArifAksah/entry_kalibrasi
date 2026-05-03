@@ -13,6 +13,17 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('user_id')
 
+    const { data: userRoles } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', session.user.id)
+      .maybeSingle()
+    const isAdmin = userRoles?.role === 'admin'
+
+    if (userId && userId !== session.user.id && !isAdmin) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     let query = supabase.from('user_stations').select(`
       id,
       user_id,
@@ -21,9 +32,10 @@ export async function GET(request: NextRequest) {
       station:station_id(id, name)
     `)
 
-    // Filter by user_id if provided
-    if (userId) {
-      query = query.eq('user_id', userId)
+    if (isAdmin) {
+      if (userId) query = query.eq('user_id', userId)
+    } else {
+      query = query.eq('user_id', session.user.id)
     }
 
     const { data, error } = await query

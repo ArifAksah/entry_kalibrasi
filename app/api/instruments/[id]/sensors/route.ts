@@ -8,6 +8,36 @@ const supabaseAdmin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 )
 
+function getSensorErrorMessage(error: any) {
+  if (error?.code === '23502' && error?.message?.includes('column "id"')) {
+    return 'ID sensor belum memiliki auto-increment. Jalankan script database/fix_sensor_id_sequence.sql di Supabase SQL Editor.'
+  }
+
+  if (error?.code === '23505' && error?.message?.includes('sensor_pkey')) {
+    return 'ID sensor bentrok. Sequence auto-increment sensor perlu disinkronkan.'
+  }
+
+  return error?.message || 'Gagal menyimpan sensor'
+}
+
+function getCertificateStandardErrorMessage(error: any) {
+  if (error?.code === '23502' && error?.message?.includes('column "id"')) {
+    return 'ID sertifikat standar belum memiliki auto-increment. Jalankan script database/fix_certificate_standard_id_sequence.sql di Supabase SQL Editor.'
+  }
+
+  if (error?.code === '23505' && error?.message?.includes('cert_standard_pkey')) {
+    return 'ID sertifikat standar bentrok. Sequence auto-increment sertifikat standar perlu disinkronkan.'
+  }
+
+  return error?.message || 'Gagal menyimpan sertifikat standar'
+}
+
+function parseDecimal(value: any, fallback: number | null = null) {
+  if (value === '' || value === null || value === undefined) return fallback
+  const parsed = Number(String(value).replace(',', '.'))
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -153,7 +183,7 @@ export async function POST(
         range_capacity_unit: body.range_capacity_unit || '',
         graduating: body.graduating || '',
         graduating_unit: body.graduating_unit || '',
-        resolution: body.resolution != null ? Number(body.resolution) : null,
+        resolution: parseDecimal(body.resolution),
         funnel_diameter: body.funnel_diameter || 0,
         funnel_diameter_unit: body.funnel_diameter_unit || '',
         volume_per_tip: body.volume_per_tip || '',
@@ -171,7 +201,7 @@ export async function POST(
 
     if (sensorError) {
       console.error('Error creating sensor:', sensorError)
-      return NextResponse.json({ error: sensorError.message }, { status: 500 })
+      return NextResponse.json({ error: getSensorErrorMessage(sensorError) }, { status: 500 })
     }
 
     // Insert nested certificates if present
@@ -202,7 +232,7 @@ export async function POST(
           calibration_date: cert.calibration_date,
           drift: Number(cert.drift),
           range: cert.range,
-          resolution: Number(cert.resolution),
+          resolution: parseDecimal(cert.resolution, 0),
           u95_general: Number(cert.u95_general),
           setpoint: setpoint,
           correction_std: correction,
@@ -216,6 +246,7 @@ export async function POST(
 
       if (certError) {
         console.error('Error creating nested certificates:', certError)
+        return NextResponse.json({ error: getCertificateStandardErrorMessage(certError) }, { status: 500 })
       }
     }
 
@@ -270,7 +301,7 @@ export async function PUT(
         range_capacity_unit: body.range_capacity_unit || '',
         graduating: body.graduating || '',
         graduating_unit: body.graduating_unit || '',
-        resolution: body.resolution != null ? Number(body.resolution) : null,
+        resolution: parseDecimal(body.resolution),
         funnel_diameter: body.funnel_diameter || 0,
         funnel_diameter_unit: body.funnel_diameter_unit || '',
         volume_per_tip: body.volume_per_tip || '',
@@ -290,7 +321,7 @@ export async function PUT(
 
     if (sensorError) {
       console.error('Error updating sensor:', sensorError)
-      return NextResponse.json({ error: sensorError.message }, { status: 500 })
+      return NextResponse.json({ error: getSensorErrorMessage(sensorError) }, { status: 500 })
     }
 
     // Handle nested certificates for PUT (Insert new ones mainly)
@@ -329,7 +360,7 @@ export async function PUT(
           calibration_date: cert.calibration_date,
           drift: Number(cert.drift),
           range: cert.range,
-          resolution: Number(cert.resolution),
+          resolution: parseDecimal(cert.resolution, 0),
           u95_general: Number(cert.u95_general),
           setpoint: setpoint,
           correction_std: correction,
@@ -352,7 +383,10 @@ export async function PUT(
             .from('certificate_standard')
             .upsert(certsWithId, { onConflict: 'id' })
 
-          if (certError) console.error('Error upserting existing certs in PUT:', certError)
+          if (certError) {
+            console.error('Error upserting existing certs in PUT:', certError)
+            return NextResponse.json({ error: getCertificateStandardErrorMessage(certError) }, { status: 500 })
+          }
         }
 
         if (certsWithoutId.length > 0) {
@@ -360,7 +394,10 @@ export async function PUT(
             .from('certificate_standard')
             .insert(certsWithoutId)
 
-          if (certError) console.error('Error inserting new certs in PUT:', certError)
+          if (certError) {
+            console.error('Error inserting new certs in PUT:', certError)
+            return NextResponse.json({ error: getCertificateStandardErrorMessage(certError) }, { status: 500 })
+          }
         }
       }
     }

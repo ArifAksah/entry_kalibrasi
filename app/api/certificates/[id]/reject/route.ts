@@ -22,6 +22,26 @@ const REJECTION_CATEGORY_MAP: Record<string, { label: string; reset_from_level: 
   }
 }
 
+const createNotification = async (userId: string | null | undefined, message: string, link: string) => {
+  if (!userId) return
+
+  try {
+    const { error } = await supabaseAdmin
+      .from('notifications')
+      .insert({
+        user_id: userId,
+        message,
+        link
+      })
+
+    if (error) {
+      console.error(`Failed to create notification for user ${userId}:`, error)
+    }
+  } catch (error) {
+    console.error(`Failed to create notification for user ${userId}:`, error)
+  }
+}
+
 // GET - Get rejection category options
 export async function GET(
   request: NextRequest,
@@ -309,6 +329,12 @@ export async function POST(
     } catch (logError) {
       console.error('Failed to create certificate log:', logError)
     }
+
+    await createNotification(
+      certificate.sent_by,
+      `Sertifikat ${certificate.no_certificate} ditolak (${categoryConfig.label}). Buka catatan reject untuk melihat detail revisi.`,
+      '/certificates'
+    )
 
     return NextResponse.json({
       success: true,

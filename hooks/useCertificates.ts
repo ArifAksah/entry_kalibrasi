@@ -10,7 +10,11 @@ export const useCertificates = () => {
   const fetchCertificates = async () => {
     try {
       setLoading(true)
-      const res = await fetch('/api/certificates')
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Not authenticated')
+      const res = await fetch('/api/certificates', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      })
       if (!res.ok) throw new Error('Failed to fetch certificates')
       const data = await res.json()
       setCertificates(data)
@@ -76,7 +80,12 @@ export const useCertificates = () => {
 
   const deleteCertificate = async (id: number) => {
     try {
-      const res = await fetch(`/api/certificates/${id}`, { method: 'DELETE' })
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Not authenticated')
+      const res = await fetch(`/api/certificates/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to delete certificate')
       setCertificates(prev => prev.filter(item => item.id !== id))
@@ -92,7 +101,6 @@ export const useCertificates = () => {
 
   return { certificates, loading, error, addCertificate, updateCertificate, deleteCertificate, refetch: fetchCertificates }
 }
-
 
 
 

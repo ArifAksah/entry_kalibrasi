@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { isStoragePdfPath, tryDownloadPdfByFileNameFromStorage, tryReadLocalPdf } from '../../../../../lib/certificate-pdf-storage'
+import { authorizeCertificateAccess } from '../../../../../lib/certificate-access'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,16 +26,13 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid certificate ID' }, { status: 400 })
     }
 
-    // Get certificate with PDF path
-    const { data: cert, error: certError } = await supabaseAdmin
-      .from('certificate')
-      .select('id, no_certificate, pdf_path, pdf_generated_at')
-      .eq('id', certificateId)
-      .single()
-
-    if (certError || !cert) {
-      return NextResponse.json({ error: 'Certificate not found' }, { status: 404 })
+    const access = await authorizeCertificateAccess(request, certificateId)
+    if (!access.allowed) {
+      return NextResponse.json({ error: access.error }, { status: access.status })
     }
+
+    // Get certificate with PDF path
+    const cert = access.certificate
 
     if (!cert.pdf_path) {
       return NextResponse.json({ 

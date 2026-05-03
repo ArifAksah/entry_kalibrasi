@@ -59,6 +59,7 @@ type CertificateRow = {
   created_by?: string | null
   rejection_history?: any[] | null
   results?: any[] | null
+  pdf_generated_at?: string | null
 }
 
 type InstrumentRow = {
@@ -102,8 +103,12 @@ type ExpiringInstrumentItem = {
   id: number
   instrument_name: string
   instrument_code: string
+  valid_from: string | null
   expires_at: string | null
   certificate_no: string
+  certificate_order: string | null
+  no_identification: string | null
+  issue_date: string | null
   status: 'expired' | 'warning' | 'valid' | 'missing'
   days_remaining: number | null
   certificate_id?: number | null
@@ -138,6 +143,7 @@ type VerificationRow = {
   verification_level: number
   status: string
   certificate_version?: number | null
+  signed_at?: string | null
   updated_at?: string | null
 }
 
@@ -235,7 +241,7 @@ const buildRejectItems = (certificates: CertificateRow[]): RejectItem[] => {
 async function getCertificates() {
   const { data, error } = await supabaseAdmin
     .from('certificate')
-    .select('id, no_certificate, no_order, no_identification, created_at, issue_date, status, station, instrument, version, verifikator_1, verifikator_2, verifikator_3, authorized_by, sent_by, assignor, created_by, rejection_history, results')
+    .select('id, no_certificate, no_order, no_identification, created_at, issue_date, status, station, instrument, version, verifikator_1, verifikator_2, verifikator_3, authorized_by, sent_by, assignor, created_by, rejection_history, results, pdf_generated_at')
     .order('created_at', { ascending: false })
 
   if (error) throw new Error(error.message)
@@ -414,14 +420,49 @@ const addOneYear = (dateString: string) => {
   return next
 }
 
+const normalizeCertificateNo = (value: string | null | undefined) => {
+  return (value || '').trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+const getSignedAtForCertificate = (
+  certificate: CertificateRow,
+  verifications: VerificationRow[]
+) => {
+  const version = certificate.version ?? 1
+  const approvedSignatures = verifications
+    .filter((verification) =>
+      verification.certificate_id === certificate.id &&
+      verification.status === 'approved' &&
+      (verification.verification_level === 4 || verification.verification_level === 3)
+    )
+    .sort((a, b) => {
+      const levelDiff = b.verification_level - a.verification_level
+      if (levelDiff !== 0) return levelDiff
+
+      const aCurrentVersion = (a.certificate_version ?? 1) === version ? 1 : 0
+      const bCurrentVersion = (b.certificate_version ?? 1) === version ? 1 : 0
+      if (aCurrentVersion !== bCurrentVersion) return bCurrentVersion - aCurrentVersion
+
+      return new Date(b.signed_at || b.updated_at || 0).getTime() - new Date(a.signed_at || a.updated_at || 0).getTime()
+    })
+
+  const signature = approvedSignatures[0]
+
+  return signature?.signed_at || signature?.updated_at || certificate.pdf_generated_at || null
+}
+
 const buildUserStationDashboard = (
   assignedStations: StationRow[],
   instruments: StationDashboardInstrument[],
-  standards: CertificateStandardRow[]
+  standards: CertificateStandardRow[],
+  certificates: CertificateRow[],
+  verifications: VerificationRow[]
 ): UserStationDashboard => {
   const now = new Date()
   const warningDays = 30
   const standardsBySensor = new Map<number, CertificateStandardRow[]>()
+  const signedCertificatesByInstrument = new Map<number, Array<CertificateRow & { signed_at_effective: string }>>()
+  const signedCertificatesByNumber = new Map<string, CertificateRow & { signed_at_effective: string }>()
 
   standards.forEach((standard) => {
     const sensorId = Number(standard.sensor_id)
@@ -431,13 +472,45 @@ const buildUserStationDashboard = (
     standardsBySensor.set(sensorId, list)
   })
 
+  certificates
+    .filter((certificate) => certificate.status === 'completed' || certificate.status === 'verified')
+    .forEach((certificate) => {
+      const signedAt = getSignedAtForCertificate(certificate, verifications)
+      if (!signedAt || Number.isNaN(new Date(signedAt).getTime())) return
+
+      const normalizedNo = normalizeCertificateNo(certificate.no_certificate)
+      if (normalizedNo) {
+        const existing = signedCertificatesByNumber.get(normalizedNo)
+        if (!existing || new Date(signedAt).getTime() > new Date(existing.signed_at_effective).getTime()) {
+          signedCertificatesByNumber.set(normalizedNo, { ...certificate, signed_at_effective: signedAt })
+        }
+      }
+
+      const instrumentId = Number(certificate.instrument)
+      if (!Number.isFinite(instrumentId)) return
+
+      const list = signedCertificatesByInstrument.get(instrumentId) || []
+      list.push({ ...certificate, signed_at_effective: signedAt })
+      signedCertificatesByInstrument.set(instrumentId, list)
+    })
+
   const latestForInstrument = instruments.map((instrument) => {
     const relatedStandards = instrument.sensor_ids.flatMap((sensorId) => standardsBySensor.get(sensorId) || [])
+    const certificatesFromStandards = relatedStandards
+      .map((standard) => signedCertificatesByNumber.get(normalizeCertificateNo(standard.no_certificate)))
+      .filter((certificate): certificate is CertificateRow & { signed_at_effective: string } => !!certificate)
+    const certificateCandidates = [
+      ...(signedCertificatesByInstrument.get(instrument.id) || []),
+      ...certificatesFromStandards
+    ]
+    const latestCertificate = certificateCandidates
+      .sort((a, b) => new Date(b.signed_at_effective).getTime() - new Date(a.signed_at_effective).getTime())[0] || null
     const sorted = relatedStandards
       .filter((standard) => standard.calibration_date)
       .sort((a, b) => new Date(b.calibration_date || 0).getTime() - new Date(a.calibration_date || 0).getTime())
     const latest = sorted[0] || null
-    const expiresAt = latest?.calibration_date ? addOneYear(latest.calibration_date) : null
+    const validFrom = latestCertificate?.signed_at_effective || null
+    const expiresAt = validFrom ? addOneYear(validFrom) : null
     const daysRemaining = expiresAt
       ? Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
       : null
@@ -449,20 +522,33 @@ const buildUserStationDashboard = (
           ? 'warning'
           : 'valid'
 
-    return { instrument, latest, expiresAt, daysRemaining, status, relatedStandards }
+    return { instrument, latest, latestCertificate, validFrom, expiresAt, daysRemaining, status, relatedStandards }
   })
 
   const expiringInstruments = latestForInstrument
-    .filter((item) => item.status === 'missing' || item.status === 'expired' || item.status === 'warning')
-    .sort((a, b) => (a.daysRemaining ?? -99999) - (b.daysRemaining ?? -99999))
+    .sort((a, b) => {
+      const statusPriority: Record<ExpiringInstrumentItem['status'], number> = {
+        expired: 0,
+        warning: 1,
+        valid: 2,
+        missing: 3
+      }
+      const statusDiff = statusPriority[a.status] - statusPriority[b.status]
+      if (statusDiff !== 0) return statusDiff
+      return (a.daysRemaining ?? Number.MAX_SAFE_INTEGER) - (b.daysRemaining ?? Number.MAX_SAFE_INTEGER)
+    })
     .slice(0, 5)
     .map((item) => ({
       id: item.instrument.id,
       instrument_name: item.instrument.name,
       instrument_code: item.instrument.code,
+      valid_from: item.validFrom,
       expires_at: item.expiresAt ? item.expiresAt.toISOString() : null,
-      certificate_no: item.latest?.no_certificate || '-',
-      certificate_id: item.latest?.id ?? null,
+      certificate_no: item.latestCertificate?.no_certificate || '-',
+      certificate_order: item.latestCertificate?.no_order || null,
+      no_identification: item.latestCertificate?.no_identification || null,
+      issue_date: item.latestCertificate?.issue_date || null,
+      certificate_id: item.latestCertificate?.id ?? null,
       status: item.status,
       days_remaining: item.daysRemaining
     }))
@@ -579,7 +665,7 @@ async function getVerifications(certificateIds: number[]) {
   if (certificateIds.length === 0) return []
   const { data, error } = await supabaseAdmin
     .from('certificate_verification')
-    .select('certificate_id, verification_level, status, certificate_version, updated_at')
+    .select('certificate_id, verification_level, status, certificate_version, signed_at, updated_at')
     .in('certificate_id', certificateIds)
 
   if (error) throw new Error(error.message)
@@ -749,7 +835,7 @@ export async function GET(request: NextRequest) {
         ? buildStationSummaries(assignedStations, instruments, relevantCertificates)
         : []
       const userStationDashboard = role === 'user_station'
-        ? buildUserStationDashboard(assignedStations, stationDashboardInstruments, stationDashboardStandards)
+        ? buildUserStationDashboard(assignedStations, stationDashboardInstruments, stationDashboardStandards, certificates, verifications)
         : null
       const assignedInstrumentCount = userStationDashboard?.totalInstruments || 0
 

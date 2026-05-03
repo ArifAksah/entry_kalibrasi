@@ -13,6 +13,7 @@ import Breadcrumb from '../../../components/ui/Breadcrumb'
 import UnitSelect from '../../../components/ui/UnitSelect'
 import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
 import { useUnits } from '../../../hooks/useUnits'
+import { Modal } from '../../../components/ui/Modal'
 
 
 /**
@@ -123,8 +124,8 @@ const SearchableDropdown = ({
 
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute z-50 top-full mt-1 w-full min-w-[220px] bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-hidden">
+          <div className="fixed inset-0 z-20" onClick={() => setIsOpen(false)} />
+          <div className="absolute z-30 top-full mt-1 w-full min-w-[220px] bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-hidden">
             <div className="p-2 border-b border-gray-100">
               <input
                 type="text"
@@ -210,6 +211,8 @@ const InstrumentsCRUD: React.FC = () => {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [stationSearch, setStationSearch] = useState('')
   const [showStationDropdown, setShowStationDropdown] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState<Instrument | null>(null)
+  const [confirmCertificateDeleteIndex, setConfirmCertificateDeleteIndex] = useState<number | null>(null)
 
 
 
@@ -226,7 +229,7 @@ const InstrumentsCRUD: React.FC = () => {
     range_capacity_unit: string;
     graduating: string;
     graduating_unit: string;
-    resolution?: number | null;
+    resolution?: number | string | null;
     funnel_diameter: number;
     funnel_diameter_unit: string;
     volume_per_tip: string;
@@ -386,6 +389,36 @@ const InstrumentsCRUD: React.FC = () => {
       }
     }
   }, [form.memiliki_lebih_satu, isLoadingSensors, isStandardInstrument, sensorForms.length]);
+
+  useEffect(() => {
+    if (!isStandardInstrument || form.memiliki_lebih_satu || sensorForms.length === 0) return
+
+    const singleSensorId = sensorForms[0].id
+    setGlobalCertificates(prev => {
+      let changed = false
+      const next = prev.map(cert => {
+        const current = cert.sensorData || []
+        if (current.length === 1 && current[0].sensorLocalId === singleSensorId) {
+          return cert
+        }
+
+        const existing = current.find((data: any) => data.sensorLocalId === singleSensorId) || current[0]
+        changed = true
+        return {
+          ...cert,
+          sensorData: [{
+            sensorLocalId: singleSensorId,
+            drift: existing?.drift || 0,
+            u95_general: existing?.u95_general || 0,
+            correction_data: existing?.correction_data || [],
+            dbCertId: existing?.dbCertId
+          }]
+        }
+      })
+
+      return changed ? next : prev
+    })
+  }, [isStandardInstrument, form.memiliki_lebih_satu, sensorForms.length, sensorForms[0]?.id])
 
   // Debug sensorForms changes
   useEffect(() => {
@@ -659,6 +692,28 @@ const InstrumentsCRUD: React.FC = () => {
     ))
   }
 
+  const parseDecimal = (value: any, fallback = 0) => {
+    if (value === '' || value === null || value === undefined) return fallback
+    const normalized = String(value).replace(',', '.')
+    const parsed = Number(normalized)
+    return Number.isFinite(parsed) ? parsed : fallback
+  }
+
+  const saveInstrumentSensor = async (instrumentId: number | string, sensorForm: any, method: 'POST' | 'PUT') => {
+    const response = await fetch(`/api/instruments/${instrumentId}/sensors`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sensorForm)
+    })
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}))
+      throw new Error(errorBody?.error || `Gagal menyimpan sensor ${sensorForm.nama_sensor || sensorForm.id}`)
+    }
+
+    return response.json()
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.manufacturer || !form.type || !form.serial_number || !form.name) return
@@ -716,7 +771,7 @@ const InstrumentsCRUD: React.FC = () => {
               calibration_date: gc.calibration_date,
               drift: Number(sd.drift) || 0,
               range: sensor.range_capacity || '',
-              resolution: Number(sensor.resolution) || 0,
+              resolution: parseDecimal(sensor.resolution),
               u95_general: Number(sd.u95_general) || 0,
               correction_data: sd.correction_data || []
             };
@@ -752,37 +807,24 @@ const InstrumentsCRUD: React.FC = () => {
           // Upsert effective sensors
           for (const sensorForm of effectiveSensors) {
             if (sensorForm.id.startsWith('sensor_')) {
-              await fetch(`/api/instruments/${editing.id}/sensors`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(sensorForm)
-              })
+              await saveInstrumentSensor(editing.id, sensorForm, 'POST')
             } else {
-              await fetch(`/api/instruments/${editing.id}/sensors`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(sensorForm)
-              })
+              await saveInstrumentSensor(editing.id, sensorForm, 'PUT')
             }
           }
         }
-        showSuccess('Instrument updated successfully')
 
       } else {
         const newInstrument = await addInstrument(form)
-        showSuccess('Instrument created successfully')
 
         // For new instruments, always create the sensor (Single or Multi)
         if (newInstrument && effectiveSensors.length > 0) {
           for (const sensorForm of effectiveSensors) {
-            await fetch(`/api/instruments/${(newInstrument as any).id}/sensors`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(sensorForm)
-            })
+            await saveInstrumentSensor((newInstrument as any).id, sensorForm, 'POST')
           }
         }
       }
+      showSuccess(editing ? 'Instrument updated successfully' : 'Instrument created successfully')
       // Refresh the list after successful operation
       fetchInstruments({
         q: search,
@@ -801,11 +843,16 @@ const InstrumentsCRUD: React.FC = () => {
     }
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this instrument?')) return
+  const handleDelete = (item: Instrument) => {
+    setConfirmDelete(item)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!confirmDelete) return
     try {
-      await deleteInstrument(id)
+      await deleteInstrument(confirmDelete.id)
       showSuccess('Instrument deleted successfully')
+      setConfirmDelete(null)
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to delete instrument'
       showError(msg)
@@ -963,7 +1010,7 @@ const InstrumentsCRUD: React.FC = () => {
                           <EditButton onClick={() => openModal(item)} title="Edit Instrument" />
                         )}
                         {!isReadOnlyUserStation && can('instrument', 'delete') && canEndpoint('DELETE', `/api/instruments/${item.id}`) && (
-                          <DeleteButton onClick={() => handleDelete(item.id)} title="Delete Instrument" />
+                          <DeleteButton onClick={() => handleDelete(item)} title="Delete Instrument" />
                         )}
                       </td>
                     </tr>
@@ -986,7 +1033,7 @@ const InstrumentsCRUD: React.FC = () => {
       {/* Modal dengan scroll dan layout yang lebih baik */}
       {
         isModalOpen && can('instrument', editing ? 'update' : 'create') && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-30 p-4">
             <div className="relative w-full max-w-6xl h-[90vh]">
               {/* Ambient Light Effect */}
               <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/20 to-cyan-600/20 rounded-xl blur-lg -z-10"></div>
@@ -1287,7 +1334,7 @@ const InstrumentsCRUD: React.FC = () => {
                                         {cert.expanded ? '▲ Tutup' : '▼ Lihat / Edit Data Sensor'}
                                       </button>
                                       <button type="button"
-                                        onClick={() => { if(confirm('Hapus sertifikat ini beserta seluruh datanya?')) setGlobalCertificates(prev => prev.filter((_,i) => i !== certIdx)); }}
+                                        onClick={() => setConfirmCertificateDeleteIndex(certIdx)}
                                         className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors">
                                         Hapus
                                       </button>
@@ -1317,44 +1364,50 @@ const InstrumentsCRUD: React.FC = () => {
                                     <div className="border-t border-orange-100 bg-white">
                                       <div className="px-4 pt-4 pb-2 flex items-center justify-between">
                                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Sensor Yang Dikalibrasi</p>
-                                        <button type="button"
-                                          onClick={() => {
-                                            const newSensorId = `sensor_${Date.now()}`;
-                                            const newSensor = {
-                                              id: newSensorId,
-                                              sensor_name_id: null,
-                                              nama_sensor: '',
-                                              merk_sensor: '',
-                                              tipe_sensor: '',
-                                              serial_number_sensor: '',
-                                              range_capacity: '',
-                                              range_capacity_unit: '',
-                                              graduating: '',
-                                              graduating_unit: '',
-                                              resolution: null,
-                                              funnel_diameter: 0,
-                                              funnel_diameter_unit: '',
-                                              volume_per_tip: '',
-                                              volume_per_tip_unit: '',
-                                              funnel_area: 0,
-                                              funnel_area_unit: '',
-                                              is_standard: true,
-                                              tracebility: '',
-                                              certificates: []
-                                            };
-                                            setSensorForms(prev => [...prev, newSensor]);
-                                            setGlobalCertificates(prev => prev.map((c, ci) => {
-                                              if (ci !== certIdx) return c;
-                                              return { ...c, sensorData: [...(c.sensorData || []), { sensorLocalId: newSensorId, drift: 0, u95_general: 0, correction_data: [] }] };
-                                            }));
-                                          }}
-                                          className="flex items-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
-                                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                                          + Tambah Sensor
-                                        </button>
+                                        {form.memiliki_lebih_satu && (
+                                          <button type="button"
+                                            onClick={() => {
+                                              const newSensorId = `sensor_${Date.now()}`;
+                                              const newSensor = {
+                                                id: newSensorId,
+                                                sensor_name_id: null,
+                                                nama_sensor: '',
+                                                merk_sensor: '',
+                                                tipe_sensor: '',
+                                                serial_number_sensor: '',
+                                                range_capacity: '',
+                                                range_capacity_unit: '',
+                                                graduating: '',
+                                                graduating_unit: '',
+                                                resolution: null,
+                                                funnel_diameter: 0,
+                                                funnel_diameter_unit: '',
+                                                volume_per_tip: '',
+                                                volume_per_tip_unit: '',
+                                                funnel_area: 0,
+                                                funnel_area_unit: '',
+                                                is_standard: true,
+                                                tracebility: '',
+                                                certificates: []
+                                              };
+                                              setSensorForms(prev => [...prev, newSensor]);
+                                              setGlobalCertificates(prev => prev.map((c, ci) => {
+                                                if (ci !== certIdx) return c;
+                                                return { ...c, sensorData: [...(c.sensorData || []), { sensorLocalId: newSensorId, drift: 0, u95_general: 0, correction_data: [] }] };
+                                              }));
+                                            }}
+                                            className="flex items-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-medium transition-colors">
+                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                            + Tambah Sensor
+                                          </button>
+                                        )}
                                       </div>
                                       {(!cert.sensorData || cert.sensorData.length === 0) && (
-                                        <p className="px-4 pb-4 text-xs text-gray-400 italic">Belum ada sensor. Klik "+ Tambah Sensor" untuk menambahkan sensor ke sertifikat ini.</p>
+                                        <p className="px-4 pb-4 text-xs text-gray-400 italic">
+                                          {form.memiliki_lebih_satu
+                                            ? 'Belum ada sensor. Klik "+ Tambah Sensor" untuk menambahkan sensor ke sertifikat ini.'
+                                            : 'Sensor single instrumen akan dipakai otomatis untuk sertifikat ini.'}
+                                        </p>
                                       )}
                                       <div className="px-4 pb-4 space-y-5">
                                       {(cert.sensorData || []).map((sd: any, sIdx: number) => {
@@ -1483,8 +1536,8 @@ const InstrumentsCRUD: React.FC = () => {
                                                     </div>
                                                     <div className="sm:col-span-1">
                                                       <label className="block text-xs font-medium text-gray-600 mb-1">Resolution <span className="text-gray-400 font-normal">(untuk perhitungan U95)</span></label>
-                                                      <input type="number" step="any" value={sensor.resolution ?? ''}
-                                                        onChange={e => updateSensorIdentity('resolution', e.target.value === '' ? null : parseFloat(e.target.value))}
+                                                      <input type="text" inputMode="decimal" value={sensor.resolution ?? ''}
+                                                        onChange={e => updateSensorIdentity('resolution', e.target.value)}
                                                         className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
                                                         placeholder="Ex: 0.01"/>
                                                     </div>
@@ -1501,7 +1554,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                       <div>
                                                         <label className="block text-xs font-medium text-gray-600 mb-1">Funnel Diameter</label>
                                                         <div className="flex gap-2">
-                                                          <input type="number" value={sensor.funnel_diameter} onChange={e => updateSensorIdentity('funnel_diameter', parseFloat(e.target.value)||0)} className="flex-1 text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg bg-white" placeholder="0"/>
+                                                          <input type="text" value={sensor.funnel_diameter} onChange={e => updateSensorIdentity('funnel_diameter', parseFloat(e.target.value)||0)} className="flex-1 text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg bg-white" placeholder="0"/>
                                                           <div className="w-20"><UnitSelect units={units} value={sensor.funnel_diameter_unit} onChange={val => updateSensorIdentity('funnel_diameter_unit', val)} placeholder="Unit"/></div>
                                                         </div>
                                                       </div>
@@ -1515,7 +1568,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                       <div>
                                                         <label className="block text-xs font-medium text-gray-600 mb-1">Funnel Area</label>
                                                         <div className="flex gap-2">
-                                                          <input type="number" value={sensor.funnel_area} onChange={e => updateSensorIdentity('funnel_area', parseFloat(e.target.value)||0)} className="flex-1 text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg bg-white" placeholder="0"/>
+                                                          <input type="text" value={sensor.funnel_area} onChange={e => updateSensorIdentity('funnel_area', parseFloat(e.target.value)||0)} className="flex-1 text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg bg-white" placeholder="0"/>
                                                           <div className="w-20"><UnitSelect units={units} value={sensor.funnel_area_unit} onChange={val => updateSensorIdentity('funnel_area_unit', val)} placeholder="Unit"/></div>
                                                         </div>
                                                       </div>
@@ -1529,14 +1582,14 @@ const InstrumentsCRUD: React.FC = () => {
                                                 <div className="grid grid-cols-2 gap-3 mb-3">
                                                   <div>
                                                     <label className="block text-xs font-medium text-gray-600 mb-1">Drift</label>
-                                                    <input type="number" step="any" value={sd.drift}
+                                                    <input type="text" value={sd.drift}
                                                       onChange={e => updateSensorData('drift', e.target.value === '' ? 0 : parseFloat(e.target.value))}
                                                       className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded focus:ring-amber-400 focus:border-amber-400 bg-white"
                                                       placeholder="Ex: -0.05"/>
                                                   </div>
                                                   <div>
                                                     <label className="block text-xs font-medium text-gray-600 mb-1">U95 General</label>
-                                                    <input type="number" step="any" value={sd.u95_general}
+                                                    <input type="text" value={sd.u95_general}
                                                       onChange={e => updateSensorData('u95_general', e.target.value === '' ? 0 : parseFloat(e.target.value))}
                                                       className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded focus:ring-amber-400 focus:border-amber-400 bg-white"
                                                       placeholder="Ex: 0.02"/>
@@ -1563,13 +1616,13 @@ const InstrumentsCRUD: React.FC = () => {
                                                         <tr><td colSpan={4} className="px-4 py-3 text-center text-gray-400 italic">Klik "+ Tambah Baris" untuk menambah titik koreksi.</td></tr>
                                                       ) : sd.correction_data.map((row: any, rIdx: number) => (
                                                         <tr key={rIdx}>
-                                                          <td className="px-2 py-1"><input type="number" step="any" value={row.setpoint}
+                                                          <td className="px-2 py-1"><input type="text" value={row.setpoint}
                                                             onChange={e => { const nd=[...(sd.correction_data||[])]; nd[rIdx]={...nd[rIdx],setpoint:e.target.value}; updateSensorData('correction_data',nd); }}
                                                             className="w-full border border-gray-300 rounded p-1"/></td>
-                                                          <td className="px-2 py-1"><input type="number" step="any" value={row.correction}
+                                                          <td className="px-2 py-1"><input type="text" value={row.correction}
                                                             onChange={e => { const nd=[...(sd.correction_data||[])]; nd[rIdx]={...nd[rIdx],correction:e.target.value}; updateSensorData('correction_data',nd); }}
                                                             className="w-full border border-gray-300 rounded p-1"/></td>
-                                                          <td className="px-2 py-1"><input type="number" step="any" value={row.u95}
+                                                          <td className="px-2 py-1"><input type="text" value={row.u95}
                                                             onChange={e => { const nd=[...(sd.correction_data||[])]; nd[rIdx]={...nd[rIdx],u95:e.target.value}; updateSensorData('correction_data',nd); }}
                                                             className="w-full border border-gray-300 rounded p-1"/></td>
                                                           <td className="px-2 py-1 text-center">
@@ -1597,7 +1650,11 @@ const InstrumentsCRUD: React.FC = () => {
                             {/* Form Tambah Sertifikat Baru */}
                             <div className="border border-dashed border-blue-300 rounded-xl p-4 bg-blue-50/40">
                               <p className="text-xs font-semibold text-blue-700 mb-3 uppercase tracking-wide">+ Tambah Sertifikat Baru</p>
-                              <p className="text-xs text-gray-500 mb-3">Buat sertifikat baru, lalu klik <strong>"+ Tambah Sensor"</strong> di dalam card sertifikat untuk mendaftarkan sensor berikut data kalibrasinya (Drift, U95, Koreksi).</p>
+                              <p className="text-xs text-gray-500 mb-3">
+                                {form.memiliki_lebih_satu
+                                  ? <>Buat sertifikat baru, lalu klik <strong>"+ Tambah Sensor"</strong> di dalam card sertifikat untuk mendaftarkan sensor berikut data kalibrasinya (Drift, U95, Koreksi).</>
+                                  : 'Buat sertifikat baru. Sensor single instrumen akan terhubung otomatis ke sertifikat ini.'}
+                              </p>
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="col-span-1">
                                   <label className="block text-xs font-medium text-gray-700 mb-1">Nomor Sertifikat <span className="text-red-400">*</span></label>
@@ -1628,11 +1685,14 @@ const InstrumentsCRUD: React.FC = () => {
                                   }
                                   setNewGlobalCertError('');
                                   // Start with empty sensorData — user adds sensors inside the cert card
+                                  const singleSensorId = !form.memiliki_lebih_satu ? sensorForms[0]?.id : undefined;
                                   setGlobalCertificates(prev => [...prev, {
                                     no_certificate: newGlobalCert.no_certificate,
                                     calibration_date: newGlobalCert.calibration_date,
                                     expanded: true,
-                                    sensorData: []
+                                    sensorData: singleSensorId
+                                      ? [{ sensorLocalId: singleSensorId, drift: 0, u95_general: 0, correction_data: [] }]
+                                      : []
                                   }]);
                                   setNewGlobalCert({ no_certificate: '', calibration_date: '' });
                                 }}>
@@ -1652,7 +1712,7 @@ const InstrumentsCRUD: React.FC = () => {
                     {/* Multi-Sensor Non-Standard: Informasi Sensor */}
                     {form.memiliki_lebih_satu && !isStandardInstrument && (
                       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200 mt-6">
-                        <div className="flex items-center justify-between mb-6 sticky top-0 z-20 bg-gradient-to-r from-blue-50 to-indigo-50 -mx-6 px-6 py-3 border-b border-blue-200 shadow-sm">
+                        <div className="flex items-center justify-between mb-6 sticky top-0 z-10 bg-gradient-to-r from-blue-50 to-indigo-50 -mx-6 px-6 py-3 border-b border-blue-200 shadow-sm">
                           <div className="flex items-center">
                             <div className="bg-blue-100 rounded-full p-2 mr-3">
                               <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1784,8 +1844,8 @@ const InstrumentsCRUD: React.FC = () => {
                                     </div>
                                     <div className="sm:col-span-2">
                                       <label className="block text-sm font-medium text-gray-700 mb-2">Resolution <span className="text-gray-400 text-xs font-normal">(untuk perhitungan U95)</span></label>
-                                      <input type="number" step="any" value={sensor.resolution ?? ''}
-                                        onChange={(e) => updateSensor(sensor.id, 'resolution', e.target.value === '' ? null : parseFloat(e.target.value))}
+                                      <input type="text" inputMode="decimal" value={sensor.resolution ?? ''}
+                                        onChange={(e) => updateSensor(sensor.id, 'resolution', e.target.value)}
                                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                                         placeholder="Ex: 0.01"/>
                                     </div>
@@ -1797,7 +1857,7 @@ const InstrumentsCRUD: React.FC = () => {
                                       <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">Funnel Diameter</label>
                                         <div className="flex gap-2">
-                                          <input type="number" value={sensor.funnel_diameter}
+                                          <input type="text" value={sensor.funnel_diameter}
                                             onChange={(e) => updateSensor(sensor.id, 'funnel_diameter', parseFloat(e.target.value) || 0)}
                                             className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0"/>
                                           <div className="w-24"><UnitSelect units={units} value={sensor.funnel_diameter_unit} onChange={(val) => updateSensor(sensor.id, 'funnel_diameter_unit', val)} placeholder="Unit"/></div>
@@ -1815,7 +1875,7 @@ const InstrumentsCRUD: React.FC = () => {
                                       <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">Funnel Area</label>
                                         <div className="flex gap-2">
-                                          <input type="number" value={sensor.funnel_area}
+                                          <input type="text" value={sensor.funnel_area}
                                             onChange={(e) => updateSensor(sensor.id, 'funnel_area', parseFloat(e.target.value) || 0)}
                                             className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0"/>
                                           <div className="w-24"><UnitSelect units={units} value={sensor.funnel_area_unit} onChange={(val) => updateSensor(sensor.id, 'funnel_area_unit', val)} placeholder="Unit"/></div>
@@ -1890,10 +1950,10 @@ const InstrumentsCRUD: React.FC = () => {
                               <div className="md:col-span-2">
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Resolution <span className="text-gray-400 text-xs font-normal">(untuk perhitungan U95)</span></label>
                                 <input
-                                  type="number"
-                                  step="any"
+                                  type="text"
+                                  inputMode="decimal"
                                   value={sensor.resolution ?? ''}
-                                  onChange={(e) => updateSensor(sensor.id, 'resolution', e.target.value === '' ? null : parseFloat(e.target.value))}
+                                  onChange={(e) => updateSensor(sensor.id, 'resolution', e.target.value)}
                                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                                   placeholder="Ex: 0.01"
                                 />
@@ -1965,10 +2025,10 @@ const InstrumentsCRUD: React.FC = () => {
                               <div className="md:col-span-2">
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Resolution <span className="text-gray-400 text-xs font-normal">(untuk perhitungan U95)</span></label>
                                 <input
-                                  type="number"
-                                  step="any"
+                                  type="text"
+                                  inputMode="decimal"
                                   value={sensor.resolution ?? ''}
-                                  onChange={(e) => updateSensor(sensor.id, 'resolution', e.target.value === '' ? null : parseFloat(e.target.value))}
+                                  onChange={(e) => updateSensor(sensor.id, 'resolution', e.target.value)}
                                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                                   placeholder="Ex: 0.01"
                                 />
@@ -2033,6 +2093,90 @@ const InstrumentsCRUD: React.FC = () => {
           </div >
         )
       }
+      <Modal
+        isOpen={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        title="Konfirmasi Hapus"
+      >
+        <div className="space-y-5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50">
+              <svg className="h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                Hapus instrumen &quot;{confirmDelete?.name || confirmDelete?.serial_number || 'ini'}&quot;?
+              </p>
+              <p className="mt-1 text-sm text-gray-600">
+                Data instrumen yang sudah dihapus tidak bisa dipulihkan.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(null)}
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmDelete}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+            >
+              Hapus
+            </button>
+          </div>
+        </div>
+      </Modal>
+      <Modal
+        isOpen={confirmCertificateDeleteIndex !== null}
+        onClose={() => setConfirmCertificateDeleteIndex(null)}
+        title="Konfirmasi Hapus"
+      >
+        <div className="space-y-5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50">
+              <svg className="h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                Hapus sertifikat ini beserta seluruh datanya?
+              </p>
+              <p className="mt-1 text-sm text-gray-600">
+                Data sertifikat standar yang dihapus dari form tidak bisa dipulihkan setelah perubahan disimpan.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
+            <button
+              type="button"
+              onClick={() => setConfirmCertificateDeleteIndex(null)}
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (confirmCertificateDeleteIndex === null) return
+                setGlobalCertificates(prev => prev.filter((_, i) => i !== confirmCertificateDeleteIndex))
+                setConfirmCertificateDeleteIndex(null)
+              }}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+            >
+              Hapus
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div >
   )
 }

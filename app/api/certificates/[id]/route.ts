@@ -6,6 +6,8 @@ import {
   normalizeResultsOnWrite,
   ResultsValidationError,
 } from '../../../../lib/validators/certificate-results-normalize'
+import { authorizeCertificateAccess, canUserAccessCertificate, getUserRole } from '../../../../lib/certificate-access'
+import { verifyPdfRenderToken } from '../../../../lib/pdf-render-token'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,14 +21,34 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const { data, error } = await supabaseAdmin
-      .from('certificate')
-      .select('*')
-      .eq('id', id)
-      .single()
+    const renderToken = request.headers.get('x-pdf-render-token')
+    const renderTimestamp = request.headers.get('x-pdf-render-ts')
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data)
+    if (verifyPdfRenderToken(id, renderToken, renderTimestamp)) {
+      const { data: certificate, error } = await supabaseAdmin
+        .from('certificate')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle()
+
+      if (error) {
+        console.error('[certificates/:id] Internal PDF render query failed:', error)
+        return NextResponse.json({ error: 'Failed to fetch certificate' }, { status: 500 })
+      }
+
+      if (!certificate) {
+        return NextResponse.json({ error: 'Certificate not found' }, { status: 404 })
+      }
+
+      return NextResponse.json(certificate)
+    }
+
+    const access = await authorizeCertificateAccess(request, id)
+    if (!access.allowed) {
+      return NextResponse.json({ error: access.error }, { status: access.status })
+    }
+
+    return NextResponse.json(access.certificate)
   } catch (e) {
     return NextResponse.json({ error: 'Failed to fetch certificate' }, { status: 500 })
   }
@@ -76,6 +98,12 @@ export async function PUT(
 
     if (currentError) {
       return NextResponse.json({ error: 'Certificate not found' }, { status: 404 });
+    }
+
+    const userRole = await getUserRole(user.id)
+    const canAccess = await canUserAccessCertificate(user.id, userRole, currentCertificate)
+    if (!canAccess) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // Validate station foreign key if provided and fetch address
@@ -398,21 +426,29 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader) return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+    if (authError || !user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
 
     // Get certificate data before deleting for log
     const { data: certData } = await supabaseAdmin
       .from('certificate')
-      .select('status, no_certificate')
+      .select('*')
       .eq('id', id)
       .single()
 
-    // Get user for log
-    const authHeader = request.headers.get('authorization')
-    let userId: string | null = null
-    if (authHeader) {
-      const token = authHeader.replace('Bearer ', '')
-      const { data: { user } } = await supabaseAdmin.auth.getUser(token)
-      userId = user?.id || null
+    if (!certData) return NextResponse.json({ error: 'Certificate not found' }, { status: 404 })
+
+    const userRole = await getUserRole(user.id)
+    const canAccess = await canUserAccessCertificate(user.id, userRole, certData)
+    if (!canAccess) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    if (userRole === 'user_station') {
+      return NextResponse.json({ error: 'User station cannot delete certificates' }, { status: 403 })
     }
 
     const { error } = await supabaseAdmin
@@ -423,23 +459,21 @@ export async function DELETE(
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     // Create log entry for certificate deletion
-    if (userId) {
-      try {
-        const { createCertificateLog } = await import('../../../../lib/certificate-log-helper')
-        await createCertificateLog({
-          certificate_id: parseInt(id),
-          action: 'deleted',
-          performed_by: userId,
-          previous_status: certData?.status || null,
-          new_status: null,
-          metadata: {
-            no_certificate: certData?.no_certificate || null
-          }
-        })
-      } catch (logError) {
-        console.error('Failed to create certificate log:', logError)
-        // Don't fail the request if logging fails
-      }
+    try {
+      const { createCertificateLog } = await import('../../../../lib/certificate-log-helper')
+      await createCertificateLog({
+        certificate_id: parseInt(id),
+        action: 'deleted',
+        performed_by: user.id,
+        previous_status: certData?.status || null,
+        new_status: null,
+        metadata: {
+          no_certificate: certData?.no_certificate || null
+        }
+      })
+    } catch (logError) {
+      console.error('Failed to create certificate log:', logError)
+      // Don't fail the request if logging fails
     }
 
     return NextResponse.json({ message: 'Certificate deleted successfully' })

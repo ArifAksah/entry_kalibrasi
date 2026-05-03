@@ -230,6 +230,7 @@ export interface Certificate {
   results_schema_version?: number | null
   // Alias audit untuk FC/LC; dibackfill dari calibration_place.
   calibration_kind?: 'FC' | 'LC' | null
+  public_id?: string | null
 }
 
 export type CertificateInsert = Omit<Certificate, 'id' | 'created_at' | 'version'>
