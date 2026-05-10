@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../../lib/supabase'
-import { sendPasswordResetEmail } from '../../../../lib/email'
+import { sendEmail } from '../../../../lib/brevo'
+import { buildPasswordResetHtml } from '../../../../lib/email-templates'
 import crypto from 'crypto'
 
 export async function POST(request: NextRequest) {
@@ -39,10 +40,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Gagal menyimpan token reset' }, { status: 500 })
     }
 
-    // Send email
+    // Send email via Brevo
     try {
-      await sendPasswordResetEmail(email, resetToken)
-      
+      const resetUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`
+      const html = buildPasswordResetHtml({ resetUrl })
+
+      const result = await sendEmail({
+        to: email,
+        subject: 'Reset Password - Sistem Kalibrasi BMKG',
+        htmlContent: html,
+      })
+
+      if (!result.success) {
+        console.error(`[forgot-password] Failed to send reset email to ${email}: ${result.error}`)
+        
+        // Clean up token if email fails
+        await supabaseAdmin
+          .from('password_reset_tokens')
+          .delete()
+          .eq('token', resetToken)
+
+        return NextResponse.json({ 
+          error: 'Gagal mengirim email. Silakan coba lagi.' 
+        }, { status: 500 })
+      }
+
       return NextResponse.json({ 
         success: true, 
         message: 'Link reset password telah dikirim ke email Anda' 

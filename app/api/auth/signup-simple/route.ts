@@ -1,5 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin as supabase } from '../../../../lib/supabase';
+import { sendEmail } from '../../../../lib/brevo';
+import { buildAccountConfirmationHtml } from '../../../../lib/email-templates';
+
+async function sendAccountConfirmationEmail(email: string, name: string): Promise<void> {
+  try {
+    const html = buildAccountConfirmationHtml({ userName: name });
+    const result = await sendEmail({
+      to: email,
+      subject: 'Konfirmasi Akun - Sistem Kalibrasi BMKG',
+      htmlContent: html,
+    });
+    if (!result.success) {
+      console.error(`[signup] Failed to send confirmation email to ${email}: ${result.error}`);
+    }
+  } catch (error) {
+    console.error(`[signup] Unexpected error sending confirmation email to ${email}:`, error);
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -46,9 +64,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Send account confirmation email (awaited to ensure delivery before response)
+    console.log(`[signup] Sending confirmation email to ${email}...`);
+    await sendAccountConfirmationEmail(email, userData?.name || '');
+
     return NextResponse.json({
       success: true,
-      message: 'User berhasil dibuat (tanpa email)',
+      message: 'User berhasil dibuat',
       user: {
         id: signUpData.user.id,
         email: signUpData.user.email,

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../../lib/supabase'
+import { sendEmail } from '../../../../lib/brevo'
+import { buildAccountConfirmationHtml } from '../../../../lib/email-templates'
 
 export async function POST(request: NextRequest) {
   let createdUserId: string | null = null
@@ -41,7 +43,7 @@ export async function POST(request: NextRequest) {
     const { data: createdUser, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      email_confirm: false,
+      email_confirm: true,
       user_metadata: {
         name,
         phone: phone || '',
@@ -105,6 +107,22 @@ export async function POST(request: NextRequest) {
         console.error('Error assigning user to station:', userStationError)
         // Non-fatal: don't throw here so registration still succeeds
       }
+    }
+
+    // Send account confirmation email to the new personnel
+    try {
+      const html = buildAccountConfirmationHtml({ userName: name })
+      const result = await sendEmail({
+        to: email,
+        subject: 'Konfirmasi Akun - Sistem Kalibrasi BMKG',
+        htmlContent: html,
+      })
+      if (!result.success) {
+        console.error(`[personel/register] Failed to send confirmation email to ${email}: ${result.error}`)
+      }
+    } catch (emailError) {
+      console.error(`[personel/register] Unexpected error sending confirmation email to ${email}:`, emailError)
+      // Non-fatal: don't fail registration if email fails
     }
 
     return NextResponse.json(

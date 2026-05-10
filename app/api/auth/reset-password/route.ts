@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../../lib/supabase'
-import { sendPasswordResetConfirmationEmail } from '../../../../lib/email'
+import { sendEmail } from '../../../../lib/brevo'
+import { buildPasswordResetConfirmationHtml } from '../../../../lib/email-templates'
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
       // First, get the user by email to get their ID
       const { data: users, error: listError } = await supabaseAdmin.auth.admin.listUsers({
         page: 1,
-        perPage: 1000 // Get all users to find the one with matching email
+        perPage: 1000
       })
 
       if (listError) {
@@ -87,9 +88,17 @@ export async function POST(request: NextRequest) {
       .update({ used: true })
       .eq('token', token)
 
-    // Send confirmation email
+    // Send confirmation email via Brevo (non-blocking)
     try {
-      await sendPasswordResetConfirmationEmail(tokenData.email)
+      const html = buildPasswordResetConfirmationHtml()
+      const result = await sendEmail({
+        to: tokenData.email,
+        subject: 'Password Berhasil Diperbarui - Sistem Kalibrasi BMKG',
+        htmlContent: html,
+      })
+      if (!result.success) {
+        console.error(`[reset-password] Failed to send confirmation email to ${tokenData.email}: ${result.error}`)
+      }
     } catch (emailError) {
       console.error('Confirmation email error:', emailError)
       // Don't fail the request if confirmation email fails

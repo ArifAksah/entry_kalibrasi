@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "entry-kalibrasi-api",
     "name": "Entry Kalibrasi API",
-    "description": "API Collection for Entry Kalibrasi Dashboard. Import di Postman lalu set Environment variables.",
+    "description": "API Collection for Entry Kalibrasi Dashboard. Import di Postman lalu gunakan collection ini langsung — semua variable sudah dikonfigurasi.\n\nVariables yang sudah diset:\n- base_url: http://172.19.3.171\n- supabase_url: http://172.19.3.171:8000\n- supabase_anon_key: (sudah diisi — production internal server)\n- token: isi dengan Bearer token hasil login\n- email / password: isi kredensial login Anda",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -10,7 +10,7 @@
       "name": "1. Authentication",
       "item": [
         {
-          "name": "Login",
+          "name": "Login (Supabase)",
           "request": {
             "method": "POST",
             "header": [
@@ -19,7 +19,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{ \"email\": \"{{email}}\", \"password\": \"{{password}}\" }"
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
             },
             "url": {
               "raw": "{{supabase_url}}/auth/v1/token?grant_type=password",
@@ -27,7 +27,55 @@
               "path": ["auth", "v1", "token"],
               "query": [{ "key": "grant_type", "value": "password" }]
             },
-            "description": "Login via Supabase Auth. Copy access_token ke variable 'token'"
+            "description": "Login via Supabase Auth. Salin access_token ke variable 'token'."
+          }
+        },
+        {
+          "name": "Signup Simple",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"new@example.com\",\n  \"password\": \"password123\",\n  \"userData\": { \"full_name\": \"User Baru\" }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/signup-simple",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "signup-simple"]
+            }
+          }
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/forgot-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "forgot-password"]
+            }
+          }
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"reset-token-here\",\n  \"password\": \"newpassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/reset-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "reset-password"]
+            }
           }
         }
       ]
@@ -39,10 +87,40 @@
           "name": "List Stations",
           "request": {
             "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
             "url": {
-              "raw": "{{base_url}}/api/stations",
+              "raw": "{{base_url}}/api/stations?q=&page=1&pageSize=10",
               "host": ["{{base_url}}"],
-              "path": ["api", "stations"]
+              "path": ["api", "stations"],
+              "query": [
+                { "key": "q", "value": "" },
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List All Stations (no pagination)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/stations/all",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stations", "all"]
+            }
+          }
+        },
+        {
+          "name": "Get Station by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/stations/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stations", "1"]
             }
           }
         },
@@ -56,12 +134,43 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{ \"name\": \"Test Station\", \"address\": \"Jl. Test\", \"time_zone\": \"UTC+07:00\", \"region\": \"Region A\", \"province\": \"Prov B\", \"regency\": \"Reg C\", \"type\": \"AWS\" }"
+              "raw": "{\n  \"station_wmo_id\": \"96001\",\n  \"name\": \"Stasiun Klimatologi Test\",\n  \"address\": \"Jl. Test No. 1\",\n  \"latitude\": -6.2,\n  \"longitude\": 106.8,\n  \"elevation\": 10,\n  \"time_zone\": \"UTC+07:00\",\n  \"region\": \"Region A\",\n  \"province\": \"DKI Jakarta\",\n  \"regency\": \"Jakarta Pusat\",\n  \"type\": \"AWS\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/stations",
               "host": ["{{base_url}}"],
               "path": ["api", "stations"]
+            }
+          }
+        },
+        {
+          "name": "Update Station",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Stasiun Updated\",\n  \"address\": \"Jl. Baru No. 2\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/stations/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stations", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Station",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/stations/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stations", "1"]
             }
           }
         }
@@ -74,6 +183,7 @@
           "name": "List Personel",
           "request": {
             "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
             "url": {
               "raw": "{{base_url}}/api/personel",
               "host": ["{{base_url}}"],
@@ -82,20 +192,84 @@
           }
         },
         {
-          "name": "Register User",
+          "name": "Get Personel by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/personel/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "personel", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Personel",
           "request": {
             "method": "POST",
             "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
               { "key": "Content-Type", "value": "application/json", "type": "text" }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{ \"email\": \"new@example.com\", \"password\": \"pass123\", \"name\": \"New User\", \"role\": \"calibrator\", \"station_id\": 1 }"
+              "raw": "{\n  \"name\": \"Nama Personel\",\n  \"nip\": \"123456789\",\n  \"nik\": \"3171000000000001\",\n  \"phone\": \"08123456789\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/personel",
+              "host": ["{{base_url}}"],
+              "path": ["api", "personel"]
+            }
+          }
+        },
+        {
+          "name": "Register User (Admin Only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"New User\",\n  \"nip\": \"123456789\",\n  \"nik\": \"3171000000000001\",\n  \"phone\": \"08123456789\",\n  \"email\": \"new@example.com\",\n  \"password\": \"password123\",\n  \"role\": \"calibrator\",\n  \"station_id\": 1\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/personel/register",
               "host": ["{{base_url}}"],
               "path": ["api", "personel", "register"]
+            },
+            "description": "Mendaftarkan user baru ke Supabase Auth + tabel personel. Hanya admin."
+          }
+        },
+        {
+          "name": "Update Personel",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nama Updated\",\n  \"phone\": \"08999999999\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/personel/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "personel", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Personel",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/personel/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "personel", "1"]
             }
           }
         }
@@ -108,6 +282,7 @@
           "name": "List Instruments",
           "request": {
             "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
             "url": {
               "raw": "{{base_url}}/api/instruments",
               "host": ["{{base_url}}"],
@@ -116,20 +291,167 @@
           }
         },
         {
+          "name": "Get Instrument by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/instruments/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "instruments", "1"]
+            }
+          }
+        },
+        {
           "name": "Create Instrument",
           "request": {
             "method": "POST",
             "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
               { "key": "Content-Type", "value": "application/json", "type": "text" }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{ \"manufacturer\": \"Mfg A\", \"type\": \"Thermo\", \"serial_number\": \"SN001\", \"name\": \"Inst 1\" }"
+              "raw": "{\n  \"manufacturer\": \"Vaisala\",\n  \"type\": \"Thermometer\",\n  \"serial_number\": \"SN001\",\n  \"name\": \"Termometer AWS\",\n  \"instrument_names_id\": 1,\n  \"instrument_type_id\": 1,\n  \"station_id\": 1,\n  \"memiliki_lebih_satu\": false,\n  \"others\": \"\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/instruments",
               "host": ["{{base_url}}"],
               "path": ["api", "instruments"]
+            }
+          }
+        },
+        {
+          "name": "Update Instrument",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"manufacturer\": \"Vaisala Updated\",\n  \"serial_number\": \"SN001-B\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/instruments/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "instruments", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Instrument",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/instruments/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "instruments", "1"]
+            }
+          }
+        },
+        {
+          "name": "Get Sensors of Instrument",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/instruments/1/sensors",
+              "host": ["{{base_url}}"],
+              "path": ["api", "instruments", "1", "sensors"]
+            }
+          }
+        },
+        {
+          "name": "Add Sensor to Instrument",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sensor_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/instruments/1/sensors",
+              "host": ["{{base_url}}"],
+              "path": ["api", "instruments", "1", "sensors"]
+            }
+          }
+        },
+        {
+          "name": "List Instrument Types",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/instrument-types",
+              "host": ["{{base_url}}"],
+              "path": ["api", "instrument-types"]
+            }
+          }
+        },
+        {
+          "name": "List Instrument Names",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/instrument-names",
+              "host": ["{{base_url}}"],
+              "path": ["api", "instrument-names"]
+            }
+          }
+        },
+        {
+          "name": "Create Instrument Name",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Termometer\",\n  \"code_alat\": \"TT\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/instrument-names",
+              "host": ["{{base_url}}"],
+              "path": ["api", "instrument-names"]
+            }
+          }
+        },
+        {
+          "name": "Update Instrument Name",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Termometer Updated\",\n  \"code_alat\": \"TT\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/instrument-names/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "instrument-names", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Instrument Name",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/instrument-names/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "instrument-names", "1"]
             }
           }
         }
@@ -142,10 +464,146 @@
           "name": "List Sensors",
           "request": {
             "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
             "url": {
               "raw": "{{base_url}}/api/sensors",
               "host": ["{{base_url}}"],
               "path": ["api", "sensors"]
+            }
+          }
+        },
+        {
+          "name": "List Standard Sensors",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/sensors/standard",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sensors", "standard"]
+            }
+          }
+        },
+        {
+          "name": "Get Sensor by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/sensors/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sensors", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Sensor",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"manufacturer\": \"Vaisala\",\n  \"type\": \"Temperature\",\n  \"serial_number\": \"SEN001\",\n  \"name\": \"Sensor Suhu\",\n  \"range_capacity\": \"-40 to 60\",\n  \"range_capacity_unit\": \"°C\",\n  \"graduating\": \"0.1\",\n  \"graduating_unit\": \"°C\",\n  \"is_standard\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sensors",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sensors"]
+            }
+          }
+        },
+        {
+          "name": "Update Sensor",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"manufacturer\": \"Vaisala Updated\",\n  \"serial_number\": \"SEN001-B\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sensors/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sensors", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Sensor",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/sensors/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sensors", "1"]
+            }
+          }
+        },
+        {
+          "name": "List Sensor Names",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/sensor-names",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sensor-names"]
+            }
+          }
+        },
+        {
+          "name": "Create Sensor Name",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sensor Curah Hujan\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sensor-names",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sensor-names"]
+            }
+          }
+        },
+        {
+          "name": "Update Sensor Name",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sensor Curah Hujan Updated\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sensor-names/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sensor-names", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Sensor Name",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/sensor-names/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sensor-names", "1"]
             }
           }
         }
@@ -158,13 +616,35 @@
           "name": "List Certificates",
           "request": {
             "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
-            ],
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
             "url": {
               "raw": "{{base_url}}/api/certificates",
               "host": ["{{base_url}}"],
               "path": ["api", "certificates"]
+            }
+          }
+        },
+        {
+          "name": "List Certificates (Role-Based)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/certificates/role-based",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificates", "role-based"]
+            }
+          }
+        },
+        {
+          "name": "Get Certificate by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/certificates/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificates", "1"]
             }
           }
         },
@@ -178,67 +658,66 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{ \"no_identification\": \"ID-001\", \"issue_date\": \"2024-01-01\", \"instrument_code\": \"AWS\", \"certificate_type\": \"sert\", \"calibration_place\": \"FC\" }"
+              "raw": "{\n  \"no_identification\": \"ID-001\",\n  \"issue_date\": \"2025-01-01\",\n  \"station\": 1,\n  \"instrument\": 1,\n  \"authorized_by\": 1,\n  \"verifikator_1\": 2,\n  \"verifikator_2\": 3,\n  \"verifikator_3\": 4,\n  \"instrument_code\": \"AWS\",\n  \"certificate_type\": \"sert\",\n  \"calibration_place\": \"FC\",\n  \"results\": []\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/certificates",
               "host": ["{{base_url}}"],
               "path": ["api", "certificates"]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "7. Calibration",
-      "item": [
-        {
-          "name": "List Sessions",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/api/calibration-sessions",
-              "host": ["{{base_url}}"],
-              "path": ["api", "calibration-sessions"]
-            }
+            },
+            "description": "certificate_type: 'sert' | 's_ket'. calibration_place: 'FC' | 'LC'. verifikator_1/2/3 wajib."
           }
         },
         {
-          "name": "Insert Raw Data",
+          "name": "Update Certificate",
           "request": {
-            "method": "POST",
+            "method": "PUT",
             "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
               { "key": "Content-Type", "value": "application/json", "type": "text" }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{ \"session_id\": 1, \"rows\": [{ \"sheet_name\": \"S1\", \"point_uut\": 10, \"point_std\": 10.1, \"unit_uut\": \"C\", \"unit_std\": \"C\" }] }"
+              "raw": "{\n  \"no_identification\": \"ID-001-REV\",\n  \"issue_date\": \"2025-06-01\"\n}"
             },
             "url": {
-              "raw": "{{base_url}}/api/raw-data",
+              "raw": "{{base_url}}/api/certificates/1",
               "host": ["{{base_url}}"],
-              "path": ["api", "raw-data"]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "8. User Management",
-      "item": [
-        {
-          "name": "Get User Roles",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/api/user-roles",
-              "host": ["{{base_url}}"],
-              "path": ["api", "user-roles"]
+              "path": ["api", "certificates", "1"]
             }
           }
         },
         {
-          "name": "Assign Stations",
+          "name": "Delete Certificate",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/certificates/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificates", "1"]
+            }
+          }
+        },
+        {
+          "name": "Generate Certificate Number",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/certificates/generate-number?instrument_code=AWS&certificate_type=sert&calibration_place=FC",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificates", "generate-number"],
+              "query": [
+                { "key": "instrument_code", "value": "AWS" },
+                { "key": "certificate_type", "value": "sert" },
+                { "key": "calibration_place", "value": "FC" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Send Certificate to Verifiers",
           "request": {
             "method": "POST",
             "header": [
@@ -247,7 +726,1110 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{ \"user_id\": \"uuid-here\", \"station_ids\": [1, 2] }"
+              "raw": "{\n  \"sent_by\": \"{{user_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/certificates/1/send-to-verifiers",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificates", "1", "send-to-verifiers"]
+            }
+          }
+        },
+        {
+          "name": "Reject Certificate",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"verification_level\": 1,\n  \"rejection_reason\": \"Data tidak sesuai standar\",\n  \"rejection_category\": \"qc_data\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/certificates/1/reject",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificates", "1", "reject"]
+            },
+            "description": "rejection_category: 'qc_data' | lainnya. verification_level: 1, 2, atau 3."
+          }
+        },
+        {
+          "name": "Verify Certificate via BSRE",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentId\": \"doc-uuid-here\",\n  \"userPassphrase\": \"passphrase123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/certificates/1/verify-bsre",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificates", "1", "verify-bsre"]
+            }
+          }
+        },
+        {
+          "name": "Get Certificate PDF (stream)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/certificates/1/pdf",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificates", "1", "pdf"]
+            }
+          }
+        },
+        {
+          "name": "Download Certificate PDF (signed)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/certificates/1/download-pdf",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificates", "1", "download-pdf"]
+            }
+          }
+        },
+        {
+          "name": "Get Certificate Logs",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/certificates/1/logs",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificates", "1", "logs"]
+            }
+          }
+        },
+        {
+          "name": "Get Public Certificate",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/public/certificates/PUBLIC-ID-HERE",
+              "host": ["{{base_url}}"],
+              "path": ["api", "public", "certificates", "PUBLIC-ID-HERE"]
+            },
+            "description": "Akses publik tanpa auth untuk verifikasi QR code."
+          }
+        },
+        {
+          "name": "List Certificate Logs (global)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/certificate-logs",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificate-logs"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Certificate Verification",
+      "item": [
+        {
+          "name": "List Verifications",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/certificate-verification",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificate-verification"]
+            }
+          }
+        },
+        {
+          "name": "List Pending Verifications",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/certificate-verification/pending",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificate-verification", "pending"]
+            }
+          }
+        },
+        {
+          "name": "Get Verification by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/certificate-verification/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificate-verification", "1"]
+            }
+          }
+        },
+        {
+          "name": "Submit Verification",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"certificate_id\": 1,\n  \"verification_level\": 1,\n  \"status\": \"approved\",\n  \"notes\": \"\",\n  \"rejection_reason\": \"\",\n  \"approval_notes\": \"\",\n  \"certificate_version\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/certificate-verification",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificate-verification"]
+            },
+            "description": "status: 'pending' | 'approved' | 'rejected'. verification_level: 1-4."
+          }
+        },
+        {
+          "name": "Update Verification",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"approved\",\n  \"notes\": \"OK\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/certificate-verification/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificate-verification", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Verification",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/certificate-verification/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificate-verification", "1"]
+            }
+          }
+        },
+        {
+          "name": "Sign Level 3 (BSRE)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentId\": \"doc-uuid-here\",\n  \"userPassphrase\": \"passphrase123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/certificate-verification/sign-level-3",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificate-verification", "sign-level-3"]
+            }
+          }
+        },
+        {
+          "name": "Request Repair",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"certificate_id\": 1,\n  \"repair_notes\": \"Perlu perbaikan data sensor\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/certificate-verification/repair",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificate-verification", "repair"]
+            }
+          }
+        },
+        {
+          "name": "Complete Repair",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"certificate_id\": 1,\n  \"completion_notes\": \"Perbaikan telah selesai\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/certificate-verification/repair/complete",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificate-verification", "repair", "complete"]
+            }
+          }
+        },
+        {
+          "name": "Reset Verification",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"certificate_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/certificate-verification/reset",
+              "host": ["{{base_url}}"],
+              "path": ["api", "certificate-verification", "reset"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Calibration Sessions",
+      "item": [
+        {
+          "name": "List Sessions",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/calibration-sessions?station_id=1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calibration-sessions"],
+              "query": [{ "key": "station_id", "value": "1" }]
+            }
+          }
+        },
+        {
+          "name": "Create Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"station_id\": 1,\n  \"instrument_id\": 1,\n  \"start_date\": \"2025-01-01T07:00:00.000Z\",\n  \"end_date\": \"2025-01-02T07:00:00.000Z\",\n  \"place\": \"Lab Kalibrasi\",\n  \"notes\": \"Kalibrasi rutin\",\n  \"status\": \"draft\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/calibration-sessions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calibration-sessions"]
+            }
+          }
+        },
+        {
+          "name": "Update Session",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": 1,\n  \"status\": \"completed\",\n  \"notes\": \"Selesai\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/calibration-sessions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calibration-sessions"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Raw Data",
+      "item": [
+        {
+          "name": "Get Raw Data",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/raw-data?session_id=1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "raw-data"],
+              "query": [{ "key": "session_id", "value": "1" }]
+            }
+          }
+        },
+        {
+          "name": "Insert Raw Data (append)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": 1,\n  \"data\": [\n    {\n      \"timestamp\": \"2025-01-01T08:00:00Z\",\n      \"point_uut\": 25.1,\n      \"point_std\": 25.0,\n      \"unit_uut\": \"°C\",\n      \"unit_std\": \"°C\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/raw-data",
+              "host": ["{{base_url}}"],
+              "path": ["api", "raw-data"]
+            }
+          }
+        },
+        {
+          "name": "Replace Raw Data (overwrite)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": 1,\n  \"data\": [\n    {\n      \"timestamp\": \"2025-01-01T08:00:00Z\",\n      \"point_uut\": 25.1,\n      \"point_std\": 25.0,\n      \"unit_uut\": \"°C\",\n      \"unit_std\": \"°C\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/raw-data",
+              "host": ["{{base_url}}"],
+              "path": ["api", "raw-data"]
+            }
+          }
+        },
+        {
+          "name": "Hitung Koreksi",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pairs\": [\n    { \"uut\": 25.1, \"std\": 25.0 },\n    { \"uut\": 26.2, \"std\": 26.0 }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/hitung-koreksi",
+              "host": ["{{base_url}}"],
+              "path": ["api", "hitung-koreksi"]
+            },
+            "description": "Hitung nilai koreksi dari pasangan data UUT dan Standard."
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Calibration Results",
+      "item": [
+        {
+          "name": "List Calibration Results",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/calibration-results",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calibration-results"]
+            }
+          }
+        },
+        {
+          "name": "Get Calibration Result by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/calibration-results/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calibration-results", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Calibration Result",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"calibration_date_start\": \"2025-01-01\",\n  \"calibration_date_end\": \"2025-01-02\",\n  \"session_id\": 1,\n  \"certificate_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/calibration-results",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calibration-results"]
+            }
+          }
+        },
+        {
+          "name": "Update Calibration Result",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"calibration_date_start\": \"2025-01-01\",\n  \"calibration_date_end\": \"2025-01-03\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/calibration-results/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calibration-results", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Calibration Result",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/calibration-results/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "calibration-results", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Cert Standards",
+      "item": [
+        {
+          "name": "List Cert Standards",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/cert-standards",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cert-standards"]
+            }
+          }
+        },
+        {
+          "name": "Get Cert Standard by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/cert-standards/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cert-standards", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Cert Standard",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"certificate_id\": 1,\n  \"sensor_id\": 1,\n  \"setpoint\": [10, 20, 30]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/cert-standards",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cert-standards"]
+            }
+          }
+        },
+        {
+          "name": "Update Cert Standard",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"setpoint\": [10, 20, 30, 40]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/cert-standards/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cert-standards", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Cert Standard",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/cert-standards/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cert-standards", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Notes",
+      "item": [
+        {
+          "name": "List Notes",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/notes",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notes"]
+            }
+          }
+        },
+        {
+          "name": "Get Note by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/notes/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notes", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Note",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"traceable_to_si_through\": \"SNSU-BSN\",\n  \"reference_document\": \"ISO 17025\",\n  \"calibration_methode\": \"Metode Perbandingan\",\n  \"others\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/notes",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notes"]
+            }
+          }
+        },
+        {
+          "name": "Update Note",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"calibration_methode\": \"Metode Langsung\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/notes/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notes", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Note",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/notes/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notes", "1"]
+            }
+          }
+        },
+        {
+          "name": "List Notes Instrumen Standard",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/notes-instrumen-standard",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notes-instrumen-standard"]
+            }
+          }
+        },
+        {
+          "name": "Create Notes Instrumen Standard",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": 1,\n  \"instrumen_standard\": 2\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/notes-instrumen-standard",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notes-instrumen-standard"]
+            }
+          }
+        },
+        {
+          "name": "Update Notes Instrumen Standard",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": 1,\n  \"instrumen_standard\": 3\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/notes-instrumen-standard/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notes-instrumen-standard", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Notes Instrumen Standard",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/notes-instrumen-standard/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notes-instrumen-standard", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Inspection",
+      "item": [
+        {
+          "name": "List Inspection Persons",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/inspection-person",
+              "host": ["{{base_url}}"],
+              "path": ["api", "inspection-person"]
+            }
+          }
+        },
+        {
+          "name": "Get Inspection Person by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/inspection-person/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "inspection-person", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Inspection Person",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"result\": 1,\n  \"inspection_by\": \"user-uuid-here\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/inspection-person",
+              "host": ["{{base_url}}"],
+              "path": ["api", "inspection-person"]
+            }
+          }
+        },
+        {
+          "name": "Update Inspection Person",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"result\": 2\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/inspection-person/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "inspection-person", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Inspection Person",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/inspection-person/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "inspection-person", "1"]
+            }
+          }
+        },
+        {
+          "name": "List Inspection Results",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/inspection-results",
+              "host": ["{{base_url}}"],
+              "path": ["api", "inspection-results"]
+            }
+          }
+        },
+        {
+          "name": "Create Inspection Result",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"certificate_id\": 1,\n  \"result\": \"Lulus\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/inspection-results",
+              "host": ["{{base_url}}"],
+              "path": ["api", "inspection-results"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "14. Letters",
+      "item": [
+        {
+          "name": "List Letters",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/letters",
+              "host": ["{{base_url}}"],
+              "path": ["api", "letters"]
+            }
+          }
+        },
+        {
+          "name": "Get Letter by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/letters/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "letters", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Letter",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"no_letter\": \"SRT-001/2025\",\n  \"instrument\": 1,\n  \"owner\": 1,\n  \"issue_date\": \"2025-01-01\",\n  \"inspection_result\": 1,\n  \"authorized_by\": 1,\n  \"approver_name\": \"Kepala Stasiun\",\n  \"inspection_payload\": {},\n  \"verification\": null\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/letters",
+              "host": ["{{base_url}}"],
+              "path": ["api", "letters"]
+            }
+          }
+        },
+        {
+          "name": "Update Letter",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"no_letter\": \"SRT-001-REV/2025\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/letters/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "letters", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Letter",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/letters/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "letters", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "15. Master QC",
+      "item": [
+        {
+          "name": "List Master QC",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/master-qc",
+              "host": ["{{base_url}}"],
+              "path": ["api", "master-qc"]
+            }
+          }
+        },
+        {
+          "name": "Get Master QC by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/master-qc/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "master-qc", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Master QC",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"instrument_name_id\": 1,\n  \"unit_id\": 1,\n  \"nilai_batas_koreksi\": 0.5,\n  \"catatan\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/master-qc",
+              "host": ["{{base_url}}"],
+              "path": ["api", "master-qc"]
+            }
+          }
+        },
+        {
+          "name": "Update Master QC",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nilai_batas_koreksi\": 0.3,\n  \"catatan\": \"Diperketat\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/master-qc/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "master-qc", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Master QC",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/master-qc/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "master-qc", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "16. Units",
+      "item": [
+        {
+          "name": "List Units",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/units?q=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "units"],
+              "query": [{ "key": "q", "value": "" }]
+            }
+          }
+        },
+        {
+          "name": "Create Unit",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"unit\": \"°C\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/units",
+              "host": ["{{base_url}}"],
+              "path": ["api", "units"]
+            }
+          }
+        },
+        {
+          "name": "Update Unit",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": 1,\n  \"unit\": \"K\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/units",
+              "host": ["{{base_url}}"],
+              "path": ["api", "units"]
+            }
+          }
+        },
+        {
+          "name": "Delete Unit",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/units?id=1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "units"],
+              "query": [{ "key": "id", "value": "1" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "17. User Management",
+      "item": [
+        {
+          "name": "Get User Roles",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/user-roles?user_id={{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user-roles"],
+              "query": [{ "key": "user_id", "value": "{{user_id}}" }]
+            }
+          }
+        },
+        {
+          "name": "Update User Role",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"uuid-here\",\n  \"role\": \"verifikator\",\n  \"station_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/user-roles",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user-roles"]
+            }
+          }
+        },
+        {
+          "name": "Get User Stations",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/user-stations",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user-stations"]
+            }
+          }
+        },
+        {
+          "name": "Assign User Stations",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"uuid-here\",\n  \"station_ids\": [1, 2]\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/user-stations",
@@ -255,14 +1837,510 @@
               "path": ["api", "user-stations"]
             }
           }
+        },
+        {
+          "name": "Get User Settings",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/user-settings",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user-settings"]
+            }
+          }
+        },
+        {
+          "name": "Update User Settings",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"theme\": \"dark\",\n  \"language\": \"id\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/user-settings",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user-settings"]
+            }
+          }
+        },
+        {
+          "name": "Get Role Permissions",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/role-permissions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "role-permissions"]
+            }
+          }
+        },
+        {
+          "name": "Update Role Permissions",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  { \"role\": \"calibrator\", \"permission\": \"create_certificate\", \"allowed\": true }\n]"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/role-permissions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "role-permissions"]
+            }
+          }
+        },
+        {
+          "name": "Get Role Endpoint Permissions",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/role-endpoint-permissions?role=calibrator",
+              "host": ["{{base_url}}"],
+              "path": ["api", "role-endpoint-permissions"],
+              "query": [{ "key": "role", "value": "calibrator" }]
+            }
+          }
+        },
+        {
+          "name": "Update Role Endpoint Permissions",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  { \"role\": \"calibrator\", \"endpoint_id\": 1, \"allowed\": true }\n]"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/role-endpoint-permissions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "role-endpoint-permissions"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "18. Dashboard",
+      "item": [
+        {
+          "name": "Dashboard Role-Based",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard/role-based",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dashboard", "role-based"]
+            }
+          }
+        },
+        {
+          "name": "Dashboard Summary",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/dashboard/summary",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dashboard", "summary"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "19. Verifikator",
+      "item": [
+        {
+          "name": "List Verifikator Cal Result",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/verifikator-cal-result",
+              "host": ["{{base_url}}"],
+              "path": ["api", "verifikator-cal-result"]
+            }
+          }
+        },
+        {
+          "name": "Get Verifikator Cal Result by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/verifikator-cal-result/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "verifikator-cal-result", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Verifikator Cal Result",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cal_result\": 1,\n  \"verified_by\": \"user-uuid-here\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/verifikator-cal-result",
+              "host": ["{{base_url}}"],
+              "path": ["api", "verifikator-cal-result"]
+            }
+          }
+        },
+        {
+          "name": "Update Verifikator Cal Result",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cal_result\": 2\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/verifikator-cal-result/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "verifikator-cal-result", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Verifikator Cal Result",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/verifikator-cal-result/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "verifikator-cal-result", "1"]
+            }
+          }
+        },
+        {
+          "name": "List Verifikator Inspection Results",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/verifikator-inspection-results",
+              "host": ["{{base_url}}"],
+              "path": ["api", "verifikator-inspection-results"]
+            }
+          }
+        },
+        {
+          "name": "Get Verifikator Inspection Result by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/verifikator-inspection-results/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "verifikator-inspection-results", "1"]
+            }
+          }
+        },
+        {
+          "name": "Create Verifikator Inspection Result",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"result\": 1,\n  \"verified_by\": \"user-uuid-here\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/verifikator-inspection-results",
+              "host": ["{{base_url}}"],
+              "path": ["api", "verifikator-inspection-results"]
+            }
+          }
+        },
+        {
+          "name": "Update Verifikator Inspection Result",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"result\": 2\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/verifikator-inspection-results/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "verifikator-inspection-results", "1"]
+            }
+          }
+        },
+        {
+          "name": "Delete Verifikator Inspection Result",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/verifikator-inspection-results/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "verifikator-inspection-results", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "20. Notifications",
+      "item": [
+        {
+          "name": "Get Notifications",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/notifications",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notifications"]
+            }
+          }
+        },
+        {
+          "name": "Mark Notifications as Read",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [1, 2, 3]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/notifications",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notifications"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "21. Uploads & BSRE",
+      "item": [
+        {
+          "name": "Upload Certificate PDF",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "" },
+                { "key": "certificate_id", "value": "1", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/uploads/certificates",
+              "host": ["{{base_url}}"],
+              "path": ["api", "uploads", "certificates"]
+            }
+          }
+        },
+        {
+          "name": "BSRE Auth",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nik\": \"3171000000000001\",\n  \"passphrase\": \"passphrase123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/bsre/auth",
+              "host": ["{{base_url}}"],
+              "path": ["api", "bsre", "auth"]
+            }
+          }
+        },
+        {
+          "name": "Timestamp Document",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentId\": \"doc-uuid-here\",\n  \"documentHash\": \"sha256-hash-here\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/timestamp",
+              "host": ["{{base_url}}"],
+              "path": ["api", "timestamp"]
+            }
+          }
+        },
+        {
+          "name": "Verify Certificate (no auth)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/verify-certificate?no=NOMOR-SERTIFIKAT",
+              "host": ["{{base_url}}"],
+              "path": ["api", "verify-certificate"],
+              "query": [{ "key": "no", "value": "NOMOR-SERTIFIKAT" }]
+            }
+          }
+        },
+        {
+          "name": "Verify Signature",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentId\": \"doc-uuid-here\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/verify-signature",
+              "host": ["{{base_url}}"],
+              "path": ["api", "verify-signature"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "22. Reference Data",
+      "item": [
+        {
+          "name": "Get Reference Data",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/reference-data",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reference-data"]
+            }
+          }
+        },
+        {
+          "name": "Get Resources",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/resources",
+              "host": ["{{base_url}}"],
+              "path": ["api", "resources"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "23. Endpoint Catalog",
+      "item": [
+        {
+          "name": "List Endpoints",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/endpoint-catalog",
+              "host": ["{{base_url}}"],
+              "path": ["api", "endpoint-catalog"]
+            }
+          }
+        },
+        {
+          "name": "Scan & Sync Endpoints",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/endpoint-catalog/scan",
+              "host": ["{{base_url}}"],
+              "path": ["api", "endpoint-catalog", "scan"]
+            },
+            "description": "Scan semua route.ts dan sync ke tabel endpoint_catalog."
+          }
+        },
+        {
+          "name": "Upsert Endpoint",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  { \"method\": \"GET\", \"path\": \"/api/new-endpoint\", \"resource\": \"new-endpoint\", \"description\": \"desc\", \"enabled\": true }\n]"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/endpoint-catalog",
+              "host": ["{{base_url}}"],
+              "path": ["api", "endpoint-catalog"]
+            }
+          }
+        },
+        {
+          "name": "Delete Endpoint",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+            "url": {
+              "raw": "{{base_url}}/api/endpoint-catalog?id=1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "endpoint-catalog"],
+              "query": [{ "key": "id", "value": "1" }]
+            }
+          }
         }
       ]
     }
   ],
   "variable": [
-    { "key": "base_url", "value": "http://localhost:3000", "type": "string" },
-    { "key": "supabase_url", "value": "https://your-project.supabase.co", "type": "string" },
-    { "key": "supabase_anon_key", "value": "your-anon-key", "type": "string" },
+    { "key": "base_url", "value": "http://172.19.3.171", "type": "string" },
+    { "key": "supabase_url", "value": "http://172.19.3.171:8000", "type": "string" },
+    { "key": "supabase_anon_key", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlhdCI6MTc1OTI4NzU2OCwiZXhwIjoyMDc0ODYzNTY4LCJpc3MiOiJzdXBhYmFzZSJ9.cLjQLA6K6_HMuz1p4iHJcQFR0djaX2BW_KSXASkcdqU", "type": "string" },
     { "key": "token", "value": "", "type": "string" },
     { "key": "email", "value": "user@example.com", "type": "string" },
     { "key": "password", "value": "password", "type": "string" }

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import QRCodeStyling from 'qr-code-styling'
 import bmkgLogo from '../bmkg.png'
 import { useRouter } from 'next/navigation'
@@ -15,6 +15,7 @@ import { supabase } from '../../lib/supabase'
 import QCDataModal from '../../components/features/QCDataModal'
 import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClassName } from '../../lib/rich-text'
 import { firstLegacyResult, resultsToLegacyView } from '../../lib/validators/certificate-results-render-adapter'
+import { formatLatexUnit } from '../../lib/qc-utils'
 
 const RichTextCell: React.FC<{ value: string; className?: string }> = ({ value, className = '' }) => (
   <div
@@ -302,6 +303,70 @@ const CertificatePreview: React.FC<{
   })()
 
   const totalPrintedPages = results.length + 2
+
+  // Raw data for computing environmental conditions from imported Excel
+  const [allRawData, setAllRawData] = useState<any[]>([])
+
+  const computeEnvCondition = useCallback((type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
+    const matchedRows = sensorRawData.filter(r => {
+      const rawUnit = String(r.unit_std || r.unit_uut || '');
+      const unit = formatLatexUnit(rawUnit).toLowerCase().trim();
+      const name = (r.sheet_name || r.name || r.category || '').toLowerCase();
+
+      if (type === 'suhu') {
+        const unitIsTemp = unit && (unit.includes('°c') || unit.includes('c') || unit.includes('celcius') || unit.includes('celsius'));
+        const nameIsTemp = ['suhu', 'temp', 'termometer', 'temperature', 'thermo'].some(k => name.includes(k));
+        return unitIsTemp || (nameIsTemp && !unit);
+      }
+
+      const unitIsHum = unit && (unit.includes('%') || unit.includes('rh') || unit.includes('r.h') || unit.includes('kelembaban') || unit.includes('humidity') || unit.includes('hum'));
+      const nameIsHum = ['kelembab', 'lembab', 'humidity', 'hum', 'hygro', 'rh', 'r.h'].some(k => name.includes(k));
+      return unitIsHum || (nameIsHum && !unit);
+    });
+
+    if (matchedRows.length === 0) return '-';
+
+    const values = matchedRows
+      .map(r => {
+        if (r.std_corrected != null) return Number(r.std_corrected);
+        const sd = Number(r.standard_data);
+        const sc = Number(r.std_correction ?? 0);
+        if (!isNaN(sd)) return sd + sc;
+        return NaN;
+      })
+      .filter(v => typeof v === 'number' && !isNaN(v));
+
+    if (values.length === 0) return '-';
+
+    const minV = Math.min(...values);
+    const maxV = Math.max(...values);
+    const mean = (minV + maxV) / 2;
+    const halfRange = maxV - mean;
+
+    const unit = type === 'suhu' ? '°C' : '%';
+    return `(${mean.toFixed(1)} ± ${halfRange.toFixed(1)}) ${unit}`;
+  }, []);
+
+  // Fetch raw data from imported Excel for environmental condition computation
+  useEffect(() => {
+    if (!results || results.length === 0) return;
+    const sessionIds = Array.from(new Set(results.map((r: any) => r.session_id).filter(Boolean)));
+    if (sessionIds.length === 0) return;
+
+    const fetchRawData = async () => {
+      try {
+        const rawDataPromises = sessionIds.map((sid: string) =>
+          fetch(`/api/raw-data?session_id=${sid}`).then(res => res.ok ? res.json() : { data: [] })
+        );
+        const allRawDataResp = await Promise.all(rawDataPromises);
+        const mergedRawData = allRawDataResp.flatMap(resp => resp.data || []);
+        setAllRawData(mergedRawData);
+      } catch (e) {
+        console.error("Failed to fetch raw data for draft-view env conditions", e);
+      }
+    };
+    fetchRawData();
+  }, [results])
 
   // QR verification URL and signing status
   const qrUrl = useMemo(() => {
@@ -675,13 +740,47 @@ const CertificatePreview: React.FC<{
                         { label: 'Tanggal Kalibrasi / ', labelEng: 'Calibration Date', value: end },
                         { label: 'Tempat Kalibrasi / ', labelEng: 'Calibration Place', value: place },
                       ]
-                      const envRows: Array<{ label: string; labelEng: string; value: React.ReactNode }> = (res?.environment || []).map((env: any) => {
-                        const key = String(env?.key || '')
-                        const lower = key.toLowerCase()
-                        const label = lower.includes('suhu') ? 'Suhu / ' : lower.includes('kelembaban') ? 'Kelembaban / ' : `${key} `
-                        const eng = lower.includes('suhu') ? 'Temperature' : lower.includes('kelembaban') ? 'Relative Humidity' : ''
-                        return { label, labelEng: eng, value: env?.value || '-' }
-                      })
+                      const envRows: Array<{ label: string; labelEng: string; value: React.ReactNode }> = (() => {
+                        // Get raw data for this sensor's session
+                        const sensorSessionId = res?.session_id;
+                        const sensorRawData = sensorSessionId ? allRawData.filter((rd: any) => String(rd.session_id || '') === String(sensorSessionId)) : [];
+                        const rawSuhu = computeEnvCondition('suhu', sensorRawData);
+                        const rawHum = computeEnvCondition('kelembaban', sensorRawData);
+
+                        let envList = Array.isArray(res?.environment) ? [...res.environment] : [];
+
+                        // Ensure Suhu and Kelembaban exist in envList if they have raw values
+                        if (envList.length === 0) {
+                          if (rawSuhu !== '-') envList.push({ key: 'Suhu', value: '-' });
+                          if (rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
+                        } else {
+                          const hasSuhu = envList.some((e: any) => e.key.toLowerCase().includes('suhu'));
+                          const hasHum = envList.some((e: any) => e.key.toLowerCase().includes('kelembaban') || e.key.toLowerCase().includes('rh'));
+                          if (!hasSuhu && rawSuhu !== '-') envList.push({ key: 'Suhu', value: '-' });
+                          if (!hasHum && rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
+                        }
+
+                        return envList.map((env: any) => {
+                          const key = String(env?.key || '')
+                          const lower = key.toLowerCase()
+                          const isSuhu = lower.includes('suhu')
+                          const isHum = lower.includes('kelembaban') || lower.includes('rh')
+
+                          const label = isSuhu ? 'Suhu / ' : isHum ? 'Kelembaban / ' : `${key} `
+                          const eng = isSuhu ? 'Temperature' : isHum ? 'Relative Humidity' : ''
+
+                          let finalValue: React.ReactNode = env?.value || '-'
+
+                          // Override with computed value from raw Excel data if available
+                          if (isSuhu && rawSuhu !== '-') {
+                            finalValue = rawSuhu
+                          } else if (isHum && rawHum !== '-') {
+                            finalValue = rawHum
+                          }
+
+                          return { label, labelEng: eng, value: finalValue }
+                        })
+                      })()
                       return (
                         <table className="w-full text-sm">
                           <tbody>

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { sendEmail } from '../../../../lib/brevo'
+import { buildSignerNotificationHtml } from '../../../../lib/email-templates'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -32,6 +34,55 @@ async function logAction(
     })
   } catch (e) {
     // swallow logging errors
+  }
+}
+
+async function sendSignerNotification(
+  certificateId: number,
+  certificateNumber: string,
+  authorizedByUserId: string
+): Promise<void> {
+  try {
+    // Fetch penandatangan email from personel table
+    const { data: personel } = await supabaseAdmin
+      .from('personel')
+      .select('email')
+      .eq('id', authorizedByUserId)
+      .single();
+
+    if (!personel?.email) {
+      console.warn(`[sign-level-3] No email found for authorized_by user ${authorizedByUserId}, skipping notification`);
+      return;
+    }
+
+    const completionDateTime = new Date().toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Jakarta',
+    }) + ' WIB';
+
+    const viewUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/certificates/${certificateId}/view`;
+
+    const html = buildSignerNotificationHtml({
+      certificateNumber,
+      completionDateTime,
+      viewUrl,
+    });
+
+    const result = await sendEmail({
+      to: personel.email,
+      subject: `Sertifikat Terbit - ${certificateNumber}`,
+      htmlContent: html,
+    });
+
+    if (!result.success) {
+      console.error(`[sign-level-3] Failed to send signer notification to ${personel.email}: ${result.error}`);
+    }
+  } catch (error) {
+    console.error(`[sign-level-3] Unexpected error sending signer notification for cert ${certificateId}:`, error);
   }
 }
 
@@ -366,6 +417,9 @@ export async function POST(request: NextRequest) {
     } else {
       console.log('[sign-level-3] ✅ Certificate status updated to completed')
     }
+
+    // Fire-and-forget: send signer notification email (no await)
+    void sendSignerNotification(cert.id, cert.no_certificate, cert.authorized_by);
 
     // Create certificate log
     try {
