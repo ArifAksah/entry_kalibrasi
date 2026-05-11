@@ -406,10 +406,10 @@ export async function POST(request: NextRequest) {
 
 
 
-    // Also update certificate status to 'completed'
+    // Also update certificate status to 'completed' and set issue_date automatically
     const { error: certUpdateErr } = await supabaseAdmin
       .from('certificate')
-      .update({ status: 'completed' })
+      .update({ status: 'completed', issue_date: new Date().toISOString().split('T')[0] })
       .eq('id', cert.id)
     if (certUpdateErr) {
       console.error('[sign-level-3] ❌ Failed to update certificate status:', certUpdateErr)

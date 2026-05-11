@@ -16,6 +16,7 @@ import QCDataModal from '../../components/features/QCDataModal'
 import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClassName } from '../../lib/rich-text'
 import { firstLegacyResult, resultsToLegacyView } from '../../lib/validators/certificate-results-render-adapter'
 import { formatLatexUnit } from '../../lib/qc-utils'
+import qcCacheService from '../../lib/qc-cache-service'
 
 const RichTextCell: React.FC<{ value: string; className?: string }> = ({ value, className = '' }) => (
   <div
@@ -361,6 +362,11 @@ const CertificatePreview: React.FC<{
         const allRawDataResp = await Promise.all(rawDataPromises);
         const mergedRawData = allRawDataResp.flatMap(resp => resp.data || []);
         setAllRawData(mergedRawData);
+
+        // Pre-warm QC cache for each session that has raw data
+        sessionIds.forEach((sid: string) => {
+          qcCacheService.triggerComputation(sid)
+        })
       } catch (e) {
         console.error("Failed to fetch raw data for draft-view env conditions", e);
       }

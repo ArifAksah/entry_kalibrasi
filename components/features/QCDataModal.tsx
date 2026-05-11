@@ -7,6 +7,8 @@ import {
 import { convertUnit, needsConversion } from '../../lib/unitConversion';
 import { calculateCalibrationResult } from '../../lib/uncertainty-utils';
 import { SigFigBadge } from '../ui/SigFigBadge';
+import qcCacheService from '../../lib/qc-cache-service';
+import { deserializeMap } from '../../lib/qc-cache-storage';
 
 
 interface RawDataRow {
@@ -62,6 +64,10 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
     // Per UUT sensor: QC limits from master_qc
     const [qcLimits, setQcLimits] = useState<Record<string, QCLimit | null>>({});
     const [qcLimitsLoading, setQcLimitsLoading] = useState(false);
+
+    // Cache integration state
+    const [usedCache, setUsedCache] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     /** Resolve sensor display name: instrument_names → alias → type → fallback */
     const resolveSensorName = (s: any): string => {
@@ -153,13 +159,28 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
     useEffect(() => {
         if (isOpen && sessionId) {
-            fetchRawData(sessionId);
+            // Check cache first before on-demand computation
+            const cached = qcCacheService.get(sessionId);
+            if (cached) {
+                // Cache hit: pre-populate correctionMap and qcLimits from cache
+                setCorrectionMap(deserializeMap(cached.correction_map));
+                setQcLimits(cached.qc_limits);
+                setUsedCache(true);
+                // Still fetch raw data for table display
+                fetchRawData(sessionId);
+            } else {
+                // Cache miss: fall back to existing on-demand flow
+                setUsedCache(false);
+                fetchRawData(sessionId);
+            }
             setHasSavedToTable(false); // reset indicator on each open
         }
     }, [isOpen, sessionId]);
 
-    // Fetch QC limits per UUT sensor
+    // Fetch QC limits per UUT sensor (skip if loaded from cache)
     useEffect(() => {
+        if (usedCache) return; // Already populated from cache
+
         const uutSensorIds = sensorKeys
             .filter(k => k !== 'unknown')
             .map(Number)
@@ -175,13 +196,15 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
             setQcLimits(map);
         }).finally(() => setQcLimitsLoading(false));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sensorKeys.join(',')]);
+    }, [sensorKeys.join(','), usedCache]);
 
     /**
      * After raw data loads, call hitungKoreksiBatch which calls the DB function
      * hitung_koreksi(reading, sensor_std_id) for each unique (standard_data, sensor_id_std) pair.
+     * Skip if correctionMap was already populated from cache.
      */
     useEffect(() => {
+        if (usedCache) return; // Already populated from cache
         if (normalizedData.length === 0) return;
 
         // Collect unique pairs that have both standard_data and sensor_id_std
@@ -195,7 +218,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
         hitungKoreksiBatch(pairs)
             .then(map => setCorrectionMap(map))
             .finally(() => setCorrectionLoading(false));
-    }, [normalizedData]);
+    }, [normalizedData, usedCache]);
 
     const fetchRawData = async (sId: string) => {
         setLoading(true);
@@ -209,6 +232,28 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
             setError(err.message);
         } finally {
             setLoading(false);
+        }
+    };
+
+    /**
+     * Force-refresh: invalidate cache and recompute from scratch.
+     * Updates correctionMap and qcLimits with fresh results.
+     */
+    const handleRefresh = async () => {
+        if (!sessionId || isRefreshing) return;
+        setIsRefreshing(true);
+        try {
+            const newEntry = await qcCacheService.refresh(sessionId);
+            // Update state with fresh computed results
+            setCorrectionMap(deserializeMap(newEntry.correction_map));
+            setQcLimits(newEntry.qc_limits);
+            setUsedCache(true); // Mark as cache-sourced to prevent re-triggering useEffects
+        } catch (err: any) {
+            console.error('[QCDataModal] Refresh failed:', err);
+            // On failure, fall back to on-demand computation
+            setUsedCache(false);
+        } finally {
+            setIsRefreshing(false);
         }
     };
 
@@ -401,27 +446,29 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                             QC Check — Raw Data Analysis
+                            {/* Refresh button */}
+                            <button
+                                onClick={handleRefresh}
+                                disabled={isRefreshing || !sessionId}
+                                title="Refresh QC data (recompute from scratch)"
+                                className={`ml-2 p-1.5 rounded-full transition-all ${
+                                    isRefreshing
+                                        ? 'text-gray-400 cursor-wait'
+                                        : 'text-gray-500 hover:text-[#1e377c] hover:bg-blue-50'
+                                }`}
+                            >
+                                {isRefreshing ? (
+                                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-400 border-t-transparent" />
+                                ) : (
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                )}
+                            </button>
                         </h3>
                         <p className="text-sm text-gray-500 mt-1">
                             Certificate: <span className="font-mono font-medium">{title}</span>
                         </p>
-                        {/* DEBUG: Unit values from DB */}
-                        {currentData.length > 0 && (() => {
-                            const r0 = currentData[0];
-                            const r0UutSensor = r0.sensor_id_uut ? sensors.find((s: any) => s.id === r0.sensor_id_uut) : null;
-                            const resolvedUut = r0.unit_uut || r0UutSensor?.graduating_unit || r0UutSensor?.range_capacity_unit || 'EMPTY';
-                            return (
-                                <div className="mt-2 bg-yellow-50 border border-yellow-300 rounded px-3 py-1.5 text-[10px] font-mono text-gray-700">
-                                    <strong>🐛 DEBUG (row[0]):</strong>{' '}
-                                    unit_uut_db=<strong>{JSON.stringify(r0.unit_uut)}</strong>{' | '}
-                                    unit_std_db=<strong>{JSON.stringify(r0.unit_std)}</strong>{' | '}
-                                    sensor_id_uut=<strong>{r0.sensor_id_uut ?? 'null'}</strong>{' | '}
-                                    sensor.grad_unit=<strong>{r0UutSensor?.graduating_unit ?? 'null'}</strong>{' | '}
-                                    resolvedUut=<strong>{resolvedUut}</strong>{' | '}
-                                    needsConv={String(r0.unit_std && resolvedUut !== 'EMPTY' ? needsConversion(r0.unit_std!, resolvedUut) : false)}
-                                </div>
-                            );
-                        })()}
                     </div>
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-200 rounded-full">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -556,7 +603,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                                     const { stdCorrection, stdCorrected, uutCorrection, hasCertData, qc } = computeRowQC(row);
                                                     const isFail = uutCorrection != null && !qc.passed;
                                                     return (
-                                                        <tr key={row.id} className={`${isFail ? 'bg-pink-50 hover:bg-pink-100' : 'hover:bg-gray-50'} transition-colors`}>
+                                                        <tr key={`${row.id}-${index}`} className={`${isFail ? 'bg-pink-50 hover:bg-pink-100' : 'hover:bg-gray-50'} transition-colors`}>
                                                             <td className="px-4 py-2 text-xs text-gray-500 font-mono">{index + 1}</td>
                                                             <td className="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">
                                                                 {row.timestamp ? new Date(row.timestamp).toLocaleString('id-ID') : <span className="text-gray-400 italic">-</span>}

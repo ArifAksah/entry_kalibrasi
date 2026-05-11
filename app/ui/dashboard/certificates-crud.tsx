@@ -22,6 +22,7 @@ import DateRangePicker from '../../../components/ui/DateRangePicker'
 import RichTextEditor from '../../../components/ui/RichTextEditor'
 import { DEFAULT_NOTES_OTHERS_HTML } from '../../../lib/rich-text'
 import { firstLegacyResult, resultsToLegacyView } from '../../../lib/validators/certificate-results-render-adapter'
+import qcCacheService from '../../../lib/qc-cache-service'
 
 // Keep TrashIcon for backward compatibility in this file
 
@@ -2029,8 +2030,8 @@ type ResultItem = {
       showError('Nomor sertifikat dan nomor order wajib diisi')
       return
     }
-    if (!form.no_identification || !form.issue_date) {
-      showError('No. Identifikasi dan Tanggal Terbit wajib diisi')
+    if (!form.no_identification) {
+      showError('No. Identifikasi wajib diisi')
       return
     }
 
@@ -2249,6 +2250,13 @@ type ResultItem = {
 
               const rawResData = await rawRes.json();
               console.log('Raw Data saved linked to session:', sessionData.session_id, rawResData)
+
+              // Trigger QC cache: invalidate+recompute on update, trigger fresh computation on new save
+              if (existingSessionId) {
+                qcCacheService.invalidate(sessionData.session_id, true)
+              } else {
+                qcCacheService.triggerComputation(sessionData.session_id)
+              }
             }
             return sessionData.session_id
           }
@@ -3133,7 +3141,6 @@ type ResultItem = {
                     </div>
                     {[
                       { label: 'No. Identifikasi *', value: form.no_identification, onChange: (e: any) => setForm({ ...form, no_identification: e.target.value }), type: 'text', required: true },
-                      { label: 'Tanggal Terbit *', value: form.issue_date, onChange: (e: any) => setForm({ ...form, issue_date: e.target.value }), type: 'date', required: true },
                     ].map((field, index) => (
                       <div key={index} className="space-y-1">
                         <label className="block text-xs font-semibold text-gray-700">{field.label}</label>

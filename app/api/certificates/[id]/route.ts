@@ -83,9 +83,9 @@ export async function PUT(
       calibration_computed_at,
     } = body
 
-    if (!no_certificate || !no_order || !no_identification || !issue_date) {
+    if (!no_certificate || !no_order || !no_identification) {
       return NextResponse.json({
-        error: 'Certificate number, order number, identification number, and issue date are required',
+        error: 'Certificate number, order number, and identification number are required',
       }, { status: 400 })
     }
 

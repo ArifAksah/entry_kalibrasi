@@ -120,9 +120,9 @@ export async function POST(request: NextRequest) {
       instrument_code     // AWS, TT, PP, ... — wajib
     } = body
 
-    if (!no_identification || !issue_date) {
+    if (!no_identification) {
       return NextResponse.json({
-        error: 'No. Identifikasi dan Tanggal Terbit wajib diisi',
+        error: 'No. Identifikasi wajib diisi',
       }, { status: 400 })
     }
 

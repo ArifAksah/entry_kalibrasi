@@ -1,5 +1,3 @@
-import { BrevoClient } from '@getbrevo/brevo';
-
 export interface SendEmailParams {
   to: string;          // Recipient email address
   subject: string;     // Email subject (max 150 chars, truncated if exceeded)
@@ -40,6 +38,9 @@ function isValidEmail(email: string): boolean {
  * Sends a transactional email via Brevo API.
  * Validates inputs before calling the API.
  * Never throws — always returns a result object.
+ * 
+ * Uses dynamic import for @getbrevo/brevo to avoid slow top-level import (~2s)
+ * that can block Next.js dev server route compilation.
  */
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
   try {
@@ -64,6 +65,9 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     const subject = params.subject.length > MAX_SUBJECT_LENGTH
       ? params.subject.slice(0, MAX_SUBJECT_LENGTH)
       : params.subject;
+
+    // Lazy import to avoid blocking route compilation in dev mode
+    const { BrevoClient } = await import('@getbrevo/brevo');
 
     // Configure Brevo client
     const client = new BrevoClient({
