@@ -6,7 +6,7 @@ module.exports = {
       args: 'src/index.ts',
       cwd: __dirname,
       env: {
-        PORT: 3001,
+        PORT: 3002,
         NODE_ENV: 'production',
       },
       // Auto-restart on crash
