@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { sendWhatsApp } from '../../../../../lib/wa'
+import { buildDraftSubmissionMessage } from '../../../../../lib/wa-messages'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -176,6 +178,59 @@ export async function POST(
     } catch (logError) {
       console.error('Failed to create certificate log:', logError)
     }
+
+    // Send WhatsApp notifications to verifiers and penandatangan (fire-and-forget)
+    void (async () => {
+      try {
+        // Fetch calibrator name from personel table
+        const { data: calibrator } = await supabase
+          .from('personel')
+          .select('name')
+          .eq('id', sent_by)
+          .single()
+
+        const calibratorName = calibrator?.name || 'Unknown'
+
+        // Fetch phone numbers for all recipients
+        const recipientIds = [
+          certificate.verifikator_1,
+          certificate.verifikator_2,
+          certificate.verifikator_3,
+          certificate.authorized_by
+        ]
+
+        const { data: recipients } = await supabase
+          .from('personel')
+          .select('id, name, phone')
+          .in('id', recipientIds)
+
+        if (!recipients || recipients.length === 0) {
+          console.warn(`[send-to-verifiers] No recipients found for certificate ${certificateId}`)
+          return
+        }
+
+        const certificateNumber = certificate.no_certificate || `ID-${certificateId}`
+        const message = buildDraftSubmissionMessage(certificateNumber, calibratorName)
+
+        for (const recipient of recipients) {
+          if (!recipient.phone) {
+            console.warn(`[send-to-verifiers] No phone number for personnel ${recipient.name || recipient.id}, skipping WA notification`)
+            continue
+          }
+
+          try {
+            const result = await sendWhatsApp({ phone: recipient.phone, message })
+            if (!result.success) {
+              console.error(`[send-to-verifiers] Failed to send WA notification to ${recipient.phone} (${recipient.name || recipient.id}): ${result.error}`)
+            }
+          } catch (sendError) {
+            console.error(`[send-to-verifiers] Error sending WA notification to ${recipient.phone} (${recipient.name || recipient.id}):`, sendError)
+          }
+        }
+      } catch (waError) {
+        console.error(`[send-to-verifiers] Error in WA notification block for certificate ${certificateId}:`, waError)
+      }
+    })()
 
     return NextResponse.json({
       success: true,

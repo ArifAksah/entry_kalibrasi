@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../../lib/supabase'
 import { sendEmail } from '../../../../lib/brevo'
 import { buildAccountConfirmationHtml } from '../../../../lib/email-templates'
+import { sendWhatsApp } from '../../../../lib/wa'
+import { buildAccountConfirmationMessage } from '../../../../lib/wa-messages'
 
 export async function POST(request: NextRequest) {
   let createdUserId: string | null = null
@@ -123,6 +125,16 @@ export async function POST(request: NextRequest) {
     } catch (emailError) {
       console.error(`[personel/register] Unexpected error sending confirmation email to ${email}:`, emailError)
       // Non-fatal: don't fail registration if email fails
+    }
+
+    // Send account confirmation WhatsApp notification (fire-and-forget)
+    if (!phone) {
+      console.warn(`[personel/register] No phone number for personnel ${name} (${email}), skipping WA notification`)
+    } else {
+      const waMessage = buildAccountConfirmationMessage(name)
+      void sendWhatsApp({ phone, message: waMessage }).then(r => {
+        if (!r.success) console.error(`[personel/register] Failed to send WA notification to ${phone}: ${r.error}`)
+      })
     }
 
     return NextResponse.json(

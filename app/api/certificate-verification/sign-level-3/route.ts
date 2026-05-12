@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendEmail } from '../../../../lib/brevo'
 import { buildSignerNotificationHtml } from '../../../../lib/email-templates'
+import { sendWhatsApp } from '../../../../lib/wa'
+import { buildCertificateCompletionMessage } from '../../../../lib/wa-messages'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -43,17 +45,12 @@ async function sendSignerNotification(
   authorizedByUserId: string
 ): Promise<void> {
   try {
-    // Fetch penandatangan email from personel table
+    // Fetch penandatangan email and phone from personel table
     const { data: personel } = await supabaseAdmin
       .from('personel')
-      .select('email')
+      .select('email, phone')
       .eq('id', authorizedByUserId)
       .single();
-
-    if (!personel?.email) {
-      console.warn(`[sign-level-3] No email found for authorized_by user ${authorizedByUserId}, skipping notification`);
-      return;
-    }
 
     const completionDateTime = new Date().toLocaleDateString('id-ID', {
       day: '2-digit',
@@ -64,22 +61,39 @@ async function sendSignerNotification(
       timeZone: 'Asia/Jakarta',
     }) + ' WIB';
 
-    const viewUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/certificates/${certificateId}/view`;
+    // Send email notification
+    if (!personel?.email) {
+      console.warn(`[sign-level-3] No email found for authorized_by user ${authorizedByUserId}, skipping email notification`);
+    } else {
+      const viewUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/certificates/${certificateId}/view`;
 
-    const html = buildSignerNotificationHtml({
-      certificateNumber,
-      completionDateTime,
-      viewUrl,
-    });
+      const html = buildSignerNotificationHtml({
+        certificateNumber,
+        completionDateTime,
+        viewUrl,
+      });
 
-    const result = await sendEmail({
-      to: personel.email,
-      subject: `Sertifikat Terbit - ${certificateNumber}`,
-      htmlContent: html,
-    });
+      const result = await sendEmail({
+        to: personel.email,
+        subject: `Sertifikat Terbit - ${certificateNumber}`,
+        htmlContent: html,
+      });
 
-    if (!result.success) {
-      console.error(`[sign-level-3] Failed to send signer notification to ${personel.email}: ${result.error}`);
+      if (!result.success) {
+        console.error(`[sign-level-3] Failed to send signer email notification to ${personel.email}: ${result.error}`);
+      }
+    }
+
+    // Send WhatsApp notification
+    if (!personel?.phone) {
+      console.warn(`[sign-level-3] No phone found for authorized_by user ${authorizedByUserId}, skipping WA notification`);
+    } else {
+      const waMessage = buildCertificateCompletionMessage(certificateNumber, completionDateTime);
+      void sendWhatsApp({ phone: personel.phone, message: waMessage }).then(r => {
+        if (!r.success) {
+          console.error(`[sign-level-3] Failed to send WA notification to ${personel.phone}: ${r.error}`);
+        }
+      });
     }
   } catch (error) {
     console.error(`[sign-level-3] Unexpected error sending signer notification for cert ${certificateId}:`, error);

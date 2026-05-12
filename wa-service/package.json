@@ -1,0 +1,24 @@
+{
+  "name": "wa-service",
+  "version": "1.0.0",
+  "description": "WhatsApp notification service for BMKG Calibration System",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc10",
+    "dotenv": "16.4.7",
+    "express": "4.21.2",
+    "pino": "9.6.0"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.0",
+    "tsx": "4.21.0",
+    "typescript": "5.7.3"
+  },
+  "private": true
+}
