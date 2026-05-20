@@ -106,6 +106,8 @@ const PersonelPage: React.FC = () => {
         nik: p.nik || '',
         role: p.role || '',
         station_id: p.station_id ? String(p.station_id) : '',
+        balai_id: (p as any).balai_id ?? null,
+        signer_title: (p as any).signer_title || '',
         password: '',
       })
     } else {
@@ -217,6 +219,8 @@ const PersonelPage: React.FC = () => {
           password: form.password || undefined,
           role: form.role || null,
           station_id: form.station_id || null,
+          balai_id: (form as any).balai_id || null,
+          signer_title: (form as any).signer_title || null,
         }),
       })
       if (!response.ok) {
@@ -461,6 +465,38 @@ const PersonelPage: React.FC = () => {
                       emptyLabel="Stasiun tidak ditemukan"
                     />
                     <p className="text-xs text-gray-500 mt-1">Khusus role user_station, pilih stasiun yang terkait.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Balai / Kantor</label>
+                    <select
+                      value={(form as any).balai_id ?? ''}
+                      onChange={e => setForm({ ...form, balai_id: e.target.value ? Number(e.target.value) : null } as any)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">BMKG Pusat (Default)</option>
+                      <option value="1">Balai Besar MKG Wilayah I (Medan)</option>
+                      <option value="2">Balai Besar MKG Wilayah II (Tangerang Selatan)</option>
+                      <option value="3">Balai Besar MKG Wilayah III (Denpasar)</option>
+                      <option value="4">Balai Besar MKG Wilayah IV (Makassar)</option>
+                      <option value="5">Balai Besar MKG Wilayah V (Jayapura)</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">Pilih Balai jika personel ini adalah penandatangan dari Balai tertentu.</p>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Jabatan Penandatangan (Signer Title)</label>
+                    <input
+                      autoComplete="off"
+                      name="edit-personel-signer-title"
+                      value={(form as any).signer_title || ''}
+                      onChange={e => setForm({ ...form, signer_title: e.target.value } as any)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder={
+                        (form as any).balai_id
+                          ? `Contoh: Kepala Balai Besar MKG Wilayah ${['I','II','III','IV','V'][((form as any).balai_id || 1) - 1]}`
+                          : 'Contoh: Direktur Instrumentasi dan Kalibrasi'
+                      }
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Jabatan resmi yang ditampilkan di sertifikat sebagai Pejabat Pengesahan.</p>
                   </div>
                 </div>
               </div>

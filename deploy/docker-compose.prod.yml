@@ -1,0 +1,43 @@
+version: '3.8'
+
+# Production Docker Compose for auxiliary services
+# Run alongside the PM2-managed Next.js app
+#
+# Usage:
+#   cd deploy
+#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml logs -f pdf-template-service
+
+services:
+  pdf-template-service:
+    build:
+      context: ../services/pdf-template-service
+    container_name: pdf-template-service
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - pdf-templates:/app/templates
+      - pdf-cache:/app/cache
+    environment:
+      - PDF_SERVICE_PORT=8000
+      - PDF_TEMPLATE_DIR=/app/templates
+      - PDF_CORS_ORIGINS=http://localhost:3000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+volumes:
+  pdf-templates:
+    driver: local
+  pdf-cache:
+    driver: local

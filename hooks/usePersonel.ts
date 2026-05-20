@@ -10,6 +10,8 @@ export type Person = {
   nik?: string
   role?: 'admin' | 'calibrator' | 'verifikator' | 'assignor' | 'user_station' | ''
   station_id?: string | number | null
+  balai_id?: number | null
+  signer_title?: string | null
 }
 
 export type UsePersonelReturn = {

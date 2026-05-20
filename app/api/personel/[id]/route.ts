@@ -29,7 +29,7 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { name, nip, nik, phone, email, password, role, station_id } = body
+    const { name, nip, nik, phone, email, password, role, station_id, balai_id, signer_title } = body
 
     if (!name || !email) {
       return NextResponse.json({ error: 'Nama dan email wajib diisi' }, { status: 400 })
@@ -48,6 +48,8 @@ export async function PUT(
 
     const updateData: any = { name, nip, phone, email }
     if (nik !== undefined) updateData.nik = nik || null
+    if ('balai_id' in body) updateData.balai_id = balai_id || null
+    if ('signer_title' in body) updateData.signer_title = signer_title || null
 
     const { data, error } = await supabaseAdmin
       .from('personel')

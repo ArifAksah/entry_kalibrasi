@@ -99,6 +99,7 @@ const sections: NavSection[] = [
     items: [
       { name: 'Manajemen Personel', href: '/personel', icon: Icon.doc },
       { name: 'Penugasan Stasiun', href: '/user-stations', icon: Icon.building },
+      { name: 'Template Sertifikat', href: '/admin/templates', icon: Icon.doc },
       { name: 'WhatsApp', href: '/wa-settings', icon: Icon.mail },
     ],
   },

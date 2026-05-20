@@ -81,6 +81,8 @@ export async function PUT(
       results,
       station_address,
       calibration_computed_at,
+      balai_id,
+      is_standard,
     } = body
 
     if (!no_certificate || !no_order || !no_identification) {
@@ -266,6 +268,9 @@ export async function PUT(
         instrument: instrument ? parseInt(instrument) : null,
         station_address: (resolvedStationAddress ?? station_address) ?? null,
         version: nextVersion,
+        // Balai penerbit dan flag sertifikat standar
+        ...('balai_id' in body ? { balai_id: balai_id ?? null } : {}),
+        ...('is_standard' in body ? { is_standard: is_standard ?? false } : {}),
         // Hanya overwrite results kalau client eksplisit mengirim key 'results'.
         // Update non-results (assign verifikator dsb.) tidak akan menyentuh kolom.
         ...(clientSentResults ? { results: resultsForUpdate } : {}),

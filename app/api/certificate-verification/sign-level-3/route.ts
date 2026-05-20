@@ -249,7 +249,7 @@ export async function POST(request: NextRequest) {
     console.log(`[sign-level-3] Starting PDF generation and signing for certificate ${cert.id}...`)
 
     try {
-      const { generateAndSaveCertificatePDF } = await import('../../../../lib/certificate-pdf-helper')
+      const { generateAndSaveCertificatePDF } = await import('../../../../lib/pdf-service')
 
       // AWAIT PDF generation and signing
       const pdfResult = await generateAndSaveCertificatePDF(cert.id, user.id, userPassphrase, true)

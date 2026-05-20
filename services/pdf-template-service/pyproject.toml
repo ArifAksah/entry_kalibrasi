@@ -1,0 +1,16 @@
+[project]
+name = "pdf-template-service"
+version = "1.0.0"
+description = "Microservice untuk rendering template .docx ke PDF menggunakan FastAPI, docxtpl, dan LibreOffice headless"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "integration: marks tests that require LibreOffice (deselect with '-m \"not integration\"')",
+]
+
+[tool.hypothesis]
+max_examples = 100
+deadline = 5000

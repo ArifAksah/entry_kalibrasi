@@ -1,11 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCertificateAccess } from '../../../../../lib/certificate-access'
+import { initializeTemplates } from '../../../../../lib/pdf-service/templates'
+import { determineCertificateType } from '../../../../../lib/pdf-service/type-determinator'
+import { defaultRegistry } from '../../../../../lib/pdf-service/template-registry'
+import { createTemplateRenderer } from '../../../../../lib/pdf-service/template-renderer'
+import { shouldUsePdfTemplateService, renderPdfViaTemplateService } from '../../../../../lib/pdf-service/pdf-template-client'
+import { mapCertificateToTemplateData } from '../../../../../lib/pdf-service/certificate-data-mapper'
+import { getActiveRichTextTemplate } from '../../../../../lib/rich-text-editor/storage-service'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { autoRefreshToken: false, persistSession: false } }
+)
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  let browser
   try {
     const { id } = await params
     const certificateId = parseInt(id)
@@ -20,322 +33,101 @@ export async function GET(
     }
     const certificate = access.certificate
 
-    // Dynamic import playwright to handle cases where it's not installed
-    let playwright: any
+    // Determine certificate type from certificate data
+    const certificateType = determineCertificateType({
+      calibration_place: certificate.calibration_place,
+      calibration_kind: certificate.calibration_kind,
+      balai_id: certificate.balai_id,
+      is_standard: certificate.is_standard,
+      certificate_type: certificate.certificate_type,
+    })
+
+    // Build filename from certificate number
+    let filename = `Certificate_${certificateId}.pdf`
+    if (certificate?.no_certificate) {
+      filename = `Certificate_${certificate.no_certificate.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
+    }
+
+    // ─── Try Python PDF Template Service first ─────────────────────────────
+    let templateRecord: any = null
     try {
-      // Dynamic import with require for server-side only
-      playwright = await import('playwright')
-    } catch (importError) {
-      console.error('Playwright not available, using fallback method:', importError)
+      templateRecord = await getActiveRichTextTemplate(certificateType)
+    } catch (e: any) {
+      console.warn(`[download-pdf] Could not fetch template record: ${e.message}`)
+    }
+
+    if (templateRecord && shouldUsePdfTemplateService(templateRecord)) {
+      console.log(`[download-pdf] Using Python PDF Template Service for certificate ${certificateId}`)
+
+      try {
+        // Fetch full certificate with relations
+        const { data: fullCert, error: fullCertError } = await supabaseAdmin
+          .from('certificate')
+          .select(`
+            *,
+            instrument:instrument_id(*),
+            station:station_id(*),
+            sensors:certificate_sensor(*, sensor:sensor_id(*), results:calibration_result(*))
+          `)
+          .eq('id', certificateId)
+          .single()
+
+        if (!fullCertError && fullCert) {
+          const templateData = mapCertificateToTemplateData(fullCert)
+          const pdfBuffer = await renderPdfViaTemplateService(templateRecord.id, templateData)
+
+          console.log(`[download-pdf] PDF rendered via Python service: ${pdfBuffer.length} bytes`)
+
+          return new NextResponse(new Uint8Array(pdfBuffer), {
+            headers: {
+              'Content-Type': 'application/pdf',
+              'Content-Disposition': `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+              'Content-Length': pdfBuffer.length.toString(),
+            },
+          })
+        }
+      } catch (pythonError: any) {
+        console.warn(`[download-pdf] Python service failed, falling back to Playwright: ${pythonError.message}`)
+      }
+    }
+
+    // ─── Fallback: Playwright-based rendering ──────────────────────────────
+    initializeTemplates()
+
+    let config
+    try {
+      config = defaultRegistry.get(certificateType)
+    } catch (registryError: any) {
+      console.error(`[download-pdf] Template lookup failed for type "${certificateType}":`, registryError.message)
+      return NextResponse.json({ error: `Template not found: ${registryError.message}` }, { status: 500 })
+    }
+
+    const renderer = createTemplateRenderer()
+    let renderResult
+    try {
+      renderResult = await renderer.render(certificateId, config, {
+        certificateNumber: certificate.no_certificate || undefined,
+      })
+    } catch (renderError: any) {
+      console.error(`[download-pdf] PDF rendering failed for certificate ${certificateId}:`, renderError.message)
+
       // Fallback: redirect to print page with download parameter
       const baseUrl = request.nextUrl.origin
       const printUrl = `${baseUrl}/certificates/${certificateId}/print?download=true`
       return NextResponse.redirect(printUrl)
     }
 
-    // Get base URL
-    const baseUrl = request.nextUrl.origin
-    const printUrl = `${baseUrl}/certificates/${certificateId}/print?pdf=true`
+    const pdfBytes = new Uint8Array(renderResult.pdfBuffer)
 
-    // Launch browser with Playwright
-    browser = await playwright.chromium.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu'
-      ]
+    return new NextResponse(pdfBytes, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+        'Content-Length': renderResult.pdfBuffer.length.toString(),
+      },
     })
-
-    try {
-      const context = await browser.newContext({
-        viewport: {
-          width: 794, // A4 width in pixels at 96 DPI
-          height: 1123, // A4 height in pixels at 96 DPI
-        }
-      })
-
-      const page = await context.newPage()
-
-      // Navigate to print page
-      await page.goto(printUrl, {
-        waitUntil: 'networkidle',
-        timeout: 60000
-      })
-
-      // Wait for loading to complete - wait for main content to appear
-      // Check if loading message exists, if yes wait for it to disappear
-      const loadingSelector = 'text=Memuat data sertifikat untuk dicetak...'
-      const loadingExists = await page.locator(loadingSelector).count() > 0
-      
-      if (loadingExists) {
-        console.log('Loading message detected, waiting for content to load...')
-        // Wait for loading message to disappear
-        await page.waitForSelector(loadingSelector, { 
-          state: 'hidden', 
-          timeout: 30000 
-        }).catch(() => {
-          console.log('Loading message still visible, but continuing...')
-        })
-      }
-
-      // Wait for main content to appear - check for page container
-      console.log('Waiting for main content...')
-      await page.waitForSelector('.page-container', { 
-        timeout: 30000,
-        state: 'visible'
-      }).catch(() => {
-        console.log('Page container not found, trying alternative selectors...')
-      })
-
-      // Wait for footer to appear (indicates content is loaded)
-      console.log('Waiting for footer...')
-      await page.waitForSelector('.page-1-footer', { 
-        timeout: 30000,
-        state: 'visible'
-      }).catch(() => {
-        console.log('Footer not found, but continuing...')
-      })
-
-      // Wait for React to finish rendering - check if loading state is false
-      console.log('Waiting for React to finish rendering...')
-      await page.waitForFunction(() => {
-        // Check if loading message is not in DOM
-        const loadingText = Array.from(document.querySelectorAll('*')).find(el => 
-          el.textContent?.includes('Memuat data sertifikat untuk dicetak...')
-        )
-        if (loadingText) return false
-        
-        // Check if main content exists
-        const pageContainer = document.querySelector('.page-container')
-        if (!pageContainer) return false
-        
-        // Check if footer exists
-        const footer = document.querySelector('.page-1-footer')
-        if (!footer) return false
-        
-        return true
-      }, { timeout: 30000 }).catch(() => {
-        console.log('Wait function timeout, but continuing...')
-      })
-
-      // Additional wait to ensure all dynamic content (QR codes, etc.) is loaded
-      console.log('Waiting for dynamic content (QR codes, etc.)...')
-      await page.waitForTimeout(5000) // Wait for QR codes and dynamic content
-      
-      // Final verification - check if loading message is still visible
-      const stillLoading = await page.evaluate(() => {
-        return Array.from(document.querySelectorAll('*')).some(el => 
-          el.textContent?.includes('Memuat data sertifikat untuk dicetak...')
-        )
-      })
-      
-      if (stillLoading) {
-        console.log('Warning: Loading message still visible, waiting more...')
-        await page.waitForTimeout(5000)
-      }
-      
-      console.log('Content should be loaded, proceeding with PDF generation...')
-      
-      // Inject CSS to prevent any list styling artifacts
-      await page.addStyleTag({
-        content: `
-          * {
-            list-style: none !important;
-            list-style-type: none !important;
-            list-style-position: outside !important;
-            list-style-image: none !important;
-          }
-          *::marker {
-            display: none !important;
-            content: "" !important;
-            color: transparent !important;
-            font-size: 0 !important;
-            width: 0 !important;
-            height: 0 !important;
-          }
-          ul, ol, li {
-            list-style: none !important;
-            list-style-type: none !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          ul::before, ol::before, li::before,
-          ul::after, ol::after, li::after {
-            display: none !important;
-            content: none !important;
-          }
-          @page {
-            size: A4;
-            margin: 0;
-          }
-          body,
-          .print-container {
-            margin: 0 !important;
-            padding: 0 !important;
-            font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif !important;
-          }
-          body, p, span, div, td, th, h1, h2, h3, h4, h5, h6 {
-            font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif !important;
-          }
-          .page-container {
-            margin: 0 !important;
-            padding: 5mm !important;
-            box-sizing: border-box !important;
-          }
-          .page-container,
-          .page-container table,
-          .page-container td,
-          .page-container th,
-          .page-container p,
-          .page-container div {
-            font-size: 11pt !important;
-            line-height: 1.25 !important;
-            font-weight: 700 !important;
-            color: #000 !important;
-          }
-          .cert-title-id {
-            font-size: 20pt !important;
-            line-height: 1.15 !important;
-            font-weight: 700 !important;
-            letter-spacing: 0 !important;
-            color: #000 !important;
-            text-transform: uppercase;
-          }
-          .cert-title-en,
-          .cert-text-en,
-          .page-container .italic {
-            font-size: 9pt !important;
-            line-height: 1.05 !important;
-            font-weight: 700 !important;
-            font-style: italic !important;
-            letter-spacing: 0.01em !important;
-            color: #000 !important;
-          }
-          .cert-text-id,
-          .cert-info-text,
-          .cert-info-text td {
-            font-size: 11pt !important;
-            line-height: 1.25 !important;
-            font-weight: 700 !important;
-            color: #000 !important;
-          }
-          .page-container.results-page,
-          .page-container.cover-page {
-            width: 210mm !important;
-            height: 297mm !important;
-            max-height: 297mm !important;
-            padding: 5mm !important;
-            box-sizing: border-box !important;
-            position: relative !important;
-          }
-          .page-1-footer {
-            bottom: 5mm !important;
-            left: 5mm !important;
-            right: 5mm !important;
-          }
-          .page-container.results-page .footer-qr-small.results-page-qr {
-            bottom: 5mm !important;
-            left: 5mm !important;
-          }
-          .page-1-footer,
-          .page-1-footer * {
-            list-style: none !important;
-            list-style-type: none !important;
-            overflow: visible !important;
-            clip-path: none !important;
-          }
-          .page-1-footer span,
-          .page-1-footer div {
-            background: transparent !important;
-            border: none !important;
-          }
-        `
-      })
-      
-      // Additional wait to ensure styles are applied
-      await page.waitForTimeout(500)
-      
-      // Execute JavaScript to remove any unwanted elements or styling
-      await page.evaluate(() => {
-        // Remove all ::marker pseudo-elements by forcing display style
-        const style = document.createElement('style');
-        style.textContent = `
-          * { list-style: none !important; }
-          *::marker { display: none !important; content: "" !important; }
-        `;
-        document.head.appendChild(style);
-        
-        // Force remove any list styling on all elements
-        document.querySelectorAll('*').forEach((el) => {
-          if (el instanceof HTMLElement) {
-            el.style.listStyle = 'none';
-            el.style.listStyleType = 'none';
-            el.style.listStylePosition = 'outside';
-            el.style.listStyleImage = 'none';
-          }
-        });
-        
-        // Special handling for footer elements
-        const footer = document.querySelector('.page-1-footer');
-        if (footer) {
-          footer.querySelectorAll('*').forEach((el) => {
-            if (el instanceof HTMLElement) {
-              el.style.listStyle = 'none';
-              el.style.listStyleType = 'none';
-              el.style.background = 'transparent';
-              el.style.border = 'none';
-            }
-          });
-        }
-      })
-      
-      // Wait a bit more to ensure JavaScript changes are applied
-      await page.waitForTimeout(300)
-
-      // Generate PDF with Playwright
-      const pdf = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: {
-          top: '0mm',
-          right: '0mm',
-          bottom: '0mm',
-          left: '0mm'
-        },
-        preferCSSPageSize: true,
-        displayHeaderFooter: false
-      })
-
-      // Get certificate number for filename
-      let filename = `Certificate_${certificateId}.pdf`
-      if (certificate?.no_certificate) {
-        filename = `Certificate_${certificate.no_certificate.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
-      }
-
-      return new NextResponse(pdf, {
-        headers: {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
-          'Content-Length': pdf.length.toString()
-        }
-      })
-    } finally {
-      await browser.close()
-    }
-  } catch (error) {
-    console.error('Error generating PDF:', error)
-    
-    // Fallback: redirect to print page with download parameter
-    const { id } = await params
-    const certificateId = parseInt(id)
-    const baseUrl = request.nextUrl.origin
-    const printUrl = `${baseUrl}/certificates/${certificateId}/print?download=true`
-    
-    return NextResponse.redirect(printUrl)
+  } catch (error: any) {
+    console.error('[download-pdf] Error generating PDF:', error)
+    return NextResponse.json({ error: 'Failed to generate PDF' }, { status: 500 })
   }
 }

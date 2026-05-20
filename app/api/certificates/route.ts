@@ -117,7 +117,10 @@ export async function POST(request: NextRequest) {
       // Komponen format nomor sesuai IKK BMKG
       certificate_type,   // 'sert' | 's_ket' — default 'sert'
       calibration_place,  // 'FC' | 'LC'     — default 'FC'
-      instrument_code     // AWS, TT, PP, ... — wajib
+      instrument_code,    // AWS, TT, PP, ... — wajib
+      // Template fields
+      balai_id,           // 1-5 or null (BMKG pusat)
+      is_standard,        // boolean — sertifikat standar kalibrasi
     } = body
 
     if (!no_identification) {
@@ -299,6 +302,8 @@ export async function POST(request: NextRequest) {
       results: normalizedResults,
       sent_by: user.id,
       created_by: user.id,
+      balai_id: balai_id ?? null,
+      is_standard: is_standard ?? false,
     }
 
     const MAX_RETRIES = 5

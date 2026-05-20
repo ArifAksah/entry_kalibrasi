@@ -11,6 +11,14 @@ import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClass
 import { resultsToLegacyView } from '../../../../lib/validators/certificate-results-render-adapter'
 import { formatLatexUnit } from '../../../../lib/qc-utils'
 import { supabase } from '../../../../lib/supabase'
+import type { TemplateConfig, CertificateType } from '../../../../lib/pdf-service/types'
+import { initializeTemplates } from '../../../../lib/pdf-service/templates'
+import { defaultRegistry } from '../../../../lib/pdf-service/template-registry'
+import { determineCertificateType } from '../../../../lib/pdf-service/type-determinator'
+import { BALAI_DATA, DEFAULT_SIGNER_TITLE } from '../../../../lib/pdf-service/templates/shared/balai-data'
+import { CoverPageHeader } from './components/CoverPageHeader'
+import { CoverPageTitle } from './components/CoverPageTitle'
+import { ResultsPageFooter } from './components/ResultsPageFooter'
 
 // --- TIPE DATA KOMPREHENSIF ---
 // Saya gabungkan tipe dari ViewCertificatePage.tsx Anda ke sini
@@ -55,6 +63,11 @@ type Cert = {
   results?: ResultItem[] // Menambahkan results di sini
   version?: number
   public_id?: string // Added for public verification
+  calibration_place?: 'FC' | 'LC' | null
+  calibration_kind?: 'FC' | 'LC' | null
+  balai_id?: number | null
+  is_standard?: boolean | null
+  certificate_type?: 'sert' | 's_ket' | null
 }
 
 type Station = {
@@ -261,6 +274,7 @@ const PrintCertificatePage: React.FC = () => {
   const qrRenderedCountRef = useRef<number>(0)
   const expectedQRCodesRef = useRef<number>(0)
   const [allRawData, setAllRawData] = useState<any[]>([])
+  const [templateConfig, setTemplateConfig] = useState<TemplateConfig | null>(null)
 
   const computeEnvCondition = useCallback((type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
     const matchedRows = sensorRawData.filter(r => {
@@ -330,6 +344,19 @@ const PrintCertificatePage: React.FC = () => {
   const authorized = useMemo(() => {
     return findPersonelById(personel, cert?.authorized_by)
   }, [personel, cert])
+  const signerTitle = useMemo(() => {
+    // Priority 1: signer_title from the authorized_by personel record
+    if (authorized && (authorized as any).signer_title) {
+      return (authorized as any).signer_title
+    }
+    // Priority 2: derive from template config (Balai name)
+    if (templateConfig && templateConfig.header.balaiName) {
+      const balaiEntry = Object.values(BALAI_DATA).find(b => b.name === templateConfig.header.balaiName)
+      return balaiEntry?.signerTitle || templateConfig.header.balaiName
+    }
+    // Priority 3: default
+    return DEFAULT_SIGNER_TITLE
+  }, [authorized, templateConfig])
   const verifikator1 = useMemo(() => {
     return findPersonelById(personel, cert?.verifikator_1)
   }, [personel, cert])
@@ -403,6 +430,31 @@ const PrintCertificatePage: React.FC = () => {
     }
 
     return ''
+  }, [cert])
+
+  // Determine template config based on type query parameter or certificate data
+  useEffect(() => {
+    if (!cert) return
+    initializeTemplates()
+
+    const urlParams = new URLSearchParams(window.location.search)
+    const typeParam = urlParams.get('type') as CertificateType | null
+
+    let config: TemplateConfig
+    if (typeParam && defaultRegistry.has(typeParam)) {
+      config = defaultRegistry.get(typeParam)
+    } else {
+      // Determine from certificate data
+      const certType = determineCertificateType({
+        calibration_place: cert.calibration_place,
+        calibration_kind: cert.calibration_kind,
+        balai_id: cert.balai_id,
+        is_standard: cert.is_standard,
+        certificate_type: cert.certificate_type,
+      }, cert.id)
+      config = defaultRegistry.get(certType)
+    }
+    setTemplateConfig(config)
   }, [cert])
 
   // Total pages: 1 (cover) + max(1, N per sensor). No separate closing page.
@@ -1469,41 +1521,59 @@ const PrintCertificatePage: React.FC = () => {
     }
   `
 
-  const renderResultsFooter = () => (
-    <div className="results-footer-shell">
-      <table className="results-footer-grid">
-        <tbody>
-          <tr>
-            <td className="results-footer-qr-cell">
-              <div className="results-footer-qr-wrap">
-                {qrCodeData ? (
-                  <div className="results-footer-qr-box">
-                    <FooterQRCode
-                      value={qrCodeData}
-                      fgColor={isSigned ? '#000000' : '#B91C1C'}
-                      onRendered={handleQRRendered}
-                      size={45}
-                    />
-                  </div>
-                ) : (
-                  <div className="results-footer-qr-box" />
-                )}
-                <div className="results-footer-form-code">F/IKK 7.8.2</div>
-              </div>
-            </td>
-            <td className="results-footer-note-cell">
-              <div className="results-footer-note-copy">
-                Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara (BSSN)
-              </div>
-            </td>
-            <td className="results-footer-meta-cell">
-              Edisi/Revisi : 11/1
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  )
+  const renderResultsFooter = () => {
+    // Template-driven footer when config is available
+    if (templateConfig) {
+      const qrElement = qrCodeData ? (
+        <div className="results-footer-qr-box">
+          <FooterQRCode
+            value={qrCodeData}
+            fgColor={isSigned ? '#000000' : '#B91C1C'}
+            onRendered={handleQRRendered}
+            size={45}
+          />
+        </div>
+      ) : undefined
+      return <ResultsPageFooter config={templateConfig} qrCodeElement={qrElement} />
+    }
+
+    // Fallback: hardcoded footer for backward compatibility
+    return (
+      <div className="results-footer-shell">
+        <table className="results-footer-grid">
+          <tbody>
+            <tr>
+              <td className="results-footer-qr-cell">
+                <div className="results-footer-qr-wrap">
+                  {qrCodeData ? (
+                    <div className="results-footer-qr-box">
+                      <FooterQRCode
+                        value={qrCodeData}
+                        fgColor={isSigned ? '#000000' : '#B91C1C'}
+                        onRendered={handleQRRendered}
+                        size={45}
+                      />
+                    </div>
+                  ) : (
+                    <div className="results-footer-qr-box" />
+                  )}
+                  <div className="results-footer-form-code">F/IKK 7.8.2</div>
+                </div>
+              </td>
+              <td className="results-footer-note-cell">
+                <div className="results-footer-note-copy">
+                  Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara (BSSN)
+                </div>
+              </td>
+              <td className="results-footer-meta-cell">
+                Edisi/Revisi : 11/1
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    )
+  }
 
   return (
     <div className="print-container bg-gray-100 print:bg-white text-black" suppressHydrationWarning>
@@ -1536,23 +1606,31 @@ const PrintCertificatePage: React.FC = () => {
         {/* Konten halaman dengan z-index lebih tinggi */}
         <div className="cover-content">
           {/* Header Halaman 1 */}
-          <header className="cover-header flex flex-row justify-between border-b-[3px] border-double border-black">
-            <div className="cover-logo-slot">
-              <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
-            </div>
-            <div className="cover-agency-title text-center leading-tight">
-              <h1 className="text-base font-bold">BADAN METEOROLOGI KLIMATOLOGI DAN GEOFISIKA</h1>
-              <h2 className="text-base font-bold">LABORATORIUM KALIBRASI BMKG</h2>
-            </div>
-            <div className="cover-header-spacer"></div> {/* Spacer agar center */}
-          </header>
+          {templateConfig ? (
+            <CoverPageHeader config={templateConfig} />
+          ) : (
+            <header className="cover-header flex flex-row justify-between border-b-[3px] border-double border-black">
+              <div className="cover-logo-slot">
+                <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
+              </div>
+              <div className="cover-agency-title text-center leading-tight">
+                <h1 className="text-base font-bold">BADAN METEOROLOGI KLIMATOLOGI DAN GEOFISIKA</h1>
+                <h2 className="text-base font-bold">LABORATORIUM KALIBRASI BMKG</h2>
+              </div>
+              <div className="cover-header-spacer"></div>
+            </header>
+          )}
 
           {/* Judul Sertifikat */}
-          <div className="cover-title-block text-center">
-            <h1 className="cert-title-id">SERTIFIKAT KALIBRASI</h1>
-            <h2 className="cert-title-en">CALIBRATION CERTIFICATE</h2>
-            <div className="cert-info-text mt-2">{cert.no_certificate}</div>
-          </div>
+          {templateConfig ? (
+            <CoverPageTitle config={templateConfig} certNumber={cert.no_certificate} orderNumber={cert.no_order} />
+          ) : (
+            <div className="cover-title-block text-center">
+              <h1 className="cert-title-id">SERTIFIKAT KALIBRASI</h1>
+              <h2 className="cert-title-en">CALIBRATION CERTIFICATE</h2>
+              <div className="cert-info-text mt-2">{cert.no_certificate}</div>
+            </div>
+          )}
 
           {/* Identitas Alat */}
           <div className="mb-4">
@@ -1613,7 +1691,7 @@ const PrintCertificatePage: React.FC = () => {
                 <tr>
                   <td className="w-[30%] align-top"><PdfLabel indo="Pejabat Pengesahan" eng="Authorizing officer" /></td>
                   <td className="w-[5%] align-top">:</td>
-                  <td className="w-[65%] align-top font-bold">Direktur Instrumentasi dan Kalibrasi BMKG</td>
+                  <td className="w-[65%] align-top font-bold">{signerTitle}</td>
                 </tr>
                 <tr>
                   <td className="align-top"><PdfLabel indo="Nama" eng="Name" /></td>

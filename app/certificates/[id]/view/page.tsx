@@ -11,6 +11,7 @@ import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClass
 import { resultsToLegacyView } from '../../../../lib/validators/certificate-results-render-adapter'
 import { formatLatexUnit } from '../../../../lib/qc-utils'
 import { supabase } from '../../../../lib/supabase'
+import { BALAI_DATA, DEFAULT_SIGNER_TITLE } from '../../../../lib/pdf-service/templates/shared/balai-data'
 
 // --- TIPE DATA KOMPREHENSIF ---
 // Saya gabungkan tipe dari ViewCertificatePage.tsx Anda ke sini
@@ -358,6 +359,20 @@ const ViewCertificatePage: React.FC = () => {
   const authorized = useMemo(() => {
     return findPersonelById(personel, cert?.authorized_by)
   }, [personel, cert])
+  const signerTitle = useMemo(() => {
+    // Priority 1: signer_title from the authorized_by personel record
+    if (authorized && (authorized as any).signer_title) {
+      return (authorized as any).signer_title
+    }
+    // Priority 2: derive from Balai data
+    const balaiId = (cert as any)?.balai_id
+    if (balaiId) {
+      const balaiEntry = BALAI_DATA[balaiId]
+      return balaiEntry?.signerTitle || DEFAULT_SIGNER_TITLE
+    }
+    // Priority 3: default
+    return DEFAULT_SIGNER_TITLE
+  }, [authorized, cert])
   const verifikator1 = useMemo(() => {
     return findPersonelById(personel, cert?.verifikator_1)
   }, [personel, cert])
@@ -1395,7 +1410,33 @@ const ViewCertificatePage: React.FC = () => {
               <Image src={bmkgLogo} alt="BMKG" width={40} height={40} className="mr-3" />
               <div>
                 <h1 className="text-xl font-semibold text-gray-900">Certificate View</h1>
-                <p className="text-sm text-gray-500">Sertifikat Kalibrasi - {cert.no_certificate}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm text-gray-500">Sertifikat Kalibrasi - {cert.no_certificate}</p>
+                  {/* Template type badge */}
+                  {(() => {
+                    const c = cert as any
+                    let templateLabel = 'FC'
+                    let badgeColor = 'bg-gray-100 text-gray-600'
+                    if (c.is_standard) {
+                      templateLabel = 'Standar'
+                      badgeColor = 'bg-amber-100 text-amber-700'
+                    } else if (c.balai_id && c.calibration_place === 'LC') {
+                      templateLabel = `LC Balai ${c.balai_id}`
+                      badgeColor = 'bg-purple-100 text-purple-700'
+                    } else if (c.balai_id) {
+                      templateLabel = `FC Balai ${c.balai_id}`
+                      badgeColor = 'bg-blue-100 text-blue-700'
+                    } else if (c.calibration_place === 'LC') {
+                      templateLabel = 'LC'
+                      badgeColor = 'bg-indigo-100 text-indigo-700'
+                    }
+                    return (
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${badgeColor}`}>
+                        {templateLabel}
+                      </span>
+                    )
+                  })()}
+                </div>
               </div>
             </div>
             <div className="flex items-center space-x-3">
@@ -1640,7 +1681,7 @@ const ViewCertificatePage: React.FC = () => {
                       <tr>
                         <td className="w-[30%] align-top"><PdfLabel indo="Pejabat Pengesahan" eng="Authorizing officer" /></td>
                         <td className="w-[5%] align-top">:</td>
-                        <td className="w-[65%] align-top font-bold">Direktur Instrumentasi dan Kalibrasi BMKG</td>
+                        <td className="w-[65%] align-top font-bold">{signerTitle}</td>
                       </tr>
                       <tr>
                         <td className="align-top"><PdfLabel indo="Nama" eng="Name" /></td>

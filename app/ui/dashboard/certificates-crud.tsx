@@ -470,6 +470,7 @@ const CertificatesCRUD: React.FC = () => {
   const [isImageUploading, setIsImageUploading] = useState(false)
   const [stations, setStations] = useState<Station[]>([])
   const [instruments, setInstruments] = useState<Instrument[]>([])
+  const [standardInstruments, setStandardInstruments] = useState<Instrument[]>([])
   const [sensors, setSensors] = useState<Sensor[]>([])
   const [instrumentNames, setInstrumentNames] = useState<Array<{ id: number; name: string }>>([])
   const [standardCerts, setStandardCerts] = useState<CertStandard[]>([])
@@ -592,6 +593,8 @@ const CertificatesCRUD: React.FC = () => {
     certificate_type: 'sert',
     calibration_place: 'FC',
     instrument_code: null,
+    balai_id: null as number | null,
+    is_standard: false,
   })
 
   // Derived instrument details (read-only preview)
@@ -1493,6 +1496,29 @@ type ResultItem = {
         setUnits(Array.isArray(unitsData) ? unitsData : [])
         setStandardCerts(Array.isArray(certStandardsData) ? certStandardsData : [])
 
+        // Fetch ALL instruments (unfiltered) to ensure standard instruments are always available
+        // This is needed because user-filtered instruments may not include standard instruments from BMKG pusat
+        try {
+          const allInstrumentsForStandard = async () => {
+            const first = await fetchWithRetry('/api/instruments?pageSize=100&page=1')
+            if (!first?.ok) return []
+            const firstJson = await first.json()
+            const firstData = Array.isArray(firstJson) ? firstJson : (firstJson?.data ?? [])
+            const totalPages = (Array.isArray(firstJson) ? 1 : (firstJson?.totalPages ?? 1)) as number
+            if (totalPages <= 1) return firstData
+            const restPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
+            const rest = await Promise.all(restPages.map(p => fetchJsonSafe(`/api/instruments?pageSize=100&page=${p}`, { data: [] })))
+            const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
+            return [...firstData, ...restData]
+          }
+          const allInstr = await allInstrumentsForStandard()
+          // Filter to only standard instruments (those with at least one is_standard sensor)
+          const stdInstruments = allInstr.filter((i: any) => i.sensor?.some((s: any) => s.is_standard === true))
+          setStandardInstruments(stdInstruments)
+        } catch (e) {
+          console.error('Failed to fetch standard instruments:', e)
+        }
+
       } catch (e) {
         console.error('Failed to fetch data:', e)
       }
@@ -1690,6 +1716,8 @@ type ResultItem = {
         certificate_type:  (item as any).certificate_type  ?? 'sert',
         calibration_place: (item as any).calibration_place ?? 'FC',
         instrument_code:   (item as any).instrument_code   ?? null,
+        balai_id: (item as any).balai_id ?? null,
+        is_standard: (item as any).is_standard ?? false,
       })
       // Parse results - can be JSON string or array from DB
       const parsedResults = resultsToLegacyView((item as any).results)
@@ -1931,6 +1959,8 @@ type ResultItem = {
         certificate_type: 'sert',
         calibration_place: 'FC',
         instrument_code: null,
+        balai_id: null,
+        is_standard: false,
       })
       // Preview nomor akan di-fetch oleh useEffect di bawah setiap kali
       // code_alat / no_identification / place / cert_type berubah.
@@ -3073,7 +3103,7 @@ type ResultItem = {
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
                           >
                             <option value="FC">Field Calibration (FC)</option>
-                            <option value="LC" disabled>Lab Calibration (LC) — belum aktif</option>
+                            <option value="LC">Lab Calibration (LC)</option>
                           </select>
                         </div>
                         <div className="space-y-1">
@@ -3095,6 +3125,54 @@ type ResultItem = {
                         </div>
                       </>
                     )}
+
+                    {/* Balai Penerbit & Sertifikat Standar — visible in both create and edit modes */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700">Balai Penerbit</label>
+                      <select
+                        value={(form as any).balai_id ?? ''}
+                        onChange={(e) => {
+                          const newBalaiId = e.target.value ? Number(e.target.value) : null
+                          const updatedForm: any = { ...form, balai_id: newBalaiId }
+
+                          // Auto-suggest authorized_by based on Balai selection
+                          // Find a personel with matching balai_id
+                          const suggestedSigner = personel.find((p: any) => {
+                            if (newBalaiId === null) {
+                              // BMKG Pusat: find personel with balai_id = null (or no balai_id)
+                              return !p.balai_id
+                            }
+                            return p.balai_id === newBalaiId
+                          })
+
+                          if (suggestedSigner) {
+                            updatedForm.authorized_by = suggestedSigner.id
+                          }
+
+                          setForm(updatedForm)
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                      >
+                        <option value="">BMKG Pusat (Default)</option>
+                        <option value="1">Balai Besar MKG Wilayah I (Medan)</option>
+                        <option value="2">Balai Besar MKG Wilayah II (Tangerang Selatan)</option>
+                        <option value="3">Balai Besar MKG Wilayah III (Denpasar)</option>
+                        <option value="4">Balai Besar MKG Wilayah IV (Makassar)</option>
+                        <option value="5">Balai Besar MKG Wilayah V (Jayapura)</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={(form as any).is_standard || false}
+                          onChange={(e) => setForm({ ...form, is_standard: e.target.checked } as any)}
+                          className="w-4 h-4 text-[#1e377c] border-gray-300 rounded focus:ring-[#1e377c]"
+                        />
+                        <span className="text-xs font-semibold text-gray-700">Sertifikat Standar Kalibrasi</span>
+                      </label>
+                      <p className="text-[11px] text-gray-500 italic ml-6">Centang jika ini adalah sertifikat untuk alat standar kalibrasi (bukan alat UUT biasa)</p>
+                    </div>
 
                     {/* Certificate Numbers
                         Saat CREATE, no_certificate & no_order digenerate atomik di server
@@ -3402,11 +3480,7 @@ type ResultItem = {
                               standardCertificateId: null // Reset selected sensor
                             })));
                           }}
-                          options={instruments
-                            .filter(i => {
-                              // Show ALL standard instruments regardless of station
-                              return i.sensor?.some((s: any) => s.is_standard === true);
-                            })
+                          options={standardInstruments
                             .map(i => ({
                               id: i.id,
                               name: `${i.name} (${i.manufacturer} ${i.type})`,
@@ -3433,8 +3507,9 @@ type ResultItem = {
                           options={(() => {
                             if (!globalStandardInstrumentId) return [];
                             // Get sensor IDs that belong to the selected standard instrument
-                            // Use the instrument's embedded sensor[] array (reliable, includes instrument_id relationship)
-                            const selectedInstrument = instruments.find(i => i.id === globalStandardInstrumentId);
+                            // Look in standardInstruments first (unfiltered), fallback to instruments
+                            const selectedInstrument = standardInstruments.find(i => i.id === globalStandardInstrumentId)
+                              || instruments.find(i => i.id === globalStandardInstrumentId);
                             const sensorIdsForInstrument = new Set(
                               (selectedInstrument?.sensor ?? []).map((s: any) => s.id)
                             );
@@ -3444,11 +3519,20 @@ type ResultItem = {
                             );
                             // Group by certificate number (normalize by trimming)
                             const uniqueNos = Array.from(new Set(certsForInst.map(c => c.no_certificate.trim())));
-                            return uniqueNos.map(no => ({
+                            const computedOptions = uniqueNos.map(no => ({
                               id: no,
                               name: no,
                               station_id: `${certsForInst.find(c => c.no_certificate.trim() === no)?.calibration_date || ''}`
                             }));
+                            // Ensure currently selected certificate number is always in the list
+                            if (globalStandardCertificateNumber && !computedOptions.some(o => o.id === globalStandardCertificateNumber)) {
+                              computedOptions.unshift({
+                                id: globalStandardCertificateNumber,
+                                name: globalStandardCertificateNumber,
+                                station_id: ''
+                              });
+                            }
+                            return computedOptions;
                           })()}
                           placeholder={globalStandardInstrumentId ? "Pilih Nomor Sertifikat..." : "Pilih Instrument Terlebih Dahulu"}
                           searchPlaceholder="Cari Nomor Sertifikat..."

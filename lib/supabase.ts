@@ -231,6 +231,10 @@ export interface Certificate {
   // Alias audit untuk FC/LC; dibackfill dari calibration_place.
   calibration_kind?: 'FC' | 'LC' | null
   public_id?: string | null
+  // Balai penerbit sertifikat (null = BMKG Pusat)
+  balai_id?: number | null
+  // Apakah sertifikat ini untuk alat standar kalibrasi
+  is_standard?: boolean
 }
 
 export type CertificateInsert = Omit<Certificate, 'id' | 'created_at' | 'version'>
