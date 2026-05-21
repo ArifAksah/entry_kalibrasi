@@ -194,17 +194,31 @@ const getVerificationForLevel = (
     (verification.certificate_version ?? 1) === certificateVersion
 )
 
+/** Build a Map for O(1) verification lookups instead of O(n) .find() per call */
+function buildVerificationMap(verifications: VerificationRow[]) {
+  const map = new Map<string, VerificationRow>()
+  for (const v of verifications) {
+    const key = `${v.certificate_id}-${v.verification_level}-${v.certificate_version ?? 1}`
+    map.set(key, v)
+  }
+  return map
+}
+
+function getVerificationFast(map: Map<string, VerificationRow>, certificateId: number, level: number, version: number) {
+  return map.get(`${certificateId}-${level}-${version}`)
+}
+
 const canUserAct = (
   certificate: CertificateRow,
-  verifications: VerificationRow[],
+  verifMap: Map<string, VerificationRow>,
   userId: string
 ) => {
   if (certificate.status !== 'sent') return false
 
   const version = certificate.version ?? 1
-  const verif1 = getVerificationForLevel(verifications, certificate.id, 1, version)
-  const verif2 = getVerificationForLevel(verifications, certificate.id, 2, version)
-  const verif3 = getVerificationForLevel(verifications, certificate.id, 3, version)
+  const verif1 = getVerificationFast(verifMap, certificate.id, 1, version)
+  const verif2 = getVerificationFast(verifMap, certificate.id, 2, version)
+  const verif3 = getVerificationFast(verifMap, certificate.id, 3, version)
 
   if (certificate.verifikator_1 === userId) return true
   if (certificate.verifikator_2 === userId) return verif1?.status === 'approved'
@@ -239,9 +253,10 @@ const buildRejectItems = (certificates: CertificateRow[]): RejectItem[] => {
 }
 
 async function getCertificates() {
+  // Exclude 'results' — it's a large JSON field not needed for dashboard summaries
   const { data, error } = await supabaseAdmin
     .from('certificate')
-    .select('id, no_certificate, no_order, no_identification, created_at, issue_date, status, station, instrument, version, verifikator_1, verifikator_2, verifikator_3, authorized_by, sent_by, assignor, created_by, rejection_history, results, pdf_generated_at')
+    .select('id, no_certificate, no_order, no_identification, created_at, issue_date, status, station, instrument, version, verifikator_1, verifikator_2, verifikator_3, authorized_by, sent_by, assignor, created_by, rejection_history, pdf_generated_at')
     .order('created_at', { ascending: false })
 
   if (error) throw new Error(error.message)
@@ -688,13 +703,28 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (roleError || !roleData) {
-      return NextResponse.json({ error: 'User role not found' }, { status: 404 })
+      // User has no role assigned — return a minimal dashboard instead of error
+      return NextResponse.json({
+        role: null,
+        title: 'Dashboard',
+        subtitle: 'Akun Anda belum memiliki role. Hubungi admin untuk penugasan role.',
+        cards: [] as DashboardCard[],
+        queue: [],
+        actionItems: [],
+        recentRejects: []
+      })
     }
 
     const role = roleData.role
-    const certificates = await getCertificates()
+
+    // Parallelize independent queries based on role
+    // All roles need certificates; user_station also needs instruments
+    const [certificates, instruments] = await Promise.all([
+      getCertificates(),
+      role === 'user_station' ? getInstruments() : Promise.resolve([])
+    ])
     const verifications = await getVerifications(certificates.map((certificate) => certificate.id))
-    const instruments = role === 'user_station' ? await getInstruments() : []
+    const verifMap = buildVerificationMap(verifications)
 
     if (role === 'verifikator') {
       const assignedCertificates = certificates.filter((certificate) =>
@@ -702,7 +732,7 @@ export async function GET(request: NextRequest) {
       )
 
       const actionItems: ActionItem[] = assignedCertificates
-        .filter((certificate) => canUserAct(certificate, verifications, user.id))
+        .filter((certificate) => canUserAct(certificate, verifMap, user.id))
         .map((certificate) => {
           const version = certificate.version ?? 1
           let level = 0
@@ -710,16 +740,16 @@ export async function GET(request: NextRequest) {
 
           if (certificate.verifikator_1 === user.id) {
             level = 1
-            userStatus = getVerificationForLevel(verifications, certificate.id, 1, version)?.status || 'pending'
+            userStatus = getVerificationFast(verifMap, certificate.id, 1, version)?.status || 'pending'
           } else if (certificate.verifikator_2 === user.id) {
             level = 2
-            userStatus = getVerificationForLevel(verifications, certificate.id, 2, version)?.status || 'pending'
+            userStatus = getVerificationFast(verifMap, certificate.id, 2, version)?.status || 'pending'
           } else if (certificate.verifikator_3 === user.id) {
             level = 3
-            userStatus = getVerificationForLevel(verifications, certificate.id, 3, version)?.status || 'pending'
+            userStatus = getVerificationFast(verifMap, certificate.id, 3, version)?.status || 'pending'
           } else if (certificate.authorized_by === user.id) {
             level = 4
-            userStatus = getVerificationForLevel(verifications, certificate.id, 4, version)?.status || 'pending'
+            userStatus = getVerificationFast(verifMap, certificate.id, 4, version)?.status || 'pending'
           }
 
           return {
@@ -735,16 +765,16 @@ export async function GET(request: NextRequest) {
 
       const approvedByUser = assignedCertificates.filter((certificate) => {
         const version = certificate.version ?? 1
-        if (certificate.verifikator_1 === user.id) return getVerificationForLevel(verifications, certificate.id, 1, version)?.status === 'approved'
-        if (certificate.verifikator_2 === user.id) return getVerificationForLevel(verifications, certificate.id, 2, version)?.status === 'approved'
-        if (certificate.verifikator_3 === user.id) return getVerificationForLevel(verifications, certificate.id, 3, version)?.status === 'approved'
-        if (certificate.authorized_by === user.id) return getVerificationForLevel(verifications, certificate.id, 4, version)?.status === 'approved'
+        if (certificate.verifikator_1 === user.id) return getVerificationFast(verifMap, certificate.id, 1, version)?.status === 'approved'
+        if (certificate.verifikator_2 === user.id) return getVerificationFast(verifMap, certificate.id, 2, version)?.status === 'approved'
+        if (certificate.verifikator_3 === user.id) return getVerificationFast(verifMap, certificate.id, 3, version)?.status === 'approved'
+        if (certificate.authorized_by === user.id) return getVerificationFast(verifMap, certificate.id, 4, version)?.status === 'approved'
         return false
       }).length
 
       const returnedForRevision = assignedCertificates.filter((certificate) => certificate.status === 'draft' && latestRejection(certificate)).length
 
-      const waitingOthers = assignedCertificates.filter((certificate) => certificate.status === 'sent' && !canUserAct(certificate, verifications, user.id)).length
+      const waitingOthers = assignedCertificates.filter((certificate) => certificate.status === 'sent' && !canUserAct(certificate, verifMap, user.id)).length
 
       const queue: QueueItem[] = [
         { label: 'Verifikator 1', value: assignedCertificates.filter((certificate) => certificate.verifikator_1 === user.id).length },
@@ -771,10 +801,10 @@ export async function GET(request: NextRequest) {
 
     if (role === 'assignor') {
       const ownedCertificates = certificates.filter((certificate) => certificate.authorized_by === user.id)
-      const readyForSignature = ownedCertificates.filter((certificate) => canUserAct(certificate, verifications, user.id))
+      const readyForSignature = ownedCertificates.filter((certificate) => canUserAct(certificate, verifMap, user.id))
       const signedCount = ownedCertificates.filter((certificate) => certificate.status === 'completed').length
       const returnedCount = ownedCertificates.filter((certificate) => certificate.status === 'draft' && latestRejection(certificate)).length
-      const waitingFinal = ownedCertificates.filter((certificate) => certificate.status === 'sent' && !canUserAct(certificate, verifications, user.id)).length
+      const waitingFinal = ownedCertificates.filter((certificate) => certificate.status === 'sent' && !canUserAct(certificate, verifMap, user.id)).length
 
       return NextResponse.json({
         role,
@@ -804,14 +834,26 @@ export async function GET(request: NextRequest) {
     }
 
     if (role === 'calibrator' || role === 'user_station') {
-      const userStationIds = role === 'user_station' ? await getUserStationIds(user.id) : new Set<number>()
-      const assignedStations = role === 'user_station' ? await getStationsByIds(Array.from(userStationIds)) : []
-      const stationDashboardInstruments = role === 'user_station'
-        ? await getStationDashboardInstruments(Array.from(userStationIds))
-        : []
-      const stationDashboardStandards = role === 'user_station'
-        ? await getCertificateStandardsBySensorIds(Array.from(new Set(stationDashboardInstruments.flatMap((instrument) => instrument.sensor_ids))))
-        : []
+      // Parallelize station-related queries for user_station role
+      let userStationIds = new Set<number>()
+      let assignedStations: StationRow[] = []
+      let stationDashboardInstruments: StationDashboardInstrument[] = []
+      let stationDashboardStandards: CertificateStandardRow[] = []
+
+      if (role === 'user_station') {
+        userStationIds = await getUserStationIds(user.id)
+        const stationIdArray = Array.from(userStationIds)
+        // Parallelize station data and instrument data fetches
+        const [stations, dashInstruments] = await Promise.all([
+          getStationsByIds(stationIdArray),
+          getStationDashboardInstruments(stationIdArray)
+        ])
+        assignedStations = stations
+        stationDashboardInstruments = dashInstruments
+        // Standards depend on instruments, so fetch after
+        const sensorIds = Array.from(new Set(stationDashboardInstruments.flatMap((instrument) => instrument.sensor_ids)))
+        stationDashboardStandards = await getCertificateStandardsBySensorIds(sensorIds)
+      }
 
       const relevantCertificates = role === 'user_station'
         ? getUserStationRelatedCertificates(certificates, user.id, userStationIds, instruments)
@@ -827,9 +869,10 @@ export async function GET(request: NextRequest) {
         certificate.verifikator_3 &&
         certificate.authorized_by
       )
+      // Use COUNT query instead of fetching all instruments
       const { count: instrumentCount } = await supabaseAdmin
         .from('instrument')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
 
       const stationSummaries = role === 'user_station'
         ? buildStationSummaries(assignedStations, instruments, relevantCertificates)
@@ -896,19 +939,19 @@ export async function GET(request: NextRequest) {
     if (role === 'admin') {
       const pendingLevel1 = certificates.filter((certificate) => {
         const version = certificate.version ?? 1
-        return getVerificationForLevel(verifications, certificate.id, 1, version)?.status === 'pending'
+        return getVerificationFast(verifMap, certificate.id, 1, version)?.status === 'pending'
       }).length
       const pendingLevel2 = certificates.filter((certificate) => {
         const version = certificate.version ?? 1
-        return getVerificationForLevel(verifications, certificate.id, 2, version)?.status === 'pending'
+        return getVerificationFast(verifMap, certificate.id, 2, version)?.status === 'pending'
       }).length
       const pendingLevel3 = certificates.filter((certificate) => {
         const version = certificate.version ?? 1
-        return getVerificationForLevel(verifications, certificate.id, 3, version)?.status === 'pending'
+        return getVerificationFast(verifMap, certificate.id, 3, version)?.status === 'pending'
       }).length
       const pendingSignature = certificates.filter((certificate) => {
         const version = certificate.version ?? 1
-        return getVerificationForLevel(verifications, certificate.id, 4, version)?.status === 'pending'
+        return getVerificationFast(verifMap, certificate.id, 4, version)?.status === 'pending'
       }).length
 
       const draftCount = certificates.filter((certificate) => certificate.status === 'draft').length

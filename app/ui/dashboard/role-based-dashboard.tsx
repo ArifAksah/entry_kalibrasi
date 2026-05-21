@@ -423,7 +423,7 @@ const UserStationDashboard: React.FC<{
 
 const RoleBasedDashboard: React.FC = () => {
   const { user } = useAuth()
-  const { role } = usePermissions()
+  const { role, loading: permissionsLoading } = usePermissions()
   const [dashboardData, setDashboardData] = useState<DashboardData>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -432,7 +432,9 @@ const RoleBasedDashboard: React.FC = () => {
 
   useEffect(() => {
     const fetchDashboardData = async () => {
-      if (!user || !role) return
+      if (!user) return
+      // Wait for permissions to finish loading before fetching dashboard
+      if (permissionsLoading) return
 
       try {
         setLoading(true)
@@ -465,7 +467,7 @@ const RoleBasedDashboard: React.FC = () => {
     }
 
     fetchDashboardData()
-  }, [user, role])
+  }, [user, role, permissionsLoading])
 
   if (loading) {
     return (

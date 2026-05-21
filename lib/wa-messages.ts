@@ -40,3 +40,29 @@ export function buildDraftSubmissionMessage(
 ): string {
   return `Pemberitahuan Verifikasi\n\nSertifikat ${certificateNumber} telah dikirim untuk verifikasi oleh ${calibratorName}.\n\nMohon segera ditindaklanjuti.\n\nTerima kasih.`;
 }
+
+/**
+ * Builds the certificate rejection WhatsApp message sent to the calibrator.
+ *
+ * @param certificateNumber - The certificate number (no_certificate)
+ * @param rejectorName - The name of the verifier who rejected
+ * @param verificationLevel - The verification level that rejected (1, 2, 3, or 4)
+ * @param rejectionReason - The reason/notes for rejection
+ * @param notes - Additional notes from the verifier (optional)
+ * @returns Plain text message notifying the calibrator of rejection with reason and notes
+ */
+export function buildRejectionMessage(
+  certificateNumber: string,
+  rejectorName: string,
+  verificationLevel: number,
+  rejectionReason: string,
+  notes?: string
+): string {
+  const levelLabel = verificationLevel === 4 ? 'Penandatangan' : `Verifikator ${verificationLevel}`;
+  let message = `Sertifikat Ditolak\n\nSertifikat ${certificateNumber} ditolak oleh ${levelLabel} (${rejectorName}).\n\nAlasan: ${rejectionReason}`;
+  if (notes && notes !== rejectionReason) {
+    message += `\n\nCatatan: ${notes}`;
+  }
+  message += `\n\nMohon segera diperbaiki dan dikirim ulang.\n\nTerima kasih.`;
+  return message;
+}

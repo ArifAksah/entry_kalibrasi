@@ -336,6 +336,50 @@ export async function POST(
       '/certificates'
     )
 
+    // Send WhatsApp notification to the calibrator/konseptor (sent_by) with rejection reason
+    void (async () => {
+      try {
+        const { sendWhatsApp } = await import('../../../../../lib/wa')
+        const { buildRejectionMessage } = await import('../../../../../lib/wa-messages')
+
+        // Get rejector name from personel table
+        const { data: rejector } = await supabaseAdmin
+          .from('personel')
+          .select('name')
+          .eq('id', user.id)
+          .single()
+        const rejectorName = rejector?.name || user.email || 'Verifikator'
+
+        // Get calibrator/konseptor phone number
+        if (certificate.sent_by) {
+          const { data: calibrator } = await supabaseAdmin
+            .from('personel')
+            .select('name, phone')
+            .eq('id', certificate.sent_by)
+            .single()
+
+          if (calibrator?.phone) {
+            const certNumber = certificate.no_certificate || `ID-${certificateId}`
+            const message = buildRejectionMessage(
+              certNumber,
+              rejectorName,
+              verification_level,
+              rejection_reason
+            )
+
+            const result = await sendWhatsApp({ phone: calibrator.phone, message })
+            if (!result.success) {
+              console.error(`[reject] Failed to send rejection WA to calibrator ${calibrator.name}: ${result.error}`)
+            }
+          } else {
+            console.warn(`[reject] Calibrator ${certificate.sent_by} has no phone number, skipping WA notification`)
+          }
+        }
+      } catch (waError) {
+        console.error('[reject] Error sending rejection WA notification:', waError)
+      }
+    })()
+
     return NextResponse.json({
       success: true,
       message: 'Certificate rejected successfully',

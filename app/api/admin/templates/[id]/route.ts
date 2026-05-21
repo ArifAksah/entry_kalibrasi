@@ -172,3 +172,45 @@ export async function PUT(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    // Auth guard
+    const { user, error: authError } = await authenticateRequest(request)
+    if (authError || !user) {
+      return NextResponse.json({ error: authError || 'Unauthorized' }, { status: 401 })
+    }
+
+    const role = await getUserRole(user.id)
+    if (role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const { id } = await params
+
+    // Check template exists
+    const existing = await getRichTextTemplateById(id)
+    if (!existing) {
+      return NextResponse.json({ error: 'Template tidak ditemukan' }, { status: 404 })
+    }
+
+    // Delete all versions of this certificate_type
+    const { error: deleteError } = await supabaseAdmin
+      .from('certificate_templates')
+      .delete()
+      .eq('id', id)
+
+    if (deleteError) {
+      console.error('[admin/templates/[id]] DELETE error:', deleteError)
+      return NextResponse.json({ error: 'Gagal menghapus template' }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, message: 'Template berhasil dihapus' })
+  } catch (e) {
+    console.error('[admin/templates/[id]] DELETE error:', e)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}

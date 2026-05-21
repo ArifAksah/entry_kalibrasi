@@ -180,6 +180,7 @@ export async function POST(
     }
 
     // Send WhatsApp notifications to verifiers and penandatangan (fire-and-forget)
+    // Exclude the calibrator (sent_by) — they don't need to be notified about their own submission
     void (async () => {
       try {
         // Fetch calibrator name from personel table
@@ -191,13 +192,18 @@ export async function POST(
 
         const calibratorName = calibrator?.name || 'Unknown'
 
-        // Fetch phone numbers for all recipients
+        // Only send to verifiers/penandatangan, exclude the calibrator (sent_by)
         const recipientIds = [
           certificate.verifikator_1,
           certificate.verifikator_2,
           certificate.verifikator_3,
           certificate.authorized_by
-        ]
+        ].filter((id): id is string => !!id && id !== sent_by)
+
+        if (recipientIds.length === 0) {
+          console.warn(`[send-to-verifiers] No recipients (after excluding sent_by) for certificate ${certificateId}`)
+          return
+        }
 
         const { data: recipients } = await supabase
           .from('personel')
@@ -212,11 +218,21 @@ export async function POST(
         const certificateNumber = certificate.no_certificate || `ID-${certificateId}`
         const message = buildDraftSubmissionMessage(certificateNumber, calibratorName)
 
+        // Deduplicate by phone number to avoid sending multiple messages to the same number
+        const sentPhones = new Set<string>()
+
         for (const recipient of recipients) {
           if (!recipient.phone) {
             console.warn(`[send-to-verifiers] No phone number for personnel ${recipient.name || recipient.id}, skipping WA notification`)
             continue
           }
+
+          // Skip if we already sent to this phone number
+          if (sentPhones.has(recipient.phone)) {
+            console.log(`[send-to-verifiers] Skipping duplicate phone ${recipient.phone} for ${recipient.name || recipient.id}`)
+            continue
+          }
+          sentPhones.add(recipient.phone)
 
           try {
             const result = await sendWhatsApp({ phone: recipient.phone, message })

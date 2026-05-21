@@ -299,6 +299,47 @@ export async function POST(request: NextRequest) {
                 await createNotification(recipientId as string, `Sertifikat ${certData.no_certificate} telah ditolak oleh ${user.email}. Buka catatan reject untuk melihat detail revisi.`, link);
             }
         }
+
+        // Send WhatsApp notification to the calibrator/konseptor (sent_by) with rejection reason and notes
+        void (async () => {
+          try {
+            const { sendWhatsApp } = await import('../../../lib/wa')
+            const { buildRejectionMessage } = await import('../../../lib/wa-messages')
+
+            // Get rejector name
+            const { data: rejector } = await supabaseAdmin
+              .from('personel')
+              .select('name')
+              .eq('id', actualVerifiedBy)
+              .single()
+            const rejectorName = rejector?.name || user.email || 'Verifikator'
+
+            // Get calibrator/konseptor phone number (sent_by is the one who needs to fix it)
+            if (certData.sent_by) {
+              const { data: calibrator } = await supabaseAdmin
+                .from('personel')
+                .select('name, phone')
+                .eq('id', certData.sent_by)
+                .single()
+
+              if (calibrator?.phone) {
+                const certNumber = certData.no_certificate || `ID-${certificate_id}`
+                const reason = rejection_reason || notes || 'Tidak ada keterangan'
+                const verifierNotes = notes || null
+                const message = buildRejectionMessage(certNumber, rejectorName, verification_level, reason, verifierNotes || undefined)
+
+                const result = await sendWhatsApp({ phone: calibrator.phone, message })
+                if (!result.success) {
+                  console.error(`[verification] Failed to send rejection WA to calibrator ${calibrator.name}: ${result.error}`)
+                }
+              } else {
+                console.warn(`[verification] Calibrator ${certData.sent_by} has no phone number, skipping WA notification`)
+              }
+            }
+          } catch (waError) {
+            console.error('[verification] Error sending rejection WA notification:', waError)
+          }
+        })()
     }
 
     return NextResponse.json(data, { status: 201 })

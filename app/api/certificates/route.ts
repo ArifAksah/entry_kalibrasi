@@ -16,12 +16,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: authError || 'Unauthorized' }, { status: 401 })
     }
 
-    const role = await getUserRole(user.id)
-
-    const { data, error } = await supabaseAdmin
-      .from('certificate')
-      .select('*')
-      .order('created_at', { ascending: false })
+    // Parallelize role fetch and certificates fetch
+    const [role, { data, error }] = await Promise.all([
+      getUserRole(user.id),
+      supabaseAdmin
+        .from('certificate')
+        .select('*')
+        .order('created_at', { ascending: false })
+    ])
 
     if (error) {
       if (error.message?.toLowerCase?.().includes('fetch failed')) {
@@ -51,19 +53,21 @@ export async function GET(request: NextRequest) {
       } catch { }
     }
 
-    // Combine certificates with verification status
+    // Combine certificates with verification status using a Map for O(1) lookups
+    const verifMap = new Map<string, string>()
+    for (const v of verifications) {
+      const key = `${v.certificate_id}-${v.verification_level}-${v.certificate_version ?? 1}`
+      verifMap.set(key, v.status)
+    }
+
     const certificatesWithStatus = visibleCertificates.map(cert => {
       const certVersion = (cert as any).version ?? 1
-      const verif1 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 1 && (v.certificate_version ?? 1) === certVersion)
-      const verif2 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 2 && (v.certificate_version ?? 1) === certVersion)
-      const verif3 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 3 && (v.certificate_version ?? 1) === certVersion)
-      const verif4 = verifications.find(v => v.certificate_id === cert.id && v.verification_level === 4 && (v.certificate_version ?? 1) === certVersion)
       return {
         ...cert,
-        verifikator_1_status: verif1?.status || 'pending',
-        verifikator_2_status: verif2?.status || 'pending',
-        verifikator_3_status: verif3?.status || 'pending',
-        authorized_by_status: verif4?.status || 'pending',
+        verifikator_1_status: verifMap.get(`${cert.id}-1-${certVersion}`) || 'pending',
+        verifikator_2_status: verifMap.get(`${cert.id}-2-${certVersion}`) || 'pending',
+        verifikator_3_status: verifMap.get(`${cert.id}-3-${certVersion}`) || 'pending',
+        authorized_by_status: verifMap.get(`${cert.id}-4-${certVersion}`) || 'pending',
       }
     })
 

@@ -1496,25 +1496,14 @@ type ResultItem = {
         setUnits(Array.isArray(unitsData) ? unitsData : [])
         setStandardCerts(Array.isArray(certStandardsData) ? certStandardsData : [])
 
-        // Fetch ALL instruments (unfiltered) to ensure standard instruments are always available
-        // This is needed because user-filtered instruments may not include standard instruments from BMKG pusat
+        // Fetch standard instruments using the type=standard filter (single request instead of fetching ALL instruments again)
         try {
-          const allInstrumentsForStandard = async () => {
-            const first = await fetchWithRetry('/api/instruments?pageSize=100&page=1')
-            if (!first?.ok) return []
-            const firstJson = await first.json()
-            const firstData = Array.isArray(firstJson) ? firstJson : (firstJson?.data ?? [])
-            const totalPages = (Array.isArray(firstJson) ? 1 : (firstJson?.totalPages ?? 1)) as number
-            if (totalPages <= 1) return firstData
-            const restPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-            const rest = await Promise.all(restPages.map(p => fetchJsonSafe(`/api/instruments?pageSize=100&page=${p}`, { data: [] })))
-            const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
-            return [...firstData, ...restData]
+          const stdRes = await fetchWithRetry('/api/instruments?type=standard&pageSize=100&page=1')
+          if (stdRes?.ok) {
+            const stdJson = await stdRes.json()
+            const stdData = Array.isArray(stdJson) ? stdJson : (stdJson?.data ?? [])
+            setStandardInstruments(stdData)
           }
-          const allInstr = await allInstrumentsForStandard()
-          // Filter to only standard instruments (those with at least one is_standard sensor)
-          const stdInstruments = allInstr.filter((i: any) => i.sensor?.some((s: any) => s.is_standard === true))
-          setStandardInstruments(stdInstruments)
         } catch (e) {
           console.error('Failed to fetch standard instruments:', e)
         }
