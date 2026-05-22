@@ -27,6 +27,7 @@
     "happy-dom": "^20.9.0",
     "jsencrypt": "^3.5.4",
     "katex": "^0.16.33",
+    "mammoth": "^1.12.0",
     "next": "latest",
     "nodemailer": "^7.0.9",
     "pg": "^8.20.0",

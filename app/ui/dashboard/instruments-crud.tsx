@@ -106,7 +106,7 @@ const SearchableDropdown = ({
   const selectedOption = options.find(option => option.id === value)
   const filteredOptions = options.filter(option => {
     const q = searchTerm.toLowerCase()
-    return option.name.toLowerCase().includes(q) || (option.description || '').toLowerCase().includes(q)
+    return (option.name || '').toLowerCase().includes(q) || (option.description || '').toLowerCase().includes(q)
   })
 
   return (
@@ -176,7 +176,7 @@ const InstrumentsCRUD: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editing, setEditing] = useState<Instrument | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [form, setForm] = useState<InstrumentInsert & { instrument_type_id?: number | null }>({
+  const [form, setForm] = useState<InstrumentInsert & { instrument_type_id?: number | null; instrument_id?: string | null }>({
     manufacturer: '',
     type: '',
     serial_number: '',
@@ -185,6 +185,7 @@ const InstrumentsCRUD: React.FC = () => {
     memiliki_lebih_satu: false,
     instrument_names_id: null,
     instrument_type_id: null,
+    instrument_id: null,
   })
 
   // Lookup tables for dropdowns
@@ -515,6 +516,7 @@ const InstrumentsCRUD: React.FC = () => {
         memiliki_lebih_satu: item.memiliki_lebih_satu || false,
         instrument_names_id: (item as any).instrument_names_id || null,
         instrument_type_id: (item as any).instrument_type_id || null,
+        instrument_id: (item as any).instrument_id || null,
       }
       setForm(formData)
 
@@ -606,6 +608,7 @@ const InstrumentsCRUD: React.FC = () => {
         memiliki_lebih_satu: false,
         instrument_names_id: null,
         instrument_type_id: null,
+        instrument_id: null,
       })
       setSensorForms([])
     }
@@ -1075,7 +1078,20 @@ const InstrumentsCRUD: React.FC = () => {
                         </svg>
                         Informasi Alat
                       </h4>
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* ID Instrumen */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            ID Instrumen <span className="text-gray-400 font-normal text-xs">(opsional)</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={(form as any).instrument_id || ''}
+                            onChange={e => setForm({ ...form, instrument_id: e.target.value || null } as any)}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                            placeholder="Contoh: INS-001, AWS-003..."
+                          />
+                        </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             Instrument Name *
@@ -1094,21 +1110,6 @@ const InstrumentsCRUD: React.FC = () => {
                             Tipe Instrumen <span className="text-gray-400 font-normal text-xs">(opsional)</span>
                           </label>
                           <div className="flex gap-3">
-                            {/* Tidak dipilih */}
-                            <label className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 cursor-pointer transition-all duration-150 ${!(form as any).instrument_type_id
-                              ? 'border-gray-400 bg-gray-100'
-                              : 'border-gray-200 bg-white hover:border-gray-300'
-                              }`}>
-                              <input
-                                type="radio"
-                                name="instrument_type_id"
-                                value=""
-                                checked={!(form as any).instrument_type_id}
-                                onChange={() => setForm({ ...form, instrument_type_id: null } as any)}
-                                className="sr-only"
-                              />
-                              <span className="text-sm font-medium text-gray-500">Tidak dipilih</span>
-                            </label>
                             {/* Render dari instrumentTypes */}
                             {instrumentTypes.map(t => (
                               <label key={t.id} className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 cursor-pointer transition-all duration-150 ${(form as any).instrument_type_id === t.id
@@ -1136,7 +1137,7 @@ const InstrumentsCRUD: React.FC = () => {
                         </div>
 
                         {/* Alias - disimpan ke kolom name */}
-                        <div className="lg:col-span-2">
+                        <div className="lg:col-span-3">
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             Alias <span className="text-gray-400 font-normal text-xs">(nama khusus alat, wajib)</span>
                           </label>
@@ -1151,7 +1152,7 @@ const InstrumentsCRUD: React.FC = () => {
                           <p className="text-xs text-gray-400 mt-1">Nama unik untuk membedakan alat ini dari alat sejenis</p>
                         </div>
                         {/* Manufacturer | Type | Serial Number — satu baris */}
-                        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-4">
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
                               Manufacturer *

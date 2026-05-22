@@ -18,7 +18,7 @@ const DEFAULT_TIMEOUT_MS = 120_000
 /** Navigation timeout (ms) */
 const NAVIGATION_TIMEOUT_MS = 60_000
 /** Content readiness timeout (ms) */
-const CONTENT_READINESS_TIMEOUT_MS = 30_000
+const CONTENT_READINESS_TIMEOUT_MS = 45_000
 /** QR canvas render timeout (ms) */
 const QR_RENDER_TIMEOUT_MS = 15_000
 

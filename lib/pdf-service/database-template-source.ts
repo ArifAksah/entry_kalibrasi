@@ -2,22 +2,21 @@
  * DatabaseTemplateSource — Fetches template configuration for PDF generation.
  *
  * Supports two template formats:
- * 1. Rich text templates (TipTap JSON in `content` column) — uses HTML renderer directly
+ * 1. Word templates (.docx uploaded via Python service, stored as HTML in cover_html/results_html)
  * 2. Hardcoded templates (TemplateRegistry fallback) — for certificate types without DB templates
  *
- * Resolution order for rich text:
- * 1. Database lookup for template with non-null `content`
- * 2. Hardcoded TemplateRegistry fallback
+ * Resolution order:
+ * 1. Database lookup for template with non-null `cover_html` (Word template)
+ * 2. Hardcoded TemplateRegistry fallback (Playwright-based)
  *
- * The old block-based pipeline (BlockConverter) has been removed.
- * Templates that only have cover_blocks/results_blocks will fall through
+ * The TipTap-based pipeline has been removed.
+ * Templates that only have `content` (TipTap JSON) will fall through
  * to the hardcoded registry.
  */
 
 import type { CertificateType, TemplateConfig } from './types'
 import { defaultRegistry } from './template-registry'
 import { getActiveRichTextTemplate, getRichTextTemplateByVersion } from '../rich-text-editor/storage-service'
-import { generatePdfHtml } from '../rich-text-editor/html-renderer'
 import { generateWordPdfHtml, generateWordPdfRenderData, generateTwoTemplatePdfHtml, combineWordPages, replaceWordVariables } from '../rich-text-editor/word-template-processor'
 import type { CertificateData, PageSettings, WordPdfRenderData } from '../rich-text-editor/types'
 import { DEFAULT_PAGE_SETTINGS } from '../rich-text-editor/types'
@@ -224,13 +223,7 @@ export function createDatabaseTemplateSource(): DatabaseTemplateSource {
           return html
         }
 
-        // Priority 2: TipTap content
-        if (template.content) {
-          const html = generatePdfHtml(template.content, certificateData, pageSettings)
-          return html
-        }
-
-        // No usable template content
+        // Priority 2: No usable template content (TipTap removed)
         return null
       } catch (error: any) {
         console.warn(
@@ -320,17 +313,7 @@ export function createDatabaseTemplateSource(): DatabaseTemplateSource {
           }
         }
 
-        // Priority 2: TipTap content (no header/footer support for TipTap)
-        if (template.content) {
-          const html = generatePdfHtml(template.content, certificateData, pageSettings)
-          return {
-            bodyHtml: html,
-            headerTemplate: null,
-            footerTemplate: null,
-            displayHeaderFooter: false,
-          }
-        }
-
+        // Priority 2: No usable template content (TipTap removed)
         return null
       } catch (error: any) {
         console.warn(

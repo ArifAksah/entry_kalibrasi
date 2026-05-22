@@ -20,10 +20,6 @@ jest.mock('../../lib/rich-text-editor/storage-service', () => ({
   getRichTextTemplateById: jest.fn(),
 }))
 
-jest.mock('../../lib/rich-text-editor/html-renderer', () => ({
-  generatePdfHtml: jest.fn(),
-}))
-
 jest.mock('../../lib/pdf-service/template-registry', () => {
   const mockGet = jest.fn()
   return {
@@ -37,12 +33,10 @@ jest.mock('../../lib/pdf-service/template-registry', () => {
 })
 
 import { getActiveRichTextTemplate, getRichTextTemplateByVersion } from '../../lib/rich-text-editor/storage-service'
-import { generatePdfHtml } from '../../lib/rich-text-editor/html-renderer'
 import { defaultRegistry } from '../../lib/pdf-service/template-registry'
 
 const mockGetActiveRichTextTemplate = getActiveRichTextTemplate as jest.MockedFunction<typeof getActiveRichTextTemplate>
 const mockGetRichTextTemplateByVersion = getRichTextTemplateByVersion as jest.MockedFunction<typeof getRichTextTemplateByVersion>
-const mockGeneratePdfHtml = generatePdfHtml as jest.MockedFunction<typeof generatePdfHtml>
 const mockRegistryGet = defaultRegistry.get as jest.MockedFunction<typeof defaultRegistry.get>
 
 // ─── Test Helpers ────────────────────────────────────────────────────────────
@@ -198,10 +192,9 @@ describe('DatabaseTemplateSource', () => {
   })
 
   describe('getRichTextPdfHtml', () => {
-    it('should return HTML when rich text template exists', async () => {
+    it('should return null when template only has TipTap content (TipTap removed)', async () => {
       const record = createMockRichTextTemplate('fc', 1)
       mockGetActiveRichTextTemplate.mockResolvedValue(record)
-      mockGeneratePdfHtml.mockReturnValue('<html><body>Hello</body></html>')
 
       const sampleData = {
         instrument: { nama_alat: 'Test', merk: '', tipe: '', no_seri: '', kapasitas: '', resolusi: '' },
@@ -213,12 +206,8 @@ describe('DatabaseTemplateSource', () => {
 
       const html = await source.getRichTextPdfHtml('fc', sampleData)
 
-      expect(html).toBe('<html><body>Hello</body></html>')
-      expect(mockGeneratePdfHtml).toHaveBeenCalledWith(
-        record.content,
-        sampleData,
-        record.page_settings
-      )
+      // TipTap content is no longer rendered — returns null
+      expect(html).toBeNull()
     })
 
     it('should return null when no rich text template exists', async () => {

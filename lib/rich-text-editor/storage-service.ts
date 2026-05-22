@@ -1,13 +1,13 @@
 /**
- * Storage Service for Rich Text Templates.
+ * Storage Service for Certificate Templates.
  *
- * Provides CRUD operations for certificate templates that use
- * TipTap JSON content and page settings. Uses Supabase admin client
- * for server-side database queries against the `certificate_templates` table.
+ * Provides CRUD operations for certificate templates.
+ * Uses Supabase admin client for server-side database queries
+ * against the `certificate_templates` table.
  */
 
 import { supabaseAdmin } from '@/lib/supabase'
-import type { TipTapDocument, PageSettings, RichTextTemplateRecord } from './types'
+import type { PageSettings, RichTextTemplateRecord } from './types'
 
 // ─── Read Operations ─────────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ export async function getRichTextTemplateById(
 export async function getActiveRichTextTemplate(
   certificateType: string
 ): Promise<RichTextTemplateRecord | null> {
-  // Try to find a template with content (TipTap) or cover_html (Word)
+  // Try to find a template with cover_html (Word) or content (legacy)
   const { data, error } = await supabaseAdmin
     .from('certificate_templates')
     .select('*')
@@ -117,19 +117,12 @@ export async function listRichTextTemplates(): Promise<RichTextTemplateRecord[]>
 // ─── Write Operations ────────────────────────────────────────────────────────
 
 /**
- * Save a new version of a rich text template.
- *
- * Steps:
- * 1. Get the existing template by ID to find its certificate_type and name
- * 2. Get the current max version for that certificate_type
- * 3. Deactivate all existing active versions for that certificate_type
- * 4. Insert a new record with version = max + 1, is_active = true, content, page_settings
- *
- * Returns the newly created record.
+ * Save a new version of a template (legacy - kept for backward compat).
+ * Prefer using the Python service for new template uploads.
  */
 export async function saveRichTextVersion(
   templateId: string,
-  content: TipTapDocument,
+  content: any,
   pageSettings: PageSettings
 ): Promise<RichTextTemplateRecord> {
   // 1. Get existing template to find certificate_type and name

@@ -1,30 +1,6 @@
 /**
- * TypeScript interfaces and types for the Rich Text Template Editor.
+ * TypeScript interfaces and types for the Template System.
  */
-
-// --- TipTap Document Structure ---
-
-/**
- * TipTap JSON document format.
- * Root node is always type "doc" with content array.
- */
-export interface TipTapDocument {
-  type: 'doc'
-  content: TipTapNode[]
-}
-
-export interface TipTapNode {
-  type: string
-  attrs?: Record<string, any>
-  content?: TipTapNode[]
-  marks?: TipTapMark[]
-  text?: string
-}
-
-export interface TipTapMark {
-  type: string
-  attrs?: Record<string, any>
-}
 
 // --- Page Settings ---
 
@@ -98,20 +74,13 @@ export interface CertificateData {
   }
 }
 
-// --- Loop Node Attributes ---
-
-export interface LoopNodeAttributes {
-  collection: string     // e.g., "hasil_kalibrasi"
-  type: 'start' | 'end' // Opening or closing marker
-}
-
 // --- Template Record ---
 
 export interface RichTextTemplateRecord {
   id: string
   name: string
   certificate_type: string
-  content: TipTapDocument | null
+  content: any | null  // Legacy TipTap JSON (deprecated, kept for DB compat)
   page_settings: PageSettings | null
   cover_blocks: any[] // Legacy: kept for backward compat
   results_blocks: any[] // Legacy: kept for backward compat
@@ -139,7 +108,7 @@ export interface WordTemplateRecord {
   end_html: string | null        // HTML from end page Word file
   repeating_header: string | null  // HTML for repeating header on every PDF page
   repeating_footer: string | null  // HTML for repeating footer on every PDF page
-  content: TipTapDocument | null // Keep for backward compat with rich text editor
+  content: any | null // Legacy TipTap JSON (deprecated, kept for DB compat)
   page_settings: PageSettings | null
   version: number
   is_active: boolean

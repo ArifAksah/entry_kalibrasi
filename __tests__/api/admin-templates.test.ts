@@ -52,8 +52,8 @@ jest.mock('../../lib/supabase', () => ({
 }))
 
 jest.mock('../../lib/rich-text-editor/validation', () => ({
-  isValidTipTapDocument: jest.fn(),
-  validateLoopPairs: jest.fn(),
+  isValidTipTapDocument: jest.fn().mockReturnValue(true),
+  validateLoopPairs: jest.fn().mockReturnValue(true),
 }))
 
 import { GET, POST } from '../../app/api/admin/templates/route'

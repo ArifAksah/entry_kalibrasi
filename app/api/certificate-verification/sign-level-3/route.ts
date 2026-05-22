@@ -248,6 +248,16 @@ export async function POST(request: NextRequest) {
 
     console.log(`[sign-level-3] Starting PDF generation and signing for certificate ${cert.id}...`)
 
+    // Set issue_date BEFORE PDF generation so it appears in the rendered certificate
+    const issueDate = new Date().toISOString().split('T')[0]
+    const { error: issueDateErr } = await supabaseAdmin
+      .from('certificate')
+      .update({ issue_date: issueDate })
+      .eq('id', cert.id)
+    if (issueDateErr) {
+      console.warn(`[sign-level-3] Failed to pre-set issue_date: ${issueDateErr.message}`)
+    }
+
     try {
       const { generateAndSaveCertificatePDF } = await import('../../../../lib/pdf-service')
 
@@ -255,6 +265,8 @@ export async function POST(request: NextRequest) {
       const pdfResult = await generateAndSaveCertificatePDF(cert.id, user.id, userPassphrase, true)
 
       if (!pdfResult.success) {
+        // Revert issue_date on failure
+        await supabaseAdmin.from('certificate').update({ issue_date: null }).eq('id', cert.id)
         signingLocks.delete(lockKey) // Release lock on error
         console.error(`[sign-level-3] ❌ PDF signing failed for certificate ${cert.id}:`, pdfResult.error)
 
@@ -420,10 +432,10 @@ export async function POST(request: NextRequest) {
 
 
 
-    // Also update certificate status to 'completed' and set issue_date automatically
+    // Update certificate status to 'completed' (issue_date already set before PDF generation)
     const { error: certUpdateErr } = await supabaseAdmin
       .from('certificate')
-      .update({ status: 'completed', issue_date: new Date().toISOString().split('T')[0] })
+      .update({ status: 'completed' })
       .eq('id', cert.id)
     if (certUpdateErr) {
       console.error('[sign-level-3] ❌ Failed to update certificate status:', certUpdateErr)

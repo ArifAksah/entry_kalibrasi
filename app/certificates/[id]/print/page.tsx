@@ -405,6 +405,23 @@ const PrintCertificatePage: React.FC = () => {
       : 'false'
   }, [cert, instrument, station, authorized, personel.length, results, sensors, allRawData.length])
 
+  // Fallback: force printDataReady after 20s even if some secondary data is still loading
+  // This prevents infinite timeout when raw data fetch is slow
+  useEffect(() => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return
+    const urlParams = new URLSearchParams(window.location.search)
+    if (urlParams.get('pdf') !== 'true') return
+
+    const fallbackTimer = setTimeout(() => {
+      if (document.body.dataset.printDataReady !== 'true' && cert) {
+        console.warn('[Print] Forcing printDataReady=true after 35s fallback timeout')
+        document.body.dataset.printDataReady = 'true'
+      }
+    }, 35000)
+
+    return () => clearTimeout(fallbackTimer)
+  }, [cert])
+
   // Ringkasan sensor untuk field "Lain-lain / Others" di halaman 1
   const sensorsSummary = useMemo(() => {
     if (!results || results.length === 0) return ''
@@ -518,24 +535,26 @@ const PrintCertificatePage: React.FC = () => {
         // Page can render now — clear loading even if secondary data still pending.
         setLoading(false)
 
-        // SECONDARY (non-blocking): kick off in parallel; we'll setState as each finishes.
-        // Raw data fetch — needs cert.results
-        ;(async () => {
-          if (!c?.results) return
+        // PRIORITY FETCH: Raw data (needed for suhu/kelembaban in PDF)
+        // Fetch this BEFORE other secondary data to ensure it loads in time
+        if (c?.results) {
           try {
             const parsedResults = resultsToLegacyView(c.results)
             const sessionIds = Array.from(new Set(parsedResults.map((r: any) => r.session_id).filter(Boolean)))
-            if (sessionIds.length === 0) return
-            const responses = await Promise.all(
-              sessionIds.map((sid: any) => fetchWithTimeout(`/api/raw-data?session_id=${sid}`, 15000))
-            )
-            const jsons = await Promise.all(responses.map(r => safeJson(r)))
-            const merged = jsons.flatMap((j: any) => (j?.data ?? []))
-            setAllRawData(merged)
+            if (sessionIds.length > 0) {
+              const responses = await Promise.all(
+                sessionIds.map((sid: any) => fetchWithTimeout(`/api/raw-data?session_id=${sid}`, 20000, certificateHeaders))
+              )
+              const jsons = await Promise.all(responses.map(r => safeJson(r)))
+              const merged = jsons.flatMap((j: any) => (j?.data ?? []))
+              setAllRawData(merged)
+            }
           } catch (e) {
             console.error('[Print] Failed to fetch raw data:', e)
           }
-        })()
+        }
+
+        // SECONDARY (non-blocking): kick off in parallel; we'll setState as each finishes.
 
         // Personel
         ;(async () => {
