@@ -3150,7 +3150,8 @@ type ResultItem = {
                         <option value="5">Balai Besar MKG Wilayah V (Jayapura)</option>
                       </select>
                     </div>
-                    <div className="space-y-1">
+                    {/* Fitur centang standar dinonaktifkan - tidak lagi diperlukan */}
+                    {/* <div className="space-y-1">
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="checkbox"
@@ -3161,7 +3162,7 @@ type ResultItem = {
                         <span className="text-xs font-semibold text-gray-700">Sertifikat Standar Kalibrasi</span>
                       </label>
                       <p className="text-[11px] text-gray-500 italic ml-6">Centang jika ini adalah sertifikat untuk alat standar kalibrasi (bukan alat UUT biasa)</p>
-                    </div>
+                    </div> */}
 
                     {/* Certificate Numbers
                         Saat CREATE, no_certificate & no_order digenerate atomik di server

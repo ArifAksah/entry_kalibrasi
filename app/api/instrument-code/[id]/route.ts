@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "../../../../lib/supabase";
-import { InstrumentNameUpdate } from "../../../../lib/supabase";
 
 export async function GET(
   request: NextRequest,
@@ -9,7 +8,7 @@ export async function GET(
   try {
     const { id } = await params;
     const { data, error } = await supabase
-      .from("instrument_names")
+      .from("instrument_code")
       .select("*")
       .eq("id", id)
       .single();
@@ -21,7 +20,7 @@ export async function GET(
     return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json(
-      { error: "Failed to fetch instrument name" },
+      { error: "Failed to fetch instrument code" },
       { status: 500 },
     );
   }
@@ -34,20 +33,18 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, code_alat, instrument_code_id } = body;
+    const { code_alat, name } = body;
 
-    if (!name) {
-      return NextResponse.json({ error: "Name is required" }, { status: 400 });
+    if (!code_alat) {
+      return NextResponse.json(
+        { error: "Kode alat is required" },
+        { status: 400 },
+      );
     }
 
-    const updatePayload: any = { name };
-    if (code_alat !== undefined) updatePayload.code_alat = code_alat;
-    if (instrument_code_id !== undefined)
-      updatePayload.instrument_code_id = instrument_code_id;
-
     const { data, error } = await supabase
-      .from("instrument_names")
-      .update(updatePayload)
+      .from("instrument_code")
+      .update({ code_alat, name })
       .eq("id", id)
       .select()
       .single();
@@ -59,7 +56,7 @@ export async function PUT(
     return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json(
-      { error: "Failed to update instrument name" },
+      { error: "Failed to update instrument code" },
       { status: 500 },
     );
   }
@@ -72,7 +69,7 @@ export async function DELETE(
   try {
     const { id } = await params;
     const { error } = await supabase
-      .from("instrument_names")
+      .from("instrument_code")
       .delete()
       .eq("id", id);
 
@@ -81,11 +78,11 @@ export async function DELETE(
     }
 
     return NextResponse.json({
-      message: "Instrument name deleted successfully",
+      message: "Instrument code deleted successfully",
     });
   } catch (error) {
     return NextResponse.json(
-      { error: "Failed to delete instrument name" },
+      { error: "Failed to delete instrument code" },
       { status: 500 },
     );
   }
