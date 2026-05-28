@@ -68,12 +68,32 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+
+    // Check if any instrument_names or instruments still reference this code
+    const { count: namesCount } = await supabase
+      .from("instrument_names")
+      .select("id", { count: "exact", head: true })
+      .eq("instrument_code_id", id);
+
+    if (namesCount && namesCount > 0) {
+      return NextResponse.json(
+        { error: `Tidak dapat menghapus kode instrumen karena masih digunakan oleh ${namesCount} nama instrumen. Hapus atau ubah referensi terlebih dahulu.` },
+        { status: 400 },
+      );
+    }
+
     const { error } = await supabase
       .from("instrument_code")
       .delete()
       .eq("id", id);
 
     if (error) {
+      if (error.message?.includes("foreign key constraint")) {
+        return NextResponse.json(
+          { error: "Tidak dapat menghapus kode instrumen karena masih digunakan oleh data lain." },
+          { status: 400 },
+        );
+      }
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 

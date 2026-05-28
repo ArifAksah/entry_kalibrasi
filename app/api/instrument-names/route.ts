@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("instrument_names")
       .select("*")
-      .order("name", { ascending: true });
+      .order("names", { ascending: true });
 
     if (codeId) {
       query = query.eq("instrument_code_id", codeId);
@@ -22,7 +22,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(data);
+    // Map 'names' column to 'name' for frontend compatibility
+    const mapped = (data || []).map((item: any) => ({
+      ...item,
+      name: item.names ?? item.name,
+    }));
+
+    return NextResponse.json(mapped);
   } catch (error) {
     return NextResponse.json(
       { error: "Failed to fetch instrument names" },
@@ -34,13 +40,14 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, code_alat, instrument_code_id } = body;
+    const { name, names, code_alat, instrument_code_id } = body;
 
-    if (!name) {
+    const nameValue = names || name;
+    if (!nameValue) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    const insertPayload: any = { name };
+    const insertPayload: any = { names: nameValue };
     if (code_alat !== undefined) insertPayload.code_alat = code_alat;
     if (instrument_code_id !== undefined)
       insertPayload.instrument_code_id = instrument_code_id;
@@ -55,7 +62,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(data, { status: 201 });
+    // Map 'names' to 'name' for frontend compatibility
+    const mapped = { ...data, name: data.names ?? data.name };
+
+    return NextResponse.json(mapped, { status: 201 });
   } catch (error) {
     return NextResponse.json(
       { error: "Failed to create instrument name" },

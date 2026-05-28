@@ -13,6 +13,7 @@ import Breadcrumb from "../../../components/ui/Breadcrumb";
 import UnitSelect from "../../../components/ui/UnitSelect";
 import { EditButton, DeleteButton } from "../../../components/ui/ActionIcons";
 import { useUnits } from "../../../hooks/useUnits";
+import SearchableDropdown from "../../../components/ui/SearchableDropdown";
 import { Modal } from "../../../components/ui/Modal";
 
 /**
@@ -102,100 +103,6 @@ function parseCorrectionData(
 
   return [];
 }
-
-const SearchableDropdown = ({
-  value,
-  onChange,
-  options,
-  placeholder = "Pilih...",
-  searchPlaceholder = "Cari...",
-  className = "",
-}: {
-  value: string | number | null;
-  onChange: (value: string | number | null) => void;
-  options: Array<{ id: string | number; name: string; description?: string }>;
-  placeholder?: string;
-  searchPlaceholder?: string;
-  className?: string;
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const selectedOption = options.find((option) => option.id === value);
-  const filteredOptions = options.filter((option) => {
-    const q = searchTerm.toLowerCase();
-    return (
-      (option.name || "").toLowerCase().includes(q) ||
-      (option.description || "").toLowerCase().includes(q)
-    );
-  });
-
-  return (
-    <div className={`relative ${className}`}>
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-3 py-2 text-left border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
-      >
-        <span className={selectedOption ? "text-gray-900" : "text-gray-500"}>
-          {selectedOption?.name || placeholder}
-        </span>
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">
-          ▼
-        </span>
-      </button>
-
-      {isOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-20"
-            onClick={() => setIsOpen(false)}
-          />
-          <div className="absolute z-30 top-full mt-1 w-full min-w-[220px] bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-hidden">
-            <div className="p-2 border-b border-gray-100">
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder={searchPlaceholder}
-                className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-gray-50"
-                autoFocus
-              />
-            </div>
-            <div className="max-h-48 overflow-y-auto">
-              {filteredOptions.length > 0 ? (
-                filteredOptions.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => {
-                      onChange(option.id);
-                      setIsOpen(false);
-                      setSearchTerm("");
-                    }}
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
-                  >
-                    <div className="font-medium text-gray-900">
-                      {option.name}
-                    </div>
-                    {option.description && (
-                      <div className="text-xs text-gray-500 mt-0.5">
-                        {option.description}
-                      </div>
-                    )}
-                  </button>
-                ))
-              ) : (
-                <div className="px-3 py-4 text-center text-gray-500 text-sm">
-                  Tidak ada data ditemukan
-                </div>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
 
 const InstrumentsCRUD: React.FC = () => {
   const {
@@ -1477,12 +1384,10 @@ const InstrumentsCRUD: React.FC = () => {
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Kode Instrumen *
                         </label>
-                        <select
-                          value={selectedInstrumentCodeId ?? ""}
-                          onChange={(e) => {
-                            const newCodeId = e.target.value
-                              ? Number(e.target.value)
-                              : null;
+                        <SearchableDropdown
+                          value={selectedInstrumentCodeId ?? null}
+                          onChange={(val) => {
+                            const newCodeId = val ? Number(val) : null;
                             setSelectedInstrumentCodeId(newCodeId);
                             setForm({
                               ...form,
@@ -1491,16 +1396,13 @@ const InstrumentsCRUD: React.FC = () => {
                               instrument_code_id: newCodeId,
                             } as any);
                           }}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                        >
-                          <option value="">-- Pilih Kode Instrumen --</option>
-                          {instrumentCodes.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.code_alat}
-                              {c.name ? ` — ${c.name}` : ""}
-                            </option>
-                          ))}
-                        </select>
+                          options={instrumentCodes.map((c) => ({
+                            id: c.id,
+                            name: c.code_alat + (c.name ? ` — ${c.name}` : ""),
+                          }))}
+                          placeholder="-- Pilih Kode Instrumen --"
+                          searchPlaceholder="Cari kode instrumen..."
+                        />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">

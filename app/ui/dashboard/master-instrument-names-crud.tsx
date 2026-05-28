@@ -26,6 +26,7 @@ const MasterInstrumentNamesCRUD: React.FC = () => {
   const { alert, showSuccess, showError, hideAlert } = useAlert();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("instrument_code");
+  const [expandedCodeId, setExpandedCodeId] = useState<number | null>(null);
 
   // Instrument Code state
   const [codes, setCodes] = useState<InstrumentCode[]>([]);
@@ -551,8 +552,8 @@ const MasterInstrumentNamesCRUD: React.FC = () => {
                         (n) => n.instrument_code_id === item.id,
                       ).length;
                       return (
+                        <React.Fragment key={item.id}>
                         <tr
-                          key={item.id}
                           className="hover:bg-gray-50 transition-colors"
                         >
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -584,6 +585,25 @@ const MasterInstrumentNamesCRUD: React.FC = () => {
                             )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm space-x-2">
+                            <button
+                              onClick={() => setExpandedCodeId(expandedCodeId === item.id ? null : item.id)}
+                              className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-gray-600 bg-gray-50 rounded-md hover:bg-gray-100 transition-colors text-xs font-medium"
+                            >
+                              <svg
+                                className={`w-3.5 h-3.5 mr-1 transition-transform ${expandedCodeId === item.id ? 'rotate-90' : ''}`}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 5l7 7-7 7"
+                                />
+                              </svg>
+                              Detail
+                            </button>
                             <button
                               onClick={() => openCodeModal(item)}
                               className="inline-flex items-center px-3 py-1.5 border border-blue-300 text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors text-xs font-medium"
@@ -624,6 +644,32 @@ const MasterInstrumentNamesCRUD: React.FC = () => {
                             </button>
                           </td>
                         </tr>
+                        {expandedCodeId === item.id && (
+                          <tr>
+                            <td colSpan={6} className="px-6 py-4 bg-gray-50 border-b">
+                              <div className="text-sm font-semibold text-gray-700 mb-2">
+                                Daftar Nama Instrumen dengan kode &quot;{item.code_alat}&quot;:
+                              </div>
+                              {(() => {
+                                const childNames = names.filter(n => n.instrument_code_id === item.id);
+                                if (childNames.length === 0) {
+                                  return <p className="text-sm text-gray-400 italic">Belum ada nama instrumen untuk kode ini.</p>;
+                                }
+                                return (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                    {childNames.map(n => (
+                                      <div key={n.id} className="flex items-center gap-2 px-3 py-2 bg-white rounded-md border border-gray-200">
+                                        <span className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0"></span>
+                                        <span className="text-sm text-gray-800">{n.name}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
+                            </td>
+                          </tr>
+                        )}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
