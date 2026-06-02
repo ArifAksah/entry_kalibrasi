@@ -113,7 +113,7 @@ export function mapCertificateToTemplateData(certificate: any): TemplateData {
 
   return {
     // Instrument data
-    nama_alat: safeString(instrument.name),
+    nama_alat: safeString(instrument.names),
     merk: safeString(instrument.brand),
     tipe: safeString(instrument.type),
     no_seri: safeString(instrument.serial_number),

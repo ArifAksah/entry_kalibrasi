@@ -115,8 +115,8 @@ export async function GET(request: NextRequest) {
     // Tambahkan filter pencarian jika ada query 'q'
     if (q) {
       query = query.or(
-        `manufacturer.ilike.%${q}%,type.ilike.%${q}%,serial_number.ilike.%${q}%,name.ilike.%${q}%,others.ilike.%${q}%`,
-      );
+              `manufacturer.ilike.%${q}%,type.ilike.%${q}%,serial_number.ilike.%${q}%,name_alias.ilike.%${q}%,others.ilike.%${q}%`,
+            );
     }
 
     if (userId) {
@@ -255,12 +255,11 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabaseAdmin
       .from("instrument")
-      .insert({
+            .insert({
         manufacturer,
         type,
         serial_number,
         others: others || null,
-        name: aliasValue,
         name_alias: aliasValue,
         names: namesId ? parseInt(namesId as any) : null,
         instrument_code_id: instrument_code_id

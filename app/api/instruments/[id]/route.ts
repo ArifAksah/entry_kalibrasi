@@ -101,12 +101,11 @@ export async function PUT(
 
     const { data, error } = await supabaseAdmin
       .from("instrument")
-      .update({
+            .update({
         manufacturer,
         type,
         serial_number,
         others,
-        name: aliasValue,
         name_alias: aliasValue,
         names: namesId ? parseInt(namesId as any) : null,
         instrument_code_id: instrument_code_id

@@ -1075,7 +1075,7 @@ const MasterInstrumentNamesCRUD: React.FC = () => {
 
       {/* ── Confirm Delete Modals ───────────────────────────────────────── */}
       <ConfirmDeleteModal
-        item={confirmDeleteCode ? { name: confirmDeleteCode.code_alat } : null}
+        item={confirmDeleteCode ? { name: confirmDeleteCode.code_alat || "" } : null}
         label="kode instrumen"
         onConfirm={handleConfirmDeleteCode}
         onCancel={() => setConfirmDeleteCode(null)}

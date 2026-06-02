@@ -106,10 +106,10 @@ export async function GET(
     if (cert.instrument) {
       const { data: instrument } = await supabaseAdmin
         .from('instrument')
-        .select('name, serial_number, type, manufacturer')
+        .select('names, serial_number, type, manufacturer')
         .eq('id', cert.instrument)
         .maybeSingle()
-      if (instrument?.name) instrumentName = instrument.name
+      if (instrument?.names) instrumentName = instrument.names
     }
 
     const effectiveVersion = cert.version ?? 1

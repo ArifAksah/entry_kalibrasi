@@ -25,7 +25,7 @@ export const DEFAULT_PAGE_SETTINGS: PageSettings = {
 
 export interface VariableDefinition {
   name: string
-  category: 'instrument' | 'calibration' | 'station' | 'personnel' | 'results' | 'system'
+  category: 'instrument' | 'calibration' | 'station' | 'personnel' | 'results' | 'system' | 'loop'
   description: string
   dataKey: string // Key path in certificate data object
 }

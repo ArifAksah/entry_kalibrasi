@@ -238,8 +238,8 @@ const InstrumentsCRUD: React.FC = () => {
       expanded?: boolean;
       sensorData: Array<{
         sensorLocalId: string; // matches sensorForms[i].id
-        drift: number;
-        u95_general: number;
+        drift: number | string;
+        u95_general: number | string;
         correction_data: Array<{
           setpoint: string;
           correction: string;
@@ -472,6 +472,34 @@ const InstrumentsCRUD: React.FC = () => {
     sensorForms[0]?.id,
   ]);
 
+  // Auto-sync sensor name with instrument name for single sensor case
+  useEffect(() => {
+    // Only apply for single sensor (not multi-sensor)
+    if (
+      !form.memiliki_lebih_satu &&
+      sensorForms.length === 1 &&
+      (form as any).instrument_names_id
+    ) {
+      const instrumentNameId = (form as any).instrument_names_id;
+      const currentSensor = sensorForms[0];
+      
+      // Only update if sensor_name_id is different from instrument_names_id
+      if (currentSensor.sensor_name_id !== instrumentNameId) {
+        setSensorForms((prev) =>
+          prev.map((sensor, index) =>
+            index === 0
+              ? { ...sensor, sensor_name_id: instrumentNameId }
+              : sensor
+          )
+        );
+      }
+    }
+  }, [
+    form.memiliki_lebih_satu,
+    (form as any).instrument_names_id,
+    sensorForms.length,
+  ]);
+
   // Debug sensorForms changes
   useEffect(() => {
     console.log("sensorForms updated:", sensorForms);
@@ -587,26 +615,40 @@ const InstrumentsCRUD: React.FC = () => {
       const existingCodeId: number | null =
         (item as any).instrument_code_id ||
         (() => {
-          const namesId = (item as any).names;
+          const namesId = (item as any).instrument_names_id;
           if (!namesId) return null;
           const found = instrumentNames.find((n) => n.id === namesId);
           return found?.instrument_code_id ?? null;
         })();
 
+      // Get the instrument name from instrument_names table
+      const namesId = (item as any).instrument_names_id || (item as any).names;
+      console.log('Edit instrument - namesId:', namesId);
+      console.log('Edit instrument - instrumentNames array:', instrumentNames.length);
+      
+      const instrumentNameFromTable = namesId
+        ? instrumentNames.find((n) => n.id === namesId)?.name || ""
+        : "";
+      
+      console.log('Edit instrument - instrumentNameFromTable:', instrumentNameFromTable);
+      console.log('Edit instrument - name_alias:', (item as any).name_alias);
+
       const formData = {
         manufacturer: item.manufacturer,
         type: item.type,
         serial_number: item.serial_number,
-        name: (item as any).name_alias || item.name || "",
+        name: instrumentNameFromTable || (item as any).name_alias || item.name || "",
         name_alias: (item as any).name_alias || item.name || "",
         station_id: item.station_id,
         memiliki_lebih_satu: item.memiliki_lebih_satu || false,
-        instrument_names_id: (item as any).names || null,
-        names: (item as any).names || null,
+        instrument_names_id: (item as any).instrument_names_id || (item as any).names || null,
+        names: (item as any).instrument_names_id || (item as any).names || null,
         instrument_type_id: (item as any).instrument_type_id || null,
         instrument_id: (item as any).instrument_id || null,
         instrument_code_id: existingCodeId,
       };
+      console.log('Edit instrument - formData.name:', formData.name);
+      console.log('Edit instrument - formData.instrument_names_id:', formData.instrument_names_id);
       setForm(formData);
       setSelectedInstrumentCodeId(existingCodeId);
 
@@ -633,6 +675,15 @@ const InstrumentsCRUD: React.FC = () => {
             const processedSensors = sensors.map((sensor: any) => {
               const range_capacity = sensor.range_capacity || "";
               const resolution = sensor.resolution || 0;
+              
+              // If nama_sensor is empty but sensor_name_id exists, get name from instrument_names
+              let nama_sensor = sensor.nama_sensor || "";
+              if (!nama_sensor && sensor.sensor_name_id) {
+                const foundName = instrumentNames.find((n) => n.id === sensor.sensor_name_id);
+                if (foundName) {
+                  nama_sensor = foundName.name;
+                }
+              }
 
               if (sensor.certificates && sensor.certificates.length > 0) {
                 sensor.certificates.forEach((c: any) => {
@@ -661,7 +712,7 @@ const InstrumentsCRUD: React.FC = () => {
                 });
               }
 
-              return { ...sensor, range_capacity, resolution };
+              return { ...sensor, range_capacity, resolution, nama_sensor };
             });
 
             const uniqueSensors = processedSensors.filter(
@@ -745,10 +796,21 @@ const InstrumentsCRUD: React.FC = () => {
       typeof isStandardOverride === "boolean"
         ? isStandardOverride
         : isStandardInstrument;
+    
+    // Auto-set sensor_name_id ONLY for single-sensor instruments
+    // Multi-sensor instruments can have different sensor names per sensor
+    const isMultiSensor = form.memiliki_lebih_satu;
+    const autoSensorNameId = !isMultiSensor && (form as any).instrument_names_id
+      ? (form as any).instrument_names_id
+      : null;
+    const autoNamaSensor = autoSensorNameId
+      ? instrumentNames.find((n) => n.id === autoSensorNameId)?.name || ""
+      : "";
+    
     const newSensor = {
       id: `sensor_${Date.now()}`,
-      sensor_name_id: null,
-      nama_sensor: "",
+      sensor_name_id: autoSensorNameId,
+      nama_sensor: autoNamaSensor,
       merk_sensor: "",
       tipe_sensor: "",
       serial_number_sensor: "",
@@ -857,6 +919,16 @@ const InstrumentsCRUD: React.FC = () => {
         const defaultCalibration: any =
           sensorForms.length > 0 ? sensorForms[0] : {};
 
+        // Use instrument_names_id as sensor_name_id
+        // sensor.sensor_name_id is FK to instrument_names.id
+        let sensorNameId = defaultCalibration.sensor_name_id || null;
+        
+        // If instrument_names_id is selected, use it as sensor_name_id
+        if ((form as any).instrument_names_id) {
+          sensorNameId = (form as any).instrument_names_id;
+          console.log('Using instrument_names_id as sensor_name_id:', sensorNameId);
+        }
+
         const syncedSensor = {
           id: existingId,
           // FORCE SYNC IDENTITY
@@ -864,6 +936,7 @@ const InstrumentsCRUD: React.FC = () => {
           merk_sensor: form.manufacturer,
           tipe_sensor: form.type,
           serial_number_sensor: form.serial_number,
+          sensor_name_id: sensorNameId,
           // PRESERVE CALIBRATION DATA IF STANDARD, OR DEFAULTS
           // PRESERVE CALIBRATION DATA IF STANDARD, OR DEFAULTS
           range_capacity: defaultCalibration.range_capacity || "",
@@ -929,6 +1002,9 @@ const InstrumentsCRUD: React.FC = () => {
       }
 
       if (editing) {
+        console.log('Updating instrument with form data:', form);
+        console.log('instrument_names_id:', form.instrument_names_id);
+        console.log('names:', (form as any).names);
         await updateInstrument(editing.id, form);
 
         // Handle sensor data submission
@@ -1169,9 +1245,9 @@ const InstrumentsCRUD: React.FC = () => {
                           ? instrumentCodes.find((c) => c.id === codeId)
                           : null;
                         // kolom FK ke instrument_names di skema baru adalah "names"
+                        // Try both field names for compatibility
                         const nameId =
-                          (item as any).names ??
-                          (item as any).instrument_names_id;
+                          (item as any).instrument_names_id || (item as any).names;
                         const instrName = nameId
                           ? instrumentNames.find((n) => n.id === nameId)
                           : null;
@@ -1416,14 +1492,33 @@ const InstrumentsCRUD: React.FC = () => {
                                 selectedInstrumentCodeId,
                             )
                             .map((n) => ({ id: n.id, name: n.name }))}
-                          value={(form as any).names ?? null}
-                          onChange={(val) =>
+                          value={(form as any).instrument_names_id ?? null}
+                          onChange={(val) => {
+                            // Find the selected instrument name to get its text value
+                            const selectedName = val
+                              ? instrumentNames.find((n) => n.id === Number(val))?.name || ""
+                              : "";
+                            const selectedId = val ? Number(val) : null;
+                            
                             setForm({
                               ...form,
-                              instrument_names_id: val ? Number(val) : null,
-                              names: val ? Number(val) : null,
-                            } as any)
-                          }
+                              instrument_names_id: selectedId,
+                              names: selectedId,
+                              name: selectedName, // Update name field for validation
+                            } as any);
+                            
+                            // Auto-update sensor_name_id ONLY for single-sensor instruments
+                            // Multi-sensor instruments can have different sensor names
+                            if (selectedId && !form.memiliki_lebih_satu) {
+                              setSensorForms((prevSensors) =>
+                                prevSensors.map((sensor) => ({
+                                  ...sensor,
+                                  sensor_name_id: selectedId,
+                                  nama_sensor: selectedName,
+                                }))
+                              );
+                            }
+                          }}
                           placeholder={
                             selectedInstrumentCodeId
                               ? "Pilih Nama Instrumen"
@@ -1565,7 +1660,7 @@ const InstrumentsCRUD: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="lg:col-span-2">
+                      <div className="lg:col-span-3">
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Station
                         </label>
@@ -1646,7 +1741,7 @@ const InstrumentsCRUD: React.FC = () => {
                           )}
                         </div>
                       </div>
-                      <div className="lg:col-span-2">
+                      <div className="lg:col-span-3">
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                           <div className="flex items-center space-x-3">
                             <input
@@ -1677,7 +1772,7 @@ const InstrumentsCRUD: React.FC = () => {
 
                       {/* Checkbox Instrument Standard - disembunyikan untuk role user_station (UUT only) */}
                       {!isReadOnlyUserStation && (
-                        <div className="lg:col-span-2 mt-2">
+                        <div className="lg:col-span-3 mt-2">
                           <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
                             <div className="flex items-center space-x-3">
                               <input
@@ -1716,7 +1811,7 @@ const InstrumentsCRUD: React.FC = () => {
                       )}
                       {/* Global Certificates for Standard Instrument */}
                       {isStandardInstrument && (
-                        <div className="lg:col-span-2 mt-4 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+                        <div className="lg:col-span-3 mt-4 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
                           <div className="flex items-center justify-between mb-4 border-b pb-3">
                             <div>
                               <h4 className="text-md font-semibold text-gray-800">
@@ -2126,16 +2221,19 @@ const InstrumentsCRUD: React.FC = () => {
                                                             })),
                                                         ]}
                                                         value={
-                                                          sensor.sensor_name_id
+                                                          sensor.sensor_name_id || ""
                                                         }
-                                                        onChange={(val) =>
-                                                          updateSensorIdentity(
-                                                            "sensor_name_id",
-                                                            val
-                                                              ? Number(val)
-                                                              : null,
-                                                          )
-                                                        }
+                                                        onChange={(val) => {
+                                                          const nameId = val ? Number(val) : null;
+                                                          updateSensorIdentity("sensor_name_id", nameId);
+                                                          // Also update nama_sensor based on selected name
+                                                          if (nameId) {
+                                                            const selectedName = instrumentNames.find((n) => n.id === nameId);
+                                                            if (selectedName) {
+                                                              updateSensorIdentity("nama_sensor", selectedName.name);
+                                                            }
+                                                          }
+                                                        }}
                                                         placeholder="Pilih Nama Sensor"
                                                         searchPlaceholder="Cari nama sensor..."
                                                       />
@@ -2476,21 +2574,21 @@ const InstrumentsCRUD: React.FC = () => {
                                                       </label>
                                                       <input
                                                         type="text"
-                                                        value={sd.drift}
-                                                        onChange={(e) =>
-                                                          updateSensorData(
-                                                            "drift",
-                                                            e.target.value ===
-                                                              ""
-                                                              ? 0
-                                                              : parseFloat(
-                                                                  e.target
-                                                                    .value,
-                                                                ),
-                                                          )
-                                                        }
+                                                        inputMode="decimal"
+                                                        value={sd.drift === 0 || sd.drift === '' ? '' : String(sd.drift)}
+                                                        onChange={(e) => {
+                                                          const val = e.target.value;
+                                                          // Simpan sebagai string saat mengetik
+                                                          updateSensorData("drift", val);
+                                                        }}
+                                                        onBlur={(e) => {
+                                                          // Parse ke number saat blur (kehilangan fokus)
+                                                          const val = e.target.value;
+                                                          const parsed = val === '' ? 0 : parseDecimal(val, 0);
+                                                          updateSensorData("drift", parsed);
+                                                        }}
                                                         className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded focus:ring-amber-400 focus:border-amber-400 bg-white"
-                                                        placeholder="Ex: -0.05"
+                                                        placeholder="Ex: -0,05 atau -0.05"
                                                       />
                                                     </div>
                                                     <div>
@@ -2499,21 +2597,21 @@ const InstrumentsCRUD: React.FC = () => {
                                                       </label>
                                                       <input
                                                         type="text"
-                                                        value={sd.u95_general}
-                                                        onChange={(e) =>
-                                                          updateSensorData(
-                                                            "u95_general",
-                                                            e.target.value ===
-                                                              ""
-                                                              ? 0
-                                                              : parseFloat(
-                                                                  e.target
-                                                                    .value,
-                                                                ),
-                                                          )
-                                                        }
+                                                        inputMode="decimal"
+                                                        value={sd.u95_general === 0 || sd.u95_general === '' ? '' : String(sd.u95_general)}
+                                                        onChange={(e) => {
+                                                          const val = e.target.value;
+                                                          // Simpan sebagai string saat mengetik
+                                                          updateSensorData("u95_general", val);
+                                                        }}
+                                                        onBlur={(e) => {
+                                                          // Parse ke number saat blur (kehilangan fokus)
+                                                          const val = e.target.value;
+                                                          const parsed = val === '' ? 0 : parseDecimal(val, 0);
+                                                          updateSensorData("u95_general", parsed);
+                                                        }}
                                                         className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded focus:ring-amber-400 focus:border-amber-400 bg-white"
-                                                        placeholder="Ex: 0.02"
+                                                        placeholder="Ex: 0,02 atau 0.02"
                                                       />
                                                     </div>
                                                   </div>

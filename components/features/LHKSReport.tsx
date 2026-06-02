@@ -524,7 +524,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                     stdName = stdSensor?.type;
                                                 }
                                                 if (!stdName || /^\d+$/.test(stdName)) {
-                                                    stdName = stdInstrument?.name;
+                                                    stdName = stdInstrument?.name || undefined;
                                                 }
 
                                                 const manufacturer = stdSensor?.manufacturer || stdInstrument?.manufacturer;
@@ -643,7 +643,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                 let stdName = stdSensor?.name;
                                 if (!stdName || /^\d+$/.test(stdName)) stdName = instrumentNames?.find(n => n.id === stdSensor?.sensor_name_id)?.name;
                                 if (!stdName || /^\d+$/.test(stdName)) stdName = stdSensor?.type;
-                                if (!stdName || /^\d+$/.test(stdName)) stdName = stdInstrument?.name;
+                                if (!stdName || /^\d+$/.test(stdName)) stdName = stdInstrument?.name || undefined;
                                 if (!stdName || /^\d+$/.test(stdName)) stdName = (matchedStdCert as any)?.sensor_name;
                                 stdNameStr = stdName || '-';
                             }

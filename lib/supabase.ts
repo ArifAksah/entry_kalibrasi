@@ -176,7 +176,9 @@ export interface Instrument {
   type: string
   serial_number: string
   others?: string | null
-  name: string
+  name?: string | null // Deprecated: use name_alias instead
+  name_alias?: string | null // Alias teks bebas untuk instrumen
+  names?: number | null // FK ke tabel instrument_names
   instrument_names_id?: number | null // FK to instrument_names table
   station_id?: number | null // Foreign key column
   station?: Station | null // Relasi data (opsional)

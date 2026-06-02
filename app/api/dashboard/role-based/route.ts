@@ -275,18 +275,39 @@ async function getInstruments() {
 async function getStationDashboardInstruments(stationIds: number[]) {
   if (stationIds.length === 0) return [] as StationDashboardInstrument[]
 
-  const { data: instrumentData, error: instrumentError } = await supabaseAdmin
+  // Try with instrument_names_id first, fallback without it if column doesn't exist
+  let instrumentData: any[] = []
+  let hasInstrumentNamesId = true
+  
+  const { data: dataWithNamesId, error: errorWithNamesId } = await supabaseAdmin
     .from('instrument')
-    .select('id, name, station_id, instrument_names_id')
+    .select('id, manufacturer, type, serial_number, station_id, instrument_names_id')
     .in('station_id', stationIds)
-    .order('name', { ascending: true })
+    .order('manufacturer', { ascending: true })
 
-  if (instrumentError) throw new Error(instrumentError.message)
+  if (!errorWithNamesId) {
+    instrumentData = dataWithNamesId || []
+  } else {
+    // If instrument_names_id doesn't exist, try without it
+    console.warn('instrument_names_id column not found, trying without it:', errorWithNamesId.message)
+    hasInstrumentNamesId = false
+    const { data: dataWithoutNamesId, error: errorWithoutNamesId } = await supabaseAdmin
+      .from('instrument')
+      .select('id, manufacturer, type, serial_number, station_id')
+      .in('station_id', stationIds)
+      .order('manufacturer', { ascending: true })
+    
+    if (errorWithoutNamesId) {
+      throw new Error(errorWithoutNamesId.message)
+    }
+    instrumentData = dataWithoutNamesId || []
+  }
 
   const instruments = instrumentData || []
   const instrumentIds = instruments.map((instrument: any) => Number(instrument.id)).filter((id: number) => Number.isFinite(id))
   const instrumentNameIds = Array.from(new Set(
     instruments
+      .filter((instrument: any) => hasInstrumentNamesId && instrument.instrument_names_id != null)
       .map((instrument: any) => Number(instrument.instrument_names_id))
       .filter((id: number) => Number.isFinite(id))
   ))
@@ -300,14 +321,19 @@ async function getStationDashboardInstruments(stationIds: number[]) {
 
   if (sensorError) throw new Error(sensorError.message)
 
-  const { data: nameData, error: nameError } = instrumentNameIds.length > 0
-    ? await supabaseAdmin
+  // Only fetch instrument names if we have valid IDs
+  let nameData: any[] = []
+  if (instrumentNameIds.length > 0) {
+    const { data: fetchedNameData, error: nameError } = await supabaseAdmin
       .from('instrument_names')
       .select('id, name, code_alat')
       .in('id', instrumentNameIds)
-    : { data: [], error: null }
-
-  if (nameError) throw new Error(nameError.message)
+    if (nameError) {
+      console.warn('Could not fetch instrument_names:', nameError.message)
+    } else {
+      nameData = fetchedNameData || []
+    }
+  }
 
   const sensorsByInstrument = new Map<number, number[]>()
   ;(sensorData || []).forEach((sensor: any) => {
@@ -320,17 +346,24 @@ async function getStationDashboardInstruments(stationIds: number[]) {
   })
 
   const namesById = new Map<number, any>()
-  ;(nameData || []).forEach((name: any) => {
+  nameData.forEach((name: any) => {
     const id = Number(name.id)
     if (Number.isFinite(id)) namesById.set(id, name)
   })
 
-  return instruments.map((instrument: any) => {
-    const instrumentName = namesById.get(Number(instrument.instrument_names_id))
+    return instruments.map((instrument: any) => {
+    const instrumentName = hasInstrumentNamesId && instrument.instrument_names_id ? namesById.get(Number(instrument.instrument_names_id)) : null
+    // Create a meaningful name from available fields
+    const instrumentNameFromFields = [
+      instrument.manufacturer,
+      instrument.type,
+      instrument.serial_number
+    ].filter(Boolean).join(' - ') || null
+    
     return {
       id: Number(instrument.id),
-      name: instrument.name || instrumentName?.name || `Instrumen #${instrument.id}`,
-      code: instrumentName?.code_alat || '-',
+      name: instrumentName?.name || instrumentNameFromFields || `Instrumen #${instrument.id}`,
+      code: instrumentName?.code_alat || instrument.serial_number || '-',
       station_id: instrument.station_id == null ? null : Number(instrument.station_id),
       sensor_ids: sensorsByInstrument.get(Number(instrument.id)) || []
     }
@@ -362,14 +395,24 @@ async function getUserStationIds(userId: string) {
 
 async function getStationsByIds(stationIds: number[]) {
   if (stationIds.length === 0) return [] as StationRow[]
+  // Use select('*') to avoid column name issues
   const { data, error } = await supabaseAdmin
     .from('station')
-    .select('id, name, station_wmo_id, address, region, province, regency')
+    .select('*')
     .in('id', stationIds)
     .order('name', { ascending: true })
 
   if (error) throw new Error(error.message)
-  return (data || []) as StationRow[]
+  // Dynamically map - try station_wmo_id first, then wmo_id
+  return ((data || []) as any[]).map((row: any) => ({
+    id: row.id,
+    name: row.name,
+    station_wmo_id: row.station_wmo_id ?? row.wmo_id ?? null,
+    address: row.address,
+    region: row.region,
+    province: row.province,
+    regency: row.regency
+  })) as StationRow[]
 }
 
 const buildStationSummaries = (
@@ -556,56 +599,56 @@ const buildUserStationDashboard = (
     .map((item) => ({
       id: item.instrument.id,
       instrument_name: item.instrument.name,
-      instrument_code: item.instrument.code,
-      valid_from: item.validFrom,
-      expires_at: item.expiresAt ? item.expiresAt.toISOString() : null,
-      certificate_no: item.latestCertificate?.no_certificate || '-',
-      certificate_order: item.latestCertificate?.no_order || null,
-      no_identification: item.latestCertificate?.no_identification || null,
-      issue_date: item.latestCertificate?.issue_date || null,
-      certificate_id: item.latestCertificate?.id ?? null,
-      status: item.status,
-      days_remaining: item.daysRemaining
-    }))
+            instrument_code: item.instrument.code,
+            valid_from: item.validFrom,
+            expires_at: item.expiresAt ? item.expiresAt.toISOString() : null,
+            certificate_no: item.latestCertificate?.no_certificate || '-',
+            certificate_order: item.latestCertificate?.no_order || null,
+            no_identification: item.latestCertificate?.no_identification || null,
+            issue_date: item.latestCertificate?.issue_date || null,
+            certificate_id: item.latestCertificate?.id ?? null,
+            status: item.status,
+            days_remaining: item.daysRemaining
+          }))
 
-  const trendSeries = latestForInstrument
-    .filter((item) => item.relatedStandards.length > 0)
-    .slice(0, 8)
-    .map((item) => {
-      const byYear = new Map<number, CertificateStandardRow[]>()
-      item.relatedStandards.forEach((standard) => {
-        if (!standard.calibration_date) return
-        const year = new Date(standard.calibration_date).getFullYear()
-        if (!Number.isFinite(year)) return
-        const list = byYear.get(year) || []
-        list.push(standard)
-        byYear.set(year, list)
-      })
+        const trendSeries = latestForInstrument
+          .filter((item) => item.relatedStandards.length > 0)
+          .slice(0, 8)
+          .map((item) => {
+            const byYear = new Map<number, CertificateStandardRow[]>()
+            item.relatedStandards.forEach((standard) => {
+              if (!standard.calibration_date) return
+              const year = new Date(standard.calibration_date).getFullYear()
+              if (!Number.isFinite(year)) return
+              const list = byYear.get(year) || []
+              list.push(standard)
+              byYear.set(year, list)
+            })
 
-      const points = Array.from(byYear.entries())
-        .sort(([a], [b]) => a - b)
-        .map(([year, rows]) => {
-          const corrections = rows.flatMap((row) => parseNumericArray(row.correction_std))
-          const uncertainties = rows.flatMap((row) => {
-            const parsed = parseNumericArray(row.u95_std)
-            if (parsed.length > 0) return parsed
-            return typeof row.u95_general === 'number' ? [row.u95_general] : []
+            const points = Array.from(byYear.entries())
+              .sort(([a], [b]) => a - b)
+              .map(([year, rows]) => {
+                const corrections = rows.flatMap((row) => parseNumericArray(row.correction_std))
+                const uncertainties = rows.flatMap((row) => {
+                  const parsed = parseNumericArray(row.u95_std)
+                  if (parsed.length > 0) return parsed
+                  return typeof row.u95_general === 'number' ? [row.u95_general] : []
+                })
+                return {
+                  year,
+                  correction: average(corrections),
+                  uncertainty: average(uncertainties)
+                }
+              })
+
+            return {
+              instrument_id: item.instrument.id,
+              instrument_name: item.instrument.name,
+              instrument_code: item.instrument.code,
+              points
+            }
           })
-          return {
-            year,
-            correction: average(corrections),
-            uncertainty: average(uncertainties)
-          }
-        })
-
-      return {
-        instrument_id: item.instrument.id,
-        instrument_name: item.instrument.name,
-        instrument_code: item.instrument.code,
-        points
-      }
-    })
-    .filter((series) => series.points.length > 0)
+          .filter((series) => series.points.length > 0)
 
   return {
     stationName: assignedStations.length === 1

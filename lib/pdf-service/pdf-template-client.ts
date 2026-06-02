@@ -185,7 +185,7 @@ export async function uploadTemplateToPdfService(
 
   if (Buffer.isBuffer(file)) {
     // Convert Buffer to Blob for FormData
-    const blob = new Blob([file], {
+    const blob = new Blob([new Uint8Array(file)], {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     })
     formData.append('file', blob, fileName)

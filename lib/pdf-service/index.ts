@@ -567,8 +567,8 @@ export async function generateAndSaveCertificatePDF(
     }
 
     // ─── Step 7: Render PDF ──────────────────────────────────────────────
-    let pdfBuffer: Buffer
-    let pdfFileName: string
+    let pdfBuffer!: Buffer
+    let pdfFileName!: string
     let usedPythonService = false
 
     if (templateRecord && shouldUsePdfTemplateService(templateRecord)) {
@@ -631,6 +631,10 @@ export async function generateAndSaveCertificatePDF(
     }
 
     // ─── Step 8: Sign with BSrE (if passphrase provided) ─────────────────
+    if (!pdfBuffer || !pdfFileName) {
+      return { success: false, error: 'PDF_GENERATION_FAILED' }
+    }
+
     let finalPdfBuffer = pdfBuffer
     let signed = false
 

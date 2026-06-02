@@ -1488,9 +1488,19 @@ type ResultItem = {
           fetchJsonSafe('/api/units', []),
         ])
 
-        setStations(Array.isArray(stationsAll) ? stationsAll : (stationsAll as any)?.data ?? [])
-        setInstruments(Array.isArray(instrumentsAll) ? instrumentsAll : (instrumentsAll as any)?.data ?? [])
-        setSensors(Array.isArray(sensorsAll) ? sensorsAll : (sensorsAll as any)?.data ?? [])
+        const stationsRaw = Array.isArray(stationsAll) ? stationsAll : (stationsAll as any)?.data ?? []
+                // Remove duplicate stations by id
+                const stationsMap = new Map()
+                stationsRaw.forEach((s: any) => { if (s?.id != null) stationsMap.set(s.id, s) })
+                setStations(Array.from(stationsMap.values()))
+        const instrumentsRaw = Array.isArray(instrumentsAll) ? instrumentsAll : (instrumentsAll as any)?.data ?? []
+        const instrumentsMap = new Map()
+        instrumentsRaw.forEach((i: any) => { if (i?.id != null) instrumentsMap.set(i.id, i) })
+        setInstruments(Array.from(instrumentsMap.values()))
+        const sensorsRaw = Array.isArray(sensorsAll) ? sensorsAll : (sensorsAll as any)?.data ?? []
+        const sensorsMap = new Map()
+        sensorsRaw.forEach((s: any) => { if (s?.id != null) sensorsMap.set(s.id, s) })
+        setSensors(Array.from(sensorsMap.values()))
         setInstrumentNames(Array.isArray(instrNamesData) ? instrNamesData : (instrNamesData?.data ?? []))
         setPersonel(Array.isArray(personelData) ? personelData : [])
         setUnits(Array.isArray(unitsData) ? unitsData : [])
@@ -2115,7 +2125,7 @@ type ResultItem = {
       // Update instrument name if instrument is selected
       if (form.instrument) {
         const selectedInstrument = instruments.find(i => i.id === form.instrument)
-        if (selectedInstrument && (!selectedInstrument.name || selectedInstrument.name === 'Instrument')) {
+        if (selectedInstrument && (!selectedInstrument.name_alias && !selectedInstrument.instrument_names_id)) {
           // Generate name from manufacturer + type + serial
           const generatedName = `${selectedInstrument.manufacturer || 'Unknown'} ${selectedInstrument.type || 'Instrument'} ${selectedInstrument.serial_number || ''}`.trim()
 
@@ -3234,7 +3244,6 @@ type ResultItem = {
                           .map(p => ({
                             id: p.id,
                             name: p.nip ? `${p.name} (${p.nip})` : p.name,
-                            station_id: p.id.slice(0, 8),
                             nip: p.nip || ''
                           }))}
                         placeholder="Pilih personel"
@@ -3252,7 +3261,6 @@ type ResultItem = {
                           .map(p => ({
                             id: p.id,
                             name: p.nip ? `${p.name} (${p.nip})` : p.name,
-                            station_id: p.id.slice(0, 8),
                             nip: p.nip || ''
                           }))}
                         placeholder="Pilih verifikator 1"
@@ -3270,7 +3278,6 @@ type ResultItem = {
                           .map(p => ({
                             id: p.id,
                             name: p.nip ? `${p.name} (${p.nip})` : p.name,
-                            station_id: p.id.slice(0, 8),
                             nip: p.nip || ''
                           }))}
                         placeholder="Pilih verifikator 2"
@@ -3288,7 +3295,6 @@ type ResultItem = {
                           .map(p => ({
                             id: p.id,
                             name: p.nip ? `${p.name} (${p.nip})` : p.name,
-                            station_id: p.id.slice(0, 8),
                             nip: p.nip || ''
                           }))}
                         placeholder="Pilih verifikator 3"
@@ -3435,13 +3441,13 @@ type ResultItem = {
                             return !isStandard;
                           })
                           .map(i => ({
-                            id: i.id,
-                            name: `${i.name} (${i.manufacturer} ${i.type} SN:${i.serial_number})`,
-                            station_id: i.station?.name || ''
-                          }))}
-                        placeholder="Pilih Instrument..."
-                        searchPlaceholder="Cari Instrument..."
-                      />
+                                                      id: i.id,
+                                                      name: `${instrumentNames.find(n => n.id === i.instrument_names_id)?.name || i.name_alias || i.name || 'Unknown'} (${i.manufacturer} ${i.type} SN:${i.serial_number})`,
+                                                      station_id: i.station?.name || ''
+                                                    }))}
+                                                  placeholder="Pilih Instrument..."
+                                                  searchPlaceholder="Cari Instrument..."
+                                                />
                     </div>
                   </div>
 
@@ -3471,13 +3477,13 @@ type ResultItem = {
                             })));
                           }}
                           options={standardInstruments
-                            .map(i => ({
-                              id: i.id,
-                              name: `${i.name} (${i.manufacturer} ${i.type})`,
-                              station_id: i.station?.name || ''
-                            }))}
-                          placeholder="Pilih Instrument Standar..."
-                          searchPlaceholder="Cari Instrument Standar..."
+                                                      .map(i => ({
+                                                        id: i.id,
+                                                        name: `${instrumentNames.find(n => n.id === i.instrument_names_id)?.name || i.name_alias || i.name || 'Unknown'} (${i.manufacturer} ${i.type})`,
+                                                        station_id: i.station?.name || ''
+                                                      }))}
+                                                    placeholder="Pilih Instrument Standar..."
+                                                    searchPlaceholder="Cari Instrument Standar..."
                         />
                       </div>
 
