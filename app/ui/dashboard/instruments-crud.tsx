@@ -1541,48 +1541,121 @@ const InstrumentsCRUD: React.FC = () => {
                           </span>
                         </label>
                         <div className="flex gap-3">
-                          {/* Render dari instrumentTypes */}
-                          {instrumentTypes.map((t) => (
-                            <label
-                              key={t.id}
-                              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 cursor-pointer transition-all duration-150 ${
-                                (form as any).instrument_type_id === t.id
-                                  ? t.name === "Digital"
-                                    ? "border-green-500 bg-green-50 text-green-700"
-                                    : "border-orange-500 bg-orange-50 text-orange-700"
-                                  : "border-gray-200 bg-white hover:border-gray-300 text-gray-600"
-                              }`}
-                            >
-                              <input
-                                type="radio"
-                                name="instrument_type_id"
-                                value={t.id}
-                                checked={
-                                  (form as any).instrument_type_id === t.id
-                                }
-                                onChange={() =>
-                                  setForm({
-                                    ...form,
-                                    instrument_type_id: t.id,
-                                  } as any)
-                                }
-                                className="sr-only"
-                              />
-                              <span
-                                className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                          {instrumentTypes.length > 0 ? (
+                            instrumentTypes.map((t) => (
+                              <label
+                                key={t.id}
+                                className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 cursor-pointer transition-all duration-150 ${
                                   (form as any).instrument_type_id === t.id
                                     ? t.name === "Digital"
-                                      ? "bg-green-500"
-                                      : "bg-orange-500"
-                                    : "bg-gray-300"
+                                      ? "border-green-500 bg-green-50 text-green-700"
+                                      : "border-orange-500 bg-orange-50 text-orange-700"
+                                    : "border-gray-200 bg-white hover:border-gray-300 text-gray-600"
                                 }`}
-                              />
-                              <span className="text-sm font-semibold">
-                                {t.name}
-                              </span>
-                            </label>
-                          ))}
+                              >
+                                <input
+                                  type="radio"
+                                  name="instrument_type_id"
+                                  value={t.id}
+                                  checked={
+                                    (form as any).instrument_type_id === t.id
+                                  }
+                                  onChange={() =>
+                                    setForm({
+                                      ...form,
+                                      instrument_type_id: t.id,
+                                    } as any)
+                                  }
+                                  className="sr-only"
+                                />
+                                <span
+                                  className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                                    (form as any).instrument_type_id === t.id
+                                      ? t.name === "Digital"
+                                        ? "bg-green-500"
+                                        : "bg-orange-500"
+                                      : "bg-gray-300"
+                                  }`}
+                                />
+                                <span className="text-sm font-semibold">
+                                  {t.name}
+                                </span>
+                              </label>
+                            ))
+                          ) : (
+                            <div className="text-sm text-gray-400 italic">
+                              Loading tipe instrumen...
+                            </div>
+                          )}
                         </div>
+                      </div>
+
+                      {/* Multi-Sensor & Standard - dalam satu baris */}
+                      <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Memiliki Lebih Satu Sensor */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Multi-Sensor
+                          </label>
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 h-full flex items-center">
+                            <div className="flex items-center space-x-3">
+                              <input
+                                type="checkbox"
+                                id="memiliki_lebih_satu"
+                                checked={form.memiliki_lebih_satu || false}
+                                onChange={(e) =>
+                                  setForm({
+                                    ...form,
+                                    memiliki_lebih_satu: e.target.checked,
+                                  })
+                                }
+                                className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                              />
+                              <label
+                                htmlFor="memiliki_lebih_satu"
+                                className="text-sm font-medium text-gray-700 cursor-pointer"
+                              >
+                                Memiliki Lebih Satu Sensor
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Jadikan Sebagai Alat Standar */}
+                        {!isReadOnlyUserStation && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Alat Standar
+                            </label>
+                            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 h-full flex items-center">
+                              <div className="flex items-center space-x-3">
+                                <input
+                                  type="checkbox"
+                                  id="is_standard_instrument"
+                                  checked={isStandardInstrument}
+                                  onChange={(e) => {
+                                    const isChecked = e.target.checked;
+                                    setIsStandardInstrument(isChecked);
+                                    // Update ALL sensors to match this setting
+                                    setSensorForms((prev) =>
+                                      prev.map((s) => ({
+                                        ...s,
+                                        is_standard: isChecked,
+                                      })),
+                                    );
+                                  }}
+                                  className="h-5 w-5 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                                />
+                                <label
+                                  htmlFor="is_standard_instrument"
+                                  className="text-sm font-medium text-gray-700 cursor-pointer"
+                                >
+                                  Jadikan Sebagai Alat Standar
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Alias - disimpan ke kolom name_alias */}
@@ -1610,54 +1683,6 @@ const InstrumentsCRUD: React.FC = () => {
                         <p className="text-xs text-gray-400 mt-1">
                           Nama unik untuk membedakan alat ini dari alat sejenis
                         </p>
-                      </div>
-                      {/* Manufacturer | Type | Serial Number — satu baris */}
-                      <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Manufacturer *
-                          </label>
-                          <input
-                            value={form.manufacturer}
-                            onChange={(e) =>
-                              setForm({ ...form, manufacturer: e.target.value })
-                            }
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                            placeholder="Enter manufacturer name"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Type *
-                          </label>
-                          <input
-                            value={form.type}
-                            onChange={(e) =>
-                              setForm({ ...form, type: e.target.value })
-                            }
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                            placeholder="Enter instrument type"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Serial Number *
-                          </label>
-                          <input
-                            value={form.serial_number}
-                            onChange={(e) =>
-                              setForm({
-                                ...form,
-                                serial_number: e.target.value,
-                              })
-                            }
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                            placeholder="Enter serial number"
-                            required
-                          />
-                        </div>
                       </div>
 
                       <div className="lg:col-span-3">
@@ -1741,74 +1766,186 @@ const InstrumentsCRUD: React.FC = () => {
                           )}
                         </div>
                       </div>
-                      <div className="lg:col-span-3">
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                          <div className="flex items-center space-x-3">
-                            <input
-                              type="checkbox"
-                              id="memiliki_lebih_satu"
-                              checked={form.memiliki_lebih_satu || false}
-                              onChange={(e) =>
-                                setForm({
-                                  ...form,
-                                  memiliki_lebih_satu: e.target.checked,
-                                })
-                              }
-                              className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                            />
-                            <label
-                              htmlFor="memiliki_lebih_satu"
-                              className="text-sm font-medium text-gray-700"
-                            >
-                              Memiliki Lebih Satu Sensor
-                            </label>
-                          </div>
-                          <p className="text-xs text-gray-600 mt-2 ml-8">
-                            Centang jika alat ini memiliki lebih dari satu
-                            sensor. Form sensor akan muncul untuk diisi.
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Checkbox Instrument Standard - disembunyikan untuk role user_station (UUT only) */}
-                      {!isReadOnlyUserStation && (
-                        <div className="lg:col-span-3 mt-2">
-                          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                            <div className="flex items-center space-x-3">
-                              <input
-                                type="checkbox"
-                                id="is_standard_instrument"
-                                checked={isStandardInstrument}
-                                onChange={(e) => {
-                                  const isChecked = e.target.checked;
-                                  setIsStandardInstrument(isChecked);
-                                  // Update ALL sensors to match this setting
-                                  setSensorForms((prev) =>
-                                    prev.map((s) => ({
-                                      ...s,
-                                      is_standard: isChecked,
-                                    })),
-                                  );
-                                }}
-                                className="h-5 w-5 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
-                              />
-                              <label
-                                htmlFor="is_standard_instrument"
-                                className="text-sm font-medium text-gray-700"
-                              >
-                                Jadikan Sebagai Alat Standar
-                              </label>
+                      
+                      {/* Spesifikasi & Sertifikat Standar - Moved before Daftar Sertifikat */}
+                      {!form.memiliki_lebih_satu &&
+                        isStandardInstrument &&
+                        sensorForms.length > 0 && (
+                          <div className="lg:col-span-3 mt-4 bg-white rounded-lg p-6 border border-orange-200 shadow-sm">
+                            <div className="flex items-center mb-6">
+                              <div className="bg-orange-100 rounded-full p-2 mr-3">
+                                <svg
+                                  className="w-6 h-6 text-orange-600"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                  />
+                                </svg>
+                              </div>
+                              <div>
+                                <h4 className="text-lg font-semibold text-gray-900">
+                                  Spesifikasi & Sertifikat Standar
+                                </h4>
+                                <p className="text-sm text-gray-500">
+                                  Data teknis, identifikasi, dan sertifikat untuk alat
+                                  standar ini.
+                                </p>
+                              </div>
                             </div>
-                            <p className="text-xs text-gray-600 mt-2 ml-8">
-                              Jika dicentang, semua sensor yang ditambahkan
-                              otomatis dianggap sebagai{" "}
-                              <strong>Sensor Standar</strong> (memiliki
-                              sertifikat). Jika tidak multi-sensor, sertifikat
-                              akan ditambahkan langsung ke alat ini.
-                            </p>
+
+                            {/* Manufacturer | Type | Serial Number */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                  Manufacturer *
+                                </label>
+                                <input
+                                  value={form.manufacturer}
+                                  onChange={(e) =>
+                                    setForm({ ...form, manufacturer: e.target.value })
+                                  }
+                                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                  placeholder="Enter manufacturer name"
+                                  required
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                  Type *
+                                </label>
+                                <input
+                                  value={form.type}
+                                  onChange={(e) =>
+                                    setForm({ ...form, type: e.target.value })
+                                  }
+                                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                  placeholder="Enter instrument type"
+                                  required
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                  Serial Number *
+                                </label>
+                                <input
+                                  value={form.serial_number}
+                                  onChange={(e) =>
+                                    setForm({
+                                      ...form,
+                                      serial_number: e.target.value,
+                                    })
+                                  }
+                                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                                  placeholder="Enter serial number"
+                                  required
+                                />
+                              </div>
+                            </div>
+
+                            {/* Range Capacity, Graduating, Resolution */}
+                            {sensorForms.map((sensor, index) => (
+                              <div key={sensor.id}>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                      Range Capacity
+                                    </label>
+                                    <div className="flex gap-2">
+                                      <input
+                                        value={sensor.range_capacity}
+                                        onChange={(e) =>
+                                          updateSensor(
+                                            sensor.id,
+                                            "range_capacity",
+                                            e.target.value,
+                                          )
+                                        }
+                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                        placeholder="Ex: 0-100"
+                                      />
+                                      <div className="w-28">
+                                        <UnitSelect
+                                          units={units}
+                                          value={sensor.range_capacity_unit}
+                                          onChange={(val) =>
+                                            updateSensor(
+                                              sensor.id,
+                                              "range_capacity_unit",
+                                              val,
+                                            )
+                                          }
+                                          placeholder="Unit"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                      Graduating
+                                    </label>
+                                    <div className="flex gap-2">
+                                      <input
+                                        value={sensor.graduating}
+                                        onChange={(e) =>
+                                          updateSensor(
+                                            sensor.id,
+                                            "graduating",
+                                            e.target.value,
+                                          )
+                                        }
+                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                        placeholder="Ex: 0.01"
+                                      />
+                                      <div className="w-28">
+                                        <UnitSelect
+                                          units={units}
+                                          value={sensor.graduating_unit}
+                                          onChange={(val) =>
+                                            updateSensor(
+                                              sensor.id,
+                                              "graduating_unit",
+                                              val,
+                                            )
+                                          }
+                                          placeholder="Unit"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                      Resolution{" "}
+                                      <span className="text-gray-400 text-xs font-normal">
+                                        (untuk perhitungan U95)
+                                      </span>
+                                    </label>
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={sensor.resolution ?? ""}
+                                      onChange={(e) =>
+                                        updateSensor(
+                                          sensor.id,
+                                          "resolution",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                      placeholder="Ex: 0.01"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        </div>
-                      )}
+                        )}
+
                       {/* Global Certificates for Standard Instrument */}
                       {isStandardInstrument && (
                         <div className="lg:col-span-3 mt-4 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
@@ -3420,9 +3557,57 @@ const InstrumentsCRUD: React.FC = () => {
                               Spesifikasi Alat
                             </h4>
                             <p className="text-sm text-gray-500">
-                              Lengkapi data teknis (Range & Resolution) untuk
-                              alat ini.
+                              Data teknis dan identifikasi alat
                             </p>
+                          </div>
+                        </div>
+
+                        {/* Manufacturer | Type | Serial Number */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Manufacturer *
+                            </label>
+                            <input
+                              value={form.manufacturer}
+                              onChange={(e) =>
+                                setForm({ ...form, manufacturer: e.target.value })
+                              }
+                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                              placeholder="Enter manufacturer name"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Type *
+                            </label>
+                            <input
+                              value={form.type}
+                              onChange={(e) =>
+                                setForm({ ...form, type: e.target.value })
+                              }
+                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                              placeholder="Enter instrument type"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Serial Number *
+                            </label>
+                            <input
+                              value={form.serial_number}
+                              onChange={(e) =>
+                                setForm({
+                                  ...form,
+                                  serial_number: e.target.value,
+                                })
+                              }
+                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                              placeholder="Enter serial number"
+                              required
+                            />
                           </div>
                         </div>
 
@@ -3523,136 +3708,6 @@ const InstrumentsCRUD: React.FC = () => {
                       </div>
                     )}
 
-                  {/* Single Standard Sensor Form (When NOT Multi-Sensor but IS Standard) */}
-                  {!form.memiliki_lebih_satu &&
-                    isStandardInstrument &&
-                    sensorForms.length > 0 && (
-                      <div className="bg-white rounded-lg p-6 border border-orange-200 mt-6 shadow-sm">
-                        <div className="flex items-center mb-6">
-                          <div className="bg-orange-100 rounded-full p-2 mr-3">
-                            <svg
-                              className="w-6 h-6 text-orange-600"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                              />
-                            </svg>
-                          </div>
-                          <div>
-                            <h4 className="text-lg font-semibold text-gray-900">
-                              Spesifikasi & Sertifikat Standar
-                            </h4>
-                            <p className="text-sm text-gray-500">
-                              Lengkapi data teknis dan sertifikat untuk alat
-                              standar ini.
-                            </p>
-                          </div>
-                        </div>
-
-                        {sensorForms.map((sensor, index) => (
-                          <div key={sensor.id}>
-                            {" "}
-                            {/* Should be only 1 */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                  Range Capacity
-                                </label>
-                                <div className="flex gap-2">
-                                  <input
-                                    value={sensor.range_capacity}
-                                    onChange={(e) =>
-                                      updateSensor(
-                                        sensor.id,
-                                        "range_capacity",
-                                        e.target.value,
-                                      )
-                                    }
-                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                    placeholder="Ex: 0-100"
-                                  />
-                                  <div className="w-28">
-                                    <UnitSelect
-                                      units={units}
-                                      value={sensor.range_capacity_unit}
-                                      onChange={(val) =>
-                                        updateSensor(
-                                          sensor.id,
-                                          "range_capacity_unit",
-                                          val,
-                                        )
-                                      }
-                                      placeholder="Unit"
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                  Graduating
-                                </label>
-                                <div className="flex gap-2">
-                                  <input
-                                    value={sensor.graduating}
-                                    onChange={(e) =>
-                                      updateSensor(
-                                        sensor.id,
-                                        "graduating",
-                                        e.target.value,
-                                      )
-                                    }
-                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                    placeholder="Ex: 0.01"
-                                  />
-                                  <div className="w-28">
-                                    <UnitSelect
-                                      units={units}
-                                      value={sensor.graduating_unit}
-                                      onChange={(val) =>
-                                        updateSensor(
-                                          sensor.id,
-                                          "graduating_unit",
-                                          val,
-                                        )
-                                      }
-                                      placeholder="Unit"
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="md:col-span-2">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                  Resolution{" "}
-                                  <span className="text-gray-400 text-xs font-normal">
-                                    (untuk perhitungan U95)
-                                  </span>
-                                </label>
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={sensor.resolution ?? ""}
-                                  onChange={(e) =>
-                                    updateSensor(
-                                      sensor.id,
-                                      "resolution",
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                  placeholder="Ex: 0.01"
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                 </form>
               </div>
 
