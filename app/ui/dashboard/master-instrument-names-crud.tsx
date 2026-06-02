@@ -19,13 +19,10 @@ interface InstrumentNameItem {
   created_at: string;
 }
 
-type ActiveTab = "instrument_code" | "instrument_names";
-
 const MasterInstrumentNamesCRUD: React.FC = () => {
   usePermissions();
   const { alert, showSuccess, showError, hideAlert } = useAlert();
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>("instrument_code");
   const [expandedCodeId, setExpandedCodeId] = useState<number | null>(null);
 
   // Instrument Code state
@@ -402,70 +399,35 @@ const MasterInstrumentNamesCRUD: React.FC = () => {
         />
       )}
 
-      {/* Sub Nav Tabs */}
+      {/* Master Kode Instrumen & Nama */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-        <div className="flex border-b border-gray-200">
-          <button
-            onClick={() => setActiveTab("instrument_code")}
-            className={`px-6 py-4 text-sm font-semibold transition-colors duration-150 border-b-2 -mb-px ${
-              activeTab === "instrument_code"
-                ? "border-blue-600 text-blue-600 bg-blue-50/50"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
-                />
-              </svg>
-              Kode Instrumen
-              <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded-full">
-                {codes.length}
-              </span>
-            </div>
-          </button>
-          <button
-            onClick={() => setActiveTab("instrument_names")}
-            className={`px-6 py-4 text-sm font-semibold transition-colors duration-150 border-b-2 -mb-px ${
-              activeTab === "instrument_names"
-                ? "border-blue-600 text-blue-600 bg-blue-50/50"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                />
-              </svg>
-              Nama Instrumen
-              <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded-full">
-                {names.length}
-              </span>
-            </div>
-          </button>
+        <div className="border-b border-gray-200 px-6 py-4 bg-gradient-to-r from-blue-50 to-cyan-50">
+          <div className="flex items-center gap-3">
+            <svg
+              className="w-5 h-5 text-blue-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+              />
+            </svg>
+            <h2 className="text-lg font-semibold text-gray-800">Kode Instrumen</h2>
+            <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2.5 py-1 rounded-full">
+              {codes.length} kode
+            </span>
+            <span className="text-gray-400">•</span>
+            <span className="bg-cyan-100 text-cyan-700 text-xs font-bold px-2.5 py-1 rounded-full">
+              {names.length} nama
+            </span>
+          </div>
         </div>
 
-        {/* ── Tab: Kode Instrumen ─────────────────────────────────────── */}
-        {activeTab === "instrument_code" && (
-          <div>
+        <div>
             <div className="flex justify-between items-center p-4">
               <div className="flex items-center gap-3">
                 <input
@@ -647,20 +609,109 @@ const MasterInstrumentNamesCRUD: React.FC = () => {
                         {expandedCodeId === item.id && (
                           <tr>
                             <td colSpan={6} className="px-6 py-4 bg-gray-50 border-b">
-                              <div className="text-sm font-semibold text-gray-700 mb-2">
-                                Daftar Nama Instrumen dengan kode &quot;{item.code_alat}&quot;:
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="text-sm font-semibold text-gray-700">
+                                  Daftar Nama Instrumen dengan kode "{item.code_alat}"
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    setSelectedCodeId(item.id);
+                                    openNameModal();
+                                  }}
+                                  className="inline-flex items-center px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors text-xs font-medium shadow-sm"
+                                  title="Tambah nama instrumen untuk kode ini"
+                                >
+                                  <svg
+                                    className="w-3.5 h-3.5 mr-1"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M12 4v16m8-8H4"
+                                    />
+                                  </svg>
+                                  Tambah Nama
+                                </button>
                               </div>
                               {(() => {
                                 const childNames = names.filter(n => n.instrument_code_id === item.id);
                                 if (childNames.length === 0) {
-                                  return <p className="text-sm text-gray-400 italic">Belum ada nama instrumen untuk kode ini.</p>;
+                                  return (
+                                    <div className="text-center py-8">
+                                      <svg
+                                        className="w-10 h-10 mx-auto mb-2 text-gray-300"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={1.5}
+                                          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                                        />
+                                      </svg>
+                                      <p className="text-sm text-gray-400 italic">
+                                        Belum ada nama instrumen untuk kode ini.
+                                      </p>
+                                      <p className="text-xs text-gray-400 mt-1">
+                                        Klik tombol "Tambah Nama" di atas untuk menambahkan.
+                                      </p>
+                                    </div>
+                                  );
                                 }
                                 return (
                                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                                     {childNames.map(n => (
-                                      <div key={n.id} className="flex items-center gap-2 px-3 py-2 bg-white rounded-md border border-gray-200">
-                                        <span className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0"></span>
-                                        <span className="text-sm text-gray-800">{n.name}</span>
+                                      <div key={n.id} className="group flex items-center justify-between gap-2 px-3 py-2 bg-white rounded-md border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-all">
+                                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                                          <span className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0"></span>
+                                          <span className="text-sm text-gray-800 truncate">{n.name}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button
+                                            onClick={() => openNameModal(n)}
+                                            className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                            title="Edit nama instrumen"
+                                          >
+                                            <svg
+                                              className="w-3.5 h-3.5"
+                                              fill="none"
+                                              stroke="currentColor"
+                                              viewBox="0 0 24 24"
+                                            >
+                                              <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth={2}
+                                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                              />
+                                            </svg>
+                                          </button>
+                                          <button
+                                            onClick={() => setConfirmDeleteName(n)}
+                                            className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                            title="Hapus nama instrumen"
+                                          >
+                                            <svg
+                                              className="w-3.5 h-3.5"
+                                              fill="none"
+                                              stroke="currentColor"
+                                              viewBox="0 0 24 24"
+                                            >
+                                              <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth={2}
+                                                d="M6 18L18 6M6 6l12 12"
+                                              />
+                                            </svg>
+                                          </button>
+                                        </div>
                                       </div>
                                     ))}
                                   </div>
@@ -684,184 +735,7 @@ const MasterInstrumentNamesCRUD: React.FC = () => {
               />
             )}
           </div>
-        )}
-
-        {/* ── Tab: Nama Instrumen ─────────────────────────────────────── */}
-        {activeTab === "instrument_names" && (
-          <div>
-            <div className="flex justify-between items-center p-4">
-              <div className="flex items-center gap-3">
-                <input
-                  value={nameSearch}
-                  onChange={(e) => setNameSearch(e.target.value)}
-                  placeholder="Cari nama instrumen..."
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-56 text-sm"
-                />
-              </div>
-              <button
-                onClick={() => openNameModal()}
-                className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-4 py-2 rounded-lg transition-all duration-200 shadow hover:shadow-md font-medium text-sm flex items-center gap-2"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-                Tambah Nama
-              </button>
-            </div>
-
-            {namesLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
-                <span className="ml-3 text-gray-500">Memuat data...</span>
-              </div>
-            ) : filteredNames.length === 0 ? (
-              <div className="text-center py-16 text-gray-400">
-                <svg
-                  className="w-12 h-12 mx-auto mb-3"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                  />
-                </svg>
-                <p className="font-medium">Belum ada nama instrumen</p>
-                <p className="text-sm mt-1">
-                  Klik &quot;Tambah Nama&quot; untuk menambahkan nama pertama.
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
-                        No
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Kode Instrumen
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Nama Instrumen
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Dibuat
-                      </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Aksi
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {pagedNames.map((item, idx) => {
-                      const code = codes.find(
-                        (c) => c.id === item.instrument_code_id,
-                      );
-                      return (
-                        <tr
-                          key={item.id}
-                          className="hover:bg-gray-50 transition-colors"
-                        >
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {(namePage - 1) * pageSize + idx + 1}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {code ? (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-blue-100 text-blue-800 text-sm font-bold tracking-wide">
-                                {code.code_alat}
-                              </span>
-                            ) : (
-                              <span className="text-gray-300 italic text-sm">
-                                -
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm font-medium text-gray-900">
-                              {item.name}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {new Date(item.created_at).toLocaleDateString(
-                              "id-ID",
-                              {
-                                day: "2-digit",
-                                month: "short",
-                                year: "numeric",
-                              },
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm space-x-2">
-                            <button
-                              onClick={() => openNameModal(item)}
-                              className="inline-flex items-center px-3 py-1.5 border border-blue-300 text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors text-xs font-medium"
-                            >
-                              <svg
-                                className="w-3.5 h-3.5 mr-1"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                                />
-                              </svg>
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => setConfirmDeleteName(item)}
-                              className="inline-flex items-center px-3 py-1.5 border border-red-300 text-red-600 bg-red-50 rounded-md hover:bg-red-100 transition-colors text-xs font-medium"
-                            >
-                              <svg
-                                className="w-3.5 h-3.5 mr-1"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                />
-                              </svg>
-                              Hapus
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {!namesLoading && filteredNames.length > 0 && (
-              <PaginationBar
-                currentPage={namePage}
-                totalPages={totalNamePages}
-                onPageChange={setNamePage}
-              />
-            )}
-          </div>
-        )}
-      </div>
+        </div>
 
       {/* ── Modal: Kode Instrumen ───────────────────────────────────────── */}
       {isCodeModalOpen && (
