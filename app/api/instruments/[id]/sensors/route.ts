@@ -172,6 +172,52 @@ export async function POST(
     const { id } = await params
     const body = await request.json()
 
+    // Validate sensor_name_id exists in instrument_names table if provided
+    // Note: Frontend uses instrument_names.id, but we need to check which table the FK actually references
+    if (body.sensor_name_id) {
+      const sensorNameIdInt = parseInt(body.sensor_name_id);
+      console.log('Validating sensor_name_id:', sensorNameIdInt);
+      
+      // Try instrument_names first (as per schema)
+      let { data: nameExists, error: nameCheckError } = await supabaseAdmin
+        .from('instrument_names')
+        .select('id')
+        .eq('id', sensorNameIdInt)
+        .maybeSingle()
+
+      console.log('Validation result (instrument_names):', { nameExists, nameCheckError });
+
+      // If not found in instrument_names, try instrument_code (for backward compatibility)
+      if (!nameExists && !nameCheckError) {
+        const { data: codeExists, error: codeCheckError } = await supabaseAdmin
+          .from('instrument_code')
+          .select('id')
+          .eq('id', sensorNameIdInt)
+          .maybeSingle()
+        
+        console.log('Validation result (instrument_code):', { codeExists, codeCheckError });
+        
+        if (codeExists) {
+          nameExists = codeExists;
+          nameCheckError = codeCheckError;
+        }
+      }
+
+      if (nameCheckError) {
+        console.error('Error checking sensor_name_id:', nameCheckError)
+        return NextResponse.json({
+          error: `Error validating sensor_name_id: ${nameCheckError.message}`
+        }, { status: 500 })
+      }
+
+      if (!nameExists) {
+        console.error('sensor_name_id not found:', sensorNameIdInt)
+        return NextResponse.json({
+          error: `Invalid sensor_name_id (${sensorNameIdInt}). The ID does not exist in instrument_names or instrument_code table. Please select a valid instrument name.`
+        }, { status: 400 })
+      }
+    }
+
     // Create new sensor with instrument_id
     const { data: sensorData, error: sensorError } = await supabaseAdmin
       .from('sensor')
@@ -288,6 +334,52 @@ export async function PUT(
 
     if (!body.id) {
       return NextResponse.json({ error: 'Sensor ID is required' }, { status: 400 })
+    }
+
+    // Validate sensor_name_id exists in instrument_names table if provided
+    // Note: Frontend uses instrument_names.id, but we need to check which table the FK actually references
+    if (body.sensor_name_id) {
+      const sensorNameIdInt = parseInt(body.sensor_name_id);
+      console.log('Validating sensor_name_id:', sensorNameIdInt);
+      
+      // Try instrument_names first (as per schema)
+      let { data: nameExists, error: nameCheckError } = await supabaseAdmin
+        .from('instrument_names')
+        .select('id')
+        .eq('id', sensorNameIdInt)
+        .maybeSingle()
+
+      console.log('Validation result (instrument_names):', { nameExists, nameCheckError });
+
+      // If not found in instrument_names, try instrument_code (for backward compatibility)
+      if (!nameExists && !nameCheckError) {
+        const { data: codeExists, error: codeCheckError } = await supabaseAdmin
+          .from('instrument_code')
+          .select('id')
+          .eq('id', sensorNameIdInt)
+          .maybeSingle()
+        
+        console.log('Validation result (instrument_code):', { codeExists, codeCheckError });
+        
+        if (codeExists) {
+          nameExists = codeExists;
+          nameCheckError = codeCheckError;
+        }
+      }
+
+      if (nameCheckError) {
+        console.error('Error checking sensor_name_id:', nameCheckError)
+        return NextResponse.json({
+          error: `Error validating sensor_name_id: ${nameCheckError.message}`
+        }, { status: 500 })
+      }
+
+      if (!nameExists) {
+        console.error('sensor_name_id not found:', sensorNameIdInt)
+        return NextResponse.json({
+          error: `Invalid sensor_name_id (${sensorNameIdInt}). The ID does not exist in instrument_names or instrument_code table. Please select a valid instrument name.`
+        }, { status: 400 })
+      }
     }
 
     // Update sensor
