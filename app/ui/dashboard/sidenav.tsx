@@ -189,7 +189,6 @@ const sections: NavSection[] = [
         href: "/master-instrument-names",
         icon: Icon.database,
       },
-      { name: "Daftar Alat", href: "/master-names", icon: Icon.database },
       { name: "Master QC", href: "/master-qc", icon: Icon.beaker },
       { name: "Master Satuan", href: "/units", icon: Icon.beaker },
     ],

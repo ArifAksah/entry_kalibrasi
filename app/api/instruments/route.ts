@@ -61,6 +61,10 @@ export async function GET(request: NextRequest) {
         others,
         names,
         instrument_code_id,
+        instrument_type_id,
+        instrument_id,
+        memiliki_lebih_satu,
+        station_id,
         created_at,
         ${stationSelect},
         ${sensorSelect}

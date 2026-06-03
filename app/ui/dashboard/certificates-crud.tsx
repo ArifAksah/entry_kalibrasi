@@ -2095,7 +2095,7 @@ type ResultItem = {
 
     // Saat CREATE, kode alat ikut ke format nomor (IKK). Auto-resolve dari UUT.
     if (!editing && !(form as any).instrument_code) {
-      showError('Kode Alat belum tersedia. Pilih Instrumen UUT yang Nama Instrumen-nya sudah punya "Kode Alat" di menu Master Daftar Alat.')
+      showError('Kode Alat belum tersedia. Pilih Instrumen UUT yang Nama Instrumen-nya sudah punya "Kode Instrumen" di menu Master Instrumen.')
       return
     }
 

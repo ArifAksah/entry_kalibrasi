@@ -1018,6 +1018,7 @@ const InstrumentsCRUD: React.FC = () => {
             : [];
 
           // Delete existing sensors NOT in effectiveSensors
+          const deletionErrors: string[] = [];
           for (const existingSensor of existingSensors) {
             const stillExists = effectiveSensors.some(
               (sf) => sf.id === existingSensor.id.toString(),
@@ -1031,13 +1032,31 @@ const InstrumentsCRUD: React.FC = () => {
               );
               if (!delRes.ok) {
                 const errData = await delRes.json().catch(() => ({}));
+                const errorMsg = errData?.error || "Unknown error";
                 console.error(
                   "Failed to delete sensor during save:",
-                  errData?.error,
+                  errorMsg,
                 );
-                // Continue saving other sensors even if one delete fails
+                
+                // Check if it's a foreign key constraint error
+                if (errorMsg.includes("foreign key constraint") || errorMsg.includes("raw_data")) {
+                  deletionErrors.push(
+                    `Sensor "${existingSensor.name || existingSensor.id}" tidak dapat dihapus karena masih digunakan di data kalibrasi (raw_data). Hapus data kalibrasi terkait terlebih dahulu.`
+                  );
+                } else {
+                  deletionErrors.push(
+                    `Gagal menghapus sensor "${existingSensor.name || existingSensor.id}": ${errorMsg}`
+                  );
+                }
               }
             }
+          }
+          
+          // Show deletion errors if any
+          if (deletionErrors.length > 0) {
+            showError(
+              `Instrumen berhasil disimpan, tetapi ada masalah saat menghapus sensor:\n\n${deletionErrors.join('\n\n')}`
+            );
           }
 
           // Upsert effective sensors
