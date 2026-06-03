@@ -49,9 +49,22 @@ export async function GET(request: NextRequest) {
 
     // Query dasar dengan join ke tabel station dan sensor (untuk filtering)
     // 3. Compose Query
+    // Explicitly select all columns including names (FK to instrument_names)
     let query = supabaseAdmin
       .from("instrument")
-      .select(`*, ${stationSelect}, ${sensorSelect}`, { count: "exact" });
+      .select(`
+        id,
+        manufacturer,
+        type,
+        serial_number,
+        name_alias,
+        others,
+        names,
+        instrument_code_id,
+        created_at,
+        ${stationSelect},
+        ${sensorSelect}
+      `, { count: "exact" });
 
     // 4. Apply Filters
     if (type === "standard") {
@@ -167,10 +180,24 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Map data to ensure instrument_names_id is available for frontend
+    const mappedData = (data || []).map((item: any) => ({
+      ...item,
+      instrument_names_id: item.names ?? item.instrument_names_id ?? null,
+    }));
+
+    console.log('[API instruments] Sample mapped data (first 2):', mappedData.slice(0, 2).map((i: any) => ({
+      id: i.id,
+      name_alias: i.name_alias,
+      names: i.names,
+      instrument_names_id: i.instrument_names_id,
+      instrument_code_id: i.instrument_code_id
+    })));
+
     // Kirim response sukses
     const total = count || 0;
     return NextResponse.json({
-      data: Array.isArray(data) ? data : [],
+      data: mappedData,
       total,
       page,
       pageSize,

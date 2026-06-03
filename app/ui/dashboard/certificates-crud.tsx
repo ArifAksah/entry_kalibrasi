@@ -1585,21 +1585,50 @@ type ResultItem = {
   // "Pilih Instrument (UUT)". Chain:
   //   form.instrument (= certificate.instrument = instrument.id)
   //   → instruments[].instrument_names_id (FK ke instrument_names)
-  //   → instrument_names[].code_alat  (kolom yang dikelola admin di menu
-  //                                    "Master Daftar Alat")
+  //   → instrument_names[].instrument_code_id (FK ke instrument_code)
+  //   → instrument_code[].code_alat (dari Master Instrumen)
   // Hanya aktif di mode CREATE supaya nilai existing tidak ter-override saat EDIT.
   useEffect(() => {
-    if (editing) return
+    if (editing) {
+      console.log('[instrument_code] Skipped: editing mode');
+      return;
+    }
     if (!form.instrument) {
+      console.log('[instrument_code] No instrument selected');
       if ((form as any).instrument_code) {
         setForm(prev => ({ ...prev, instrument_code: null }))
       }
       return
     }
+    
     const inst = instruments.find(i => i.id === form.instrument) as any
+    console.log('[instrument_code] Selected instrument:', {
+      id: form.instrument,
+      found: !!inst,
+      instrument_names_id: inst?.instrument_names_id,
+      instrument_name: inst?.name
+    });
+    
     const nameId = inst?.instrument_names_id ?? null
     const nm = nameId ? (instrumentNames.find(n => n.id === nameId) as any) : null
+    
+    console.log('[instrument_code] Instrument name lookup:', {
+      nameId,
+      found: !!nm,
+      name: nm?.name || nm?.names,
+      instrument_code_id: nm?.instrument_code_id,
+      code_alat: nm?.code_alat,
+      full_data: nm
+    });
+    
+    // code_alat now comes from the JOIN with instrument_code table
     const resolvedCode: string | null = nm?.code_alat?.toString().trim() || null
+    
+    console.log('[instrument_code] Resolved code:', {
+      resolvedCode,
+      currentCode: (form as any).instrument_code,
+      willUpdate: (form as any).instrument_code !== resolvedCode
+    });
 
     if ((form as any).instrument_code !== resolvedCode) {
       setForm(prev => ({ ...prev, instrument_code: resolvedCode }))
@@ -3118,7 +3147,7 @@ type ResultItem = {
                           />
                           {form.instrument && !(form as any).instrument_code && (
                             <p className="text-[11px] text-red-500 italic">
-                              Nama Instrumen terhubung ke instrumen ini belum punya "Kode Alat". Minta admin isi di menu "Master Daftar Alat".
+                              Nama Instrumen terhubung ke instrumen ini belum punya "Kode Instrumen". Minta admin hubungkan di menu "Master Instrumen".
                             </p>
                           )}
                         </div>
