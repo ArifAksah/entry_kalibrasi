@@ -165,10 +165,11 @@ const MasterInstrumentNamesCRUD: React.FC = () => {
   };
 
   // ── Name CRUD ───────────────────────────────────────────────────────────
-  const openNameModal = (item?: InstrumentNameItem) => {
+  const openNameModal = (item?: InstrumentNameItem, preSelectedCodeId?: number) => {
     setEditingName(item || null);
     setNameInput(item?.name || "");
-    setSelectedCodeId(item?.instrument_code_id ?? "");
+    // If preSelectedCodeId is provided, use it; otherwise use item's code_id
+    setSelectedCodeId(preSelectedCodeId ?? item?.instrument_code_id ?? "");
     setIsNameModalOpen(true);
   };
 
@@ -614,10 +615,7 @@ const MasterInstrumentNamesCRUD: React.FC = () => {
                                   Daftar Nama Instrumen dengan kode "{item.code_alat}"
                                 </div>
                                 <button
-                                  onClick={() => {
-                                    setSelectedCodeId(item.id);
-                                    openNameModal();
-                                  }}
+                                  onClick={() => openNameModal(undefined, item.id)}
                                   className="inline-flex items-center px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors text-xs font-medium shadow-sm"
                                   title="Tambah nama instrumen untuk kode ini"
                                 >
@@ -877,8 +875,9 @@ const MasterInstrumentNamesCRUD: React.FC = () => {
                       e.target.value ? Number(e.target.value) : "",
                     )
                   }
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
                   required
+                  disabled={!editingName && selectedCodeId !== ""}
                 >
                   <option value="">-- Pilih Kode Instrumen --</option>
                   {codes.map((c) => (
