@@ -103,7 +103,19 @@ export async function authorizeCertificateAccess(request: NextRequest, certifica
   const role = await getUserRole(user.id)
   const { data: certificate, error: certificateError } = await supabaseAdmin
     .from('certificate')
-    .select('*')
+    .select(`
+      *,
+      instrument_data:instrument(
+        id,
+        name_alias,
+        manufacturer,
+        type,
+        serial_number,
+        others,
+        memiliki_lebih_satu,
+        names
+      )
+    `)
     .eq('id', certificateId)
     .maybeSingle()
 

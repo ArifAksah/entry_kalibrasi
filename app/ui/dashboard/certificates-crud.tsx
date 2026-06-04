@@ -3471,7 +3471,7 @@ type ResultItem = {
                           })
                           .map(i => ({
                                                       id: i.id,
-                                                      name: `${instrumentNames.find(n => n.id === i.instrument_names_id)?.name || i.name_alias || i.name || 'Unknown'} (${i.manufacturer} ${i.type} SN:${i.serial_number})`,
+                                                      name: `${(i as any).instrument_names?.name || instrumentNames.find(n => n.id === (i as any).instrument_names_id)?.name || (i as any).name_alias || (i as any).name || 'Unknown'} (${i.manufacturer} ${i.type} SN:${i.serial_number})`,
                                                       station_id: i.station?.name || ''
                                                     }))}
                                                   placeholder="Pilih Instrument..."
@@ -3508,7 +3508,7 @@ type ResultItem = {
                           options={standardInstruments
                                                       .map(i => ({
                                                         id: i.id,
-                                                        name: `${instrumentNames.find(n => n.id === i.instrument_names_id)?.name || i.name_alias || i.name || 'Unknown'} (${i.manufacturer} ${i.type})`,
+                                                        name: `${(i as any).instrument_names?.name || instrumentNames.find(n => n.id === (i as any).instrument_names_id)?.name || (i as any).name_alias || (i as any).name || 'Unknown'} (${i.manufacturer} ${i.type})`,
                                                         station_id: i.station?.name || ''
                                                       }))}
                                                     placeholder="Pilih Instrument Standar..."

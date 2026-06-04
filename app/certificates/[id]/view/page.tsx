@@ -353,9 +353,53 @@ const ViewCertificatePage: React.FC = () => {
   }, [stations, cert])
   const resolvedStationAddress = useMemo(() => (cert?.station_address ?? null) || (station?.address ?? null), [cert, station])
   const instrument = useMemo(() => {
+    // Priority 1: Use instrument_data from certificate API (already joined)
+    const instrumentData = (cert as any)?.instrument_data
+    if (instrumentData) {
+      // Resolve instrument name from instrumentNames array using 'names' column (FK to instrument_names)
+      let instrumentName = instrumentData.name_alias || null
+      if (instrumentData.names) {
+        const nameRecord = instrumentNames.find((n: any) => n.id != null && Number(n.id) === Number(instrumentData.names))
+        if (nameRecord) {
+          instrumentName = nameRecord.name
+        }
+      }
+      
+      return {
+        id: instrumentData.id,
+        name: instrumentName,
+        manufacturer: instrumentData.manufacturer || null,
+        type: instrumentData.type || null,
+        serial_number: instrumentData.serial_number || null,
+        others: instrumentData.others || null,
+        memiliki_lebih_satu: instrumentData.memiliki_lebih_satu || false
+      }
+    }
+    
+    // Priority 2: Fallback to finding in instruments array
     const targetId = cert?.instrument != null ? Number(cert.instrument) : null
-    return targetId != null ? instruments.find(i => i.id != null && Number(i.id) === targetId) || null : null
-  }, [instruments, cert])
+    const foundInstrument = targetId != null ? instruments.find(i => i.id != null && Number(i.id) === targetId) || null : null
+    
+    if (!foundInstrument) return null
+    
+    // Resolve name from 'names' column (FK to instrument_names)
+    let instrumentName = (foundInstrument as any).name_alias || null
+    if ((foundInstrument as any).names) {
+      const nameRecord = instrumentNames.find((n: any) => n.id != null && Number(n.id) === Number((foundInstrument as any).names))
+      if (nameRecord) {
+        instrumentName = nameRecord.name
+      }
+    }
+    
+    return {
+      ...foundInstrument,
+      name: instrumentName,
+      manufacturer: foundInstrument.manufacturer || null,
+      type: foundInstrument.type || null,
+      serial_number: foundInstrument.serial_number || null,
+      others: foundInstrument.others || null
+    }
+  }, [instruments, cert, instrumentNames])
   const authorized = useMemo(() => {
     return findPersonelById(personel, cert?.authorized_by)
   }, [personel, cert])

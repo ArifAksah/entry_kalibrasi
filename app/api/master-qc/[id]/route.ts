@@ -73,7 +73,7 @@ export async function PUT(
         catatan,
         created_at,
         updated_at,
-        instrument_names ( id, name ),
+        instrument_name:instrument_name_id ( id, name ),
         ref_unit ( id, unit )
       `)
             .single()

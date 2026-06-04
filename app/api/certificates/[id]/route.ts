@@ -27,7 +27,19 @@ export async function GET(
     if (verifyPdfRenderToken(id, renderToken, renderTimestamp)) {
       const { data: certificate, error } = await supabaseAdmin
         .from('certificate')
-        .select('*')
+        .select(`
+          *,
+          instrument_data:instrument(
+            id,
+            name_alias,
+            manufacturer,
+            type,
+            serial_number,
+            others,
+            memiliki_lebih_satu,
+            names
+          )
+        `)
         .eq('id', id)
         .maybeSingle()
 
@@ -268,9 +280,6 @@ export async function PUT(
         instrument: instrument ? parseInt(instrument) : null,
         station_address: (resolvedStationAddress ?? station_address) ?? null,
         version: nextVersion,
-        // Balai penerbit dan flag sertifikat standar
-        ...('balai_id' in body ? { balai_id: balai_id ?? null } : {}),
-        ...('is_standard' in body ? { is_standard: is_standard ?? false } : {}),
         // Hanya overwrite results kalau client eksplisit mengirim key 'results'.
         // Update non-results (assign verifikator dsb.) tidak akan menyentuh kolom.
         ...(clientSentResults ? { results: resultsForUpdate } : {}),
