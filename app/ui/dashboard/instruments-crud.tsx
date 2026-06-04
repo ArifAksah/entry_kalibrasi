@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useInstruments } from "../../../hooks/useInstruments";
 import { useAuth } from "../../../contexts/AuthContext";
 import { Instrument, InstrumentInsert, Station } from "../../../lib/supabase";
@@ -123,6 +123,10 @@ const InstrumentsCRUD: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editing, setEditing] = useState<Instrument | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Ref untuk mempertahankan posisi scroll
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollPositionRef = useRef<number>(0);
   const [form, setForm] = useState<
     InstrumentInsert & {
       instrument_type_id?: number | null;
@@ -647,8 +651,6 @@ const InstrumentsCRUD: React.FC = () => {
         instrument_id: (item as any).instrument_id || null,
         instrument_code_id: existingCodeId,
       };
-      console.log('Edit instrument - formData.name:', formData.name);
-      console.log('Edit instrument - formData.instrument_names_id:', formData.instrument_names_id);
       setForm(formData);
       setSelectedInstrumentCodeId(existingCodeId);
 
@@ -790,6 +792,15 @@ const InstrumentsCRUD: React.FC = () => {
     setSelectedInstrumentCodeId(null);
   };
 
+  // Helper function untuk restore scroll position
+  const restoreScrollPosition = () => {
+    setTimeout(() => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = scrollPositionRef.current;
+      }
+    }, 0);
+  };
+
   // Fungsi untuk menambah sensor baru
   const addSensor = (isStandardOverride?: boolean) => {
     const isStandard =
@@ -829,6 +840,7 @@ const InstrumentsCRUD: React.FC = () => {
       certificates: [],
     };
     setSensorForms((prev) => [...prev, newSensor]);
+    restoreScrollPosition();
   };
 
   // Fungsi untuk menghapus sensor
@@ -860,6 +872,7 @@ const InstrumentsCRUD: React.FC = () => {
 
     // Only remove from local state if delete succeeded (or it's a new unsaved sensor)
     setSensorForms((prev) => prev.filter((sensor) => sensor.id !== sensorId));
+    restoreScrollPosition();
   };
 
   // Fungsi untuk update sensor
@@ -869,6 +882,7 @@ const InstrumentsCRUD: React.FC = () => {
         sensor.id === sensorId ? { ...sensor, [field]: value } : sensor,
       ),
     );
+    restoreScrollPosition();
   };
 
   const parseDecimal = (value: any, fallback = 0) => {
@@ -902,8 +916,18 @@ const InstrumentsCRUD: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.manufacturer || !form.type || !form.serial_number || !form.name)
-      return;
+    
+    // For single instrument: require manufacturer, type, serial_number, name
+    // For multi-sensor instrument: only require name (manufacturer/type/serial are at sensor level)
+    if (!form.memiliki_lebih_satu) {
+      if (!form.manufacturer || !form.type || !form.serial_number || !form.name) {
+        return;
+      }
+    } else {
+      if (!form.name) {
+        return;
+      }
+    }
     setIsSubmitting(true);
     try {
       // PREPARE SENSORS DATA
@@ -926,7 +950,6 @@ const InstrumentsCRUD: React.FC = () => {
         // If instrument_names_id is selected, use it as sensor_name_id
         if ((form as any).instrument_names_id) {
           sensorNameId = (form as any).instrument_names_id;
-          console.log('Using instrument_names_id as sensor_name_id:', sensorNameId);
         }
 
         const syncedSensor = {
@@ -1002,9 +1025,6 @@ const InstrumentsCRUD: React.FC = () => {
       }
 
       if (editing) {
-        console.log('Updating instrument with form data:', form);
-        console.log('instrument_names_id:', form.instrument_names_id);
-        console.log('names:', (form as any).names);
         await updateInstrument(editing.id, form);
 
         // Handle sensor data submission
@@ -1428,7 +1448,14 @@ const InstrumentsCRUD: React.FC = () => {
               </div>
 
               {/* Scrollable Content */}
-              <div className="flex-1 overflow-y-auto">
+              <div
+                ref={scrollContainerRef}
+                className="flex-1 overflow-y-auto"
+                onScroll={(e) => {
+                  // Simpan posisi scroll saat user scroll
+                  scrollPositionRef.current = e.currentTarget.scrollTop;
+                }}
+              >
                 {unitOptions}
                 <form
                   onSubmit={handleSubmit}
@@ -1691,7 +1718,6 @@ const InstrumentsCRUD: React.FC = () => {
                           onChange={(e) =>
                             setForm({
                               ...form,
-                              name: e.target.value,
                               name_alias: e.target.value,
                             } as any)
                           }

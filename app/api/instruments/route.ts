@@ -254,13 +254,17 @@ export async function POST(request: NextRequest) {
       instrument_id,
     } = body;
 
-    if (!manufacturer || !type || !serial_number) {
-      return NextResponse.json(
-        {
-          error: "Manufacturer, type, and serial number are required",
-        },
-        { status: 400 },
-      );
+    // For single instrument: require manufacturer, type, serial_number
+    // For multi-sensor instrument: these fields are at sensor level, not required here
+    if (!memiliki_lebih_satu) {
+      if (!manufacturer || !type || !serial_number) {
+        return NextResponse.json(
+          {
+            error: "Manufacturer, type, and serial number are required for single instrument",
+          },
+          { status: 400 },
+        );
+      }
     }
 
     if (station_id) {
