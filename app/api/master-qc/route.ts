@@ -84,8 +84,8 @@ export async function GET(request: NextRequest) {
         catatan,
         created_at,
         updated_at,
-        instrument_name:instrument_name_id ( id, name ),
-        ref_unit ( id, unit )
+        instrument_name_id,
+        unit_id
       `)
             .order('created_at', { ascending: false })
 
@@ -100,7 +100,66 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: error.message }, { status: 500 })
         }
 
-        return NextResponse.json({ data })
+        // Fetch related data separately
+        const instrumentNameIds = Array.from(new Set((data || []).map(item => item.instrument_name_id).filter(Boolean)))
+        const unitIds = Array.from(new Set((data || []).map(item => item.unit_id).filter(Boolean)))
+
+        let instrumentNamesMap: Record<number, any> = {}
+        let unitsMap: Record<number, any> = {}
+
+        if (instrumentNameIds.length > 0) {
+            const { data: namesData } = await supabaseAdmin
+                .from('instrument_names')
+                .select('id, names, instrument_code_id')
+                .in('id', instrumentNameIds)
+
+            if (namesData) {
+                const codeIds = Array.from(new Set(namesData.map(n => n.instrument_code_id).filter(Boolean)))
+                let codesMap: Record<number, any> = {}
+
+                if (codeIds.length > 0) {
+                    const { data: codesData } = await supabaseAdmin
+                        .from('instrument_code')
+                        .select('id, code_alat')
+                        .in('id', codeIds)
+
+                    if (codesData) {
+                        codesMap = Object.fromEntries(codesData.map(c => [c.id, c]))
+                    }
+                }
+
+                instrumentNamesMap = Object.fromEntries(
+                    namesData.map(n => [
+                        n.id,
+                        {
+                            id: n.id,
+                            name: n.names,
+                            instrument_code: n.instrument_code_id ? codesMap[n.instrument_code_id] : null
+                        }
+                    ])
+                )
+            }
+        }
+
+        if (unitIds.length > 0) {
+            const { data: unitsData } = await supabaseAdmin
+                .from('ref_unit')
+                .select('id, unit')
+                .in('id', unitIds)
+
+            if (unitsData) {
+                unitsMap = Object.fromEntries(unitsData.map(u => [u.id, u]))
+            }
+        }
+
+        // Map the data
+        const mapped = (data || []).map(item => ({
+            ...item,
+            instrument_name: instrumentNamesMap[item.instrument_name_id] || null,
+            ref_unit: unitsMap[item.unit_id] || null
+        }))
+
+        return NextResponse.json({ data: mapped })
     } catch (e: any) {
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
@@ -149,15 +208,7 @@ export async function POST(request: NextRequest) {
                 nilai_batas_koreksi: nilai_batas_koreksi.trim(),
                 catatan: catatan?.trim() || null,
             }])
-            .select(`
-        id,
-        nilai_batas_koreksi,
-        catatan,
-        created_at,
-        updated_at,
-        instrument_name:instrument_name_id ( id, name ),
-        ref_unit ( id, unit )
-      `)
+            .select('id, nilai_batas_koreksi, catatan, created_at, updated_at, instrument_name_id, unit_id')
             .single()
 
         if (error) {
@@ -165,7 +216,40 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: getMasterQcErrorMessage(error) }, { status: error.code === '23505' ? 409 : 400 })
         }
 
-        return NextResponse.json({ data }, { status: 201 })
+        // Fetch related data for the inserted record
+        const { data: nameData } = await supabaseAdmin
+            .from('instrument_names')
+            .select('id, names, instrument_code_id')
+            .eq('id', data.instrument_name_id)
+            .single()
+
+        let instrumentCode = null
+        if (nameData?.instrument_code_id) {
+            const { data: codeData } = await supabaseAdmin
+                .from('instrument_code')
+                .select('id, code_alat')
+                .eq('id', nameData.instrument_code_id)
+                .single()
+            instrumentCode = codeData
+        }
+
+        const { data: unitData } = await supabaseAdmin
+            .from('ref_unit')
+            .select('id, unit')
+            .eq('id', data.unit_id)
+            .single()
+
+        const mapped = {
+            ...data,
+            instrument_name: nameData ? {
+                id: nameData.id,
+                name: nameData.names,
+                instrument_code: instrumentCode
+            } : null,
+            ref_unit: unitData
+        }
+
+        return NextResponse.json({ data: mapped }, { status: 201 })
     } catch (e: any) {
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }

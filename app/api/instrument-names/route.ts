@@ -48,10 +48,13 @@ export async function GET(request: NextRequest) {
     const mapped = (data || []).map((item: any) => {
       const code = item.instrument_code_id ? codesMap[item.instrument_code_id] : null;
       return {
-        ...item,
+        id: item.id, // Ensure we use instrument_names.id, not instrument_code_id
         name: item.names ?? item.name,
+        instrument_code_id: item.instrument_code_id,
         code_alat: code?.code_alat ?? null,
         instrument_code_name: code?.name ?? null,
+        instrument_code: code ? { id: code.id, code_alat: code.code_alat } : null,
+        created_at: item.created_at,
       };
     });
 

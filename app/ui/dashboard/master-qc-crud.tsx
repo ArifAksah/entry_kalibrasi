@@ -6,9 +6,17 @@ import { useAlert } from '../../../hooks/useAlert'
 import Alert from '../../../components/ui/Alert'
 import { formatLatexUnit } from '../../../lib/qc-utils'
 
+interface InstrumentCode {
+    id: number
+    code_alat: string | null
+}
+
 interface InstrumentName {
     id: number
     name: string
+    code_alat?: string | null
+    instrument_code_id?: number | null
+    instrument_code?: InstrumentCode | null
 }
 
 interface RefUnit {
@@ -22,7 +30,7 @@ interface MasterQCItem {
     catatan: string | null
     created_at: string
     updated_at: string
-    instrument_names: InstrumentName | null
+    instrument_name: InstrumentName | null
     ref_unit: RefUnit | null
 }
 
@@ -169,7 +177,7 @@ const MasterQCCRUD: React.FC = () => {
         if (item) {
             setEditingItem(item)
             setForm({
-                instrument_name_id: String(item.instrument_names?.id ?? ''),
+                instrument_name_id: String(item.instrument_name?.id ?? ''),
                 unit_id: String(item.ref_unit?.id ?? ''),
                 nilai_batas_koreksi: item.nilai_batas_koreksi,
                 catatan: item.catatan ?? '',
@@ -249,7 +257,8 @@ const MasterQCCRUD: React.FC = () => {
     const filtered = items.filter(item => {
         const q = search.toLowerCase()
         return (
-            item.instrument_names?.name?.toLowerCase().includes(q) ||
+            item.instrument_name?.name?.toLowerCase().includes(q) ||
+            item.instrument_name?.instrument_code?.code_alat?.toLowerCase().includes(q) ||
             item.nilai_batas_koreksi?.toLowerCase().includes(q) ||
             item.ref_unit?.unit?.toLowerCase().includes(q) ||
             (item.catatan ?? '').toLowerCase().includes(q)
@@ -305,6 +314,7 @@ const MasterQCCRUD: React.FC = () => {
                             <thead className="bg-gray-50">
                                 <tr>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-10">No</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kode Instrumen</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Instrumen</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Satuan</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai Batas Koreksi</th>
@@ -317,7 +327,12 @@ const MasterQCCRUD: React.FC = () => {
                                     <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
                                         <td className="px-4 py-3 whitespace-nowrap">
-                                            <span className="text-sm font-medium text-gray-900">{item.instrument_names?.name ?? '-'}</span>
+                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                                {item.instrument_name?.instrument_code?.code_alat ?? '-'}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap">
+                                            <span className="text-sm font-medium text-gray-900">{item.instrument_name?.name ?? '-'}</span>
                                         </td>
                                         <td className="px-4 py-3 whitespace-nowrap">
                                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
@@ -374,6 +389,23 @@ const MasterQCCRUD: React.FC = () => {
                         </div>
 
                         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                            {/* Kode Instrumen (Read-only info) */}
+                            {form.instrument_name_id && (() => {
+                                const selectedInstrument = instrumentNames.find(n => String(n.id) === String(form.instrument_name_id));
+                                const codeAlat = selectedInstrument?.instrument_code?.code_alat || selectedInstrument?.code_alat;
+                                if (codeAlat) {
+                                    return (
+                                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                            <label className="block text-xs font-medium text-blue-700 mb-1">
+                                                Kode Instrumen
+                                            </label>
+                                            <div className="text-sm font-semibold text-blue-900">{codeAlat}</div>
+                                        </div>
+                                    );
+                                }
+                                return null;
+                            })()}
+
                             {/* Nama Instrumen */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -475,7 +507,7 @@ const MasterQCCRUD: React.FC = () => {
                             <h3 className="text-lg font-semibold text-gray-900">Konfirmasi Hapus</h3>
                         </div>
                         <p className="text-sm text-gray-600 mb-6">
-                            Hapus data &quot;{confirmDelete.instrument_names?.name ?? `ID ${confirmDelete.id}`}&quot;? Data yang sudah dihapus tidak bisa dipulihkan.
+                            Hapus data &quot;{confirmDelete.instrument_name?.name ?? `ID ${confirmDelete.id}`}&quot;? Data yang sudah dihapus tidak bisa dipulihkan.
                         </p>
                         <div className="flex justify-end space-x-2">
                             <button

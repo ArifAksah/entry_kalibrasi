@@ -146,10 +146,18 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
         const sensorRows = rawData.filter(r => r.sensor_id_uut === sensor.id);
         if (sensorRows.length > 0) {
             const sorted = [...sensorRows].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-            return new Date(sorted[0].timestamp).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const firstTimestamp = sorted[0].timestamp;
+            // Check if timestamp is valid (not epoch 0 or invalid date)
+            const date = new Date(firstTimestamp);
+            if (date.getTime() > 0 && date.getFullYear() > 1970) {
+                return date.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            }
         }
         if (calibrationDate) {
-            return new Date(calibrationDate).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const date = new Date(calibrationDate);
+            if (date.getTime() > 0 && date.getFullYear() > 1970) {
+                return date.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            }
         }
         return '-';
     };
@@ -290,22 +298,41 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                         <tr>
                                             <td className="border-none align-top">Nama / <span className="italic">Name</span></td>
                                             <td className="border-none align-top">:</td>
-                                            <td className="border-none align-top">{instrument?.name}</td>
+                                            <td className="border-none align-top">{(() => {
+                                                // Try multiple sources for instrument name
+                                                if (instrument?.name && !/^\d+$/.test(String(instrument.name).trim())) {
+                                                    return instrument.name;
+                                                }
+                                                // Try to get name from instrumentNames lookup
+                                                const instrumentNameObj = instrumentNames?.find(n => n.id === (instrument as any)?.instrument_names_id);
+                                                if (instrumentNameObj?.name && !/^\d+$/.test(String(instrumentNameObj.name).trim())) {
+                                                    return instrumentNameObj.name;
+                                                }
+                                                // Fallback to first non-standard sensor name
+                                                const firstSensor = sensors.find(s => !s.is_standard);
+                                                if (firstSensor) {
+                                                    const sensorName = getSensorDisplayName(firstSensor);
+                                                    if (sensorName && !sensorName.startsWith('Sensor #')) {
+                                                        return sensorName;
+                                                    }
+                                                }
+                                                return '-';
+                                            })()}</td>
                                         </tr>
                                         <tr>
                                             <td className="border-none align-top">Pabrik Pembuat / <span className="italic">Manufacturer</span></td>
                                             <td className="border-none align-top">:</td>
-                                            <td className="border-none align-top">{instrument?.manufacturer}</td>
+                                            <td className="border-none align-top">{instrument?.manufacturer || '-'}</td>
                                         </tr>
                                         <tr>
                                             <td className="border-none align-top">Tipe / <span className="italic">Type</span></td>
                                             <td className="border-none align-top">:</td>
-                                            <td className="border-none align-top">{instrument?.type}</td>
+                                            <td className="border-none align-top">{instrument?.type || '-'}</td>
                                         </tr>
                                         <tr>
                                             <td className="border-none align-top">Nomor Seri / <span className="italic">Serial Number</span></td>
                                             <td className="border-none align-top">:</td>
-                                            <td className="border-none align-top">{instrument?.serial_number}</td>
+                                            <td className="border-none align-top">{instrument?.serial_number || '-'}</td>
                                         </tr>
                                         <tr>
                                             <td className="border-none align-top pt-1">Resolusi / <span className="italic">Resolution</span></td>
@@ -313,13 +340,18 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                             <td className="border-none align-top pt-1"></td>
                                         </tr>
                                         {/* Per-sensor resolution rows (indented) */}
-                                        {sensors.filter(s => !s.is_standard).map(s => (
-                                            <tr key={`res-${s.id}`}>
-                                                <td className="border-none align-top pl-6">{getSensorDisplayName(s)}</td>
-                                                <td className="border-none align-top">:</td>
-                                                <td className="border-none align-top">{s.graduating} {s.graduating_unit}</td>
-                                            </tr>
-                                        ))}
+                                        {sensors.filter(s => !s.is_standard).map(s => {
+                                            const resolution = s.graduating && s.graduating_unit
+                                                ? `${s.graduating} ${s.graduating_unit}`
+                                                : (s.graduating || s.graduating_unit || '-');
+                                            return (
+                                                <tr key={`res-${s.id}`}>
+                                                    <td className="border-none align-top pl-6">{getSensorDisplayName(s)}</td>
+                                                    <td className="border-none align-top">:</td>
+                                                    <td className="border-none align-top">{resolution}</td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
@@ -368,7 +400,8 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                 const maxVal = Math.max(...stdCorrectedVals);
                                                 // Use unit from raw data (unit_std) or sensor graduating_unit
                                                 const unit = sensorRows[0]?.unit_std || s.graduating_unit || s.range_capacity_unit || '';
-                                                rangeDisplay = `${minVal.toFixed(2)} ~ ${maxVal.toFixed(2)}${unit ? ' ' + unit : ''}`;
+                                                const formattedUnit = formatUnit(unit);
+                                                rangeDisplay = `${minVal.toFixed(2)} ~ ${maxVal.toFixed(2)}${formattedUnit ? ' ' + formattedUnit : ''}`;
                                             } else {
                                                 // Fallback: sensor.range_capacity if no raw data
                                                 const rawRange = s.range_capacity ? String(s.range_capacity).trim() : '';
@@ -663,7 +696,8 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                 const minV = Math.min(...stdCorrectedVals);
                                 const maxV = Math.max(...stdCorrectedVals);
                                 const rangeUnit = data[0]?.unit_std || sensor?.graduating_unit || sensor?.range_capacity_unit || '';
-                                rangeDisplay = `${minV.toFixed(2)} ~ ${maxV.toFixed(2)}${rangeUnit ? ' ' + rangeUnit : ''}`;
+                                const formattedRangeUnit = formatUnit(rangeUnit);
+                                rangeDisplay = `${minV.toFixed(2)} ~ ${maxV.toFixed(2)}${formattedRangeUnit ? ' ' + formattedRangeUnit : ''}`;
                             } else {
                                 const rawRange = sensor?.range_capacity ? String(sensor.range_capacity).trim() : '';
                                 const rawUnit = sensor?.range_capacity_unit ? String(sensor.range_capacity_unit).trim() : '';
@@ -686,7 +720,10 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                             let targetDateStr = '-';
                             if (data.length > 0) {
                                 const d = new Date(data[0].timestamp);
-                                targetDateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                                // Check if timestamp is valid (not epoch 0 or invalid date)
+                                if (d.getTime() > 0 && d.getFullYear() > 1970) {
+                                    targetDateStr = d.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                                }
                             }
 
                             // All column values displayed in UUT unit (UUT is the reference for the report)

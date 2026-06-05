@@ -460,7 +460,7 @@ export async function generateAndSaveCertificatePDF(
     // ─── Step 1: Fetch certificate data ──────────────────────────────────
     const { data: certData, error: certError } = await supabaseAdmin
       .from('certificate')
-      .select('pdf_path, no_certificate, authorized_by, public_id, calibration_place, calibration_kind, balai_id, is_standard, certificate_type, template_version')
+      .select('pdf_path, no_certificate, authorized_by, public_id, calibration_place, calibration_kind, certificate_type')
       .eq('id', certificateId)
       .single()
 
@@ -528,8 +528,8 @@ export async function generateAndSaveCertificatePDF(
       {
         calibration_place: certData.calibration_place,
         calibration_kind: certData.calibration_kind,
-        balai_id: certData.balai_id,
-        is_standard: certData.is_standard,
+        balai_id: (certData as any).balai_id ?? null,
+        is_standard: (certData as any).is_standard ?? false,
         certificate_type: certData.certificate_type,
       },
       certificateId
@@ -542,7 +542,7 @@ export async function generateAndSaveCertificatePDF(
     try {
       const templateResult = await databaseTemplateSource.getTemplateConfig(
         certificateType,
-        certData.template_version ?? null
+        (certData as any).template_version ?? null
       )
       config = templateResult.config
       usedTemplateVersion = templateResult.version
@@ -555,8 +555,8 @@ export async function generateAndSaveCertificatePDF(
     // Fetch the raw template record to check for cover_template_path
     let templateRecord: any = null
     try {
-      if (certData.template_version != null) {
-        templateRecord = await getRichTextTemplateByVersion(certificateType, certData.template_version)
+      if ((certData as any).template_version != null) {
+        templateRecord = await getRichTextTemplateByVersion(certificateType, (certData as any).template_version)
       }
       if (!templateRecord) {
         templateRecord = await getActiveRichTextTemplate(certificateType)
@@ -683,7 +683,7 @@ export async function generateAndSaveCertificatePDF(
     }
 
     // Record the template version used for this certificate (Requirement 6.4)
-    if (usedTemplateVersion != null && !certData.template_version) {
+    if (usedTemplateVersion != null && !(certData as any).template_version) {
       updatePayload.template_version = usedTemplateVersion
     }
 

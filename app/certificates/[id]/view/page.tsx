@@ -676,6 +676,7 @@ const ViewCertificatePage: React.FC = () => {
       rejected_v3: 'Ditolak Verifikator 3',
       rejected_assignor: 'Ditolak Penandatangan',
       updated: 'Koreksi Data',
+      deleted: 'Dihapus',
     }
     return map[action] || action
   }

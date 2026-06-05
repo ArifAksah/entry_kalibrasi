@@ -67,15 +67,7 @@ export async function PUT(
                 catatan: catatan?.trim() || null,
             })
             .eq('id', id)
-            .select(`
-        id,
-        nilai_batas_koreksi,
-        catatan,
-        created_at,
-        updated_at,
-        instrument_name:instrument_name_id ( id, name ),
-        ref_unit ( id, unit )
-      `)
+            .select('id, nilai_batas_koreksi, catatan, created_at, updated_at, instrument_name_id, unit_id')
             .single()
 
         if (error) {
@@ -83,7 +75,40 @@ export async function PUT(
             return NextResponse.json({ error: getMasterQcErrorMessage(error) }, { status: error.code === '23505' ? 409 : 400 })
         }
 
-        return NextResponse.json({ data })
+        // Fetch related data for the updated record
+        const { data: nameData } = await supabaseAdmin
+            .from('instrument_names')
+            .select('id, names, instrument_code_id')
+            .eq('id', data.instrument_name_id)
+            .single()
+
+        let instrumentCode = null
+        if (nameData?.instrument_code_id) {
+            const { data: codeData } = await supabaseAdmin
+                .from('instrument_code')
+                .select('id, code_alat')
+                .eq('id', nameData.instrument_code_id)
+                .single()
+            instrumentCode = codeData
+        }
+
+        const { data: unitData } = await supabaseAdmin
+            .from('ref_unit')
+            .select('id, unit')
+            .eq('id', data.unit_id)
+            .single()
+
+        const mapped = {
+            ...data,
+            instrument_name: nameData ? {
+                id: nameData.id,
+                name: nameData.names,
+                instrument_code: instrumentCode
+            } : null,
+            ref_unit: unitData
+        }
+
+        return NextResponse.json({ data: mapped })
     } catch (e: any) {
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
