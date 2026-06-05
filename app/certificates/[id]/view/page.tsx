@@ -2123,7 +2123,7 @@ const ViewCertificatePage: React.FC = () => {
                               )}
 
                               {/* Images per sensor only for Geofisika - placed right after calibration table */}
-                              {station?.type?.toString().trim().toLowerCase() === 'geofisika' && Array.isArray(res?.images) && (res.images as any[]).length > 0 && (
+                              {(station as any)?.station_type?.name?.toString().trim().toLowerCase() === 'geofisika' && Array.isArray(res?.images) && (res.images as any[]).length > 0 && (
                                 <div className="mt-4 avoid-break break-after-page">
                                   <h4 className="text-xs font-semibold mb-2 text-center">Gambar</h4>
                                   <div className="flex flex-wrap gap-3 justify-center">

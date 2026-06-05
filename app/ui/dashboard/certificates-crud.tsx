@@ -756,7 +756,7 @@ type ResultItem = {
   // Returns lowercased, trimmed string; empty string when not set
   const getSelectedStationType = () => {
     const selectedStation = form.station ? stations.find(s => s.id === form.station) : undefined
-    const raw = (selectedStation?.type ?? '').toString()
+    const raw = ((selectedStation as any)?.station_type?.name ?? '').toString()
     return raw.trim().toLowerCase()
   }
 

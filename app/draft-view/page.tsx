@@ -994,7 +994,7 @@ const CertificatePreview: React.FC<{
                     })()}
 
                     {/* Images */}
-                    {station?.type?.toString().trim().toLowerCase() === 'geofisika' && res.images && res.images.length > 0 && (
+                    {(station as any)?.station_type?.name?.toString().trim().toLowerCase() === 'geofisika' && res.images && res.images.length > 0 && (
                       <div className="mt-4">
                         <h5 className="text-sm font-semibold mb-2">Gambar</h5>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
