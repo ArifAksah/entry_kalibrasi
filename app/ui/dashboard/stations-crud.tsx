@@ -109,11 +109,10 @@ export default function StationsCRUD() {
   const [selectedProvId, setSelectedProvId] = useState<string>('')
 
   const [form, setForm] = useState<StationInsert>({
-    station_wmo_id: '',
     station_id: '',
     name: '',
     address: '',
-    type: '' as any,
+    type_id: null,
     latitude: '',
     longitude: '',
     elevation: '',
@@ -182,8 +181,7 @@ export default function StationsCRUD() {
 
     setForm(prev => ({
       ...prev,
-      station_wmo_id: ref.station_wmo_id || ref.wigos_id || '', // Prefer WMO, fallback to WIGOS
-      station_id: ref.station_id || '',
+      station_id: ref.station_wmo_id || ref.wigos_id || ref.station_id || '', // Use WMO/WIGOS as station_id
       name: ref.station_name,
       latitude: ref.current_latitude ?? '',
       longitude: ref.current_longitude ?? '',
@@ -192,8 +190,8 @@ export default function StationsCRUD() {
       region: ref.region_description || '',
       province: ref.propinsi_name || '',
       regency: ref.kabupaten_name || '',
-      // Map station_type_id to our Type string if possible, or leave blank for user
-      type: ref.station_type_id === 1 ? 'Meteorologi' : ref.station_type_id === 2 ? 'Klimatologi' : ref.station_type_id === 3 ? 'Geofisika' : '',
+      // Map station_type_id to integer ID
+      type_id: ref.station_type_id || null,
       address: `Station ID: ${ref.station_id}, ${ref.kabupaten_name}, ${ref.propinsi_name}` // Auto-generate simple address
     }))
     setRefSearch('')
@@ -271,7 +269,6 @@ export default function StationsCRUD() {
     if (!q) return data
     return data.filter(s => {
       const hay = [
-        s.station_wmo_id,
         s.station_id,
         s.name,
         (s as any).type,
@@ -310,11 +307,10 @@ export default function StationsCRUD() {
     if (item) {
       setEditing(item)
       setForm({
-        station_wmo_id: (item as any).station_wmo_id ?? '',
         station_id: (item as any).station_id ?? '',
         name: (item as any).name ?? '',
         address: (item as any).address ?? '',
-        type: ((item as any).type ?? '') as any,
+        type_id: (item as any).type_id ?? null,
         latitude: (item as any).latitude ?? '',
         longitude: (item as any).longitude ?? '',
         elevation: (item as any).elevation ?? '',
@@ -327,11 +323,10 @@ export default function StationsCRUD() {
     } else {
       setEditing(null)
       setForm({
-        station_wmo_id: '',
         station_id: '',
         name: '',
         address: '',
-        type: '' as any,
+        type_id: null,
         latitude: '',
         longitude: '',
         elevation: '',
@@ -583,9 +578,9 @@ export default function StationsCRUD() {
         >
           {pagedStations.map((item) => (
             <tr key={item.id} className="hover:bg-gray-50">
-              <td className="px-6 py-4 text-sm text-gray-900 truncate">{item.station_wmo_id || item.station_id || '-'}</td>
+              <td className="px-6 py-4 text-sm text-gray-900 truncate">{item.station_id || '-'}</td>
               <td className="px-6 py-4 text-sm text-gray-900 truncate">{item.name}</td>
-              <td className="px-6 py-4 text-sm text-gray-900 truncate">{(item as any).type || '-'}</td>
+              <td className="px-6 py-4 text-sm text-gray-900 truncate">{(item as any).station_type?.name || '-'}</td>
               <td className="px-6 py-4 text-sm text-gray-900 truncate">{item.region}</td>
               <td className="px-6 py-4 text-sm text-gray-900 truncate">{item.province}</td>
               <td className="px-6 py-4 text-sm font-medium space-x-2">
@@ -708,20 +703,19 @@ export default function StationsCRUD() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {[
-                      { label: 'WMO ID', value: form.station_wmo_id || '', onChange: (e: any) => setForm({ ...form, station_wmo_id: e.target.value }), type: 'text', required: false, placeholder: 'Ex: 96745' },
-                      { label: 'Station ID (Legacy)', value: form.station_id || '', onChange: (e: any) => setForm({ ...form, station_id: e.target.value }), type: 'text', required: false, placeholder: 'Optional' },
+                      { label: 'Station ID / WMO ID', value: form.station_id || '', onChange: (e: any) => setForm({ ...form, station_id: e.target.value }), type: 'text', required: false, placeholder: 'Ex: 96745 or STN001' },
                       { label: 'Name *', value: form.name, onChange: (e: any) => setForm({ ...form, name: e.target.value }), type: 'text', required: true },
                       {
-                        label: 'Type *',
-                        value: (form as any).type || '',
-                        onChange: (e: any) => setForm({ ...form, type: e.target.value as any }),
+                        label: 'Type',
+                        value: form.type_id || '',
+                        onChange: (e: any) => setForm({ ...form, type_id: e.target.value ? parseInt(e.target.value) : null }),
                         type: 'select',
-                        required: true,
+                        required: false,
                         options: [
                           { value: '', label: 'Pilih Type' },
-                          { value: 'Meteorologi', label: 'Meteorologi' },
-                          { value: 'Klimatologi', label: 'Klimatologi' },
-                          { value: 'Geofisika', label: 'Geofisika' }
+                          { value: '1', label: 'Meteorologi' },
+                          { value: '2', label: 'Klimatologi' },
+                          { value: '3', label: 'Geofisika' }
                         ]
                       },
                       {

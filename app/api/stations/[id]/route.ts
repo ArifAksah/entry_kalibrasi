@@ -27,20 +27,19 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { 
+    const {
       station_id,
-      station_wmo_id,
-      name, 
-      address, 
-      latitude, 
-      longitude, 
-      elevation, 
-      time_zone, 
-      region, 
-      province, 
-      regency, 
-      type,
-      created_by 
+      name,
+      address,
+      latitude,
+      longitude,
+      elevation,
+      time_zone,
+      region,
+      province,
+      regency,
+      type_id,
+      created_by
     } = body
 
     const missingFields = []
@@ -50,7 +49,7 @@ export async function PUT(
     if (!region) missingFields.push('region')
     if (!province) missingFields.push('province')
     if (!regency) missingFields.push('regency')
-    if (!type) missingFields.push('type')
+    // type is optional as it exists in DB but might not be required
     if (!created_by) missingFields.push('created_by')
 
     if (missingFields.length > 0) {
@@ -74,20 +73,19 @@ export async function PUT(
 
     const { data, error } = await supabase
       .from('station')
-      .update({ 
-        station_id: station_id === '' ? null : station_id, 
-        station_wmo_id: station_wmo_id === '' ? null : station_wmo_id,
-        name, 
-        address, 
-        latitude: latitude === '' ? null : latitude, 
-        longitude: longitude === '' ? null : longitude, 
-        elevation: elevation === '' ? null : elevation, 
-        time_zone, 
-        region, 
-        province, 
-        regency, 
-        type,
-        created_by 
+      .update({
+        station_id: station_id === '' ? null : station_id,
+        name,
+        address,
+        latitude: latitude === '' ? null : latitude,
+        longitude: longitude === '' ? null : longitude,
+        elevation: elevation === '' ? null : elevation,
+        time_zone,
+        region,
+        province,
+        regency,
+        type_id: type_id || null,
+        created_by
       })
       .eq('id', id)
       .select()

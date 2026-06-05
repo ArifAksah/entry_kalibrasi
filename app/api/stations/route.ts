@@ -22,21 +22,20 @@ export async function GET(request: NextRequest) {
       // Filter by user: use inner join so only assigned stations are returned
       query = supabaseAdmin
         .from('station')
-        .select('*, user_stations!inner(user_id)', { count: 'exact' })
+        .select('*, station_type(name), user_stations!inner(user_id)', { count: 'exact' })
         .eq('user_stations.user_id', userId)
     } else {
       // No user filter: left join so stations without assignments are also included
       query = supabaseAdmin
         .from('station')
-        .select('*', { count: 'exact' })
+        .select('*, station_type(name)', { count: 'exact' })
     }
 
     if (search) {
       query = query.or(
         [
-          `station_wmo_id.ilike.%${search}%`,
+          `station_id.ilike.%${search}%`,
           `name.ilike.%${search}%`,
-          `type.ilike.%${search}%`,
           `address.ilike.%${search}%`,
           `region.ilike.%${search}%`,
           `province.ilike.%${search}%`,
@@ -91,7 +90,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const {
-      station_wmo_id,
+      station_id,
       name,
       address,
       latitude,
@@ -101,7 +100,7 @@ export async function POST(request: NextRequest) {
       region,
       province,
       regency,
-      type
+      type_id
     } = body
 
     const missingFields = []
@@ -111,7 +110,7 @@ export async function POST(request: NextRequest) {
     if (!region) missingFields.push('region')
     if (!province) missingFields.push('province')
     if (!regency) missingFields.push('regency')
-    if (!type) missingFields.push('type')
+    // type is optional as it exists in DB but might not be required
 
     if (missingFields.length > 0) {
       return NextResponse.json({
@@ -135,7 +134,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabaseAdmin
       .from('station')
       .insert({
-        station_wmo_id,
+        station_id: station_id || null,
         name,
         address,
         latitude: latitude === '' ? null : latitude,
@@ -145,7 +144,7 @@ export async function POST(request: NextRequest) {
         region,
         province,
         regency,
-        type,
+        type_id: type_id || null,
         created_by: user.id
       })
       .select()

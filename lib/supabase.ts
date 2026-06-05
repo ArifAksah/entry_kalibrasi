@@ -135,8 +135,7 @@ export type NoteUpdate = Partial<NoteInsert>
 export interface Station {
   id: number
   created_at: string
-  station_wmo_id?: string | null // Mapped to station_id in UI often
-  station_id?: string // Legacy or alias
+  station_id?: string | null // Station ID (varchar)
   name: string
   address: string
   latitude: number | string | null
@@ -146,7 +145,7 @@ export interface Station {
   region: string
   province: string
   regency: string
-  type: string
+  type_id?: number | null // Foreign key to station_type table
   created_by: string
 }
 

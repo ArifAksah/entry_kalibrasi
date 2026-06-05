@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     while (true) {
       const { data, error, count } = await supabaseAdmin
         .from('station')
-        .select('*', { count: totalCount === null ? 'exact' : undefined })
+        .select('*, station_type(name)', { count: totalCount === null ? 'exact' : undefined })
         .order('name', { ascending: true })
         .range(from, from + pageSize - 1)
 
