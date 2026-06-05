@@ -582,7 +582,7 @@ export async function generateAndSaveCertificatePDF(
           .from('certificate')
           .select(`
             *,
-            instrument:instrument_id(*),
+            instrument:instrument_id(*, instrument_names:names(id, name)),
             station:station_id(*),
             sensors:certificate_sensor(*, sensor:sensor_id(*), results:calibration_result(*))
           `)
