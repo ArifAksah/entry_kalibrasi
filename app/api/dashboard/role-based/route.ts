@@ -449,20 +449,70 @@ const buildStationSummaries = (
   })
 }
 
-const parseNumericArray = (value: any): number[] => {
-  if (!Array.isArray(value)) return []
-  return value
-    .map((item) => {
-      if (typeof item === 'number') return item
-      if (typeof item === 'string' && item.trim() !== '' && !Number.isNaN(Number(item))) return Number(item)
+const coerceNumber = (item: any): number | null => {
+  if (typeof item === 'number') return Number.isFinite(item) ? item : null
+  if (typeof item === 'string' && item.trim() !== '' && !Number.isNaN(Number(item))) return Number(item)
+  return null
+}
+
+// Extract numeric values from the many formats correction_std / u95_std can be stored in:
+// - primitive array: [0.01, 0.02]
+// - array of objects: [{ correction|koreksi|u95|u95_std|value: ... }]
+// - plain object: { koreksi: [...], u95: [...], setpoint: [...] }
+// - JSON string of any of the above, or a comma-separated / single numeric string
+// `metric` decides which keys to read when the data is keyed by field.
+const parseNumericArray = (value: any, metric: 'correction' | 'uncertainty' = 'correction'): number[] => {
+  if (value === null || value === undefined) return []
+
+  const keys = metric === 'uncertainty'
+    ? ['u95', 'u95_std', 'uncertainty', 'value']
+    : ['correction', 'koreksi', 'value']
+
+  // Strings: try single number, then JSON, then comma-separated values
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (trimmed === '') return []
+    const single = coerceNumber(trimmed)
+    if (single !== null) return [single]
+    try {
+      return parseNumericArray(JSON.parse(trimmed), metric)
+    } catch {
+      return trimmed
+        .split(',')
+        .map((part) => coerceNumber(part))
+        .filter((n): n is number => n !== null)
+    }
+  }
+
+  // Single number
+  const single = coerceNumber(value)
+  if (single !== null) return [single]
+
+  // Array (primitives or objects)
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => {
+      const n = coerceNumber(item)
+      if (n !== null) return [n]
       if (item && typeof item === 'object') {
-        const candidate = item.correction ?? item.koreksi ?? item.u95 ?? item.u95_std ?? item.value
-        if (typeof candidate === 'number') return candidate
-        if (typeof candidate === 'string' && candidate.trim() !== '' && !Number.isNaN(Number(candidate))) return Number(candidate)
+        for (const key of keys) {
+          const c = coerceNumber(item[key])
+          if (c !== null) return [c]
+        }
       }
-      return null
+      return []
     })
-    .filter((item): item is number => typeof item === 'number' && Number.isFinite(item))
+  }
+
+  // Plain object keyed by field: { koreksi: [...], u95: [...] }
+  if (typeof value === 'object') {
+    for (const key of keys) {
+      if (Array.isArray(value[key])) return parseNumericArray(value[key], metric)
+      const c = coerceNumber(value[key])
+      if (c !== null) return [c]
+    }
+  }
+
+  return []
 }
 
 const average = (values: number[]) => {
@@ -628,10 +678,18 @@ const buildUserStationDashboard = (
             const points = Array.from(byYear.entries())
               .sort(([a], [b]) => a - b)
               .map(([year, rows]) => {
-                const corrections = rows.flatMap((row) => parseNumericArray(row.correction_std))
-                const uncertainties = rows.flatMap((row) => {
-                  const parsed = parseNumericArray(row.u95_std)
+                const corrections = rows.flatMap((row) => {
+                  const parsed = parseNumericArray(row.correction_std, 'correction')
                   if (parsed.length > 0) return parsed
+                  // correction values may live inside setpoint-keyed objects
+                  return parseNumericArray(row.setpoint, 'correction')
+                })
+                const uncertainties = rows.flatMap((row) => {
+                  const parsed = parseNumericArray(row.u95_std, 'uncertainty')
+                  if (parsed.length > 0) return parsed
+                  // uncertainty may be nested inside the correction_std object format
+                  const fromCorrection = parseNumericArray(row.correction_std, 'uncertainty')
+                  if (fromCorrection.length > 0) return fromCorrection
                   return typeof row.u95_general === 'number' ? [row.u95_general] : []
                 })
                 return {

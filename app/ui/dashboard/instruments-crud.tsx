@@ -162,21 +162,44 @@ const InstrumentsCRUD: React.FC = () => {
   >(null);
 
   /**
-   * Tentukan apakah suatu sensor adalah sensor curah hujan berdasarkan
-   * master data `instrument_names.instrument_code_id` → `instrument_codes.name`.
-   * Sesuai standar IKK BMKG kode alat `TT` = Tipping bucket / sensor curah hujan,
-   * sehingga kolom Funnel Diameter, Volume Per Tip, dan Funnel Area hanya
-   * tampil untuk instrumen dengan kode alat ini.
+   * Tentukan apakah suatu sensor adalah sensor curah hujan.
+   *
+   * Sesuai standar IKK BMKG, kode alat `RR` (ARG / penakar hujan otomatis)
+   * adalah sensor curah hujan. Namun sensor hujan juga bisa menjadi bagian dari
+   * alat komposit seperti AWS / AAWS / AWOS. Pada kasus komposit, `instrument_code_id`
+   * dari nama sensor mengikuti kode alat induk (mis. AWOS), bukan RR, sehingga
+   * deteksi berbasis kode alat saja tidak cukup. Karena itu deteksi dilakukan dua arah:
+   *   1) kode alat sensor === 'RR'  → alat hujan tunggal, atau
+   *   2) nama sensor mengandung kata kunci hujan → sensor hujan di dalam alat komposit.
+   * Bila salah satu terpenuhi, kolom Funnel Diameter (dan turunannya) ditampilkan.
    */
   const isRainGaugeSensor = React.useCallback(
     (sensorNameId: number | null | undefined) => {
       if (!sensorNameId) return false;
       const found = instrumentNames.find((n) => n.id === sensorNameId);
-      if (!found?.instrument_code_id) return false;
-      const code = instrumentCodes.find(
-        (c) => c.id === found.instrument_code_id,
-      );
-      return (code?.code_alat || "").trim().toUpperCase() === "TT";
+      if (!found) return false;
+
+      // 1) Alat hujan tunggal: kode alat master dari nama sensor adalah RR.
+      if (found.instrument_code_id) {
+        const code = instrumentCodes.find(
+          (c) => c.id === found.instrument_code_id,
+        );
+        if ((code?.code_alat || "").trim().toUpperCase() === "RR") return true;
+      }
+
+      // 2) Sensor hujan di dalam alat komposit (AWS/AAWS/AWOS): kode alatnya
+      //    mengikuti induk, jadi dideteksi dari nama sensor.
+      const RAIN_SENSOR_KEYWORDS = [
+        "hujan",
+        "curah",
+        "tipping bucket",
+        "penakar",
+        "rain gauge",
+        "rainfall",
+        "pluvio",
+      ];
+      const name = (found.name || "").toLowerCase();
+      return RAIN_SENSOR_KEYWORDS.some((kw) => name.includes(kw));
     },
     [instrumentNames, instrumentCodes],
   );
@@ -2398,8 +2421,9 @@ const InstrumentsCRUD: React.FC = () => {
                                             );
                                           };
 
-                                          // Tampilkan kolom Funnel berdasarkan kode alat master (TT = curah hujan),
-                                          // bukan keyword pada nama sensor.
+                                          // Tampilkan kolom Funnel untuk sensor curah hujan:
+                                          // kode alat master 'RR', atau sensor hujan
+                                          // di dalam alat komposit (AWS/AAWS/AWOS).
                                           const isRainSensor =
                                             isRainGaugeSensor(
                                               sensor.sensor_name_id,
@@ -2700,26 +2724,6 @@ const InstrumentsCRUD: React.FC = () => {
                                                           placeholder="Ex: 0.01"
                                                         />
                                                       </div>
-                                                      <div className="sm:col-span-1">
-                                                        <label className="block text-xs font-medium text-gray-600 mb-1">
-                                                          Traceability
-                                                        </label>
-                                                        <input
-                                                          type="text"
-                                                          value={
-                                                            sensor.tracebility ||
-                                                            ""
-                                                          }
-                                                          onChange={(e) =>
-                                                            updateSensorIdentity(
-                                                              "tracebility",
-                                                              e.target.value,
-                                                            )
-                                                          }
-                                                          className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
-                                                          placeholder="Ex: KAN / BMKG"
-                                                        />
-                                                      </div>
                                                     </div>
                                                     {isRainSensor && (
                                                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -2853,6 +2857,25 @@ const InstrumentsCRUD: React.FC = () => {
                                                   <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-3">
                                                     Data Kalibrasi
                                                   </p>
+                                                  <div className="mb-3">
+                                                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                                                      Traceability
+                                                    </label>
+                                                    <input
+                                                      type="text"
+                                                      value={
+                                                        sensor.tracebility || ""
+                                                      }
+                                                      onChange={(e) =>
+                                                        updateSensorIdentity(
+                                                          "tracebility",
+                                                          e.target.value,
+                                                        )
+                                                      }
+                                                      className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded focus:ring-amber-400 focus:border-amber-400 bg-white"
+                                                      placeholder="Ex: KAN / BMKG"
+                                                    />
+                                                  </div>
                                                   <div className="grid grid-cols-2 gap-3 mb-3">
                                                     <div>
                                                       <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -3655,8 +3678,9 @@ const InstrumentsCRUD: React.FC = () => {
                                     />
                                   </div>
                                 </div>
-                                {/* Kolom Funnel hanya tampil untuk sensor curah hujan
-                                      berdasarkan master code_alat = 'TT' (IKK BMKG). */}
+                                {/* Kolom Funnel hanya tampil untuk sensor curah hujan:
+                                      kode alat master 'RR' (alat tunggal) atau sensor
+                                      hujan di dalam alat komposit (AWS/AAWS/AWOS). */}
                                 {isRainGaugeSensor(sensor.sensor_name_id) && (
                                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                     <div>

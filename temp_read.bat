@@ -1,1 +1,0 @@
-"@echo off\nsetlocal enabledelayedexpansion\nset \"file=app\letters\[id]\print\page.tsx\"\nset count=0\nfor /f \"tokens=* delims=\" %%a in ('type \"%file%\"') do (\n    set /a count+=1\n    if !count! geq 161 if !count! leq 171 (\n        echo !count!: %%a\n    )\n)"

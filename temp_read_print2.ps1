@@ -1,1 +1,0 @@
-"$path = Join-Path $PSSourceParent 'app\letters\[id]\print\page.tsx'\n$c = Get-Content -LiteralPath $path\nfor ($i = 160; $i -le 170; $i++) {\n    Write-Host \"$($i+1): $($c[$i])\"\n}"

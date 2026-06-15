@@ -239,8 +239,13 @@ const StationTrendChart: React.FC<{ series: TrendSeries[] }> = ({ series }) => {
 
   const points = selected.points
   const values = points.flatMap((point) => [point.correction, point.uncertainty].filter((value): value is number => typeof value === 'number'))
-  const min = values.length > 0 ? Math.min(...values, 0) : 0
-  const max = values.length > 0 ? Math.max(...values, 1) : 1
+  const dataMin = values.length > 0 ? Math.min(...values) : 0
+  const dataMax = values.length > 0 ? Math.max(...values) : 1
+  // Pad the range a little so the line isn't drawn flush against the chart edges.
+  const spread = dataMax - dataMin
+  const margin = spread > 0 ? spread * 0.15 : Math.max(Math.abs(dataMax), 1) * 0.15 || 1
+  const min = dataMin - margin
+  const max = dataMax + margin
   const range = max - min || 1
   const width = 560
   const height = 260
