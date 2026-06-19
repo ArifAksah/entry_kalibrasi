@@ -181,7 +181,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
     const computeEnvCondition = (type: 'suhu' | 'kelembaban'): string => {
         const keywords = type === 'suhu'
             ? ['suhu', 'temp', 'termometer', 'temperature', 'thermo']
-            : ['kelembab', 'hum', 'hygro', 'rh'];
+            : ['kelemba', 'hum', 'hygro', 'rh'];
 
         // Find rows from sensor sheets matching the env type
         const matchedRows = rawData.filter(r => {
@@ -476,7 +476,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                         e.key?.toLowerCase().includes('suhu') || e.key?.toLowerCase().includes('temp')
                                     )?.value || globalTemp;
                                     const fallbackHum = allEnvs.find((e: any) =>
-                                        e.key?.toLowerCase().includes('kelembab') || e.key?.toLowerCase().includes('hum') || e.key?.toLowerCase().includes('rh')
+                                        e.key?.toLowerCase().includes('kelemba') || e.key?.toLowerCase().includes('hum') || e.key?.toLowerCase().includes('rh')
                                     )?.value || globalHum;
 
                                     const tempDisplay = computedTemp !== '-' ? computedTemp : (fallbackTemp || '-');
@@ -711,7 +711,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                             const sessionRes = Array.isArray(sessionResults) ? sessionResults.find((r: any) => r.sensorId === (sensor?.id ?? Number(sensorKey)) || r.sensor_id === (sensor?.id ?? Number(sensorKey))) : null;
                             const envs = sessionRes?.environment || [];
                             const temp = envs.find((e: any) => e.key?.toLowerCase().includes('suhu') || e.key?.toLowerCase().includes('temp'))?.value || globalTemp;
-                            const hum = envs.find((e: any) => e.key?.toLowerCase().includes('kelembaban') || e.key?.toLowerCase().includes('humidity') || e.key?.toLowerCase().includes('rh'))?.value || globalHum;
+                            const hum = envs.find((e: any) => e.key?.toLowerCase().includes('kelemba') || e.key?.toLowerCase().includes('humidity') || e.key?.toLowerCase().includes('rh'))?.value || globalHum;
                             // For lack of start/end, just put same value in both columns
                             const tempAwal = temp, tempAkhir = temp;
                             const humAwal = hum, humAkhir = hum;

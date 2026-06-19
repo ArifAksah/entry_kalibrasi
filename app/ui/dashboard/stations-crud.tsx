@@ -803,26 +803,22 @@ export default function StationsCRUD() {
                       </div>
                     ))}
 
-                    {/* Region Input with Datalist */}
+                    {/* Region Select */}
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">Region *</label>
-                      <input
-                        list="region-options"
+                      <select
                         value={form.region}
                         onChange={(e) => setForm({ ...form, region: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] focus:border-transparent transition-all duration-200 bg-white text-sm"
-                        placeholder="Select or type region..."
                         required
-                      />
-                      <datalist id="region-options">
-                        <option value="Wilayah I" />
-                        <option value="Wilayah II" />
-                        <option value="Wilayah III" />
-                        <option value="Wilayah IV" />
-                        <option value="Wilayah V" />
-                        <option value="Laboratorium Kantor Pusat" />
-                        <option value="Direktorat Instrumen Kalibrasi" />
-                      </datalist>
+                      >
+                        <option value="">Select region...</option>
+                        <option value="Region I">Region I</option>
+                        <option value="Region II">Region II</option>
+                        <option value="Region III">Region III</option>
+                        <option value="Region IV">Region IV</option>
+                        <option value="Region V">Region V</option>
+                      </select>
                     </div>
 
                     {/* Province Dropdown */}

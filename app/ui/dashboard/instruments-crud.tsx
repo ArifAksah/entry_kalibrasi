@@ -3795,6 +3795,183 @@ const InstrumentsCRUD: React.FC = () => {
                     </div>
                   )}
 
+                  {/* Single-Sensor Non-Standard: Spesifikasi Alat */}
+                  {!form.memiliki_lebih_satu &&
+                    !isStandardInstrument &&
+                    sensorForms.length > 0 && (
+                      <div className="bg-white rounded-lg p-6 border border-gray-200 mt-6 shadow-sm">
+                        <div className="flex items-center mb-6">
+                          <div className="bg-blue-100 rounded-full p-2 mr-3">
+                            <svg
+                              className="w-6 h-6 text-blue-600"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                              />
+                            </svg>
+                          </div>
+                          <div>
+                            <h4 className="text-lg font-semibold text-gray-900">
+                              Spesifikasi Alat
+                            </h4>
+                            <p className="text-sm text-gray-500">
+                              Data teknis dan identifikasi alat
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Manufacturer | Type | Serial Number */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Manufacturer *
+                            </label>
+                            <input
+                              value={form.manufacturer}
+                              onChange={(e) =>
+                                setForm({ ...form, manufacturer: e.target.value })
+                              }
+                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                              placeholder="Enter manufacturer name"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Type *
+                            </label>
+                            <input
+                              value={form.type}
+                              onChange={(e) =>
+                                setForm({ ...form, type: e.target.value })
+                              }
+                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                              placeholder="Enter instrument type"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Serial Number *
+                            </label>
+                            <input
+                              value={form.serial_number}
+                              onChange={(e) =>
+                                setForm({
+                                  ...form,
+                                  serial_number: e.target.value,
+                                })
+                              }
+                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                              placeholder="Enter serial number"
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        {sensorForms.map((sensor) => (
+                          <div key={sensor.id}>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                  Range Capacity
+                                </label>
+                                <div className="flex gap-2">
+                                  <input
+                                    value={sensor.range_capacity}
+                                    onChange={(e) =>
+                                      updateSensor(
+                                        sensor.id,
+                                        "range_capacity",
+                                        e.target.value,
+                                      )
+                                    }
+                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="Ex: 0-100"
+                                  />
+                                  <div className="w-28">
+                                    <UnitSelect
+                                      units={units}
+                                      value={sensor.range_capacity_unit}
+                                      onChange={(val) =>
+                                        updateSensor(
+                                          sensor.id,
+                                          "range_capacity_unit",
+                                          val,
+                                        )
+                                      }
+                                      placeholder="Unit"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                  Graduating
+                                </label>
+                                <div className="flex gap-2">
+                                  <input
+                                    value={sensor.graduating}
+                                    onChange={(e) =>
+                                      updateSensor(
+                                        sensor.id,
+                                        "graduating",
+                                        e.target.value,
+                                      )
+                                    }
+                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="Ex: 0.01"
+                                  />
+                                  <div className="w-28">
+                                    <UnitSelect
+                                      units={units}
+                                      value={sensor.graduating_unit}
+                                      onChange={(val) =>
+                                        updateSensor(
+                                          sensor.id,
+                                          "graduating_unit",
+                                          val,
+                                        )
+                                      }
+                                      placeholder="Unit"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                  Resolution{" "}
+                                  <span className="text-gray-400 text-xs font-normal">
+                                    (untuk perhitungan U95)
+                                  </span>
+                                </label>
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={sensor.resolution ?? ""}
+                                  onChange={(e) =>
+                                    updateSensor(
+                                      sensor.id,
+                                      "resolution",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                  placeholder="Ex: 0.01"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                 </form>
               </div>
 

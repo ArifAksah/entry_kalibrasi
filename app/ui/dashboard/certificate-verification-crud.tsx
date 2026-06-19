@@ -2093,7 +2093,7 @@ const CertificateVerificationCRUD: React.FC = () => {
         const firstResult = legacyView[0]
         const envs = firstResult?.environment || []
         const temp = envs.find((e: any) => e.key?.toLowerCase().includes('suhu') || e.key?.toLowerCase().includes('temp'))?.value
-        const hum = envs.find((e: any) => e.key?.toLowerCase().includes('kelembapan') || e.key?.toLowerCase().includes('humidity') || e.key?.toLowerCase().includes('rh'))?.value
+        const hum = envs.find((e: any) => e.key?.toLowerCase().includes('kelemba') || e.key?.toLowerCase().includes('humidity') || e.key?.toLowerCase().includes('rh'))?.value
         return (
         <LHKSReport
           isOpen={showLHKSModal}

@@ -73,6 +73,7 @@ type StationInsert = {
   name: string
   address: string | null
   region: string | null
+  type_id: number | null
   // Kolom berikut tidak ada di Excel; biarkan null agar konsisten dgn schema.
   station_id: string | null
   latitude: number | null
@@ -81,16 +82,69 @@ type StationInsert = {
   time_zone: string | null
   province: string | null
   regency: string | null
-  type_id: number | null
   created_by: string | null
 }
 
 const SHEET_NAME = 'Data UPT BMKG'
 
+/**
+ * Normalisasi nama stasiun: ganti singkatan menjadi bentuk lengkap.
+ *   "Sta."  -> "Stasiun"
+ *   "Geof." -> "Geofisika"
+ *   "Klim." -> "Klimatologi"
+ *   "Met."  -> "Meteorologi"
+ * Memakai word-boundary sehingga kata yang sudah lengkap (mis. "Meteorologi",
+ * "Geofisika" pada nama "Balai Besar ...") TIDAK ikut terganti.
+ */
+function normalizeStationName(raw: string): string {
+  let n = String(raw)
+  n = n.replace(/\bSta\b\.?/g, 'Stasiun')
+  // Bersihkan sisa titik bila sumber memakai "Stasiun." (mis. "Stasiun. Geof.")
+  n = n.replace(/\bStasiun\b\./g, 'Stasiun')
+  n = n.replace(/\bGeof\b\.?/g, 'Geofisika')
+  n = n.replace(/\bKlim\b\.?/g, 'Klimatologi')
+  n = n.replace(/\bMet\b\.?/g, 'Meteorologi')
+  return n.replace(/\s+/g, ' ').trim()
+}
+
 function clean(value: unknown): string | null {
   if (value === null || value === undefined) return null
   const text = String(value).replace(/\s+/g, ' ').trim()
   return text === '' ? null : text
+}
+
+/**
+ * Tentukan jenis (type) stasiun dari kata kunci pada nama UPT.
+ * Kata kunci: "Geof" -> Geofisika, "Klim" -> Klimatologi, "Met" -> Meteorologi.
+ * "Balai Besar" memuat ketiganya & tidak punya padanan di tabel station_type,
+ * sehingga dikembalikan null (type_id dibiarkan kosong). Begitu juga nama tanpa
+ * kata kunci (mis. Stasiun Pemantau Atmosfer Global).
+ */
+function deriveStationTypeName(name: string): string | null {
+  const lower = name.toLowerCase()
+  if (lower.includes('balai besar')) return null
+  if (lower.includes('geof')) return 'Geofisika'
+  if (lower.includes('klim')) return 'Klimatologi'
+  if (lower.includes('met')) return 'Meteorologi'
+  return null
+}
+
+/** Ambil peta nama jenis (lowercase) -> id dari tabel station_type. */
+async function getStationTypeMap(supabase: SupabaseClient): Promise<Map<string, number>> {
+  const { data, error } = await supabase.from('station_type').select('id, name')
+  if (error) throw new Error(`Gagal membaca station_type: ${error.message}`)
+  const map = new Map<string, number>()
+  for (const row of data || []) {
+    if (row?.name != null) map.set(String(row.name).toLowerCase(), Number(row.id))
+  }
+  return map
+}
+
+/** Resolusi nama stasiun -> type_id memakai peta station_type. */
+function resolveTypeId(name: string, typeMap: Map<string, number>): number | null {
+  const typeName = deriveStationTypeName(name)
+  if (!typeName) return null
+  return typeMap.get(typeName.toLowerCase()) ?? null
 }
 
 function parseStationsFromExcel(filePath: string, createdBy: string | null): StationInsert[] {
@@ -106,13 +160,15 @@ function parseStationsFromExcel(filePath: string, createdBy: string | null): Sta
 
   const stations: StationInsert[] = []
   for (const row of rows) {
-    const name = clean(row['UPT'])
-    if (!name) continue // baris kosong / tanpa nama UPT dilewati
+    const rawName = clean(row['UPT'])
+    if (!rawName) continue // baris kosong / tanpa nama UPT dilewati
+    const name = normalizeStationName(rawName)
 
     stations.push({
       name,
       address: clean(row['Alamat']),
       region: clean(row['Wilayah']),
+      type_id: null,
       station_id: null,
       latitude: null,
       longitude: null,
@@ -298,9 +354,84 @@ async function cmdIngest(opts: { filePath: string; purge: boolean; force: boolea
   }
 
   console.log('\nMenyisipkan stasiun baru...')
-  const inserted = await insertStations(supabase, stations)
+  const typeMap = await getStationTypeMap(supabase)
+  const stationsWithType = stations.map((s) => ({ ...s, type_id: resolveTypeId(s.name, typeMap) }))
+  const inserted = await insertStations(supabase, stationsWithType)
   console.log(`\n✔ Selesai. ${inserted} stasiun ter-insert.`)
   console.log(`  Untuk membatalkan: npx tsx scripts/ingest-stations.ts rollback --from ${backupFile}`)
+}
+
+/**
+ * Isi/percamkan kolom `type` pada stasiun yang SUDAH ada berdasarkan kata kunci
+ * di namanya (Geof/Klim/Met/Balai Besar). Tidak menghapus apa pun — hanya UPDATE.
+ */
+async function cmdNormalizeNames(dryRun: boolean) {
+  const supabase = getClient()
+  const stations = await fetchAllStations(supabase)
+  console.log(`Memeriksa nama untuk ${stations.length} stasiun...`)
+
+  const updates = stations
+    .map((s) => ({ id: s.id, current: String(s.name || ''), next: normalizeStationName(String(s.name || '')) }))
+    .filter((u) => u.next !== u.current && u.next !== '')
+
+  console.log(`${updates.length} nama stasiun akan dinormalisasi.`)
+
+  if (dryRun) {
+    console.log('\n[DRY-RUN] Preview 15 perubahan:')
+    updates.slice(0, 15).forEach((u) => console.log(`  #${u.id} "${u.current}" -> "${u.next}"`))
+    return
+  }
+
+  let done = 0
+  for (const u of updates) {
+    const { error } = await supabase.from('station').update({ name: u.next }).eq('id', u.id)
+    if (error) throw new Error(`Gagal update nama station #${u.id}: ${error.message}`)
+    done++
+  }
+  console.log(`✔ Selesai. ${done} nama stasiun diperbarui.`)
+}
+
+async function cmdSetType(dryRun: boolean) {
+  const supabase = getClient()
+  const typeMap = await getStationTypeMap(supabase)
+  const stations = await fetchAllStations(supabase)
+  console.log(`Memetakan type_id untuk ${stations.length} stasiun...`)
+
+  const idToName = new Map<number, string>()
+  typeMap.forEach((id, name) => idToName.set(id, name))
+
+  const updates = stations
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      current: s.type_id ?? null,
+      next: resolveTypeId(String(s.name || ''), typeMap),
+    }))
+    .filter((u) => u.next !== null && u.next !== u.current)
+
+  console.log(`${updates.length} stasiun akan di-update type_id-nya.`)
+  const summary = updates.reduce<Record<string, number>>((acc, u) => {
+    const label = idToName.get(u.next as number) || String(u.next)
+    acc[label] = (acc[label] || 0) + 1
+    return acc
+  }, {})
+  console.log('Ringkasan type:', JSON.stringify(summary))
+
+  if (dryRun) {
+    console.log('\n[DRY-RUN] Preview 10 perubahan:')
+    updates.slice(0, 10).forEach((u) =>
+      console.log(`  #${u.id} "${u.name}" -> type_id ${u.next} (${idToName.get(u.next as number)})`),
+    )
+    return
+  }
+
+  let done = 0
+  for (const u of updates) {
+    const { error } = await supabase.from('station').update({ type_id: u.next }).eq('id', u.id)
+    if (error) throw new Error(`Gagal update type_id station #${u.id}: ${error.message}`)
+    done++
+  }
+  console.log(`✔ Selesai. ${done} stasiun diperbarui.`)
 }
 
 async function cmdRollback(fromFile: string) {
@@ -380,8 +511,14 @@ async function main() {
     case 'rollback':
       await cmdRollback(getFlagValue(argv, '--from') || '')
       break
+    case 'set-type':
+      await cmdSetType(dryRun)
+      break
+    case 'normalize-names':
+      await cmdNormalizeNames(dryRun)
+      break
     default:
-      console.log('Command tidak dikenal. Gunakan: inspect | backup | ingest | rollback')
+      console.log('Command tidak dikenal. Gunakan: inspect | backup | ingest | rollback | set-type | normalize-names')
       console.log('Lihat header file ini untuk detail opsi.')
       process.exitCode = 1
   }

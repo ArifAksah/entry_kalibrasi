@@ -1,0 +1,223 @@
+name;wmo_id;alamat;wigos_id;latitude;longitude;elevation_m;region_desc;provinsi_name;kabupaten_name;type_MeteorologiKlimatologiGeofisika;time_zone
+Stasiun Meteorologi Maimun Saleh;96001;;0-20000-1-06588;5.87655;95.33785;10;Region I;Aceh;Kota Sabang;Meteorologi;7
+Balai Besar Meteorologi Klimatologi dan Geofisika Wilayah III;96003;;;0;0;0;Region V;Papua Barat;Kab. Sorong Selatan;Balai;8
+Balai Besar Meteorologi Klimatologi dan Geofisika Wilayah IV;96004;;;-5.14283;119.45227;72;Region IV;Sulawesi Selatan;Kota Makassar;Balai;8
+Stasiun Meteorologi Malikussaleh;96009;;0-20000-1-06600;3.5;97.83;182;Region I;Aceh;Kab. Aceh Tenggara;Meteorologi;7
+Stasiun Meteorologi Sultan Iskandar Muda;96011;;;5.52244;95.417;20;Region I;Aceh;Kab. Aceh Besar;Meteorologi;7
+Stasiun Geofisika Aceh Besar;96013;;0-20000-0-96013;2.45;98.04;43;Region I;Aceh;Kab. Aceh Singkil;Geofisika;7
+Stasiun Meteorologi Cut Nyak Dhien Nagan Raya;96015;;0-20000-0-95013;4.04928;96.24796;3;Region I;Aceh;Kab. Nagan Raya;Meteorologi;7
+Stasiun Klimatologi Aceh;96017;;;5.404;95.464;40;Region I;Aceh;Kab. Aceh Besar;Klimatologi;7
+Stasiun Klimatologi Sumatera Utara;96031;;;3.6104;97.72976;274;Region I;Aceh;Kab. Aceh Tenggara;Klimatologi;7
+Stasiun Meteorologi Maritim Belawan;96033;;;1.55;98.88;10;Region I;Sumatera Utara;Kab. Tapanuli Tengah;Meteorologi;7
+Stasiun Meteorologi Kualanamu;96035;;0-20000-0-96035;3.64573;98.88488;23;Region I;Sumatera Utara;Kab. Deli Serdang;Meteorologi;7
+Stasiun Geofisika Deli Serdang;96037;;;3.2983;97.6531;151;Region I;Aceh;Kab. Aceh Tenggara;Geofisika;7
+Soewondo TNIAU;96039;;;4;97.31;1045;Region I;Aceh;Kab. Gayo Lues;Meteorologi;7
+Balai Besar Meteorologi Klimatologi dan Geofisika Wilayah I;96041;;;2.485;96.37;10;Region I;Aceh;Kab. Simeulue;Balai;7
+Stasiun Meteorologi Silangit;96043;;;21541.5;985937.3;1420;Region I;Sumatera Utara;Kab. Tapanuli Utara;Meteorologi;7
+Stasiun Meteorologi Aek Godang;96071;;;4.98;97.7;15;Region I;Aceh;Kab. Aceh Timur;Meteorologi;7
+Stasiun Meteorologi FL Tobing;96073;;;0.45924;101.44743;39;Region I;Riau;Kota Pekanbaru;Meteorologi;7
+Stasiun Meteorologi Binaka;96075;;;3.2;106.25;2;Region I;Kepulauan Riau;Kab. Kepulauan Anambas;Meteorologi;7
+Stasiun Geofisika Gunungsitoli;96077;;;-0.79355;100.28917;6;Region I;Sumatera Barat;Kab. Padang Pariaman;Geofisika;7
+Stasiun Meteorologi Hang Nadim;96087;;;1.11667;104.11667;26;Region I;Kepulauan Riau;Kota Batam;Meteorologi;7
+Stasiun Meteorologi Raja Haji Abdullah;96089;;;4.59;97.53;204;Region I;Aceh;Kab. Aceh Timur;Meteorologi;7
+Stasiun Meteorologi Raja Haji Fisabilillah;96091;;;-1.635166;103.6453;27;Region II;Jambi;Kota Jambi;Meteorologi;7
+Stasiun Klimatologi Riau;96107;;;2.4772;98.03962;89;Region I;Aceh;Kab. Aceh Singkil;Klimatologi;7
+Stasiun Meteorologi Sultan Syarif Kasim II;96109;;;0.45924;101.44743;39;Region I;Riau;Kota Pekanbaru;Meteorologi;7
+Stasiun Meteorologi Tarempa;96145;;0-20000-0-96145;3.2;106.25;2;Region I;Kepulauan Riau;Kab. Kepulauan Anambas;Meteorologi;7
+Stasiun Meteorologi Maritim Natuna;96147;;0-20000-0-96147;4.60019;97.89607;6;Region I;Aceh;Kab. Aceh Timur;Meteorologi;7
+Raden Sadjad TNIAU;96149;;;5.15951;96.8154;16;Region I;Aceh;Kab. Bireuen;Meteorologi;7
+Stasiun Meteorologi Maritim Teluk Bayur;96161;;;-0.99639;100.37222;2;Region I;Sumatera Barat;Kota Padang;Meteorologi;7
+Stasiun Meteorologi Minangkabau;96163;;;-0.79355;100.28917;6;Region I;Sumatera Barat;Kab. Padang Pariaman;Meteorologi;7
+Stasiun Geofisika Padang Panjang;96165;;;5.05253;97.51814;15;Region I;Aceh;Kab. Aceh Timur;Geofisika;7
+Stasiun Klimatologi Sumatera Barat;96167;;;5.168;97.501;7;Region I;Aceh;Kab. Aceh Timur;Klimatologi;7
+Stasiun Pemantau Atmosfer Global Bukit Koto Tabang;96169;;;-0.42;111.47;40;Region II;Kalimantan Barat;Kab. Melawi;Klimatologi;7
+Stasiun Meteorologi Kelas II Japura Indragiri Hulu;96171;;;4.84;97.59;0;Region I;Aceh;Kab. Aceh Timur;Meteorologi;7
+Stasiun Meteorologi Dabo;96179;;;-0.48;104.58;29;Region I;Kepulauan Riau;Kab. Lingga;Meteorologi;7
+Stasiun Klimatologi  Jambi;96191;;;4.91;97.72;22;Region I;Aceh;Kab. Aceh Timur;Klimatologi;7
+Stasiun Meteorologi Sultan Thaha;96195;;;1.74;109.3;15;Region II;Kalimantan Barat;Kab. Sambas;Meteorologi;7
+Stasiun Meteorologi Depati Parbo;96207;;;-2.083;101.45;782;Region II;Jambi;Kab. Kerinci;Meteorologi;7
+Stasiun Meteorologi Sultan Mahmud Badaruddin II;96221;;;0.8389;112.9348;43;Region II;Kalimantan Barat;Kab. Kapuas Hulu;Meteorologi;7
+Stasiun Klimatologi Sumatera Selatan;96223;;;-2.92732;104.77197;11;Region II;Sumatera Selatan;Kota Palembang;Klimatologi;7
+Taman Alat Digital Staklim Sumsel;96225;;;-3.0156;104.43;4;Region II;Sumatera Selatan;Kota Palembang;Klimatologi;7
+Stasiun Meteorologi Depati Amir;96237;;;4.29;97.54;590;Region I;Aceh;Kab. Aceh Timur;Meteorologi;7
+Stasiun Klimatologi Bangka Belitung;96239;;;-2.518;106.422;5.8;Region II;Kepulauan Bangka Belitung;Kab. Bangka Tengah;Klimatologi;7
+Stasiun Geofisika Tanjung Pandan;96247;;;-2.7575;107.65;22;Region II;Kepulauan Bangka Belitung;Kab. Belitung;Geofisika;7
+Stasiun Meteorologi H. AS. Hananjoeddin;96249;;;-0.48;117.16;10;Region III;Kalimantan Timur;Kota Samarinda;Meteorologi;7
+Stasiun Meteorologi Fatmawati Soekarno;96253;;;4.64213;97.63;47;Region I;Aceh;Kab. Aceh Timur;Meteorologi;7
+Stasiun Klimatologi Bengkulu;96255;;;-1.26;116.9;3;Region III;Kalimantan Timur;Kota Balikpapan;Klimatologi;7
+Stasiun Geofisika Kepahiang;96257;;;4.37946;97.12419;444;Region I;Aceh;Kab. Aceh Tengah;Geofisika;7
+Pangeran Mohammad Bunyamin TNIAU;96273;;;43600;1051400;21;Region II;Lampung;Kab. Tulang Bawang;Meteorologi;7
+Stasiun Klimatologi Lampung;96291;;;-2.55;112.93;3;Region III;Kalimantan Tengah;Kab. Kotawaringin Timur;Klimatologi;7
+Stasiun Meteorologi Maritim Panjang;96293;;;-1.67;114.9;27;Region III;Kalimantan Tengah;Kab. Barito Selatan;Meteorologi;7
+Stasiun Meteorologi Radin Inten II;96295;;;-2.22;113.95;11;Region III;Kalimantan Tengah;Kota Palangkaraya;Meteorologi;7
+Stasiun Geofisika Lampung Utara;96297;;;-4.83631;104.87;60;Region II;Lampung;Kab. Lampung Utara;Geofisika;7
+Stasiun Meteorologi Nunukan;96503;;;-6.2867;106.56389;46;Region II;Banten;Kab. Tangerang;Meteorologi;8
+Stasiun Meteorologi Yuvai Semaring;96505;;;-3.3;116.17;2;Region III;Kalimantan Selatan;Kab. Kotabaru;Meteorologi;8
+Stasiun Meteorologi Juwata;96509;;;-6.12;106.65;11;Region II;Banten;Kota Tangerang;Meteorologi;8
+Stasiun Meteorologi Tanjung Harapan;96525;;;2.5;117.22;3;Region III;Kalimantan Utara;Kab. Bulungan;Meteorologi;8
+Stasiun Meteorologi Kalimarau;96529;;;6.33;106.45;207;Region II;Jawa Barat;Kota Bogor;Meteorologi;8
+Stasiun Meteorologi Singkawang;96531;;;0.787194;108.958167;5;Region II;Kalimantan Barat;Kab. Bengkayang;Meteorologi;7
+Harry Hadisoemantri TNIAU;96533;;;1;109;97;Region II;Kalimantan Barat;Kab. Bengkayang;Meteorologi;7
+Pos Meteorologi Paloh;96535;;;-6.7344;108.263;42.3;Region II;Jawa Barat;Kab. Majalengka;Meteorologi;7
+Stasiun Meteorologi Nangapinoh;96557;;;4.60139;96.87319;1242;Region I;Aceh;Kab. Aceh Tengah;Meteorologi;7
+Stasiun Meteorologi Tebelian;96559;;;-5.8511;112.6578;3;Region III;Jawa Timur;Kab. Gresik;Meteorologi;7
+Stasiun Meteorologi Pangsuma;96565;;;4.37721;96.76104;1535;Region I;Aceh;Kab. Aceh Tengah;Meteorologi;7
+Stasiun Meteorologi Supadio;96581;;;-0.14186;109.403;3;Region II;Kalimantan Barat;Kota Pontianak;Meteorologi;7
+Stasiun Klimatologi Kalimantan Barat;96583;;;4.62;96.64;1020;Region I;Aceh;Kab. Aceh Tengah;Klimatologi;7
+Stasiun Meteorologi Maritim Pontianak;96585;;0-20000-0-96585;2.3417;97.38275;16;Region I;Aceh;Kab. Aceh Singkil;Meteorologi;7
+Stasiun Meteorologi Beringin;96595;;;-0.56;114.53;42;Region III;Kalimantan Tengah;Kab. Barito Utara;Meteorologi;7
+Stasiun Meteorologi Aji Pangeran Tumenggung Pranoto;96607;;;4.23045;96.16877;6;Region I;Aceh;Kab. Aceh Barat;Meteorologi;8
+Stasiun Meteorologi Rahadi Oesman;96615;;;4.31131;96.20003;15;Region I;Aceh;Kab. Aceh Barat;Meteorologi;7
+Stasiun Meteorologi Sultan Aji Muhammad Sulaiman Sepinggan;96633;;;4.22752;96.16491;10;Region I;Aceh;Kab. Aceh Barat;Meteorologi;8
+Stasiun Geofisika Balikpapan;96635;;;4.54837;96.11086;58;Region I;Aceh;Kab. Aceh Barat;Geofisika;8
+Stasiun Meteorologi Iskandar;96645;;;-1.42038;120.65701;10;Region IV;Sulawesi Tengah;Kab. Poso;Meteorologi;7
+Stasiun Meteorologi H. Asan;96651;;;-2.55;112.93;3;Region III;Kalimantan Tengah;Kab. Kotawaringin Timur;Meteorologi;7
+Stasiun Meteorologi Sanggu;96653;;-;-1.67;114.9;27;Region III;Kalimantan Tengah;Kab. Barito Selatan;Meteorologi;7
+Stasiun Meteorologi Tjilik Riwut;96655;;;-2.22;113.95;11;Region III;Kalimantan Tengah;Kota Palangkaraya;Meteorologi;7
+Stasiun Meteorologi Syamsudin Noor;96685;;;-5.07;119.55;14;Region IV;Sulawesi Selatan;Kab. Maros;Meteorologi;8
+Stasiun Klimatologi Kalimantan Selatan;96687;;;-5.47;122.62;35;Region IV;Sulawesi Tenggara;Kota Bau Bau;Klimatologi;8
+Stasiun Meteorologi Gusti Syamsir Alam;96695;;;-8.75;115.17;4;Region III;Bali;Kab. Badung;Meteorologi;8
+Stasiun Klimatologi Banten;96733;;;4.113;96.213;21;Region I;Aceh;Kab. Aceh Barat;Klimatologi;7
+Stasiun Geofisika Tangerang;96735;;;-8.48845;117.41336;3.3;Region III;Nusa Tenggara Barat;Kab. Sumbawa;Geofisika;7
+Stasiun Meteorologi Maritim Merak;96737;;;-6.11185;106.11;25.908;Region II;Banten;Kota Serang;Meteorologi;7
+Stasiun Meteorologi Budiarto;96739;;;4.47;96.09;40;Region I;Aceh;Kab. Aceh Barat;Meteorologi;7
+Stasiun Meteorologi Maritim Tanjung Priok;96741;;;-8.63;120.45;1070;Region III;Nusa Tenggara Timur;Kab. Manggarai;Meteorologi;7
+Stasiun Geofisika Gorontalo;96743;;;-8.63577;122.23752;28;Region III;Nusa Tenggara Timur;Kab. Sikka;Geofisika;8
+Pos Pengamatan Kemayoran;96745;;;-8.2752;122.9986;9;Region III;Nusa Tenggara Timur;Kab. Flores Timur;Meteorologi;7
+Halim Perdana Kusuma TNIAU;96747;;;0;0;0;Region III;Nusa Tenggara Timur;Kab. Belu;Meteorologi;7
+Stasiun Meteorologi Soekarno Hatta;96749;;;-6.12;106.65;11;Region II;Banten;Kota Tangerang;Meteorologi;7
+Stasiun Meteorologi Citeko;96751;;;-6.7;106.85;920;Region II;Jawa Barat;Kab. Bogor;Meteorologi;7
+Stasiun Klimatologi Jawa Barat;96753;;;-10.1678;123.67039;102;Region III;Nusa Tenggara Timur;Kota Kupang;Klimatologi;7
+Atang Sendjaja TNIAU;96755;;;3.749;96.84832;21;Region I;Aceh;Kab. Aceh Barat Daya;Meteorologi;7
+Surya Darma TNIAU;96773;;;0;0;0;Region II;Jawa Barat;Kab. Subang;Meteorologi;7
+Husein Sastra Negara TNIAU;96781;;;-6.90227;107.57627;746.76;Region II;Jawa Barat;Kota Bandung;Meteorologi;7
+Stasiun Geofisika Bandung;96783;;;-10.76662;123.07395;141;Region III;Nusa Tenggara Timur;Kab. Rote Ndao;Geofisika;7
+Stasiun Meteorologi Kertajati;96791;;;-6.7344;108.263;42.3;Region II;Jawa Barat;Kab. Majalengka;Meteorologi;7
+Pos Meteorologi Penggung;96793;;;2.47;97.85;14;Region I;Aceh;Kab. Aceh Singkil;Meteorologi;7
+Stasiun Meteorologi Maritim Tegal;96797;;;-6.5254;109.07157;3;Region II;Jawa Tengah;Kab. Tegal;Meteorologi;7
+Wiriadinata TNIAU;96801;;;0;0;0;Region III;Kalimantan Selatan;Kab. Tanah Bumbu;Meteorologi;7
+Stasiun Meteorologi Tunggul Wulung;96805;;;-7.7186;109.0148;6;Region II;Jawa Tengah;Kab. Cilacap;Meteorologi;7
+Stasiun Geofisika Banjarnegara;96807;;0-20000-0-96807;-7.333;109.7069;608;Region II;Jawa Tengah;Kab. Banjarnegara;Geofisika;7
+Stasiun Klimatologi Jawa Tengah;96835;;;5.46731;95.37;19;Region I;Aceh;Kab. Aceh Besar;Klimatologi;7
+Stasiun Meteorologi Maritim Tanjung Emas;96837;;;5.49519;95.33187;8;Region I;Aceh;Kab. Aceh Besar;Meteorologi;7
+Stasiun Meteorologi Ahmad Yani;96839;;;-6.97683;110.3778;5;Region II;Jawa Tengah;Kota Semarang;Meteorologi;7
+Adi Soemarmo TNIAU;96845;;;3.84598;96.74434;16;Region I;Aceh;Kab. Aceh Barat Daya;Meteorologi;7
+Stasiun Klimatologi DI Yogyakarta;96851;;;0;0;0;Region IV;Maluku Utara;Kab. Halmahera Tengah;Klimatologi;7
+Adisutjipto TNIAU;96853;;0-20000-0-96853;3.90206;96.69744;37;Region I;Aceh;Kab. Aceh Barat Daya;Meteorologi;7
+Stasiun Geofisika Sleman;96855;;;-7.82;110.3;153;Region II;DI Yogyakarta;Kab. Sleman;Geofisika;7
+Detasemen Pacitan TNIAU;96857;;;3.84592;96.74428;16;Region I;Aceh;Kab. Aceh Barat Daya;Meteorologi;7
+Stasiun Meteorologi Yogyakarta;96859;;;-7.90746;110.05448;7;Region II;DI Yogyakarta;Kab. Kulon Progo;Meteorologi;7
+Iswahyudi TNIAU;96881;;;0;0;0;Region I;Aceh;Kab. Gayo Lues;Meteorologi;7
+Stasiun Meteorologi Sangkapura;96925;;;-1.8754;136.23994;3;Region V;Papua;Kab. Kepulauan Yapen;Meteorologi;7
+Stasiun Meteorologi Dhoho;96929;;;5.2503;96.79846;6;Region I;Aceh;Kab. Bireuen;Meteorologi;7
+Stasiun Meteorologi Perak I;96933;;-;5.54135;95.5113;281;Region I;Aceh;Kab. Aceh Besar;Meteorologi;7
+Stasiun Meteorologi Juanda;96935;;;5.52;95.35;7;Region I;Aceh;Kab. Aceh Besar;Meteorologi;7
+Stasiun Meteorologi Maritim Tanjung Perak;96937;;-;-7.2053;112.7353;3;Region III;Jawa Timur;Kota Surabaya;Meteorologi;7
+Stasiun Meteorologi Tuban;96939;;;0;0;0;Region III;Kalimantan Tengah;Kab. Seruyan;Meteorologi;7
+Stasiun Klimatologi Jawa Timur;96943;;;-7.9008;112.5979;590;Region III;Jawa Timur;Kab. Malang;Klimatologi;7
+Stasiun Geofisika Pasuruan;96945;;;5.5884;95.3973;8;Region I;Aceh;Kab. Aceh Besar;Geofisika;7
+Abdul Rahman Saleh TNIAU;96947;;;0;0;0;Region I;Aceh;Kab. Aceh Selatan;Meteorologi;7
+Stasiun Geofisika Malang;96949;;;-2.57;140.48;96;Region V;Papua;Kab. Jayapura;Geofisika;7
+Stasiun Meteorologi Trunojoyo;96973;;;-3.25;127.08;10;Region IV;Maluku;Kab. Buru;Meteorologi;7
+Stasiun Geofisika Nganjuk;96975;;;-3.3464;128.9284;8;Region IV;Maluku;Kab. Maluku Tengah;Geofisika;7
+Stasiun Meteorologi Banyuwangi;96987;;;-8.215;114.3553;52;Region III;Jawa Timur;Kab. Banyuwangi;Meteorologi;7
+Pos Meteorologi Melonguane;97004;;;4.05492;97.07628;913;Region I;Aceh;Kab. Gayo Lues;Meteorologi;8
+Stasiun Meteorologi Naha;97008;;;5.29846;95.60126;122;Region I;Aceh;Kab. Aceh Besar;Meteorologi;8
+Stasiun Geofisika Manado;97010;;;1.4434;124.8389;204;Region IV;Sulawesi Utara;Kota Manado;Geofisika;8
+Stasiun Klimatologi Sulawesi Utara;97012;;;1.54585;124.9233;84;Region IV;Sulawesi Utara;Kab. Minahasa Utara;Klimatologi;8
+Stasiun Meteorologi Sam Ratulangi;97014;;;1.54575;124.9234;80;Region IV;Sulawesi Utara;Kota Manado;Meteorologi;8
+Stasiun Meteorologi Maritim Bitung;97016;;;5.43905;95.40411;22;Region I;Aceh;Kab. Aceh Besar;Meteorologi;8
+Stasiun Meteorologi Sultan Bantilan;97028;;;-5.6637;132.7362;10;Region IV;Maluku;Kab. Maluku Tenggara;Meteorologi;8
+Stasiun Meteorologi Djalaluddin;97048;;;5.60011;95.38777;3;Region I;Aceh;Kab. Aceh Besar;Meteorologi;8
+Stasiun Klimatologi Gorontalo;97052;;;0;0;0;Region IV;Maluku Utara;Kab. Halmahera Timur;Klimatologi;8
+Stasiun Meteorologi Mutiara Sis-Al Jufri;97072;;;-0.91589;119.90554;79;Region IV;Sulawesi Tengah;Kota Palu;Meteorologi;8
+Stasiun Geofisika Palu;97074;;;-8.52019;140.41568;0;Region V;Papua;Kab. Merauke;Geofisika;8
+Stasiun Meteorologi Syukuran Aminudin Amir;97086;;;5.19511;96.69308;27;Region I;Aceh;Kab. Bireuen;Meteorologi;8
+Stasiun Pemantau Atmosfer Global Lore Lindu Bariri;97094;;;5.20483;96.66624;7;Region I;Aceh;Kab. Bireuen;Klimatologi;8
+Stasiun Meteorologi Kasiguncu;97096;;;5.51416;95.4241;0;Region I;Aceh;Kab. Aceh Besar;Meteorologi;8
+Stasiun Meteorologi Tampa Padang;97116;;;-2.58939;119.02949;0;Region IV;Sulawesi Barat;Kab. Mamuju;Meteorologi;8
+Stasiun Meteorologi Majene;97120;;;-3.55074;118.98054;29;Region IV;Sulawesi Barat;Kab. Majene;Meteorologi;8
+Stasiun Meteorologi Toraja;97124;;;-6.7553;108.53904;23;Region II;Jawa Barat;Kab. Cirebon;Meteorologi;8
+Stasiun Meteorologi Andi Jemma;97126;;;-2.55472;120.32422;43;Region IV;Sulawesi Selatan;Kab. Luwu Utara;Meteorologi;8
+Stasiun Meteorologi Sangia Ni Bandera;97142;;;-7.90746;110.05448;7;Region II;DI Yogyakarta;Kab. Kulon Progo;Meteorologi;8
+Stasiun Meteorologi Maritim Kendari;97144;;;-3.9701;122.5895;2;Region IV;Sulawesi Tenggara;Kota Kendari;Meteorologi;8
+Haluoleo TNIAU;97146;;;0;0;0;Region I;Aceh;Kab. Aceh Singkil;Meteorologi;8
+Stasiun Geofisika Kendari;97148;;;-2.58939;119.02949;0;Region IV;Sulawesi Barat;Kab. Mamuju;Geofisika;8
+Stasiun Klimatologi Sulawesi Tenggara;97150;;;2.53;97.94;36;Region I;Aceh;Kab. Aceh Singkil;Klimatologi;8
+Stasiun Meteorologi Sultan Hasanuddin;97180;;;5.31158;96.01857;8;Region I;Aceh;Kab. Pidie;Meteorologi;8
+Stasiun Meteorologi Maritim Paotere;97182;;;3.5437;108.2305;2;Region I;Kepulauan Riau;Kab. Natuna;Meteorologi;8
+Stasiun Klimatologi Sulawesi Selatan;97184;;0-20000-0-97184;5.37819;95.93594;5;Region I;Aceh;Kab. Pidie;Klimatologi;8
+Stasiun Geofisika Gowa;97186;;;1;109;97;Region II;Kalimantan Barat;Kab. Bengkayang;Geofisika;8
+Stasiun Meteorologi Beto Ambari;97192;;;-5.47;122.62;35;Region IV;Sulawesi Tenggara;Kota Bau Bau;Meteorologi;8
+Stasiun Meteorologi I Gusti Ngurah Rai;97230;;;-6.544456;106.755346;176.784;Region II;Jawa Barat;Kab. Bogor;Meteorologi;8
+Stasiun Geofisika Denpasar;97232;;;-8.67689;115.21;15;Region III;Bali;Kota Denpasar;Geofisika;8
+Pos Pengamatan Kahang-Kahang;97234;;;-6.90227;107.57627;746.76;Region II;Jawa Barat;Kota Bandung;Geofisika;8
+Stasiun Klimatologi Bali;97236;;0-20000-0-97236;0;0;0;Region II;Jawa Barat;Kab. Bandung;Klimatologi;8
+Stasiun Meteorologi Zainuddin Abdul Madjid;97240;;;-7.519583;110.75175;127;Region II;Jawa Tengah;Kab. Karanganyar;Meteorologi;8
+Stasiun Klimatologi Nusa Tenggara Barat;97242;;0-20000-0-97242;-8.63627;116.17094;55;Region III;Nusa Tenggara Barat;Kab. Lombok Barat;Klimatologi;8
+Stasiun Geofisika Alor;97247;;;-8.144692;124.590197;16;Region III;Nusa Tenggara Timur;Kab. Alor;Geofisika;8
+Stasiun Meteorologi Sultan Muhammad Kaharuddin;97260;;0-20000-0-97260;-8.48845;117.41336;3.048;Region III;Nusa Tenggara Barat;Kab. Sumbawa;Meteorologi;8
+Stasiun Meteorologi Sultan Muhammad Salahuddin;97270;;;-8.539026693;118.6895538;1.3;Region III;Nusa Tenggara Barat;Kota Bima;Meteorologi;8
+Stasiun Meteorologi Komodo;97282;;;-4.435;122.2512;50;Region IV;Sulawesi Tenggara;Kab. Konawe Selatan;Meteorologi;8
+Stasiun Meteorologi Frans Sales Lega;97284;;;-8.63;120.45;1070;Region III;Nusa Tenggara Timur;Kab. Manggarai;Meteorologi;8
+Stasiun Meteorologi Fransiskus Xaverius Seda;97300;;;4.0071351;126.6747032;0;Region IV;Sulawesi Utara;Kab. Kepulauan Talaud;Meteorologi;8
+Stasiun Meteorologi Gewayantana;97310;;;5.22047;95.85882;99;Region I;Aceh;Kab. Pidie;Meteorologi;7
+Stasiun Meteorologi Mali;97320;;;-8.246193;113.694912;264;Region III;Jawa Timur;Kab. Jember;Meteorologi;8
+Stasiun Meteorologi Umbu Mehang Kunda;97340;;;-9.66944;120.29972;10;Region III;Nusa Tenggara Timur;Kab. Sumba Timur;Meteorologi;8
+Stasiun Geofisika Sumba Timur;97342;;;3.55916;98.67111;27;Region I;Sumatera Utara;Kota Medan;Geofisika;8
+Stasiun Meteorologi Maritim Tenau;97370;;;1.46977;109.22;2;Region II;Kalimantan Barat;Kab. Sambas;Meteorologi;8
+Stasiun Meteorologi Eltari;97372;;;5.13068;97.42876;10;Region I;Aceh;Kab. Aceh Utara;Meteorologi;8
+Stasiun Klimatologi Nusa Tenggara Timur;97374;;20000-0-1-97374;5.2338;95.91185;44;Region I;Aceh;Kab. Pidie;Klimatologi;8
+Stasiun Geofisika Kupang;97376;;;-7.6439066;109.0354614;21;Region II;Jawa Tengah;Kab. Cilacap;Geofisika;7
+Stasiun Meteorologi David Constatijn Saudale;97378;;;5.098;97.069;49;Region I;Aceh;Kab. Aceh Utara;Meteorologi;8
+Stasiun Meteorologi Tardamu;97380;;;5.0595;97.33926;3;Region I;Aceh;Kab. Aceh Utara;Meteorologi;8
+Leowatimena TNIAU;97404;;;0;0;0;Region IV;Sulawesi Selatan;Kab. Luwu Timur;Meteorologi;9
+Stasiun Meteorologi Gamar Malamo;97406;;;1.84092;127.7905;130;Region IV;Maluku Utara;Kab. Halmahera Utara;Meteorologi;7
+Pos Meteorologi Kao;97410;;;0;0;0;Region V;Papua Barat;Kab. Kaimana;Meteorologi;8
+Stasiun Meteorologi Sultan Babullah;97430;;;0;0;0;Region III;Nusa Tenggara Timur;Kab. Ende;Meteorologi;9
+Stasiun Geofisika Ternate;97432;;;5.2286;96.94713;32;Region I;Aceh;Kab. Aceh Utara;Geofisika;9
+Stasiun Meteorologi Oesman Sadik;97460;;;0;0;0;Region I;Aceh;Kab. Aceh Barat Daya;Meteorologi;9
+Stasiun Pemantau Atmosfer Global Puncak Vihara Klademak;97500;;;0;0;0;Region IV;Gorontalo;Kab. Pohuwato;Klimatologi;9
+Stasiun Meteorologi Domine Eduard Osok;97502;;;0;0;0;Region I;Aceh;Kab. Simeulue;Meteorologi;9
+Stasiun Geofisika Sorong;97504;;0-20000-0-97504;2.37263;97.97475;28;Region I;Aceh;Kab. Aceh Singkil;Geofisika;9
+Stasiun Meteorologi Rendani;97530;;;0;0;0;Region I;Aceh;Kab. Aceh Tenggara;Meteorologi;7
+Stasiun Meteorologi Frans Kaisiepo;97560;;0-20000-0-97560;5.09273;97.24998;7;Region I;Aceh;Kab. Aceh Utara;Meteorologi;9
+Stasiun Meteorologi Sudjarwo Tjondronegoro;97570;;;0;0;0;Region I;Riau;Kota Dumai;Meteorologi;9
+Stasiun Meteorologi Mararena;97580;;;-1.85;138.75;3;Region V;Papua;Kab. Sarmi;Meteorologi;9
+Stasiun Meteorologi Emalamo;97600;;;5.13018;97.24741;5;Region I;Aceh;Kab. Aceh Utara;Meteorologi;9
+Stasiun Meteorologi Torea;97630;;;-2.91938;132.26496;126;Region V;Papua Barat;Kab. Fak Fak;Meteorologi;9
+Stasiun Meteorologi Nabire;97682;;0-20000-0-97682;-3.39712;135.39171;3;Region V;Papua;Kab. Nabire;Meteorologi;9
+Stasiun Meteorologi Wamena;97686;;;0;0;0;Region V;Papua;Kab. Mappi;Meteorologi;9
+Stasiun Meteorologi Sentani;97690;;;0;0;0;Region V;Papua;Kab. Merauke;Meteorologi;9
+Stasiun Klimatologi Papua;97692;;0-20000-0-97692;0;0;0;Region IV;Maluku;Kab. Maluku Barat Daya;Klimatologi;9
+Stasiun Klimatologi Papua Barat;97694;;;4.95;97.432;63;Region I;Aceh;Kab. Aceh Utara;Klimatologi;9
+Stasiun Geofisika Jayapura;97696;;;0;0;0;Region V;Papua;Kab. Deiyai;Geofisika;9
+Stasiun Meteorologi Maritim Dok II Jayapura;97698;;;4.928;97.37;27;Region I;Aceh;Kab. Aceh Utara;Meteorologi;9
+Stasiun Meteorologi Namlea;97700;;;0;0;0;Region V;Papua;Kab. Puncak;Meteorologi;9
+Stasiun Meteorologi Amahai;97722;;;0;0;0;Region V;Papua;Kab. Keerom;Meteorologi;9
+Stasiun Meteorologi Pattimura;97724;;;-3.7114;128.0957;14;Region IV;Maluku;Kota Ambon;Meteorologi;9
+Stasiun Klimatologi Maluku;97726;;;-3.25;128.4;5;Region IV;Maluku;Kab. Seram Bagian Barat;Klimatologi;9
+Stasiun Geofisika Ambon;97728;;;5.07257;97.25677;9;Region I;Aceh;Kab. Aceh Utara;Geofisika;9
+Stasiun Meteorologi Maritim Ambon;97730;;;-3.79051;128.1007;3;Region IV;Maluku;Kota Ambon;Meteorologi;9
+Stasiun Meteorologi Kuffar;97748;;;-3.8813;130.88;2;Region IV;Maluku;Kab. Seram Bagian Timur;Meteorologi;9
+Stasiun Meteorologi Utarom;97760;;;-3.6433;133.69694;5;Region V;Papua Barat;Kab. Kaimana;Meteorologi;9
+Stasiun Meteorologi Enarotali;97780;;;-3.92688;136.38;1650;Region V;Papua;Kab. Paniai;Meteorologi;9
+Stasiun Meteorologi Bandaneira;97790;;;0;0;0;Region I;Sumatera Barat;Kab. Kepulauan Mentawai;Meteorologi;9
+Stasiun Meteorologi Mozez Kilangin;97796;;;0;0;0;Region II;Bengkulu;Kab. Muko Muko;Meteorologi;9
+Stasiun Meteorologi Karel Sadsuitubun;97810;;;-5.6637;132.7362;10;Region IV;Maluku;Kab. Maluku Tenggara;Meteorologi;9
+Stasiun Geofisika Nabire;97812;;;5.07538;96.94248;407;Region I;Aceh;Kab. Aceh Utara;Klimatologi;9
+Stasiun Meteorologi Tanah Merah;97876;;;-6.1;140.31;97;Region V;Papua;Kab. Boven Digoel;Meteorologi;9
+Stasiun Meteorologi Mathilda Batlayeri;97900;;0-20000-0-97900;0;0;0;Region II;Sumatera Selatan;Kota Pagar Alam;Meteorologi;9
+Stasiun Geofisika Maluku Tenggara Barat;97902;;;5.367;95.95;23;Region IV;Maluku;Kab. Kepulauan Tanimbar;Geofisika;9
+Stasiun Klimatologi Papua Selatan;97978;;;0;0;0;Region IV;Maluku Utara;Kab. Halmahera Utara;Klimatologi;9
+Stasiun Meteorologi Mopah;97980;;;0;0;0;Region II;Lampung;Kab. Pesisir Barat;Meteorologi;9
+Pos Meteorologi Liwa Lampung;99921;;;-5.01695;104.05891;0;Region II;Lampung;Kab. Lampung Barat;Meteorologi;7
+Stasiun Geofisika Sukabumi;99923;;;0;0;0;Region III;Kalimantan Utara;Kab. Malinau;Geofisika;7
+Pos Polusi Udara Cibeureum;99925;;;0;0;0;Region IV;Maluku;Kab. Seram Bagian Timur;Klimatologi;7
+Pos Meteorologi Bandara Notohadinegoro - Jember;99927;;;-8.246193;113.694912;264;Region III;Jawa Timur;Kab. Jember;Meteorologi;7
+Pos Meteorologi Lede Kalumbang - Tambolaka;99931;;;3.7405;97.61631;440;Region I;Aceh;Kab. Gayo Lues;Meteorologi;8
+Stasiun Geofisika Mataram;99932;;;5.18564;96.46178;18;Region I;Aceh;Kab. Bireuen;Geofisika;8
+Stasiun Geofisika Aceh Selatan;99933;;;3.17333;97.28637;2;Region I;Aceh;Kab. Aceh Selatan;Geofisika;7
+AWOS A. A. Bere Tallo;99954;;;4.58689;95.66125;8;Region I;Aceh;Kab. Aceh Jaya;Meteorologi;8
+Balai Besar Meteorologi Klimatologi dan Geofisika Wilayah II;99992;;;2.63;96.14;12;Region I;Aceh;Kab. Simeulue;Balai;7
+Balai Besar Meteorologi Klimatologi dan Geofisika Wilayah V;99995;;;-2.57522;140.68624;0;Region V;Papua;Kota Jayapura;Balai;9
