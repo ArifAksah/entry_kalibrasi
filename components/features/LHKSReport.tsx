@@ -85,6 +85,67 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
 
     if (!isOpen) return null;
 
+    // Fallback: Extract data from certificate.results when props are empty
+    const resultSensors = (certificate.results as any)?.sensors || [];
+    const firstResultSensor = resultSensors[0];
+    const resultSnapshot = firstResultSensor?.snapshot;
+    const resultSetup = firstResultSensor?.setup;
+    const resultDisplay = firstResultSensor?.display;
+
+    // Fallback instrument from snapshot
+    const effectiveInstrument = instrument || (resultSnapshot ? {
+        id: certificate.instrument || 0,
+        name: resultSnapshot.name || null,
+        manufacturer: resultSnapshot.manufacturer || null,
+        type: resultSnapshot.type || null,
+        serial_number: resultSnapshot.serial_number || null,
+        name_alias: null,
+        names: null,
+        instrument_names_id: null,
+        station_id: certificate.station,
+        memiliki_lebih_satu: false,
+        sensor: [],
+        instrument_type_id: null,
+        created_at: certificate.created_at,
+    } as Instrument : null);
+
+    // Fallback sensors from results
+    const effectiveSensors = sensors.length > 0 ? sensors : resultSensors.map((rs: any, idx: number) => ({
+        id: rs.links?.sensor_id || idx,
+        name: rs.snapshot?.name || `Sensor #${idx}`,
+        type: rs.snapshot?.type || '',
+        manufacturer: rs.snapshot?.manufacturer || '',
+        serial_number: rs.snapshot?.serial_number || '',
+        range_capacity: rs.snapshot?.range_capacity || '',
+        range_capacity_unit: rs.snapshot?.range_capacity_unit || '',
+        graduating: rs.snapshot?.graduating || '',
+        graduating_unit: rs.snapshot?.graduating_unit || '',
+        resolution: rs.snapshot?.resolution || null,
+        is_standard: false,
+        instrument_id: certificate.instrument,
+        created_at: certificate.created_at,
+        funnel_diameter: 0,
+        funnel_diameter_unit: '',
+        volume_per_tip: '',
+        volume_per_tip_unit: '',
+        funnel_area: 0,
+        funnel_area_unit: '',
+    } as Sensor));
+
+    // Fallback calibration date from results
+    const effectiveCalibrationDate = calibrationDate || resultSetup?.start_date || certificate.issue_date;
+
+    // Fallback calibration location from results
+    const effectiveCalibrationLocation = calibrationLocation || resultDisplay?.place || '';
+
+    // Fallback environment conditions from results
+    const effectiveEnvironmentConditions = environmentConditions || (() => {
+        const envs = resultSetup?.environment || [];
+        const temp = envs.find((e: any) => e.key?.toLowerCase().includes('suhu') || e.key?.toLowerCase().includes('temp'))?.value;
+        const hum = envs.find((e: any) => e.key?.toLowerCase().includes('kelemba') || e.key?.toLowerCase().includes('hum') || e.key?.toLowerCase().includes('rh'))?.value;
+        return { temperature: temp || '-', humidity: hum || '-' };
+    })();
+
     const handlePrint = () => {
         const printContent = printRef.current;
         if (printContent) {
@@ -153,8 +214,8 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                 return date.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
             }
         }
-        if (calibrationDate) {
-            const date = new Date(calibrationDate);
+        if (effectiveCalibrationDate) {
+            const date = new Date(effectiveCalibrationDate);
             if (date.getTime() > 0 && date.getFullYear() > 1970) {
                 return date.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
             }
@@ -300,16 +361,16 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                             <td className="border-none align-top">:</td>
                                             <td className="border-none align-top">{(() => {
                                                 // Try multiple sources for instrument name
-                                                if (instrument?.name && !/^\d+$/.test(String(instrument.name).trim())) {
-                                                    return instrument.name;
+                                                if (effectiveInstrument?.name && !/^\d+$/.test(String(effectiveInstrument.name).trim())) {
+                                                    return effectiveInstrument.name;
                                                 }
                                                 // Try to get name from instrumentNames lookup
-                                                const instrumentNameObj = instrumentNames?.find(n => n.id === (instrument as any)?.instrument_names_id);
+                                                const instrumentNameObj = instrumentNames?.find(n => n.id === (effectiveInstrument as any)?.instrument_names_id);
                                                 if (instrumentNameObj?.name && !/^\d+$/.test(String(instrumentNameObj.name).trim())) {
                                                     return instrumentNameObj.name;
                                                 }
                                                 // Fallback to first non-standard sensor name
-                                                const firstSensor = sensors.find(s => !s.is_standard);
+                                                const firstSensor = effectiveSensors.find((s: Sensor) => !s.is_standard);
                                                 if (firstSensor) {
                                                     const sensorName = getSensorDisplayName(firstSensor);
                                                     if (sensorName && !sensorName.startsWith('Sensor #')) {
@@ -322,17 +383,17 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                         <tr>
                                             <td className="border-none align-top">Pabrik Pembuat / <span className="italic">Manufacturer</span></td>
                                             <td className="border-none align-top">:</td>
-                                            <td className="border-none align-top">{instrument?.manufacturer || '-'}</td>
+                                            <td className="border-none align-top">{effectiveInstrument?.manufacturer || '-'}</td>
                                         </tr>
                                         <tr>
                                             <td className="border-none align-top">Tipe / <span className="italic">Type</span></td>
                                             <td className="border-none align-top">:</td>
-                                            <td className="border-none align-top">{instrument?.type || '-'}</td>
+                                            <td className="border-none align-top">{effectiveInstrument?.type || '-'}</td>
                                         </tr>
                                         <tr>
                                             <td className="border-none align-top">Nomor Seri / <span className="italic">Serial Number</span></td>
                                             <td className="border-none align-top">:</td>
-                                            <td className="border-none align-top">{instrument?.serial_number || '-'}</td>
+                                            <td className="border-none align-top">{effectiveInstrument?.serial_number || '-'}</td>
                                         </tr>
                                         <tr>
                                             <td className="border-none align-top pt-1">Resolusi / <span className="italic">Resolution</span></td>
@@ -340,10 +401,26 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                             <td className="border-none align-top pt-1"></td>
                                         </tr>
                                         {/* Per-sensor resolution rows (indented) */}
-                                        {sensors.filter(s => !s.is_standard).map(s => {
-                                            const resolution = s.graduating && s.graduating_unit
-                                                ? `${s.graduating} ${s.graduating_unit}`
-                                                : (s.graduating || s.graduating_unit || '-');
+                                        {effectiveSensors.filter((s: Sensor) => !s.is_standard).map((s: Sensor) => {
+                                            // Check multiple sources for resolution
+                                            // 1. From sensor object (snapshot or database)
+                                            let resolutionValue = s.resolution;
+                                            let resolutionUnit = s.graduating_unit || '';
+                                            
+                                            // 2. If not found, try to find from allSensors (database)
+                                            if (!resolutionValue && allSensors) {
+                                                const dbSensor = allSensors.find(x => x.id === s.id);
+                                                if (dbSensor?.resolution) {
+                                                    resolutionValue = dbSensor.resolution;
+                                                    resolutionUnit = dbSensor.graduating_unit || resolutionUnit;
+                                                }
+                                            }
+                                            
+                                            const resolution = resolutionValue
+                                                ? `${resolutionValue} ${resolutionUnit}`.trim()
+                                                : (s.graduating && s.graduating_unit
+                                                    ? `${s.graduating} ${s.graduating_unit}`
+                                                    : (s.graduating || s.graduating_unit || '-'));
                                             return (
                                                 <tr key={`res-${s.id}`}>
                                                     <td className="border-none align-top pl-6">{getSensorDisplayName(s)}</td>
@@ -364,12 +441,12 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                         <tr>
                                             <td className="border-none align-top" style={{ width: '44%' }}>Nama / <span className="italic">Name</span></td>
                                             <td className="border-none align-top w-2">:</td>
-                                            <td className="border-none align-top">{owner?.name || '-'}</td>
+                                            <td className="border-none align-top">{owner?.name || <span className="italic text-gray-400">-</span>}</td>
                                         </tr>
                                         <tr>
                                             <td className="border-none align-top">Alamat / <span className="italic">Address</span></td>
                                             <td className="border-none align-top">:</td>
-                                            <td className="border-none align-top">{owner?.address || '-'}</td>
+                                            <td className="border-none align-top">{owner?.address || <span className="italic text-gray-400">-</span>}</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -387,7 +464,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                             <td className="border-none align-top"></td>
                                         </tr>
                                         {/* Per-sensor range rows (indented) - computed from Min~Max of std_corrected */}
-                                        {sensors.filter(s => !s.is_standard).map(s => {
+                                        {effectiveSensors.filter((s: Sensor) => !s.is_standard).map((s: Sensor) => {
                                             // Compute actual range from corrected standard readings in raw data
                                             const sensorRows = rawData.filter(r => r.sensor_id_uut === s.id);
                                             const stdCorrectedVals = sensorRows
@@ -430,7 +507,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                             <td className="border-none align-top"></td>
                                         </tr>
                                         {/* Per-sensor date rows (indented) */}
-                                        {sensors.filter(s => !s.is_standard).map(s => (
+                                        {effectiveSensors.filter((s: Sensor) => !s.is_standard).map((s: Sensor) => (
                                             <tr key={`date-${s.id}`}>
                                                 <td className="border-none align-top pl-6">{getSensorDisplayName(s)}</td>
                                                 <td className="border-none align-top">:</td>
@@ -445,7 +522,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                         <tr>
                                             <td className="border-none align-top">Tempat / <span className="italic">Place</span></td>
                                             <td className="border-none align-top">:</td>
-                                            <td className="border-none align-top">{calibrationLocation || owner?.name || '-'}</td>
+                                            <td className="border-none align-top">{effectiveCalibrationLocation || owner?.name || '-'}</td>
                                         </tr>
 
                                         {/* Spacer */}
@@ -467,8 +544,8 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                     const computedHum = computeEnvCondition('kelembaban');
 
                                     // Fallback: sessionResults.environment or environmentConditions
-                                    const globalTemp = environmentConditions?.temperature;
-                                    const globalHum = environmentConditions?.humidity;
+                                    const globalTemp = effectiveEnvironmentConditions?.temperature;
+                                    const globalHum = effectiveEnvironmentConditions?.humidity;
                                     const allEnvs = Array.isArray(sessionResults)
                                         ? sessionResults.flatMap((r: any) => r.environment || [])
                                         : [];
@@ -536,7 +613,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                             <td className="border-none align-top w-2"></td>
                                             <td className="border-none align-top"></td>
                                         </tr>
-                                        {sensors.filter(s => !s.is_standard).map(s => {
+                                        {effectiveSensors.filter((s: Sensor) => !s.is_standard).map((s: Sensor) => {
                                             // Find standard sensor used for this UUT sensor from raw data
                                             const stdSensorId = rawData.find(r => r.sensor_id_uut === s.id)?.sensor_id_std;
 
@@ -600,7 +677,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                 <h4 className="font-bold underline mb-1">KETELUSURAN / <span className="italic font-normal">Traceability</span></h4>
                                 <table className="w-full border-none text-left">
                                     <tbody>
-                                        {sensors.filter(s => !s.is_standard).map(s => {
+                                        {effectiveSensors.filter((s: Sensor) => !s.is_standard).map((s: Sensor) => {
                                             // Lookup traceable org from std cert or fallback
                                             const matchedStd = standardCerts.find(sc => (sc as any).sensor_id === s.id);
                                             const traceOrg = (matchedStd as any)?.traceable_to
@@ -706,8 +783,8 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                             }
 
                             // Environment details
-                            const globalTemp = environmentConditions?.temperature || '-';
-                            const globalHum = environmentConditions?.humidity || '-';
+                            const globalTemp = effectiveEnvironmentConditions?.temperature || '-';
+                            const globalHum = effectiveEnvironmentConditions?.humidity || '-';
                             const sessionRes = Array.isArray(sessionResults) ? sessionResults.find((r: any) => r.sensorId === (sensor?.id ?? Number(sensorKey)) || r.sensor_id === (sensor?.id ?? Number(sensorKey))) : null;
                             const envs = sessionRes?.environment || [];
                             const temp = envs.find((e: any) => e.key?.toLowerCase().includes('suhu') || e.key?.toLowerCase().includes('temp'))?.value || globalTemp;

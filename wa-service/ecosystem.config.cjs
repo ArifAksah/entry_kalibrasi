@@ -2,8 +2,8 @@ module.exports = {
   apps: [
     {
       name: 'wa-service',
-      script: 'node_modules/.bin/tsx',
-      args: 'src/index.ts',
+      script: 'npm',
+      args: 'start',
       cwd: __dirname,
       env: {
         PORT: 3002,

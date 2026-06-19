@@ -47,8 +47,8 @@ module.exports = {
     },
     {
       name: 'wa-service',
-      script: 'node_modules/.bin/tsx',
-      args: 'src/index.ts',
+      script: 'npm',
+      args: 'start',
       cwd: path.join(ROOT, 'wa-service'),
       env: {
         NODE_ENV: 'production',

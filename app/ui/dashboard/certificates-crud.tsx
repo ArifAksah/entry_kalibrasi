@@ -1448,7 +1448,8 @@ type ResultItem = {
         // Fetch all instruments across pages
         const fetchAllInstruments = async () => {
           let baseUrl = '/api/instruments?pageSize=100'
-          if (role !== 'admin' && user?.id) {
+          // Only filter by user_id for station users, not for calibrators/admins
+          if (role === 'user_station' && user?.id) {
             baseUrl += `&user_id=${user.id}`
           }
 
@@ -2674,7 +2675,16 @@ type ResultItem = {
                         {item.station ? stations.find(s => s.id === item.station)?.name || 'Unknown' : '-'}
                       </span>
                       <span className="text-xs text-gray-500">
-                        {item.instrument ? instruments.find(i => i.id === item.instrument)?.name || 'Unknown' : '-'}
+                        {item.instrument ? (() => {
+                          const inst = instruments.find(i => i.id === item.instrument);
+                          if (!inst) return 'Unknown';
+                          return (inst as any).instrument_names?.name 
+                            || instrumentNames.find(n => n.id === (inst as any).instrument_names_id)?.name 
+                            || (inst as any).name_alias 
+                            || inst.name 
+                            || `${inst.manufacturer || ''} ${inst.type || ''}`.trim()
+                            || 'Unknown';
+                        })() : '-'}
                       </span>
                     </div>
                   </td>
