@@ -64,46 +64,92 @@ export function needsConversion(unitA: string, unitB: string): boolean {
     return normaliseUnit(unitA) !== normaliseUnit(unitB);
 }
 
+const SUPERSCRIPT_MAP: Record<string, string> = {
+    '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+    '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+    '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾',
+    'n': 'ⁿ', 'i': 'ⁱ',
+};
+
+function toSuperscript(str: string): string {
+    return str.split('').map(ch => SUPERSCRIPT_MAP[ch] ?? ch).join('');
+}
+
 /**
  * Format raw LaTeX units to plain text for display/comparison.
- * e.g., "^\circ C" -> "°C", "m/s^2" -> "m/s²", "\mu m" -> "µm"
+ * e.g., "^\circ C" -> "°C", "m/s^2" -> "m/s²", "\mu m" -> "µm",
+ *       "\frac{kg}{m^2}" -> "kg/m²", "\cdot" -> "·", "\times" -> "×"
  */
 export function formatUnit(unit: string): string {
     if (!unit) return '';
     let formatted = String(unit);
-    
+
     // Replace degree symbols
     formatted = formatted.replace(/\\degree/g, '°');
-    formatted = formatted.replace(/\\circ/g, '°');
     formatted = formatted.replace(/\^\{\\circ\}/g, '°');
-    formatted = formatted.replace(/\^\circ/g, '°');
     formatted = formatted.replace(/\^\\circ/g, '°');
-    
-    // Replace superscript numbers
-    formatted = formatted.replace(/\^2/g, '²');
-    formatted = formatted.replace(/\^\{2\}/g, '²');
-    formatted = formatted.replace(/\^3/g, '³');
-    formatted = formatted.replace(/\^\{3\}/g, '³');
-    
+    formatted = formatted.replace(/\\circ/g, '°');
+
+    // Replace common operators and symbols
+    formatted = formatted.replace(/\\cdot\b/g, '·');
+    formatted = formatted.replace(/\\times\b/g, '×');
+    formatted = formatted.replace(/\\pm\b/g, '±');
+    formatted = formatted.replace(/\\div\b/g, '÷');
+    formatted = formatted.replace(/\\leq\b/g, '≤');
+    formatted = formatted.replace(/\\geq\b/g, '≥');
+    formatted = formatted.replace(/\\approx\b/g, '≈');
+    formatted = formatted.replace(/\\neq\b/g, '≠');
+
     // Replace Greek letters
-    formatted = formatted.replace(/\\mu\b/g, 'µ');
+    formatted = formatted.replace(/\\Alpha\b/g, 'Α');
+    formatted = formatted.replace(/\\alpha\b/g, 'α');
+    formatted = formatted.replace(/\\Beta\b/g, 'Β');
+    formatted = formatted.replace(/\\beta\b/g, 'β');
+    formatted = formatted.replace(/\\Gamma\b/g, 'Γ');
+    formatted = formatted.replace(/\\gamma\b/g, 'γ');
+    formatted = formatted.replace(/\\Delta\b/g, 'Δ');
+    formatted = formatted.replace(/\\delta\b/g, 'δ');
+    formatted = formatted.replace(/\\Lambda\b/g, 'Λ');
+    formatted = formatted.replace(/\\lambda\b/g, 'λ');
+    formatted = formatted.replace(/\\Sigma\b/g, 'Σ');
+    formatted = formatted.replace(/\\sigma\b/g, 'σ');
     formatted = formatted.replace(/\\Omega\b/g, 'Ω');
-    formatted = formatted.replace(/\\%/g, '%');
-    
-    // Replace \mathrm and \text
-    formatted = formatted.replace(/\\mathrm\{([^}]+)\}/g, '$1');
-    formatted = formatted.replace(/\\text\{([^}]+)\}/g, '$1');
+    formatted = formatted.replace(/\\omega\b/g, 'ω');
+    formatted = formatted.replace(/\\mu\b/g, 'µ');
+    formatted = formatted.replace(/\\pi\b/g, 'π');
+    formatted = formatted.replace(/\\theta\b/g, 'θ');
+    formatted = formatted.replace(/\\Theta\b/g, 'Θ');
+
+    // Replace \mathrm{...} and \text{...} (keep content)
+    formatted = formatted.replace(/\\mathrm\{([^}]*)\}/g, '$1');
+    formatted = formatted.replace(/\\text\{([^}]*)\}/g, '$1');
     formatted = formatted.replace(/\\mathrm\b/g, '');
     formatted = formatted.replace(/\\text\b/g, '');
-    
-    // Remove curly braces that might be left over from LaTeX
+
+    // Replace \frac{num}{den} → num/den
+    formatted = formatted.replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '$1/$2');
+
+    // Replace \sqrt{x} → √(x) and bare \sqrt → √
+    formatted = formatted.replace(/\\sqrt\{([^}]*)\}/g, '√($1)');
+    formatted = formatted.replace(/\\sqrt\b/g, '√');
+
+    // Replace \%/g before removing braces
+    formatted = formatted.replace(/\\%/g, '%');
+
+    // Replace superscripts with braces: ^{-3}, ^{3}, ^{123}
+    formatted = formatted.replace(/\^\{([^}]*)\}/g, (_, exp) => toSuperscript(exp));
+
+    // Replace single-char superscripts: ^2, ^3, ^-1, ^n
+    formatted = formatted.replace(/\^(-?\w)/g, (_, exp) => toSuperscript(exp));
+
+    // Remove remaining curly braces
     formatted = formatted.replace(/[{}]/g, '');
-    
+
     // Clean up spaces
     formatted = formatted.replace(/\s+/g, ' ').trim();
-    
+
     // Clean up standalone ^ if any
     formatted = formatted.replace(/^\^/, '');
-    
+
     return formatted;
 }

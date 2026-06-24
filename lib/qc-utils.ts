@@ -14,6 +14,8 @@
  *   → compare |uut_correction| with master_qc batas_koreksi
  */
 
+import { formatUnit } from './unitConversion';
+
 export interface QCLimit {
     /** Instrument name from instrument_names table */
     instrumentName: string
@@ -195,25 +197,11 @@ export function parseNilaiBatasKoreksi(raw: string): number {
 
 /**
  * Format LaTeX unit strings from the database (e.g., ^\circ C) into readable Unicode strings.
+ * Delegates to formatUnit() from unitConversion.ts for comprehensive LaTeX handling.
  */
 export function formatLatexUnit(raw: string): string {
     if (!raw) return '';
-    return raw
-        // Handle degree Celsius
-        .replace(/\^\\circ C/g, '°C')
-        .replace(/\\circ C/g, '°C')
-        .replace(/\^\\circ/g, '°')
-        .replace(/\\circ/g, '°')
-        // General text formatting replacements
-        .replace(/\\mathrm\{([^}]+)\}/g, '$1')
-        .replace(/\\text\{([^}]+)\}/g, '$1')
-        .replace(/\\mu/g, 'µ')
-        .replace(/\\Omega/g, 'Ω')
-        .replace(/\\%\s?RH/g, '%RH')
-        .replace(/\\%/g, '%')
-        // Clean up any stray curly braces
-        .replace(/[{}]/g, '')
-        .trim();
+    return formatUnit(raw);
 }
 
 /** In-memory cache: sensor_id → QCLimit (null = no entry in DB) */

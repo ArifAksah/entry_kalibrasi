@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Certificate, Instrument, Sensor } from '../../lib/supabase';
 import { calculateUncertaintyBudget, UncertaintyResult, interpolateU95FromPoints } from '../../lib/uncertainty-utils';
 import { parseCertCorrectionPoints, interpolateCorrectionFromPoints } from '../../lib/qc-utils';
-import { convertUnit } from '../../lib/unitConversion';
+import { convertUnit, formatUnit } from '../../lib/unitConversion';
 import { resultsToLegacyView } from '../../lib/validators/certificate-results-render-adapter';
 // RawDataRow defined locally to avoid circular imports
 interface RawDataRow {
@@ -421,7 +421,7 @@ function UncertaintyContent({
                 {/* Set Point Indicator */}
                 <div className="flex gap-4 mb-1 text-[15px]">
                     <div>SET POINT RATA-RATA ALAT YANG DIKALIBRASI</div>
-                    <div>{formatDec(globalUutAvg, 2)} {unitUut}</div>
+                    <div>{formatDec(globalUutAvg, 2)} {formatUnit(unitUut)}</div>
                 </div>
 
                 {/* Main Table */}
@@ -446,7 +446,7 @@ function UncertaintyContent({
                         {components.map((c, i) => (
                             <tr key={i}>
                                 <td className="border border-black px-2 py-0.5 text-left">{c.name}</td>
-                                <td className="border border-black px-1 py-0.5">{c.unit}</td>
+                                <td className="border border-black px-1 py-0.5">{formatUnit(c.unit)}</td>
                                 <td className="border border-black px-2 py-0.5 text-left">{c.distribution}</td>
                                 <td className="border border-black px-1 py-0.5">{renderSymbol(c.symbol)}</td>
                                 <td className="border border-black px-2 py-0.5">{formatDec(c.u_a, 4)}</td>
