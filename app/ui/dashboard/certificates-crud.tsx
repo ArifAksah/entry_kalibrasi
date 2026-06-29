@@ -3486,11 +3486,16 @@ type ResultItem = {
                             const isStandard = i.sensor?.some((s: any) => s.is_standard === true);
                             return !isStandard;
                           })
-                          .map(i => ({
-                                                      id: i.id,
-                                                      name: `${(i as any).instrument_names?.name || instrumentNames.find(n => n.id === (i as any).instrument_names_id)?.name || (i as any).name_alias || (i as any).name || 'Unknown'} (${i.manufacturer} ${i.type} SN:${i.serial_number})`,
-                                                      station_id: i.station?.name || ''
-                                                    }))}
+                          .map(i => {
+                                                      const baseName = (i as any).instrument_names?.name || instrumentNames.find(n => n.id === (i as any).instrument_names_id)?.name || (i as any).name_alias || (i as any).name || 'Unknown';
+                                                      const alias = (i as any).name_alias;
+                                                      const aliasPart = alias && String(alias).trim() && alias !== baseName ? ` — ${alias}` : '';
+                                                      return {
+                                                        id: i.id,
+                                                        name: `${baseName}${aliasPart} (${i.manufacturer || '-'} ${i.type || '-'} • SN: ${(i as any).serial_number || '-'})`,
+                                                        station_id: i.station?.name || ''
+                                                      };
+                                                    })}
                                                   placeholder="Pilih Instrument..."
                                                   searchPlaceholder="Cari Instrument..."
                                                 />
@@ -3523,11 +3528,16 @@ type ResultItem = {
                             })));
                           }}
                           options={standardInstruments
-                                                      .map(i => ({
-                                                        id: i.id,
-                                                        name: `${(i as any).instrument_names?.name || instrumentNames.find(n => n.id === (i as any).instrument_names_id)?.name || (i as any).name_alias || (i as any).name || 'Unknown'} (${i.manufacturer} ${i.type})`,
-                                                        station_id: i.station?.name || ''
-                                                      }))}
+                                                      .map(i => {
+                                                        const baseName = (i as any).instrument_names?.name || instrumentNames.find(n => n.id === (i as any).instrument_names_id)?.name || (i as any).name_alias || (i as any).name || 'Unknown';
+                                                        const alias = (i as any).name_alias;
+                                                        const aliasPart = alias && String(alias).trim() && alias !== baseName ? ` — ${alias}` : '';
+                                                        return {
+                                                          id: i.id,
+                                                          name: `${baseName}${aliasPart} (${i.manufacturer || '-'} ${i.type || '-'} • SN: ${(i as any).serial_number || '-'})`,
+                                                          station_id: i.station?.name || ''
+                                                        };
+                                                      })}
                                                     placeholder="Pilih Instrument Standar..."
                                                     searchPlaceholder="Cari Instrument Standar..."
                         />
