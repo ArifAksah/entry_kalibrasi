@@ -239,6 +239,18 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
      * Rumus: mean = (max+min)/2, half_range = max - mean = (max-min)/2
      * Tampil: "(mean ± half_range) unit"
      */
+    // Ambil nilai standar terkoreksi yang VALID dari satu baris raw_data.
+    // Mengembalikan null bila std_corrected & standard_data kosong/null — supaya
+    // baris null TIDAK menjadi 0 (di JS `null + 0 === 0`) yang merusak min/max
+    // (Daerah Ukur & Kondisi Ruangan jadi "0.00 ~ ..." dan "(16.9 ± 16.9)").
+    const cleanStdValue = (r: any): number | null => {
+        if (typeof r?.std_corrected === 'number' && Number.isFinite(r.std_corrected)) return r.std_corrected;
+        if (typeof r?.standard_data === 'number' && Number.isFinite(r.standard_data)) {
+            return r.standard_data + (typeof r?.std_correction === 'number' ? r.std_correction : 0);
+        }
+        return null;
+    };
+
     const computeEnvCondition = (type: 'suhu' | 'kelembaban'): string => {
         const keywords = type === 'suhu'
             ? ['suhu', 'temp', 'termometer', 'temperature', 'thermo']
@@ -253,8 +265,8 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
         if (matchedRows.length === 0) return '-';
 
         const values = matchedRows
-            .map(r => r.std_corrected ?? (r.standard_data + (r.std_correction ?? 0)))
-            .filter(v => !isNaN(v));
+            .map(r => cleanStdValue(r))
+            .filter((v): v is number => v != null);
 
         if (values.length === 0) return '-';
 
@@ -468,8 +480,8 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                             // Compute actual range from corrected standard readings in raw data
                                             const sensorRows = rawData.filter(r => r.sensor_id_uut === s.id);
                                             const stdCorrectedVals = sensorRows
-                                                .map(r => r.std_corrected ?? (r.standard_data + (r.std_correction ?? 0)))
-                                                .filter(v => !isNaN(v));
+                                                .map(r => cleanStdValue(r))
+                                                .filter((v): v is number => v != null);
 
                                             let rangeDisplay = '-';
                                             if (stdCorrectedVals.length > 0) {
@@ -766,8 +778,8 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
 
                             // UUT details — Daerah Ukur from Min~Max of std_corrected (actual calibration range)
                             const stdCorrectedVals = data
-                                .map((r: typeof data[0]) => r.std_corrected ?? (r.standard_data + (r.std_correction ?? 0)))
-                                .filter((v: number) => !isNaN(v));
+                                .map((r: typeof data[0]) => cleanStdValue(r))
+                                .filter((v): v is number => v != null);
                             let rangeDisplay: string;
                             if (stdCorrectedVals.length > 0) {
                                 const minV = Math.min(...stdCorrectedVals);

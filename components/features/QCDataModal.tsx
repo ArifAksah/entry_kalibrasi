@@ -295,6 +295,25 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
         return { value: correctionMap.get(key) ?? 0, hasData };
     };
 
+    /**
+     * Statistik koreksi STD (rata-rata & standar deviasi sampel/n-1) atas
+     * SEMUA baris yang punya pembacaan standar pada sensor aktif — memakai nilai
+     * yang sama dengan kolom "Koreksi Std" di tabel, agar kartu = rata-rata kolom.
+     * Catatan: nilai mengikuti correctionMap yang dimuat modal; klik refresh (↻)
+     * setelah data di-save ulang agar statistik ikut ter-update.
+     */
+    const correctionStats = (() => {
+        const vals = currentData
+            .filter((r) => r.standard_data != null && r.sensor_id_std != null)
+            .map((r) => getStdCorrection(r).value);
+        if (vals.length === 0) return null;
+        const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+        const variance = vals.length > 1
+            ? vals.reduce((a, b) => a + (b - mean) ** 2, 0) / (vals.length - 1)
+            : 0;
+        return { mean, std: Math.sqrt(variance), n: vals.length };
+    })();
+
     const computeRowQC = (row: RawDataRow) => {
         const { value: stdCorrection, hasData: hasCertData } = getStdCorrection(row);
         const hasUutValue = row.uut_data != null;
@@ -553,12 +572,23 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                         </div>
                                         <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
                                             <div className="text-[10px] text-blue-600 font-semibold uppercase">Koreksi Std (DB)</div>
-                                            <div className="text-sm font-bold text-blue-900">
+                                            <div className="text-blue-900">
                                                 {correctionLoading
                                                     ? <span className="text-xs italic animate-pulse">Menghitung...</span>
-                                                    : stdSensorId
-                                                        ? <span className="text-green-700 text-xs">hitung_koreksi() ✓</span>
-                                                        : <span className="text-gray-400 text-xs">–</span>}
+                                                    : !stdSensorId || !correctionStats
+                                                        ? <span className="text-gray-400 text-xs">–</span>
+                                                        : (
+                                                            <div className="mt-0.5 space-y-0.5">
+                                                                <div className="flex items-baseline justify-between gap-2">
+                                                                    <span className="text-[10px] font-normal text-blue-600">Rata²</span>
+                                                                    <span className="text-sm font-bold tabular-nums">{correctionStats.mean.toFixed(4)}</span>
+                                                                </div>
+                                                                <div className="flex items-baseline justify-between gap-2">
+                                                                    <span className="text-[10px] font-normal text-blue-600">Std Dev</span>
+                                                                    <span className="text-sm font-bold tabular-nums">{correctionStats.std.toFixed(4)}</span>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                             </div>
                                         </div>
                                         <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">

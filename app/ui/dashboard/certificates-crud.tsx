@@ -1858,6 +1858,13 @@ type ResultItem = {
           .then(res => res.json())
           .then(data => {
             if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+              // Urutkan baris per timestamp (ascending) supaya Preview Raw Data
+              // tampil dengan urutan yang SAMA dengan QC Check (yang juga sort by
+              // timestamp). Tanpa ini, Preview tampil sesuai urutan id/insertion
+              // sehingga baris pertama yang terlihat berbeda → seolah datanya beda.
+              data.data.sort((a: any, b: any) =>
+                new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime()
+              );
               // Group by persisted sheet name first. Fallback to sensor_id_uut only when
               // old records do not have sheet_name. This prevents multiple sheets with
               // the same UUT sensor from being merged during edit.

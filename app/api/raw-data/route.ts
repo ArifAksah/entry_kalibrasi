@@ -145,7 +145,12 @@ async function saveRawData(req: NextRequest, replaceExisting: boolean) {
                     const standardData = cleanFloat(standardVal)
 
                     if (uutData === null) skippedNoUut++
-                    if (!hasTimestamp && uutData === null && standardData === null) continue
+                    // Skip baris tanpa data ukur: jika std DAN uut dua-duanya kosong,
+                    // baris itu tidak berguna untuk kalibrasi (mis. baris sisa berisi
+                    // hanya timestamp). Sebelumnya hanya di-skip bila timestamp juga
+                    // kosong, sehingga baris "timestamp saja" lolos & menyimpan null
+                    // yang merusak perhitungan min/max (Daerah Ukur & Kondisi Ruangan).
+                    if (uutData === null && standardData === null) continue
 
                     let timestamp: string | null = null
                     try {
