@@ -2,7 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { Certificate, Instrument, Sensor } from '../../lib/supabase';
-import { calculateUncertaintyBudget, UncertaintyResult, interpolateU95FromPoints } from '../../lib/uncertainty-utils';
+import { 
+    calculateUncertaintyBudget, UncertaintyResult, UncertaintyComponent, interpolateU95FromPoints,
+    isPyranometer, calculateCalibrationFactor, calculatePyranometerUncertainty,
+    PyranometerUncertaintyResult, PyranometerSensorData
+} from '../../lib/uncertainty-utils';
 import { parseCertCorrectionPoints, interpolateCorrectionFromPoints } from '../../lib/qc-utils';
 import { convertUnit, formatUnit } from '../../lib/unitConversion';
 import { resultsToLegacyView } from '../../lib/validators/certificate-results-render-adapter';
@@ -237,6 +241,18 @@ function UncertaintyContent({
         : parseFloat(uutSensor?.graduating ?? '0');
     const resolusiUut = isNaN(rawResolusiUut) ? 0 : rawResolusiUut;
 
+    // ═══════════════════════════════════════════════════════════════
+    // DETEKSI PYRANOMETER
+    // ═══════════════════════════════════════════════════════════════
+    const pyranometerSensor: PyranometerSensorData | null = uutSensor ? {
+        name: uutSensor.name,
+        type: uutSensor.type,
+        instrument_code: undefined, // Akan diisi jika ada
+        resolution: uutSensor.resolution ?? undefined,
+        range_capacity: uutSensor.range_capacity
+    } : null;
+
+    const isPyranometerSensor = isPyranometer(pyranometerSensor);
 
     // Advanced unit resolution: Row -> Sensor -> Instrument (Certificate)
     let unitUut = currentData[0]?.unit_uut;
@@ -363,18 +379,81 @@ function UncertaintyContent({
             : parseFloat(standardCertRecord.u95_general) || 0;
     }
 
-    const result: UncertaintyResult = calculateUncertaintyBudget({
-        unit: unitUut,
-        uutReadings,
-        interpolatedCertU95: interpolatedU95,
-        driftStd,
-        resolusiStd,
-        resolusiUut,
-        isAnalog
-    });
+    // ═══════════════════════════════════════════════════════════════
+    // HITUNG UNCERTAINTY (CONDITIONAL: PYRANOMETER vs BIASA)
+    // ═══════════════════════════════════════════════════════════════
+    
+    let result: UncertaintyResult;
+    let pyranometerResult: PyranometerUncertaintyResult | null = null;
+    let components: UncertaintyComponent[];
+    
+    if (isPyranometerSensor) {
+        // PYRANOMETER: Gunakan perhitungan CF (rasio) dalam %
+        const stdReadings = currentData.map(row => row.standard_data || 0);
+        const uutReadingsForCF = currentData.map(row => row.uut_data || 0);
+        
+        const cfResult = calculateCalibrationFactor(stdReadings, uutReadingsForCF);
+        
+        const range = parseFloat(uutSensor?.range_capacity || '2000') || 2000;
+        
+        pyranometerResult = calculatePyranometerUncertainty({
+            cf_result: cfResult,
+            certU95_percent: interpolatedU95,
+            resolutionStd: resolusiStd,
+            resolutionUut: resolusiUut,
+            range: range,
+            sensorType: uutSensor?.type || uutSensor?.name || ''
+        });
+        
+        // Convert ke format UncertaintyResult untuk rendering
+        components = pyranometerResult.components.map(c => ({
+            name: c.name,
+            unit: '%',
+            distribution: c.distribution === 'Normal' ? 'Normal' as const : 'Rect' as const,
+            symbol: c.name === 'Repeat' ? 'u_rep' : 
+                    c.name === 'Sertifikat Std' ? 'u_sertf' :
+                    c.name === 'Resolusi Std' ? 'u_res_std' :
+                    c.name === 'Drift Std' ? 'u_drift' : 'u_res_uut',
+            u_a: c.value_percent,
+            cov_factor: c.divisor,
+            deg_freedom: 50,
+            std_uncertainty: c.u_percent,
+            sens_coeff: 1,
+            ci_ui: c.u_percent,
+            ci_ui_sq: Math.pow(c.u_percent, 2),
+            ci_ui_quad_vi: Math.pow(c.u_percent, 4) / 50
+        }));
+        
+        // Dummy result untuk kompatibilitas rendering
+        result = {
+            components,
+            sums: {
+                ci_ui_sq: components.reduce((a, c) => a + c.ci_ui_sq, 0),
+                ci_ui_quad_vi: components.reduce((a, c) => a + c.ci_ui_quad_vi, 0)
+            },
+            comb_uncert_uc: pyranometerResult.uc_percent,
+            eff_deg_freedom_veff: 50,
+            cov_factor_95: pyranometerResult.k_factor,
+            expanded_uncert_u95: pyranometerResult.u95_percent,
+            unit: '%'
+        };
+    } else {
+        // BIASA: Gunakan perhitungan standar (selisih absolut)
+        result = calculateUncertaintyBudget({
+            unit: unitUut,
+            uutReadings,
+            interpolatedCertU95: interpolatedU95,
+            driftStd,
+            resolusiStd,
+            resolusiUut,
+            isAnalog
+        });
+        
+        components = result.components;
+    }
 
     // Rename repeating components to match screenshot closely
-    const components = result.components.map(c => {
+    components = components.map(c => {
         if (c.name.includes('Repeatability')) return { ...c, name: 'Repeat' };
         if (c.name.includes('Cert Std U95')) return { ...c, name: 'Sertifikat Std', symbol: 'u_sertf.' }; // To match standard report syntax
         if (c.name.includes('Drift Std')) return { ...c, name: 'Drif Std', symbol: 'u_drift' };
@@ -423,6 +502,34 @@ function UncertaintyContent({
                     <div>SET POINT RATA-RATA ALAT YANG DIKALIBRASI</div>
                     <div>{formatDec(globalUutAvg, 2)} {formatUnit(unitUut)}</div>
                 </div>
+
+                {/* Pyranometer: Tampilkan CF */}
+                {isPyranometerSensor && pyranometerResult && (
+                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="text-sm font-semibold text-blue-800 mb-2">
+                            HASIL KALIBRASI PYRANOMETER
+                        </div>
+                        <div className="grid grid-cols-3 gap-4 text-sm">
+                            <div>
+                                <span className="text-gray-600">Faktor Kalibrasi (CF):</span>
+                                <span className="ml-2 font-bold">{pyranometerResult.cf_result.cf_final.toFixed(4)}</span>
+                            </div>
+                            <div>
+                                <span className="text-gray-600">Koreksi:</span>
+                                <span className="ml-2 font-bold">{pyranometerResult.certificate.correction_percent.toFixed(2)}%</span>
+                            </div>
+                            <div>
+                                <span className="text-gray-600">Data:</span>
+                                <span className="ml-2 font-bold">
+                                    {pyranometerResult.cf_result.n_filtered}/{pyranometerResult.cf_result.n_total}
+                                    {pyranometerResult.cf_result.outlier_indices.length > 0 && 
+                                        ` (${pyranometerResult.cf_result.outlier_indices.length} outlier)`
+                                    }
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Main Table */}
                 <table className="w-full text-center border-collapse border border-black text-[12px] tabular-nums" style={{ lineHeight: '1.2' }}>

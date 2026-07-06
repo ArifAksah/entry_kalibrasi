@@ -1,11 +1,16 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import { Instrument, Sensor } from '../../lib/supabase';
 import {
     fetchQCLimitForSensor, checkQCResult, QCLimit,
     hitungKoreksiBatch
 } from '../../lib/qc-utils';
 import { convertUnit, needsConversion } from '../../lib/unitConversion';
-import { calculateCalibrationResult } from '../../lib/uncertainty-utils';
+import { 
+    calculateCalibrationResult,
+    isPyranometer, calculateCalibrationFactor, calculatePyranometerUncertainty,
+    PyranometerSensorData
+} from '../../lib/uncertainty-utils';
 import { SigFigBadge } from '../ui/SigFigBadge';
 import qcCacheService from '../../lib/qc-cache-service';
 import { deserializeMap } from '../../lib/qc-cache-storage';
@@ -257,6 +262,45 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
         }
     };
 
+    const handleDownloadExcel = () => {
+        if (currentData.length === 0) return;
+
+        const rows = currentData.map((row, index) => {
+            const { stdCorrection, stdCorrected, uutCorrection, qc } = computeRowQC(row);
+            return {
+                'No': index + 1,
+                'Timestamp': row.timestamp ? new Date(row.timestamp).toLocaleString('id-ID') : '',
+                'Std Reading': row.standard_data ?? '',
+                'Koreksi Std': stdCorrection,
+                'Std Terkoreksi': stdCorrected ?? '',
+                'UUT Reading': row.uut_data ?? '',
+                'Koreksi UUT': uutCorrection ?? '',
+                'Batas WMO': qc.limitStr,
+                'Status': qc.passed ? 'PASS' : 'FAIL',
+            };
+        });
+
+        const ws = XLSX.utils.json_to_sheet(rows);
+
+        ws['!cols'] = [
+            { wch: 5 },   // No
+            { wch: 22 },  // Timestamp
+            { wch: 14 },  // Std Reading
+            { wch: 14 },  // Koreksi Std
+            { wch: 16 },  // Std Terkoreksi
+            { wch: 14 },  // UUT Reading
+            { wch: 14 },  // Koreksi UUT
+            { wch: 16 },  // Batas WMO
+            { wch: 8 },   // Status
+        ];
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'QC Check Data');
+
+        const fileName = `QC_Check_${activeSensorName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+    };
+
     const activeSensorLimit = activeTab !== 'unknown' && activeTab !== 0
         ? qcLimits[String(activeTab)] ?? null
         : null;
@@ -278,6 +322,14 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, sensors, instruments, certificateInstrumentId, instrumentNames, groupedData]);
 
+    // Sensor saat ini untuk deteksi pyranometer
+    const currentSensorForPyranometer = React.useMemo(() => {
+        if (activeTab === 'unknown' || activeTab === 0) return null;
+        const sensor = sensors.find(s => s.id === activeTab);
+        if (!sensor) return null;
+        return { name: sensor.name, type: sensor.type };
+    }, [activeTab, sensors]);
+
     if (!isOpen) return null;
 
     const currentData = (groupedData[String(activeTab)] || []).sort((a, b) => {
@@ -287,9 +339,28 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
     /**
      * Get the correction from the DB-computed correctionMap for a row.
      * Key: `${sensor_id_std}:${standard_data}`
+     * 
+     * UNTUK PYRANOMETER: Hitung koreksi sebagai (Std/UUT - 1) × 100%
      */
     const getStdCorrection = (row: RawDataRow): { value: number; hasData: boolean } => {
-        if (!row.sensor_id_std || row.standard_data == null) return { value: 0, hasData: false };
+        if (row.standard_data == null) return { value: 0, hasData: false };
+        
+        // DETEKSI PYRANOMETER
+        const sensor = row.sensor_id_uut ? sensors.find((s: any) => s.id === row.sensor_id_uut) : null;
+        const pyrSensorData: PyranometerSensorData | null = sensor ? {
+            name: sensor.name,
+            type: sensor.type,
+        } : null;
+        const isPyrano = isPyranometer(pyrSensorData);
+        
+        if (isPyrano && row.uut_data != null && row.standard_data > 0 && row.uut_data > 0) {
+            // PYRANOMETER: koreksi = (Std/UUT - 1) × 100%
+            const cf = (row.standard_data / row.uut_data - 1) * 100;
+            return { value: cf, hasData: true };
+        }
+        
+        // BIASA: Gunakan correctionMap
+        if (!row.sensor_id_std) return { value: 0, hasData: false };
         const key = `${row.sensor_id_std}:${row.standard_data}`;
         const hasData = correctionMap.has(key);
         return { value: correctionMap.get(key) ?? 0, hasData };
@@ -319,34 +390,55 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
         const hasUutValue = row.uut_data != null;
         const hasStdValue = row.standard_data != null;
 
-        // Exact floating point math — NO rounding applied so display matches raw DB values
-        const rawStdCorrected = hasStdValue ? ((row.standard_data as number) + stdCorrection) : null;
+        // DETEKSI PYRANOMETER
+        const sensor = row.sensor_id_uut ? sensors.find((s: any) => s.id === row.sensor_id_uut) : null;
+        const pyrSensorData: PyranometerSensorData | null = sensor ? {
+            name: sensor.name,
+            type: sensor.type,
+        } : null;
+        const isPyrano = isPyranometer(pyrSensorData);
 
-        // Convert std_corrected to UUT unit when units differ
-        // e.g. STD in hPa, UUT in inHg → convert hPa→inHg before subtraction
-        const unitStd = row.unit_std || '';
-        // Fallback: if unit_uut is null in DB, resolve from UUT sensor's graduating_unit
-        let unitUut = row.unit_uut || '';
-        if (!unitUut && row.sensor_id_uut) {
-            const uutSensor = sensors.find((s: any) => s.id === row.sensor_id_uut);
-            unitUut = uutSensor?.graduating_unit || uutSensor?.range_capacity_unit || '';
+        let rawStdCorrected: number | null = null;
+        let stdCorrectedInUutUnit: number | null = null;
+        let rawUutCorrection: number | null = null;
+        let hasConversion = false;
+
+        if (isPyrano) {
+            // ═══════════════════════════════════════════════════════════
+            // PYRANOMETER: stdCorrection sudah dalam % (dari getStdCorrection)
+            // Tidak perlu hitung stdCorrected atau uutCorrection
+            // ═══════════════════════════════════════════════════════════
+            rawUutCorrection = stdCorrection; // Koreksi = CF-based correction (%)
+        } else {
+            // ═══════════════════════════════════════════════════════════
+            // BIASA: Hitung stdCorrected dan uutCorrection
+            // ═══════════════════════════════════════════════════════════
+            rawStdCorrected = hasStdValue ? ((row.standard_data as number) + stdCorrection) : null;
+
+            // Convert std_corrected to UUT unit when units differ
+            const unitStd = row.unit_std || '';
+            let unitUut = row.unit_uut || '';
+            if (!unitUut && row.sensor_id_uut) {
+                const uutSensor = sensors.find((s: any) => s.id === row.sensor_id_uut);
+                unitUut = uutSensor?.graduating_unit || uutSensor?.range_capacity_unit || '';
+            }
+            hasConversion = !!(unitStd && unitUut && needsConversion(unitStd, unitUut));
+            stdCorrectedInUutUnit = rawStdCorrected == null
+                ? null
+                : hasConversion
+                    ? convertUnit(rawStdCorrected, unitStd, unitUut)
+                    : rawStdCorrected;
+
+            rawUutCorrection = (stdCorrectedInUutUnit != null && hasUutValue)
+                ? (stdCorrectedInUutUnit - (row.uut_data as number))
+                : null;
         }
-        const hasConversion = unitStd && unitUut && needsConversion(unitStd, unitUut);
-        const stdCorrectedInUutUnit = rawStdCorrected == null
-            ? null
-            : hasConversion
-                ? convertUnit(rawStdCorrected, unitStd, unitUut)
-                : rawStdCorrected;
-
-        const rawUutCorrection = (stdCorrectedInUutUnit != null && hasUutValue)
-            ? (stdCorrectedInUutUnit - (row.uut_data as number))
-            : null;
 
         return {
-            stdCorrection,                                // raw value
-            stdCorrected: stdCorrectedInUutUnit,          // raw value (displayed in UUT unit)
-            stdCorrectedRaw: rawStdCorrected,             // raw value (original STD unit)
-            uutCorrection: rawUutCorrection,              // raw value
+            stdCorrection,                                // raw value (untuk pyranometer: %)
+            stdCorrected: stdCorrectedInUutUnit,          // raw value (null untuk pyranometer)
+            stdCorrectedRaw: rawStdCorrected,             // raw value (null untuk pyranometer)
+            uutCorrection: rawUutCorrection,              // raw value (untuk pyranometer: %)
             hasCertData,
             hasConversion,
             qc: rawUutCorrection == null
@@ -389,51 +481,132 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                 if (rowsForCalc.length === 0) continue;
                 const uutAvg = rowsForCalc.reduce((sum, r) => sum + (r.uut_data as number), 0) / rowsForCalc.length;
 
-                // Compute average correction from RAW (unrounded) per-row corrections
-                // PENTING: gunakan nilai raw, bukan yang sudah di-round3 di computeRowQC,
-                // supaya tidak ada double-rounding yang menggeser hasil akhir.
+                // ═══════════════════════════════════════════════════════════════
+                // DETEKSI PYRANOMETER (SEBELUM HITUNG KOREKSI)
+                // ═══════════════════════════════════════════════════════════════
+                const pyranometerSensorData: PyranometerSensorData | null = uutSensor ? {
+                    name: uutSensor.name,
+                    type: uutSensor.type,
+                    resolution: uutSensor.resolution ?? undefined,
+                    range_capacity: uutSensor.range_capacity
+                } : null;
+
+                const isPyranometerSensor = isPyranometer(pyranometerSensorData);
+                
+                // Compute average correction
                 let correctionAvg = 0;
-                if (correctionMap.size > 0) {
-                    const corrections = rowsForCalc.map(row => {
-                        if (row.standard_data == null) return null;
-                        const stdCorrection = row.sensor_id_std
-                            ? (correctionMap.get(`${row.sensor_id_std}:${row.standard_data}`) ?? 0)
-                            : 0;
-                        const rawStdCorrected = row.standard_data + stdCorrection;
-                        const unitStd = row.unit_std || '';
-                        let unitUut = row.unit_uut || '';
-                        if (!unitUut && row.sensor_id_uut) {
-                            const uutSensor = sensors.find((s: any) => s.id === row.sensor_id_uut);
-                            unitUut = uutSensor?.graduating_unit || uutSensor?.range_capacity_unit || '';
-                        }
-                        const stdCorrectedInUutUnit = (unitStd && unitUut && needsConversion(unitStd, unitUut))
-                            ? convertUnit(rawStdCorrected, unitStd, unitUut)
-                            : rawStdCorrected;
-                        return stdCorrectedInUutUnit - (row.uut_data as number);
+                
+                if (isPyranometerSensor && uutSensor) {
+                    // ═══════════════════════════════════════════════════════════
+                    // PYRANOMETER: Hitung koreksi per baris sebagai (Std/UUT - 1) × 100%
+                    // ═══════════════════════════════════════════════════════════
+                    console.log('[QCDataModal] PYRANOMETER DETECTED - Calculating CF-based correction');
+                    console.log('[QCDataModal] rowsForCalc count:', rowsForCalc.length);
+                    
+                    const cfPerRow = rowsForCalc.map((row, idx) => {
+                        const std = row.standard_data || 0;
+                        const uut = row.uut_data || 0;
+                        if (std <= 0 || uut <= 0) return null;
+                        const cf = (std / uut - 1) * 100;
+                        if (idx < 3) console.log(`[QCDataModal] Row ${idx}: std=${std}, uut=${uut}, CF=${cf.toFixed(4)}%`);
+                        return cf;
                     }).filter((v): v is number => v != null);
-                    if (corrections.length > 0) {
-                        correctionAvg = corrections.reduce((sum, c) => sum + c, 0) / corrections.length;
+                    
+                    if (cfPerRow.length > 0) {
+                        correctionAvg = cfPerRow.reduce((sum, c) => sum + c, 0) / cfPerRow.length;
+                        console.log('[QCDataModal] correctionAvg (pyranometer):', correctionAvg.toFixed(4) + '%');
+                    } else {
+                        console.log('[QCDataModal] WARNING: No valid CF data found!');
+                    }
+                } else {
+                    // ═══════════════════════════════════════════════════════════
+                    // BIASA: Hitung koreksi dari correctionMap (interpolasi)
+                    // ═══════════════════════════════════════════════════════════
+                    if (correctionMap.size > 0) {
+                        const corrections = rowsForCalc.map(row => {
+                            if (row.standard_data == null) return null;
+                            const stdCorrection = row.sensor_id_std
+                                ? (correctionMap.get(`${row.sensor_id_std}:${row.standard_data}`) ?? 0)
+                                : 0;
+                            const rawStdCorrected = row.standard_data + stdCorrection;
+                            const unitStd = row.unit_std || '';
+                            let unitUut = row.unit_uut || '';
+                            if (!unitUut && row.sensor_id_uut) {
+                                const uutSensor = sensors.find((s: any) => s.id === row.sensor_id_uut);
+                                unitUut = uutSensor?.graduating_unit || uutSensor?.range_capacity_unit || '';
+                            }
+                            const stdCorrectedInUutUnit = (unitStd && unitUut && needsConversion(unitStd, unitUut))
+                                ? convertUnit(rawStdCorrected, unitStd, unitUut)
+                                : rawStdCorrected;
+                            return stdCorrectedInUutUnit - (row.uut_data as number);
+                        }).filter((v): v is number => v != null);
+                        if (corrections.length > 0) {
+                            correctionAvg = corrections.reduce((sum, c) => sum + c, 0) / corrections.length;
+                        }
                     }
                 }
 
-                // Get uncertainty from calculateCalibrationResult
-                const isAnalog = (instruments.find(i => i.id === certificateInstrumentId)?.instrument_type_id ?? 1) === 2;
-                const { uncertainty } = calculateCalibrationResult({
-                    currentData: groupData,
-                    uutSensor,
-                    standardCertRecord,
-                    isAnalog
+                // Hitung uncertainty
+                let uncertainty: number;
+                let displayUutAvg = uutAvg;
+                let displayCorrection = correctionAvg;
+                
+                if (isPyranometerSensor && uutSensor) {
+                    // PYRANOMETER: Hitung CF (rasio) dalam %
+                    const stdReadings = rowsForCalc.map(r => r.standard_data || 0);
+                    const uutReadingsForCF = rowsForCalc.map(r => r.uut_data || 0);
+                    
+                    const cfResult = calculateCalibrationFactor(stdReadings, uutReadingsForCF);
+                    
+                    const range = parseFloat(uutSensor.range_capacity || '2000') || 2000;
+                    const interpolatedU95 = standardCertRecord?.u95_general || 2.1;
+                    
+                    const pyrResult = calculatePyranometerUncertainty({
+                        cf_result: cfResult,
+                        certU95_percent: interpolatedU95,
+                        resolutionStd: standardCertRecord?.resolution || 0.01,
+                        resolutionUut: uutSensor.resolution || 0.1,
+                        range: range,
+                        sensorType: uutSensor.type || uutSensor.name || ''
+                    });
+                    
+                    // Untuk pyranometer: tampilkan CF sebagai "penunjukan alat"
+                    uncertainty = pyrResult.u95_percent;
+                    displayUutAvg = cfResult.cf_final; // CF_final
+                    displayCorrection = pyrResult.certificate.correction_percent; // Koreksi dalam %
+                } else {
+                    // BIASA: Gunakan perhitungan standar (selisih absolut)
+                    const isAnalog = (instruments.find(i => i.id === certificateInstrumentId)?.instrument_type_id ?? 1) === 2;
+                    const result = calculateCalibrationResult({
+                        currentData: groupData,
+                        uutSensor,
+                        standardCertRecord,
+                        isAnalog
+                    });
+                    uncertainty = result.uncertainty;
+                }
+
+                // DEBUG: Log final values
+                console.log('[QCDataModal] Final values for sensor', sensorId, ':', {
+                    isPyranometerSensor,
+                    correctionAvg: correctionAvg.toFixed(4),
+                    displayCorrection: displayCorrection.toFixed(4),
+                    uncertainty: uncertainty.toFixed(4),
+                    displayUutAvg: displayUutAvg.toFixed(4)
                 });
 
                 // Format as standard table structure
-                const round4 = (n: number) => Math.round((n + Number.EPSILON) * 10000) / 10000;
+                // PENTING: Jangan bulatkan di tahap ini — pertahankan presisi penuh.
+                // Pembulatan hanya dilakukan di layer display (UI), bukan di data yang disimpan.
                 const newTable = [{
-                    title: 'Hasil Kalibrasi / Calibration Result',
-                    headers: ['Penunjukan Alat / Instrument Reading', 'Koreksi / Correction', 'Ketidakpastian / Uncertainty'],
+                    title: isPyranometerSensor ? 'Hasil Kalibrasi Pyranometer / Pyranometer Calibration Result' : 'Hasil Kalibrasi / Calibration Result',
+                    headers: isPyranometerSensor 
+                        ? ['Faktor Kalibrasi / Calibration Factor', 'Koreksi (%) / Correction (%)', 'Ketidakpastian (%) / Uncertainty (%)']
+                        : ['Penunjukan Alat / Instrument Reading', 'Koreksi / Correction', 'Ketidakpastian / Uncertainty'],
                     rows: [{
-                        key: String(round4(uutAvg)),
-                        unit: String(round4(correctionAvg)),
-                        value: String(round4(uncertainty)),
+                        key: String(displayUutAvg),
+                        unit: String(displayCorrection),
+                        value: String(uncertainty),
                         extraValues: []
                     }]
                 }];
@@ -484,6 +657,23 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                     </svg>
                                 )}
                             </button>
+                            {/* Download Excel button */}
+                            {currentData.length > 0 && (
+                                <button
+                                    onClick={handleDownloadExcel}
+                                    disabled={correctionLoading}
+                                    title="Download data QC sebagai file Excel"
+                                    className={`ml-1 p-1.5 rounded-full transition-all ${
+                                        correctionLoading
+                                            ? 'text-gray-400 cursor-wait'
+                                            : 'text-gray-500 hover:text-green-600 hover:bg-green-50'
+                                    }`}
+                                >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                </button>
+                            )}
                         </h3>
                         <p className="text-sm text-gray-500 mt-1">
                             Certificate: <span className="font-mono font-medium">{title}</span>
@@ -611,18 +801,39 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase w-10">No</th>
                                                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Timestamp</th>
                                                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Std Reading</th>
+                                                    {/* KOLOM FAKTOR KALIBRASI - KHUSUS PYRANOMETER */}
+                                                    {isPyranometer(currentSensorForPyranometer) && (
+                                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase bg-green-900/30">
+                                                            Faktor Kalibrasi
+                                                            <span className="text-[9px] block opacity-70 font-normal normal-case">Std/UUT</span>
+                                                        </th>
+                                                    )}
                                                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase bg-blue-900/30">
-                                                        Koreksi Std
-                                                        <span className="text-[9px] block opacity-70 font-normal normal-case">hitung_koreksi()</span>
+                                                        {isPyranometer(currentSensorForPyranometer) 
+                                                            ? 'Koreksi (%)' 
+                                                            : 'Koreksi Std'}
+                                                        <span className="text-[9px] block opacity-70 font-normal normal-case">
+                                                            {isPyranometer(currentSensorForPyranometer) 
+                                                                ? '(CF-1)×100%' 
+                                                                : 'hitung_koreksi()'}
+                                                        </span>
                                                     </th>
-                                                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase bg-blue-900/20">
-                                                        Std Terkoreksi
-                                                        <span className="text-[9px] block opacity-70 font-normal normal-case">std + koreksi</span>
-                                                    </th>
+                                                    {!isPyranometer(currentSensorForPyranometer) && (
+                                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase bg-blue-900/20">
+                                                            Std Terkoreksi
+                                                            <span className="text-[9px] block opacity-70 font-normal normal-case">std + koreksi</span>
+                                                        </th>
+                                                    )}
                                                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase">UUT Reading</th>
                                                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase">
-                                                        Koreksi UUT
-                                                        <span className="text-[9px] block opacity-70 font-normal normal-case">std_kor − uut</span>
+                                                        {isPyranometer(currentSensorForPyranometer) 
+                                                            ? 'Koreksi (%)' 
+                                                            : 'Koreksi UUT'}
+                                                        <span className="text-[9px] block opacity-70 font-normal normal-case">
+                                                            {isPyranometer(currentSensorForPyranometer) 
+                                                                ? '(CF-1)×100%' 
+                                                                : 'std_kor − uut'}
+                                                        </span>
                                                     </th>
                                                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Batas WMO</th>
                                                     <th className="px-4 py-3 text-center text-xs font-semibold uppercase w-20">Status</th>
@@ -632,6 +843,20 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                                 {currentData.length > 0 ? currentData.map((row, index) => {
                                                     const { stdCorrection, stdCorrected, uutCorrection, hasCertData, qc } = computeRowQC(row);
                                                     const isFail = uutCorrection != null && !qc.passed;
+                                                    
+                                                    // DETEKSI PYRANOMETER untuk hitung CF
+                                                    const sensor = row.sensor_id_uut ? sensors.find((s: any) => s.id === row.sensor_id_uut) : null;
+                                                    const pyrSensorData: PyranometerSensorData | null = sensor ? {
+                                                        name: sensor.name,
+                                                        type: sensor.type,
+                                                    } : null;
+                                                    const isPyrano = isPyranometer(pyrSensorData);
+                                                    
+                                                    // Hitung CF untuk pyranometer
+                                                    const cfValue = (isPyrano && row.standard_data != null && row.uut_data != null && row.standard_data > 0 && row.uut_data > 0)
+                                                        ? (row.standard_data / row.uut_data)
+                                                        : null;
+                                                    
                                                     return (
                                                         <tr key={`${row.id}-${index}`} className={`${isFail ? 'bg-pink-50 hover:bg-pink-100' : 'hover:bg-gray-50'} transition-colors`}>
                                                             <td className="px-4 py-2 text-xs text-gray-500 font-mono">{index + 1}</td>
@@ -646,26 +871,36 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                                                     </span>
                                                                 ) : <span className="text-gray-400 italic">-</span>}
                                                             </td>
+                                                            {/* KOLOM FAKTOR KALIBRASI - KHUSUS PYRANOMETER */}
+                                                            {isPyrano && (
+                                                                <td className="px-4 py-2 text-sm font-bold bg-green-50/50">
+                                                                    {cfValue != null ? (
+                                                                        <span className="text-green-700 font-mono">{cfValue.toFixed(4)}</span>
+                                                                    ) : <span className="text-gray-400 italic">-</span>}
+                                                                </td>
+                                                            )}
                                                             <td className="px-4 py-2 text-sm font-medium bg-blue-50/50">
                                                                 {correctionLoading
                                                                     ? <span className="text-gray-300 text-xs">...</span>
                                                                     : hasCertData
                                                                         ? (
                                                                             <span className="inline-flex items-center gap-1.5">
-                                                                                <span className="text-blue-700">{stdCorrection > 0 ? '+' : ''}{stdCorrection}</span>
-                                                                                <SigFigBadge value={stdCorrection} />
+                                                                                <span className="text-blue-700 font-mono">{stdCorrection > 0 ? '+' : ''}{stdCorrection.toFixed(4)}</span>
+                                                                                {!isPyrano && <SigFigBadge value={stdCorrection} />}
                                                                             </span>
                                                                         )
                                                                         : <span className="text-gray-400 text-[10px] italic">tidak ada</span>}
                                                             </td>
-                                                            <td className="px-4 py-2 text-sm font-bold text-blue-900 bg-blue-50/30">
-                                                                {stdCorrected != null ? (
-                                                                    <span className="inline-flex items-center gap-1.5">
-                                                                        <span>{stdCorrected}</span>
-                                                                        <SigFigBadge value={stdCorrected} />
-                                                                    </span>
-                                                                ) : row.standard_data != null ? <span className="text-gray-400 text-xs">= {row.standard_data}</span> : <span className="text-gray-400 italic">-</span>}
-                                                            </td>
+                                                            {!isPyrano && (
+                                                                <td className="px-4 py-2 text-sm font-bold text-blue-900 bg-blue-50/30">
+                                                                    {stdCorrected != null ? (
+                                                                        <span className="inline-flex items-center gap-1.5">
+                                                                            <span>{stdCorrected}</span>
+                                                                            <SigFigBadge value={stdCorrected} />
+                                                                        </span>
+                                                                    ) : row.standard_data != null ? <span className="text-gray-400 text-xs">= {row.standard_data}</span> : <span className="text-gray-400 italic">-</span>}
+                                                                </td>
+                                                            )}
                                                             <td className="px-4 py-2 text-sm font-medium text-gray-700">
                                                                 {row.uut_data != null ? (
                                                                     <span className="inline-flex items-center gap-1.5">
@@ -677,7 +912,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                                             <td className={`px-4 py-2 text-sm font-bold ${isFail ? 'text-red-600' : 'text-green-600'}`}>
                                                                 {uutCorrection != null ? (
                                                                     <span className="inline-flex items-center gap-1.5">
-                                                                        <span>{uutCorrection > 0 ? '+' : ''}{uutCorrection}</span>
+                                                                        <span>{uutCorrection > 0 ? '+' : ''}{uutCorrection.toFixed(4)}</span>
                                                                         <SigFigBadge value={uutCorrection} />
                                                                     </span>
                                                                 ) : <span className="text-gray-400 italic">-</span>}
@@ -692,7 +927,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                                     );
                                                 }) : (
                                                     <tr>
-                                                        <td colSpan={9} className="px-6 py-10 text-center text-gray-400 italic">
+                                                        <td colSpan={isPyranometer(currentSensorForPyranometer) ? 8 : 9} className="px-6 py-10 text-center text-gray-400 italic">
                                                             Tidak ada data untuk sensor ini.
                                                         </td>
                                                     </tr>

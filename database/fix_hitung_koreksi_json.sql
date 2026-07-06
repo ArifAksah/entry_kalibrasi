@@ -46,7 +46,16 @@ BEGIN
         RETURN CAST(corrections[1] AS DOUBLE PRECISION);
     END IF;
 
-    -- 4. Interpolasi Linear untuk > 1 Setpoint
+    -- 4. Clamp ke batas jika reading di luar range (sama dengan behavior Excel)
+    IF reading <= CAST(setpoints[1] AS DOUBLE PRECISION) THEN
+        RETURN CAST(corrections[1] AS DOUBLE PRECISION);
+    END IF;
+
+    IF reading >= CAST(setpoints[len] AS DOUBLE PRECISION) THEN
+        RETURN CAST(corrections[len] AS DOUBLE PRECISION);
+    END IF;
+
+    -- 5. Interpolasi Linear untuk > 1 Setpoint
     i := 1;
     -- Loop sampai len-1 karena kita butuh pasangan i dan i+1
     WHILE i < len LOOP

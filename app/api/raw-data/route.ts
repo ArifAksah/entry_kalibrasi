@@ -206,19 +206,37 @@ async function saveRawData(req: NextRequest, replaceExisting: boolean) {
             }, { status: 200 })
         }
 
-        const { data: insertedData, error } = await supabase
-            .from('raw_data')
-            .insert(rowsToInsert)
-            .select()
+        const BATCH_SIZE = 500
+        let insertedCount = 0
+        for (let i = 0; i < rowsToInsert.length; i += BATCH_SIZE) {
+            const batch = rowsToInsert.slice(i, i + BATCH_SIZE)
+            const { error } = await supabase
+                .from('raw_data')
+                .insert(batch)
 
-        if (error) throw error
+            if (error) {
+                console.error('[raw-data] Supabase INSERT error at batch', Math.floor(i / BATCH_SIZE), ':', JSON.stringify(error, null, 2))
+                throw error
+            }
+            insertedCount += batch.length
+            console.log(`[raw-data] batch ${Math.floor(i / BATCH_SIZE) + 1} inserted ${batch.length} rows (total: ${insertedCount}/${rowsToInsert.length})`)
+        }
 
-        return NextResponse.json({ message: `Successfully inserted ${rowsToInsert.length} rows`, data: insertedData })
+        return NextResponse.json({ message: `Successfully inserted ${insertedCount} rows` })
     } catch (error: any) {
-        console.error('Error saving raw data (FULL):', JSON.stringify(error, Object.getOwnPropertyNames(error)))
+        const errMessage = error?.message || String(error) || 'Unknown server error'
+        const errCode = error?.code || error?.statusCode || ''
+        const errDetails = error?.details || error?.hint || ''
+        console.error('[raw-data] Error saving raw data:', {
+            message: errMessage,
+            code: errCode,
+            details: errDetails,
+            fullError: JSON.stringify(error, null, 2)
+        })
         return NextResponse.json({
-            error: error.message || 'Unknown server error',
-            fullError: error
+            error: errMessage,
+            code: errCode,
+            details: errDetails,
         }, { status: 500 })
     }
 }

@@ -3,6 +3,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Certificate, Instrument, Sensor, Station, CertStandard } from '../../lib/supabase';
 import { fetchQCLimitForSensor, checkQCResult, QCLimit } from '../../lib/qc-utils';
 import { convertUnit, needsConversion, formatUnit } from '../../lib/unitConversion';
+import { isPyranometer, PyranometerSensorData } from '../../lib/uncertainty-utils';
 import bmkgLogo from '../../app/bmkg.png';
 import { SigFigBadge } from '../ui/SigFigBadge';
 
@@ -737,23 +738,55 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                             const hasUnitMismatch = rowUnitStd && rowUnitUut && needsConversion(rowUnitStd, rowUnitUut);
 
                             // Helper: get std_corrected converted to UUT unit (when mismatch)
+                            // PENTING: hitung dari raw values (standard_data + std_correction)
+                            // agar presisi penuh, JANGAN pakai row.std_corrected dari DB
+                            // karena bisa jadi sudah terbulatkan di tahap penyimpanan.
                             const getStdConverted = (row: typeof data[0]) => {
-                                const stdCorr = row.std_corrected ?? (row.standard_data + (row.std_correction ?? 0));
+                                const stdCorr = (row.standard_data ?? 0) + (row.std_correction ?? 0);
                                 if (!hasUnitMismatch) return stdCorr;
                                 return convertUnit(stdCorr, row.unit_std || rowUnitStd, row.unit_uut || rowUnitUut);
                             };
 
                             const avgStdCorrected = data.reduce((sum, row) => sum + getStdConverted(row), 0) / (totalRows || 1);
                             const avgUutData = data.reduce((sum, row) => sum + row.uut_data, 0) / (totalRows || 1);
-                            const avgCorrection = data.reduce((sum, row) => {
-                                return sum + (getStdConverted(row) - row.uut_data);
-                            }, 0) / (totalRows || 1);
-
-                            const varianceCorrection = data.reduce((sum, row) => {
-                                const corr = getStdConverted(row) - row.uut_data;
-                                return sum + Math.pow(corr - avgCorrection, 2);
-                            }, 0) / (totalRows - 1 || 1);
-                            const stdDevCorrection = Math.sqrt(varianceCorrection);
+                            
+                            // DETEKSI PYRANOMETER untuk perhitungan koreksi
+                            const pyrSensorDataForAvg: PyranometerSensorData | null = sensor ? {
+                                name: sensor.name,
+                                type: sensor.type,
+                            } : null;
+                            const isPyranoForAvg = isPyranometer(pyrSensorDataForAvg);
+                            
+                            let avgCorrection: number;
+                            let stdDevCorrection: number;
+                            
+                            if (isPyranoForAvg) {
+                                // PYRANOMETER: koreksi = (Std/UUT - 1) × 100%
+                                const corrections = data.map(row => {
+                                    if (row.standard_data <= 0 || row.uut_data <= 0) return null;
+                                    return (row.standard_data / row.uut_data - 1) * 100;
+                                }).filter((v): v is number => v !== null);
+                                
+                                avgCorrection = corrections.length > 0 
+                                    ? corrections.reduce((sum, c) => sum + c, 0) / corrections.length 
+                                    : 0;
+                                
+                                const variance = corrections.length > 1
+                                    ? corrections.reduce((sum, c) => sum + Math.pow(c - avgCorrection, 2), 0) / (corrections.length - 1)
+                                    : 0;
+                                stdDevCorrection = Math.sqrt(variance);
+                            } else {
+                                // BIASA: koreksi = Std - UUT
+                                avgCorrection = data.reduce((sum, row) => {
+                                    return sum + (getStdConverted(row) - row.uut_data);
+                                }, 0) / (totalRows || 1);
+                                
+                                const varianceCorrection = data.reduce((sum, row) => {
+                                    const corr = getStdConverted(row) - row.uut_data;
+                                    return sum + Math.pow(corr - avgCorrection, 2);
+                                }, 0) / (totalRows - 1 || 1);
+                                stdDevCorrection = Math.sqrt(varianceCorrection);
+                            }
 
                             // Lookup Standard Instrument details (stdSensorId and stdSensor resolved above)
                             const stdInstrument = allInstruments?.find(x => x.id === stdSensor?.instrument_id);
@@ -919,18 +952,37 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                 <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
                                                 <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
                                                 <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
-                                                <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
+                                                <th className="border border-black bg-gray-50 italic">
+                                                    {isPyranometer(sensor ? { name: sensor.name, type: sensor.type } : null) ? '%' : unitDisplay}
+                                                </th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {sampled.map((row, idx) => {
                                                 const stdCorrectionRaw = row.std_correction ?? 0;
-                                                const stdCorrectionStr = stdCorrectionRaw === 0 ? 'FALSE' : stdCorrectionRaw.toFixed(4).replace(/\.?0+$/, '');
+                                                const stdCorrectionStr = stdCorrectionRaw === 0 ? '0' : stdCorrectionRaw.toFixed(4).replace(/\.?0+$/, '');
                                                 const stdCorrected = row.std_corrected ?? (row.standard_data + stdCorrectionRaw);
 
                                                 // Convert UUT to std unit if mismatch, then compute koreksi
                                                 const stdConverted = getStdConverted(row);
-                                                const rawCorrection = stdConverted - row.uut_data;
+                                                
+                                                // DETEKSI PYRANOMETER
+                                                const pyrSensorData: PyranometerSensorData | null = sensor ? {
+                                                    name: sensor.name,
+                                                    type: sensor.type,
+                                                } : null;
+                                                const isPyrano = isPyranometer(pyrSensorData);
+                                                
+                                                // Hitung koreksi berdasarkan tipe sensor
+                                                let rawCorrection: number;
+                                                if (isPyrano && row.standard_data > 0 && row.uut_data > 0) {
+                                                    // PYRANOMETER: koreksi = (Std/UUT - 1) × 100%
+                                                    rawCorrection = (row.standard_data / row.uut_data - 1) * 100;
+                                                } else {
+                                                    // BIASA: koreksi = Std - UUT
+                                                    rawCorrection = stdConverted - row.uut_data;
+                                                }
+                                                
                                                 const qcResult = checkQCResult(rawCorrection, qcLimit);
                                                 const isFail = !qcResult.passed;
 
@@ -962,7 +1014,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                                 )}
                                                             </td>
                                                             <td className="border border-black px-1">
-                                                                {stdConverted.toFixed(3)}
+                                                                {stdConverted.toFixed(4)}
                                                                 {hasUnitMismatch && (
                                                                     <span className="text-[8px] text-gray-400 ml-0.5" title={`Dikonversi dari ${row.unit_std || rowUnitStd} ke ${row.unit_uut || rowUnitUut}`}>*</span>
                                                                 )}
@@ -973,7 +1025,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                                 <span className="print:hidden ml-1"><SigFigBadge value={row.uut_data} /></span>
                                                             </td>
                                                             <td className={`border border-black px-1 ${isFail ? 'text-red-600 font-bold' : ''}`}>
-                                                                {rawCorrection.toFixed(4).replace(/\.?0+$/, '') || '0'}
+                                                                {rawCorrection.toFixed(6).replace(/\.?0+$/, '') || '0'}
                                                                 <span className="print:hidden ml-1"><SigFigBadge value={rawCorrection} /></span>
                                                             </td>
                                                         </tr>
@@ -984,7 +1036,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                             <tr>
                                                 <td colSpan={3} className="border border-black text-left font-bold px-1 pl-2">Rata-Rata</td>
                                                 <td className="border border-black font-bold px-1">
-                                                    {avgStdCorrected.toFixed(3)}
+                                                    {avgStdCorrected.toFixed(4)}
                                                     <span className="print:hidden ml-1"><SigFigBadge value={avgStdCorrected} /></span>
                                                 </td>
                                                 <td className="border border-black font-bold px-1">
@@ -992,7 +1044,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                     <span className="print:hidden ml-1"><SigFigBadge value={avgUutData} /></span>
                                                 </td>
                                                 <td className="border border-black font-bold px-1">
-                                                    {avgCorrection.toFixed(4).replace(/\.?0+$/, '') || '0'}
+                                                    {avgCorrection.toFixed(6).replace(/\.?0+$/, '') || '0'}
                                                     <span className="print:hidden ml-1"><SigFigBadge value={avgCorrection} /></span>
                                                 </td>
                                             </tr>
@@ -1000,7 +1052,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                             <tr>
                                                 <td colSpan={5} className="border border-black text-left font-bold px-1 pl-2">Standar Deviasi</td>
                                                 <td className="border border-black px-1">
-                                                    {stdDevCorrection.toFixed(4).replace(/\.?0+$/, '') || '0'}
+                                                    {stdDevCorrection.toFixed(6).replace(/\.?0+$/, '') || '0'}
                                                     <span className="print:hidden ml-1"><SigFigBadge value={stdDevCorrection} /></span>
                                                 </td>
                                             </tr>

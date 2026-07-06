@@ -36,8 +36,9 @@ export const checkWMOLimit = (
 ): QCResult => {
     // 1. Calculate Correction
     // Correction = Standard - UUT (User requirement)
-    // Ensure we handle floating point precision issues roughly
-    const correction = Number((standardValue - uutValue).toFixed(3));
+    // PENTING: Jangan bulatkan di tahap perhitungan — pertahankan presisi penuh.
+    // Pembulatan hanya boleh dilakukan di layer display (UI), bukan di logic.
+    const correction = standardValue - uutValue;
     const absCorrection = Math.abs(correction);
 
     let limit = 0;
@@ -93,7 +94,7 @@ export const checkWMOLimit = (
 
     return {
         correction,
-        limit: Number(limit.toFixed(2)),
+        limit,
         passed
     };
 };

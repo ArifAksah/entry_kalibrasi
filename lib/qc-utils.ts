@@ -262,7 +262,7 @@ export function checkQCResult(correction: number, limit: QCLimit | null): {
 
     return {
         passed,
-        correction: Number(correction.toFixed(4)),
+        correction,
         limit: limitValue,
         limitStr: limit ? `± ${limit.rawLimit} ${limit.unit}`.replace(/± ±/, '±').trim() : 'N/A',
         instrumentName: limit?.instrumentName ?? 'Unknown',

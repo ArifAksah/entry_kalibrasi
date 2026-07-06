@@ -339,3 +339,459 @@ export function calculateCalibrationResult(params: {
         uncertainty: result.expanded_uncert_u95
     };
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PYRANOMETER CALIBRATION - TERPISAH, TIDAK MEMPENGARUHI KODE EXISTING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Konfigurasi khusus pyranometer
+ * Berdasarkan ISO 9060:2018 dan standar kalibrasi BMKG
+ */
+export const PYRANOMETER_CONFIG = {
+    // Keywords untuk deteksi pyranometer
+    KEYWORDS: [
+        'pyranometer', 'pyrheliometer', 'radiation', 'solar',
+        'global', 'diffuse', 'net radiometer', 'uv-a', 'uv-b',
+        'sunshine duration', 'cmp22', 'cmp21', 'cmp11', 'cmp10',
+        'cmp6', 'cmp3', 'splite2', 'qms102', 'qms101',
+        'ms-802', 'ms-80', 'eko'
+    ],
+    
+    // High confidence keywords (langsung return true)
+    HIGH_CONFIDENCE_KEYWORDS: [
+        'pyranometer', 'pyrheliometer', 'net radiometer',
+        'cmp22', 'cmp21', 'cmp11', 'cmp10',
+        'cmp6', 'cmp3', 'ms-802', 'ms-80'
+    ],
+    
+    // instrument_code untuk solar radiation
+    RADIATION_CODES: ['SR'],
+    
+    // ISO 9060:2018 Drift Classification (%)
+    ISO_DRIFT: {
+        'A': 0.8,   // CMP22, CMP21, CMP11, CMP10
+        'B': 1.5,   // CMP6
+        'C': 3.0,   // CMP3, SPLite2, QMS102, QMS101
+    } as Record<string, number>,
+    
+    // Default range jika tidak ada (W/m²)
+    DEFAULT_RANGE: 2000,
+    
+    // Minimal data untuk perhitungan
+    MIN_READINGS: 3,
+    
+    // Default outlier threshold (standar deviasi)
+    DEFAULT_OUTLIER_THRESHOLD: 2,
+    
+    // Default coverage factor (veff ≈ 50, 95% CL)
+    DEFAULT_K_FACTOR: 2.01,
+};
+
+/**
+ * Interface untuk data sensor pyranometer
+ */
+export interface PyranometerSensorData {
+    name?: string;
+    type?: string;
+    instrument_code?: string;
+    resolution?: number;
+    range_capacity?: string;
+    sensor_name_id?: number;
+}
+
+/**
+ * Interface untuk hasil perhitungan Faktor Kalibrasi (CF)
+ */
+export interface CalibrationFactorResult {
+    cf_i: number[];
+    cf_final: number;
+    n_total: number;
+    n_filtered: number;
+    outlier_indices: number[];
+    std_dev: number;
+}
+
+/**
+ * Interface untuk komponen uncertainty pyranometer
+ */
+export interface PyranometerUncertaintyComponent {
+    name: string;
+    value_percent: number;
+    u_percent: number;
+    distribution: 'Normal' | 'Rectangular';
+    divisor: number;
+}
+
+/**
+ * Interface untuk hasil uncertainty pyranometer
+ */
+export interface PyranometerUncertaintyResult {
+    cf_result: CalibrationFactorResult;
+    components: PyranometerUncertaintyComponent[];
+    uc_percent: number;
+    u95_percent: number;
+    k_factor: number;
+    certificate: {
+        calibration_factor: number;
+        correction_percent: number;
+        uncertainty_percent: number;
+    };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FUNGSI DETEKSI PYRANOMETER
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Deteksi apakah sensor adalah pyranometer
+ * Kombinasi: instrument_code = 'SR' + keyword matching
+ * 
+ * SAFEGUARD:
+ * - Hanya return true jika KONFIDEN sensor adalah pyranometer
+ * - Jika ragu, return false (fallback ke metode lama)
+ */
+export function isPyranometer(sensor: PyranometerSensorData | null | undefined): boolean {
+    // SAFEGUARD 1: Sensor harus ada
+    if (!sensor) return false;
+    
+    // SAFEGUARD 2: Cek instrument_code (paling konfiden)
+    if (sensor.instrument_code) {
+        const code = sensor.instrument_code.toUpperCase().trim();
+        if (PYRANOMETER_CONFIG.RADIATION_CODES.includes(code)) {
+            return true;
+        }
+    }
+    
+    // SAFEGUARD 3: Cek keyword spesifik (tinggi)
+    const nameText = (sensor.name || '').toLowerCase();
+    const typeText = (sensor.type || '').toLowerCase();
+    const combinedText = `${nameText} ${typeText}`;
+    
+    const hasHighConfidence = PYRANOMETER_CONFIG.HIGH_CONFIDENCE_KEYWORDS.some(kw => 
+        combinedText.includes(kw)
+    );
+    
+    if (hasHighConfidence) return true;
+    
+    // SAFEGUARD 4: Keyword umum perlu kombinasi
+    const mediumKeywords = ['radiation', 'solar', 'global', 'diffuse'];
+    const hasMedium = mediumKeywords.some(kw => combinedText.includes(kw));
+    
+    if (hasMedium) {
+        const contextKeywords = ['w/m', 'wm', 'irradiance', 'radiometer'];
+        const hasContext = contextKeywords.some(kw => combinedText.includes(kw));
+        if (hasContext) return true;
+    }
+    
+    // SAFEGUARD 5: Default ke false (aman)
+    return false;
+}
+
+/**
+ * Mendapatkan ISO 9060:2018 Class dari tipe sensor
+ * Return null jika tidak diketahui
+ */
+export function getISO9060Class(sensorType: string): 'A' | 'B' | 'C' | null {
+    const type = (sensorType || '').toUpperCase();
+    
+    if (['CMP22', 'CMP21', 'CMP11', 'CMP10'].some(t => type.includes(t))) {
+        return 'A';
+    }
+    if (type.includes('CMP6')) {
+        return 'B';
+    }
+    if (['CMP3', 'SPLITE2', 'QMS102', 'QMS101'].some(t => type.includes(t))) {
+        return 'C';
+    }
+    
+    return null;
+}
+
+/**
+ * Mendapatkan drift value berdasarkan ISO 9060:2018
+ * Return 0 jika tidak diketahui
+ */
+export function getISO9060Drift(sensorType: string): number {
+    const isoClass = getISO9060Class(sensorType);
+    if (!isoClass) return 0;
+    return PYRANOMETER_CONFIG.ISO_DRIFT[isoClass];
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FUNGSI PERHITUNGAN FAKTOR KALIBRASI (CF)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Membuat empty CF result (untuk error handling)
+ */
+function createEmptyCFResult(): CalibrationFactorResult {
+    return {
+        cf_i: [],
+        cf_final: 0,
+        n_total: 0,
+        n_filtered: 0,
+        outlier_indices: [],
+        std_dev: 0
+    };
+}
+
+/**
+ * Hitung Faktor Kalibrasi (CF) untuk pyranometer
+ * CF_i = Std_i / UUT_i
+ * CF_final = avg(CF_i) setelah filter outlier
+ * 
+ * SAFEGUARD:
+ * - Validasi input sebelum hitung
+ * - Handle division by zero
+ * - Filter outlier otomatis
+ * - Return empty result jika data tidak valid
+ */
+export function calculateCalibrationFactor(
+    stdReadings: number[],
+    uutReadings: number[],
+    options: {
+        outlierThreshold?: number;
+        minReadings?: number;
+    } = {}
+): CalibrationFactorResult {
+    const { 
+        outlierThreshold = PYRANOMETER_CONFIG.DEFAULT_OUTLIER_THRESHOLD, 
+        minReadings = PYRANOMETER_CONFIG.MIN_READINGS 
+    } = options;
+    
+    // SAFEGUARD 1: Validasi input
+    if (!stdReadings || !uutReadings) {
+        return createEmptyCFResult();
+    }
+    
+    if (stdReadings.length !== uutReadings.length) {
+        return createEmptyCFResult();
+    }
+    
+    if (stdReadings.length < minReadings) {
+        return createEmptyCFResult();
+    }
+    
+    // SAFEGUARD 2: Filter data valid
+    const validPairs: { std: number; uut: number }[] = [];
+    for (let i = 0; i < stdReadings.length; i++) {
+        const std = stdReadings[i];
+        const uut = uutReadings[i];
+        
+        // Skip data tidak valid
+        if (std == null || uut == null) continue;
+        if (!isFinite(std) || !isFinite(uut)) continue;
+        if (std <= 0 || uut <= 0) continue;
+        
+        validPairs.push({ std, uut });
+    }
+    
+    if (validPairs.length < minReadings) {
+        return createEmptyCFResult();
+    }
+    
+    // Hitung CF_i
+    const cf_i = validPairs.map(p => p.std / p.uut);
+    const n = cf_i.length;
+    
+    // Hitung statistik
+    const mean = cf_i.reduce((a, b) => a + b, 0) / n;
+    const variance = cf_i.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (n - 1);
+    const sd = Math.sqrt(variance);
+    
+    // SAFEGUARD 3: Filter outlier
+    const lowerBound = mean - outlierThreshold * sd;
+    const upperBound = mean + outlierThreshold * sd;
+    
+    const outlierIndices: number[] = [];
+    const filteredCF: number[] = [];
+    
+    cf_i.forEach((cf, idx) => {
+        if (cf >= lowerBound && cf <= upperBound) {
+            filteredCF.push(cf);
+        } else {
+            outlierIndices.push(idx);
+        }
+    });
+    
+    // SAFEGUARD 4: Pastikan cukup data setelah filter
+    if (filteredCF.length < minReadings) {
+        // Jika terlalu banyak outlier, gunakan semua data
+        return {
+            cf_i,
+            cf_final: mean,
+            n_total: n,
+            n_filtered: n,
+            outlier_indices: [],
+            std_dev: sd
+        };
+    }
+    
+    // Hitung CF_final dari data bersih
+    const cfFinal = filteredCF.reduce((a, b) => a + b, 0) / filteredCF.length;
+    const filteredVariance = filteredCF.reduce((a, b) => a + Math.pow(b - cfFinal, 2), 0) / (filteredCF.length - 1);
+    const filteredSD = Math.sqrt(filteredVariance);
+    
+    return {
+        cf_i,
+        cf_final: cfFinal,
+        n_total: n,
+        n_filtered: filteredCF.length,
+        outlier_indices: outlierIndices,
+        std_dev: filteredSD
+    };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FUNGSI UNCERTAINTY PYRANOMETER
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Membuat empty pyranometer result (untuk error handling)
+ */
+function createEmptyPyranometerResult(): PyranometerUncertaintyResult {
+    return {
+        cf_result: createEmptyCFResult(),
+        components: [],
+        uc_percent: 0,
+        u95_percent: 0,
+        k_factor: PYRANOMETER_CONFIG.DEFAULT_K_FACTOR,
+        certificate: {
+            calibration_factor: 0,
+            correction_percent: 0,
+            uncertainty_percent: 0
+        }
+    };
+}
+
+/**
+ * Hitung uncertainty budget untuk pyranometer (dalam %)
+ * 
+ * Komponen:
+ * 1. Repeat (%) - dari std dev CF
+ * 2. Sertifikat Std (%) - dari sertifikat kalibrasi standar
+ * 3. Resolusi Std (%) - dari range alat
+ * 4. Drift Std (%) - dari ISO 9060:2018
+ * 5. Resolusi UUT (%) - dari range alat
+ * 
+ * SAFEGUARD:
+ * - Fungsi TERPISAH dari calculateUncertaintyBudget()
+ * - Tidak mengubah apapun di sistem existing
+ */
+export function calculatePyranometerUncertainty(params: {
+    cf_result: CalibrationFactorResult;
+    certU95_percent: number;
+    resolutionStd: number;
+    resolutionUut: number;
+    range: number;
+    sensorType: string;
+}): PyranometerUncertaintyResult {
+    const { cf_result, certU95_percent, resolutionStd, resolutionUut, range, sensorType } = params;
+    
+    // SAFEGUARD: Validasi CF result
+    if (cf_result.n_filtered === 0 || cf_result.cf_final === 0) {
+        return createEmptyPyranometerResult();
+    }
+    
+    // 1. Repeat (dalam %)
+    const repeatPercent = (cf_result.std_dev / cf_result.cf_final) * 100;
+    const u_repeat = repeatPercent / Math.sqrt(cf_result.n_filtered);
+    
+    // 2. Sertifikat Std (dalam %)
+    const certStdPercent = certU95_percent;
+    const u_cert = certStdPercent / 2;
+    
+    // 3. Resolusi Std (dalam %)
+    const effectiveRange = range > 0 ? range : PYRANOMETER_CONFIG.DEFAULT_RANGE;
+    const resStdPercent = (resolutionStd / effectiveRange) * 100;
+    const u_res_std = resStdPercent / Math.sqrt(3);
+    
+    // 4. Drift Std (dalam %, dari ISO 9060:2018)
+    const driftPercent = getISO9060Drift(sensorType);
+    const u_drift = driftPercent / Math.sqrt(3);
+    
+    // 5. Resolusi UUT (dalam %)
+    const resUutPercent = (resolutionUut / effectiveRange) * 100;
+    const u_res_uut = resUutPercent / Math.sqrt(3);
+    
+    // Components array
+    const components: PyranometerUncertaintyComponent[] = [
+        { name: 'Repeat', value_percent: repeatPercent, u_percent: u_repeat, distribution: 'Normal', divisor: Math.sqrt(cf_result.n_filtered) },
+        { name: 'Sertifikat Std', value_percent: certStdPercent, u_percent: u_cert, distribution: 'Normal', divisor: 2 },
+        { name: 'Resolusi Std', value_percent: resStdPercent, u_percent: u_res_std, distribution: 'Rectangular', divisor: Math.sqrt(3) },
+        { name: 'Drift Std', value_percent: driftPercent, u_percent: u_drift, distribution: 'Rectangular', divisor: Math.sqrt(3) },
+        { name: 'Resolusi UUT', value_percent: resUutPercent, u_percent: u_res_uut, distribution: 'Rectangular', divisor: Math.sqrt(3) },
+    ];
+    
+    // Combined uncertainty
+    const sumSq = components.reduce((a, c) => a + Math.pow(c.u_percent, 2), 0);
+    const uc = Math.sqrt(sumSq);
+    
+    // Coverage factor
+    const k = PYRANOMETER_CONFIG.DEFAULT_K_FACTOR;
+    const u95 = k * uc;
+    
+    return {
+        cf_result,
+        components,
+        uc_percent: uc,
+        u95_percent: u95,
+        k_factor: k,
+        certificate: {
+            calibration_factor: cf_result.cf_final,
+            correction_percent: (1 - cf_result.cf_final) * 100,
+            uncertainty_percent: u95
+        }
+    };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// WRAPPER FUNCTION UNTUK SERTIFIKAT PYRANOMETER
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Hitung hasil kalibrasi pyranometer untuk sertifikat
+ * 
+ * SAFEGUARD:
+ * - Fungsi TERPISAH, tidak mempengaruhi calculateCalibrationResult()
+ * - Return null jika input tidak valid (caller bisa fallback ke metode lama)
+ */
+export function calculatePyranometerCertificate(params: {
+    stdReadings: number[];
+    uutReadings: number[];
+    certU95_percent: number;
+    resolutionStd: number;
+    resolutionUut: number;
+    range: number;
+    sensorType: string;
+    outlierThreshold?: number;
+}): PyranometerUncertaintyResult | null {
+    const { stdReadings, uutReadings, outlierThreshold, ...rest } = params;
+    
+    // SAFEGUARD: Validasi input
+    if (!stdReadings?.length || !uutReadings?.length) {
+        return null;
+    }
+    
+    if (stdReadings.length !== uutReadings.length) {
+        return null;
+    }
+    
+    // Hitung CF
+    const cf_result = calculateCalibrationFactor(stdReadings, uutReadings, {
+        outlierThreshold,
+        minReadings: PYRANOMETER_CONFIG.MIN_READINGS
+    });
+    
+    if (cf_result.n_filtered === 0) {
+        return null;
+    }
+    
+    // Hitung uncertainty
+    return calculatePyranometerUncertainty({
+        cf_result,
+        ...rest
+    });
+}

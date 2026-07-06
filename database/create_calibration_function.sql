@@ -53,13 +53,16 @@ BEGIN
         RETURN corrections[1];
     END IF;
 
-    -- 2. Find bounding segment for linear interpolation
-    -- Default to first segment (handles reading < min setpoint)
-    x1 := setpoints[1];
-    x2 := setpoints[2];
-    y1 := corrections[1];
-    y2 := corrections[2];
+    -- 2. Clamp to boundary values if reading is outside range (Excel behavior)
+    IF reading <= setpoints[1] THEN
+        RETURN corrections[1];
+    END IF;
 
+    IF reading >= setpoints[len] THEN
+        RETURN corrections[len];
+    END IF;
+
+    -- 3. Find bounding segment for linear interpolation
     i := 1;
     WHILE i < len LOOP
         x1 := setpoints[i];

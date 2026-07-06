@@ -17,7 +17,11 @@ import { read, utils } from 'xlsx'
 import QCDataModal from '../../../components/features/QCDataModal'
 import UncertaintyModal from '../../../components/features/UncertaintyModal'
 import LHKSReport from '../../../components/features/LHKSReport'
-import { calculateCalibrationResult } from '../../../lib/uncertainty-utils'
+import { 
+  calculateCalibrationResult,
+  isPyranometer, calculateCalibrationFactor, calculatePyranometerUncertainty,
+  PyranometerSensorData
+} from '../../../lib/uncertainty-utils'
 import DateRangePicker from '../../../components/ui/DateRangePicker'
 import RichTextEditor from '../../../components/ui/RichTextEditor'
 import { DEFAULT_NOTES_OTHERS_HTML } from '../../../lib/rich-text'
@@ -1012,25 +1016,70 @@ type ResultItem = {
       const uutInstrument = instruments.find(i => i.id === form.instrument);
       const isAnalog = (uutInstrument?.instrument_type_id ?? 1) === 2;
 
-      // Calculate Results
-      const { uutAvg, correction, uncertainty } = calculateCalibrationResult({
-        currentData,
-        uutSensor: activeUutSensor,
-        standardCertRecord: standardCertRecord,
-        isAnalog
-      });
+      // ═══════════════════════════════════════════════════════════════
+      // DETEKSI PYRANOMETER & HITUNG
+      // ═══════════════════════════════════════════════════════════════
+      const pyranometerSensorData: PyranometerSensorData | null = activeUutSensor ? {
+        name: activeUutSensor.name,
+        type: activeUutSensor.type,
+        resolution: activeUutSensor.resolution ?? undefined,
+        range_capacity: activeUutSensor.range_capacity
+      } : null;
+
+      const isPyranometerSensor = isPyranometer(pyranometerSensorData);
+
+      let uutAvg: number;
+      let correction: number;
+      let uncertainty: number;
+      let headers: string[];
+
+      if (isPyranometerSensor && activeUutSensor) {
+        // PYRANOMETER: Hitung CF (rasio) dalam %
+        const stdReadings = currentData.map((row: any) => row.standard_data || 0);
+        const uutReadingsForCF = currentData.map((row: any) => row.uut_data || 0);
+        
+        const cfResult = calculateCalibrationFactor(stdReadings, uutReadingsForCF);
+        
+        const range = parseFloat(activeUutSensor.range_capacity || '2000') || 2000;
+        const interpolatedU95 = standardCertRecord?.u95_general || 2.1;
+        
+        const pyrResult = calculatePyranometerUncertainty({
+          cf_result: cfResult,
+          certU95_percent: interpolatedU95,
+          resolutionStd: standardCertRecord?.resolution || 0.01,
+          resolutionUut: activeUutSensor.resolution || 0.1,
+          range: range,
+          sensorType: activeUutSensor.type || activeUutSensor.name || ''
+        });
+        
+        uutAvg = cfResult.cf_final; // CF_final
+        correction = pyrResult.certificate.correction_percent; // Koreksi dalam %
+        uncertainty = pyrResult.u95_percent; // U95 dalam %
+        headers = ['Faktor Kalibrasi', 'Koreksi (%)', 'Ketidakpastian (%)'];
+      } else {
+        // BIASA: Gunakan perhitungan standar (selisih absolut)
+        const result = calculateCalibrationResult({
+          currentData,
+          uutSensor: activeUutSensor,
+          standardCertRecord: standardCertRecord,
+          isAnalog
+        });
+        uutAvg = result.uutAvg;
+        correction = result.correction;
+        uncertainty = result.uncertainty;
+        headers = ['Penunjukan Alat', 'Koreksi', 'Ketidakpastian'];
+      }
 
       // Update Table Draft
       const v = [...tableDraft];
       if (!v[sectionIndex]) return;
 
-      // Default Standard Format
-      v[sectionIndex].headers = ['Penunjukan Alat', 'Koreksi', 'Ketidakpastian'];
+      v[sectionIndex].headers = headers;
       
       const newRow = {
-        key: uutAvg.toFixed(2),
-        unit: correction.toFixed(4),
-        value: uncertainty.toFixed(4),
+        key: uutAvg.toFixed(isPyranometerSensor ? 4 : 2),
+        unit: correction.toFixed(isPyranometerSensor ? 2 : 4),
+        value: uncertainty.toFixed(isPyranometerSensor ? 2 : 4),
         extraValues: []
       };
 
