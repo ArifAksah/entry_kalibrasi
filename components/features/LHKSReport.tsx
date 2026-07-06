@@ -1025,7 +1025,10 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                                 <span className="print:hidden ml-1"><SigFigBadge value={row.uut_data} /></span>
                                                             </td>
                                                             <td className={`border border-black px-1 ${isFail ? 'text-red-600 font-bold' : ''}`}>
-                                                                {rawCorrection.toFixed(6).replace(/\.?0+$/, '') || '0'}
+                                                                {isPyrano 
+                                                                    ? rawCorrection.toFixed(2)
+                                                                    : rawCorrection.toFixed(6).replace(/\.?0+$/, '') || '0'
+                                                                }
                                                                 <span className="print:hidden ml-1"><SigFigBadge value={rawCorrection} /></span>
                                                             </td>
                                                         </tr>
@@ -1044,7 +1047,10 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                     <span className="print:hidden ml-1"><SigFigBadge value={avgUutData} /></span>
                                                 </td>
                                                 <td className="border border-black font-bold px-1">
-                                                    {avgCorrection.toFixed(6).replace(/\.?0+$/, '') || '0'}
+                                                    {isPyranoForAvg 
+                                                        ? avgCorrection.toFixed(2)
+                                                        : avgCorrection.toFixed(6).replace(/\.?0+$/, '') || '0'
+                                                    }
                                                     <span className="print:hidden ml-1"><SigFigBadge value={avgCorrection} /></span>
                                                 </td>
                                             </tr>
@@ -1052,7 +1058,10 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                             <tr>
                                                 <td colSpan={5} className="border border-black text-left font-bold px-1 pl-2">Standar Deviasi</td>
                                                 <td className="border border-black px-1">
-                                                    {stdDevCorrection.toFixed(6).replace(/\.?0+$/, '') || '0'}
+                                                    {isPyranoForAvg 
+                                                        ? stdDevCorrection.toFixed(2)
+                                                        : stdDevCorrection.toFixed(6).replace(/\.?0+$/, '') || '0'
+                                                    }
                                                     <span className="print:hidden ml-1"><SigFigBadge value={stdDevCorrection} /></span>
                                                 </td>
                                             </tr>

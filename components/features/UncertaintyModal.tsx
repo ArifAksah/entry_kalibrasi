@@ -512,7 +512,7 @@ function UncertaintyContent({
                         <div className="grid grid-cols-3 gap-4 text-sm">
                             <div>
                                 <span className="text-gray-600">Faktor Kalibrasi (CF):</span>
-                                <span className="ml-2 font-bold">{pyranometerResult.cf_result.cf_final.toFixed(4)}</span>
+                                <span className="ml-2 font-bold">{pyranometerResult.cf_result.cf_final.toFixed(2)}</span>
                             </div>
                             <div>
                                 <span className="text-gray-600">Koreksi:</span>

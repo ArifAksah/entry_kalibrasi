@@ -747,7 +747,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                             <div className="flex-1 overflow-hidden flex flex-col p-6">
                                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">
                                     {/* Stats row */}
-                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 border-b border-gray-100 shrink-0">
+                                    <div className={`grid gap-3 p-4 border-b border-gray-100 shrink-0 ${isPyranometer(currentSensorForPyranometer) ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-5'}`}>
                                         <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100">
                                             <div className="text-[10px] text-indigo-600 font-semibold uppercase">Sensor UUT</div>
                                             <div className="text-sm font-bold text-indigo-900 truncate" title={activeSensorName}>{activeSensorName}</div>
@@ -760,27 +760,95 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                                         : <span className="text-xs italic text-yellow-700">Tidak ada di Master QC</span>}
                                             </div>
                                         </div>
-                                        <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
-                                            <div className="text-[10px] text-blue-600 font-semibold uppercase">Koreksi Std (DB)</div>
-                                            <div className="text-blue-900">
-                                                {correctionLoading
-                                                    ? <span className="text-xs italic animate-pulse">Menghitung...</span>
-                                                    : !stdSensorId || !correctionStats
-                                                        ? <span className="text-gray-400 text-xs">–</span>
-                                                        : (
-                                                            <div className="mt-0.5 space-y-0.5">
-                                                                <div className="flex items-baseline justify-between gap-2">
-                                                                    <span className="text-[10px] font-normal text-blue-600">Rata²</span>
-                                                                    <span className="text-sm font-bold tabular-nums">{correctionStats.mean.toFixed(4)}</span>
+                                        
+                                        {/* Koreksi Std (DB) - HANYA untuk non-pyranometer */}
+                                        {!isPyranometer(currentSensorForPyranometer) && (
+                                            <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                                                <div className="text-[10px] text-blue-600 font-semibold uppercase">Koreksi Std (DB)</div>
+                                                <div className="text-blue-900">
+                                                    {correctionLoading
+                                                        ? <span className="text-xs italic animate-pulse">Menghitung...</span>
+                                                        : !stdSensorId || !correctionStats
+                                                            ? <span className="text-gray-400 text-xs">–</span>
+                                                            : (
+                                                                <div className="mt-0.5 space-y-0.5">
+                                                                    <div className="flex items-baseline justify-between gap-2">
+                                                                        <span className="text-[10px] font-normal text-blue-600">Rata²</span>
+                                                                        <span className="text-sm font-bold tabular-nums">{correctionStats.mean.toFixed(4)}</span>
+                                                                    </div>
+                                                                    <div className="flex items-baseline justify-between gap-2">
+                                                                        <span className="text-[10px] font-normal text-blue-600">Std Dev</span>
+                                                                        <span className="text-sm font-bold tabular-nums">{correctionStats.std.toFixed(4)}</span>
+                                                                    </div>
                                                                 </div>
-                                                                <div className="flex items-baseline justify-between gap-2">
-                                                                    <span className="text-[10px] font-normal text-blue-600">Std Dev</span>
-                                                                    <span className="text-sm font-bold tabular-nums">{correctionStats.std.toFixed(4)}</span>
-                                                                </div>
-                                                            </div>
-                                                        )}
+                                                            )}
+                                                </div>
                                             </div>
-                                        </div>
+                                        )}
+                                        
+                                        {/* Statistik Standar & UUT - KHUSUS pyranometer */}
+                                        {isPyranometer(currentSensorForPyranometer) && (() => {
+                                            const stdValues = currentData.filter(r => r.standard_data != null).map(r => r.standard_data as number);
+                                            const uutValues = currentData.filter(r => r.uut_data != null).map(r => r.uut_data as number);
+                                            
+                                            const calcStats = (vals: number[]) => {
+                                                if (vals.length === 0) return { avg: '-', std: '-', max: '-', min: '-' };
+                                                const avg = (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2);
+                                                const max = Math.max(...vals).toFixed(2);
+                                                const min = Math.min(...vals).toFixed(2);
+                                                let std = '-';
+                                                if (vals.length >= 2) {
+                                                    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+                                                    const variance = vals.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (vals.length - 1);
+                                                    std = Math.sqrt(variance).toFixed(2);
+                                                }
+                                                return { avg, std, max, min };
+                                            };
+                                            
+                                            const stdStats = calcStats(stdValues);
+                                            const uutStats = calcStats(uutValues);
+                                            
+                                            return (
+                                                <div className="bg-gradient-to-r from-emerald-50 to-orange-50 p-2 rounded-lg border border-gray-200">
+                                                    <div className="text-[9px] font-semibold text-gray-600 uppercase mb-1 text-center">Statistik Kalibrasi</div>
+                                                    <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
+                                                        <div className="flex justify-between">
+                                                            <span className="text-emerald-600">Std Rata²</span>
+                                                            <span className="font-bold tabular-nums">{stdStats.avg}</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-orange-600">UUT Rata²</span>
+                                                            <span className="font-bold tabular-nums">{uutStats.avg}</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-emerald-600">Std Dev</span>
+                                                            <span className="font-bold tabular-nums">{stdStats.std}</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-orange-600">UUT Dev</span>
+                                                            <span className="font-bold tabular-nums">{uutStats.std}</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-emerald-600">Std Max</span>
+                                                            <span className="font-bold tabular-nums">{stdStats.max}</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-orange-600">UUT Max</span>
+                                                            <span className="font-bold tabular-nums">{uutStats.max}</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-emerald-600">Std Min</span>
+                                                            <span className="font-bold tabular-nums">{stdStats.min}</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-orange-600">UUT Min</span>
+                                                            <span className="font-bold tabular-nums">{uutStats.min}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+                                        
                                         <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
                                             <div className="text-[10px] text-gray-600 font-semibold uppercase">Data Points</div>
                                             <div className="text-xl font-bold text-gray-900">{currentData.length}</div>
@@ -808,35 +876,31 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                                             <span className="text-[9px] block opacity-70 font-normal normal-case">Std/UUT</span>
                                                         </th>
                                                     )}
-                                                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase bg-blue-900/30">
-                                                        {isPyranometer(currentSensorForPyranometer) 
-                                                            ? 'Koreksi (%)' 
-                                                            : 'Koreksi Std'}
-                                                        <span className="text-[9px] block opacity-70 font-normal normal-case">
-                                                            {isPyranometer(currentSensorForPyranometer) 
-                                                                ? '(CF-1)×100%' 
-                                                                : 'hitung_koreksi()'}
-                                                        </span>
-                                                    </th>
+                                                    {/* KOLOM KOREKSI - HANYA untuk non-pyranometer */}
                                                     {!isPyranometer(currentSensorForPyranometer) && (
-                                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase bg-blue-900/20">
-                                                            Std Terkoreksi
-                                                            <span className="text-[9px] block opacity-70 font-normal normal-case">std + koreksi</span>
-                                                        </th>
+                                                        <>
+                                                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase bg-blue-900/30">
+                                                                Koreksi Std
+                                                                <span className="text-[9px] block opacity-70 font-normal normal-case">hitung_koreksi()</span>
+                                                            </th>
+                                                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase bg-blue-900/20">
+                                                                Std Terkoreksi
+                                                                <span className="text-[9px] block opacity-70 font-normal normal-case">std + koreksi</span>
+                                                            </th>
+                                                        </>
                                                     )}
                                                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase">UUT Reading</th>
-                                                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase">
-                                                        {isPyranometer(currentSensorForPyranometer) 
-                                                            ? 'Koreksi (%)' 
-                                                            : 'Koreksi UUT'}
-                                                        <span className="text-[9px] block opacity-70 font-normal normal-case">
-                                                            {isPyranometer(currentSensorForPyranometer) 
-                                                                ? '(CF-1)×100%' 
-                                                                : 'std_kor − uut'}
-                                                        </span>
-                                                    </th>
-                                                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Batas WMO</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase w-20">Status</th>
+                                                    {/* KOLOM KOREKSI UUT, BATAS WMO, STATUS - HANYA untuk non-pyranometer */}
+                                                    {!isPyranometer(currentSensorForPyranometer) && (
+                                                        <>
+                                                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase">
+                                                                Koreksi UUT
+                                                                <span className="text-[9px] block opacity-70 font-normal normal-case">std_kor − uut</span>
+                                                            </th>
+                                                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Batas WMO</th>
+                                                            <th className="px-4 py-3 text-center text-xs font-semibold uppercase w-20">Status</th>
+                                                        </>
+                                                    )}
                                                 </tr>
                                             </thead>
                                             <tbody className="bg-white divide-y divide-gray-200">
@@ -875,31 +939,34 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                                             {isPyrano && (
                                                                 <td className="px-4 py-2 text-sm font-bold bg-green-50/50">
                                                                     {cfValue != null ? (
-                                                                        <span className="text-green-700 font-mono">{cfValue.toFixed(4)}</span>
+                                                                        <span className="text-green-700 font-mono">{cfValue.toFixed(2)}</span>
                                                                     ) : <span className="text-gray-400 italic">-</span>}
                                                                 </td>
                                                             )}
-                                                            <td className="px-4 py-2 text-sm font-medium bg-blue-50/50">
-                                                                {correctionLoading
-                                                                    ? <span className="text-gray-300 text-xs">...</span>
-                                                                    : hasCertData
-                                                                        ? (
-                                                                            <span className="inline-flex items-center gap-1.5">
-                                                                                <span className="text-blue-700 font-mono">{stdCorrection > 0 ? '+' : ''}{stdCorrection.toFixed(4)}</span>
-                                                                                {!isPyrano && <SigFigBadge value={stdCorrection} />}
-                                                                            </span>
-                                                                        )
-                                                                        : <span className="text-gray-400 text-[10px] italic">tidak ada</span>}
-                                                            </td>
+                                                            {/* KOLOM KOREKSI STD - HANYA untuk non-pyranometer */}
                                                             {!isPyrano && (
-                                                                <td className="px-4 py-2 text-sm font-bold text-blue-900 bg-blue-50/30">
-                                                                    {stdCorrected != null ? (
-                                                                        <span className="inline-flex items-center gap-1.5">
-                                                                            <span>{stdCorrected}</span>
-                                                                            <SigFigBadge value={stdCorrected} />
-                                                                        </span>
-                                                                    ) : row.standard_data != null ? <span className="text-gray-400 text-xs">= {row.standard_data}</span> : <span className="text-gray-400 italic">-</span>}
-                                                                </td>
+                                                                <>
+                                                                    <td className="px-4 py-2 text-sm font-medium bg-blue-50/50">
+                                                                        {correctionLoading
+                                                                            ? <span className="text-gray-300 text-xs">...</span>
+                                                                            : hasCertData
+                                                                                ? (
+                                                                                    <span className="inline-flex items-center gap-1.5">
+                                                                                        <span className="text-blue-700 font-mono">{stdCorrection > 0 ? '+' : ''}{stdCorrection.toFixed(4)}</span>
+                                                                                        <SigFigBadge value={stdCorrection} />
+                                                                                    </span>
+                                                                                )
+                                                                                : <span className="text-gray-400 text-[10px] italic">tidak ada</span>}
+                                                                    </td>
+                                                                    <td className="px-4 py-2 text-sm font-bold text-blue-900 bg-blue-50/30">
+                                                                        {stdCorrected != null ? (
+                                                                            <span className="inline-flex items-center gap-1.5">
+                                                                                <span>{stdCorrected}</span>
+                                                                                <SigFigBadge value={stdCorrected} />
+                                                                            </span>
+                                                                        ) : row.standard_data != null ? <span className="text-gray-400 text-xs">= {row.standard_data}</span> : <span className="text-gray-400 italic">-</span>}
+                                                                    </td>
+                                                                </>
                                                             )}
                                                             <td className="px-4 py-2 text-sm font-medium text-gray-700">
                                                                 {row.uut_data != null ? (
@@ -909,25 +976,30 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                                                     </span>
                                                                 ) : <span className="text-gray-400 italic">-</span>}
                                                             </td>
-                                                            <td className={`px-4 py-2 text-sm font-bold ${isFail ? 'text-red-600' : 'text-green-600'}`}>
-                                                                {uutCorrection != null ? (
-                                                                    <span className="inline-flex items-center gap-1.5">
-                                                                        <span>{uutCorrection > 0 ? '+' : ''}{uutCorrection.toFixed(4)}</span>
-                                                                        <SigFigBadge value={uutCorrection} />
-                                                                    </span>
-                                                                ) : <span className="text-gray-400 italic">-</span>}
-                                                            </td>
-                                                            <td className="px-4 py-2 text-xs text-gray-500">{qc.limitStr}</td>
-                                                            <td className="px-4 py-2 text-center">
-                                                                {isFail
-                                                                    ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">FAIL</span>
-                                                                    : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">PASS</span>}
-                                                            </td>
+                                                            {/* KOLOM KOREKSI UUT, BATAS WMO, STATUS - HANYA untuk non-pyranometer */}
+                                                            {!isPyrano && (
+                                                                <>
+                                                                    <td className={`px-4 py-2 text-sm font-bold ${isFail ? 'text-red-600' : 'text-green-600'}`}>
+                                                                        {uutCorrection != null ? (
+                                                                            <span className="inline-flex items-center gap-1.5">
+                                                                                <span>{uutCorrection > 0 ? '+' : ''}{uutCorrection.toFixed(4)}</span>
+                                                                                <SigFigBadge value={uutCorrection} />
+                                                                            </span>
+                                                                        ) : <span className="text-gray-400 italic">-</span>}
+                                                                    </td>
+                                                                    <td className="px-4 py-2 text-xs text-gray-500">{qc.limitStr}</td>
+                                                                    <td className="px-4 py-2 text-center">
+                                                                        {isFail
+                                                                            ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">FAIL</span>
+                                                                            : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">PASS</span>}
+                                                                    </td>
+                                                                </>
+                                                            )}
                                                         </tr>
                                                     );
                                                 }) : (
                                                     <tr>
-                                                        <td colSpan={isPyranometer(currentSensorForPyranometer) ? 8 : 9} className="px-6 py-10 text-center text-gray-400 italic">
+                                                        <td colSpan={isPyranometer(currentSensorForPyranometer) ? 4 : 9} className="px-6 py-10 text-center text-gray-400 italic">
                                                             Tidak ada data untuk sensor ini.
                                                         </td>
                                                     </tr>
