@@ -1052,10 +1052,19 @@ type ResultItem = {
           sensorType: activeUutSensor.type || activeUutSensor.name || ''
         });
         
-        uutAvg = cfResult.cf_final; // CF_final
-        correction = pyrResult.certificate.correction_percent; // Koreksi dalam %
-        uncertainty = pyrResult.u95_percent; // U95 dalam %
-        headers = ['Faktor Kalibrasi', 'Koreksi (%)', 'Ketidakpastian (%)'];
+        // Ambil unit dari data raw (unit_uut)
+        const rawUnit = currentData[0]?.unit_uut || activeUutSensor.graduating_unit || activeUutSensor.range_capacity_unit || 'W/m²';
+        
+        // Untuk pyranometer: Penunjukkan Alat = Rata-rata UUT, Faktor Kalibrasi = CF, Uncertainty = U95%
+        const avgUut = currentData.reduce((sum: number, row: any) => sum + (row.uut_data || 0), 0) / currentData.length;
+        uutAvg = avgUut; // Penunjukkan Alat (Rata-rata UUT)
+        correction = cfResult.cf_final; // Faktor Kalibrasi (CF)
+        uncertainty = pyrResult.u95_percent; // Uncertainty (U95%)
+        headers = [
+          `Penunjukkan Alat / Instrument Reading (${rawUnit})`,
+          'Faktor Kalibrasi / Calibration Factor',
+          'Ketidakpastian / Uncertainty'
+        ];
       } else {
         // BIASA: Gunakan perhitungan standar (selisih absolut)
         const result = calculateCalibrationResult({
@@ -1077,9 +1086,9 @@ type ResultItem = {
       v[sectionIndex].headers = headers;
       
       const newRow = {
-        key: uutAvg.toFixed(isPyranometerSensor ? 4 : 2),
-        unit: correction.toFixed(isPyranometerSensor ? 2 : 4),
-        value: uncertainty.toFixed(isPyranometerSensor ? 2 : 4),
+        key: uutAvg.toFixed(2), // Pembacaan Alat: 2 desimal
+        unit: correction.toFixed(isPyranometerSensor ? 2 : 4), // CF: 2 desimal, Koreksi: 4 desimal
+        value: uncertainty.toFixed(isPyranometerSensor ? 2 : 4), // U95%: 2 desimal, U95 absolut: 4 desimal
         extraValues: []
       };
 

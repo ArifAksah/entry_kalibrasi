@@ -759,14 +759,45 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                             
                             let avgCorrection: number;
                             let stdDevCorrection: number;
+                            let avgCf = 0;
+                            let stdDevCf = 0;
+                            let stdDevStd = 0;
+                            let stdDevUut = 0;
                             
                             if (isPyranoForAvg) {
-                                // PYRANOMETER: koreksi = (Std/UUT - 1) × 100%
-                                const corrections = data.map(row => {
+                                // PYRANOMETER: Hitung CF dan statistik
+                                const cfValues = data.map(row => {
                                     if (row.standard_data <= 0 || row.uut_data <= 0) return null;
-                                    return (row.standard_data / row.uut_data - 1) * 100;
+                                    return row.standard_data / row.uut_data;
                                 }).filter((v): v is number => v !== null);
                                 
+                                avgCf = cfValues.length > 0 
+                                    ? cfValues.reduce((sum, cf) => sum + cf, 0) / cfValues.length 
+                                    : 0;
+                                
+                                const varianceCf = cfValues.length > 1
+                                    ? cfValues.reduce((sum, cf) => sum + Math.pow(cf - avgCf, 2), 0) / (cfValues.length - 1)
+                                    : 0;
+                                stdDevCf = Math.sqrt(varianceCf);
+                                
+                                // Statistik Standar
+                                const stdValues = data.filter(r => r.standard_data > 0).map(r => r.standard_data);
+                                const avgStd = stdValues.reduce((a, b) => a + b, 0) / (stdValues.length || 1);
+                                const varianceStd = stdValues.length > 1
+                                    ? stdValues.reduce((a, b) => a + Math.pow(b - avgStd, 2), 0) / (stdValues.length - 1)
+                                    : 0;
+                                stdDevStd = Math.sqrt(varianceStd);
+                                
+                                // Statistik UUT
+                                const uutValues = data.filter(r => r.uut_data > 0).map(r => r.uut_data);
+                                const avgUut = uutValues.reduce((a, b) => a + b, 0) / (uutValues.length || 1);
+                                const varianceUut = uutValues.length > 1
+                                    ? uutValues.reduce((a, b) => a + Math.pow(b - avgUut, 2), 0) / (uutValues.length - 1)
+                                    : 0;
+                                stdDevUut = Math.sqrt(varianceUut);
+                                
+                                // Koreksi dalam %
+                                const corrections = cfValues.map(cf => (cf - 1) * 100);
                                 avgCorrection = corrections.length > 0 
                                     ? corrections.reduce((sum, c) => sum + c, 0) / corrections.length 
                                     : 0;
@@ -933,29 +964,48 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                     <table className="w-full text-xs border-collapse border border-black text-center">
                                         <thead>
                                             <tr>
-                                                <th colSpan={6} className="bg-gray-100 border border-black font-bold text-center uppercase">DATA HASIL KALIBRASI {sensorName}</th>
+                                                <th colSpan={isPyranometer(sensor ? { name: sensor.name, type: sensor.type } : null) ? 4 : 6} className="bg-gray-100 border border-black font-bold text-center uppercase">DATA HASIL KALIBRASI {sensorName}</th>
                                             </tr>
-                                            <tr>
-                                                <th rowSpan={2} className="border border-black w-10">No</th>
-                                                <th colSpan={3} className="border border-black">STANDAR</th>
-                                                <th rowSpan={2} className="border border-black leading-tight">Alat yang<br />dikalibrasi</th>
-                                                <th rowSpan={2} className="border border-black">Koreksi</th>
-                                            </tr>
-                                            <tr>
-                                                <th className="border border-black">Pembacaan</th>
-                                                <th className="border border-black">Koreksi</th>
-                                                <th className="border border-black">Terkoreksi</th>
-                                            </tr>
-                                            <tr>
-                                                <th className="border border-black bg-gray-50 italic"></th>
-                                                <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
-                                                <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
-                                                <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
-                                                <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
-                                                <th className="border border-black bg-gray-50 italic">
-                                                    {isPyranometer(sensor ? { name: sensor.name, type: sensor.type } : null) ? '%' : unitDisplay}
-                                                </th>
-                                            </tr>
+                                            {isPyranometer(sensor ? { name: sensor.name, type: sensor.type } : null) ? (
+                                                // HEADER UNTUK PYRANOMETER (sama dengan QC Check Data)
+                                                <>
+                                                    <tr>
+                                                        <th className="border border-black w-10">No</th>
+                                                        <th className="border border-black">Std Reading</th>
+                                                        <th className="border border-black">UUT Reading</th>
+                                                        <th className="border border-black bg-green-100">Faktor Kalibrasi<span className="block text-[9px] font-normal opacity-70">Std/UUT</span></th>
+                                                    </tr>
+                                                    <tr>
+                                                        <th className="border border-black bg-gray-50 italic"></th>
+                                                        <th className="border border-black bg-gray-50 italic">W/m²</th>
+                                                        <th className="border border-black bg-gray-50 italic">W/m²</th>
+                                                        <th className="border border-black bg-green-50 italic"></th>
+                                                    </tr>
+                                                </>
+                                            ) : (
+                                                // HEADER UNTUK NON-PYRANOMETER
+                                                <>
+                                                    <tr>
+                                                        <th rowSpan={2} className="border border-black w-10">No</th>
+                                                        <th colSpan={3} className="border border-black">STANDAR</th>
+                                                        <th rowSpan={2} className="border border-black leading-tight">Alat yang<br />dikalibrasi</th>
+                                                        <th rowSpan={2} className="border border-black">Koreksi</th>
+                                                    </tr>
+                                                    <tr>
+                                                        <th className="border border-black">Pembacaan</th>
+                                                        <th className="border border-black">Koreksi</th>
+                                                        <th className="border border-black">Terkoreksi</th>
+                                                    </tr>
+                                                    <tr>
+                                                        <th className="border border-black bg-gray-50 italic"></th>
+                                                        <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
+                                                        <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
+                                                        <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
+                                                        <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
+                                                        <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
+                                                    </tr>
+                                                </>
+                                            )}
                                         </thead>
                                         <tbody>
                                             {sampled.map((row, idx) => {
@@ -972,6 +1022,11 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                     type: sensor.type,
                                                 } : null;
                                                 const isPyrano = isPyranometer(pyrSensorData);
+                                                
+                                                // Hitung CF untuk pyranometer
+                                                const cfValue = (isPyrano && row.standard_data > 0 && row.uut_data > 0)
+                                                    ? (row.standard_data / row.uut_data)
+                                                    : null;
                                                 
                                                 // Hitung koreksi berdasarkan tipe sensor
                                                 let rawCorrection: number;
@@ -993,78 +1048,118 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                 }
 
                                                 return (
-                                                    <React.Fragment key={row.id}>
+                                                    <React.Fragment key={`${row.id}-${idx}`}>
                                                         {data.length > 30 && idx === 15 && (
                                                             <tr>
-                                                                <td colSpan={6} className="border border-black text-center italic py-1 bg-gray-50 text-gray-500">
+                                                                <td colSpan={isPyrano ? 4 : 6} className="border border-black text-center italic py-1 bg-gray-50 text-gray-500">
                                                                     ... {data.length - 30} titik data tersembunyi ...
                                                                 </td>
                                                             </tr>
                                                         )}
-                                                        <tr className={isFail ? 'bg-pink-100' : ''} style={isFail ? { backgroundColor: '#fce7f3' } : {}}>
-                                                            <td className="border border-black px-1">{displayIdx}</td>
-                                                            <td className="border border-black px-1">
-                                                                {row.standard_data.toFixed(2)}
-                                                                <span className="print:hidden ml-1"><SigFigBadge value={row.standard_data} /></span>
-                                                            </td>
-                                                            <td className="border border-black px-1">
-                                                                {stdCorrectionStr}
-                                                                {stdCorrectionRaw !== 0 && (
-                                                                    <span className="print:hidden ml-1"><SigFigBadge value={stdCorrectionRaw} /></span>
-                                                                )}
-                                                            </td>
-                                                            <td className="border border-black px-1">
-                                                                {stdConverted.toFixed(4)}
-                                                                {hasUnitMismatch && (
-                                                                    <span className="text-[8px] text-gray-400 ml-0.5" title={`Dikonversi dari ${row.unit_std || rowUnitStd} ke ${row.unit_uut || rowUnitUut}`}>*</span>
-                                                                )}
-                                                                <span className="print:hidden ml-1"><SigFigBadge value={stdConverted} /></span>
-                                                            </td>
-                                                            <td className="border border-black px-1">
-                                                                {row.uut_data.toFixed(2)}
-                                                                <span className="print:hidden ml-1"><SigFigBadge value={row.uut_data} /></span>
-                                                            </td>
-                                                            <td className={`border border-black px-1 ${isFail ? 'text-red-600 font-bold' : ''}`}>
-                                                                {isPyrano 
-                                                                    ? rawCorrection.toFixed(2)
-                                                                    : rawCorrection.toFixed(6).replace(/\.?0+$/, '') || '0'
-                                                                }
-                                                                <span className="print:hidden ml-1"><SigFigBadge value={rawCorrection} /></span>
-                                                            </td>
-                                                        </tr>
+                                                        {isPyrano ? (
+                                                            // BARIS UNTUK PYRANOMETER
+                                                            <tr>
+                                                                <td className="border border-black px-1">{displayIdx}</td>
+                                                                <td className="border border-black px-1">
+                                                                    {row.standard_data.toFixed(2)}
+                                                                </td>
+                                                                <td className="border border-black px-1">
+                                                                    {row.uut_data.toFixed(2)}
+                                                                </td>
+                                                                <td className="border border-black px-1 font-bold text-green-700">
+                                                                    {cfValue != null ? cfValue.toFixed(2) : '-'}
+                                                                </td>
+                                                            </tr>
+                                                        ) : (
+                                                            // BARIS UNTUK NON-PYRANOMETER
+                                                            <tr className={isFail ? 'bg-pink-100' : ''} style={isFail ? { backgroundColor: '#fce7f3' } : {}}>
+                                                                <td className="border border-black px-1">{displayIdx}</td>
+                                                                <td className="border border-black px-1">
+                                                                    {row.standard_data.toFixed(2)}
+                                                                    <span className="print:hidden ml-1"><SigFigBadge value={row.standard_data} /></span>
+                                                                </td>
+                                                                <td className="border border-black px-1">
+                                                                    {stdCorrectionStr}
+                                                                    {stdCorrectionRaw !== 0 && (
+                                                                        <span className="print:hidden ml-1"><SigFigBadge value={stdCorrectionRaw} /></span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="border border-black px-1">
+                                                                    {stdConverted.toFixed(4)}
+                                                                    {hasUnitMismatch && (
+                                                                        <span className="text-[8px] text-gray-400 ml-0.5" title={`Dikonversi dari ${row.unit_std || rowUnitStd} ke ${row.unit_uut || rowUnitUut}`}>*</span>
+                                                                    )}
+                                                                    <span className="print:hidden ml-1"><SigFigBadge value={stdConverted} /></span>
+                                                                </td>
+                                                                <td className="border border-black px-1">
+                                                                    {row.uut_data.toFixed(2)}
+                                                                    <span className="print:hidden ml-1"><SigFigBadge value={row.uut_data} /></span>
+                                                                </td>
+                                                                <td className={`border border-black px-1 ${isFail ? 'text-red-600 font-bold' : ''}`}>
+                                                                    {rawCorrection.toFixed(6).replace(/\.?0+$/, '') || '0'}
+                                                                    <span className="print:hidden ml-1"><SigFigBadge value={rawCorrection} /></span>
+                                                                </td>
+                                                            </tr>
+                                                        )}
                                                     </React.Fragment>
                                                 );
                                             })}
-                                            {/* Rata-rata */}
-                                            <tr>
-                                                <td colSpan={3} className="border border-black text-left font-bold px-1 pl-2">Rata-Rata</td>
-                                                <td className="border border-black font-bold px-1">
-                                                    {avgStdCorrected.toFixed(4)}
-                                                    <span className="print:hidden ml-1"><SigFigBadge value={avgStdCorrected} /></span>
-                                                </td>
-                                                <td className="border border-black font-bold px-1">
-                                                    {avgUutData.toFixed(2)}
-                                                    <span className="print:hidden ml-1"><SigFigBadge value={avgUutData} /></span>
-                                                </td>
-                                                <td className="border border-black font-bold px-1">
-                                                    {isPyranoForAvg 
-                                                        ? avgCorrection.toFixed(2)
-                                                        : avgCorrection.toFixed(6).replace(/\.?0+$/, '') || '0'
-                                                    }
-                                                    <span className="print:hidden ml-1"><SigFigBadge value={avgCorrection} /></span>
-                                                </td>
-                                            </tr>
-                                            {/* Standar Deviasi */}
-                                            <tr>
-                                                <td colSpan={5} className="border border-black text-left font-bold px-1 pl-2">Standar Deviasi</td>
-                                                <td className="border border-black px-1">
-                                                    {isPyranoForAvg 
-                                                        ? stdDevCorrection.toFixed(2)
-                                                        : stdDevCorrection.toFixed(6).replace(/\.?0+$/, '') || '0'
-                                                    }
-                                                    <span className="print:hidden ml-1"><SigFigBadge value={stdDevCorrection} /></span>
-                                                </td>
-                                            </tr>
+                                            {/* Rata-rata & Standar Deviasi */}
+                                            {isPyranoForAvg ? (
+                                                // UNTUK PYRANOMETER
+                                                <>
+                                                    <tr>
+                                                        <td className="border border-black text-left font-bold px-1 pl-2">Rata-Rata</td>
+                                                        <td className="border border-black font-bold px-1">
+                                                            {avgStdCorrected.toFixed(2)}
+                                                        </td>
+                                                        <td className="border border-black font-bold px-1">
+                                                            {avgUutData.toFixed(2)}
+                                                        </td>
+                                                        <td className="border border-black font-bold px-1 text-green-700">
+                                                            {avgCf.toFixed(2)}
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td className="border border-black text-left font-bold px-1 pl-2">Std Dev</td>
+                                                        <td className="border border-black px-1">
+                                                            {stdDevStd.toFixed(2)}
+                                                        </td>
+                                                        <td className="border border-black px-1">
+                                                            {stdDevUut.toFixed(2)}
+                                                        </td>
+                                                        <td className="border border-black px-1 text-green-700">
+                                                            {stdDevCf.toFixed(2)}
+                                                        </td>
+                                                    </tr>
+                                                </>
+                                            ) : (
+                                                // UNTUK NON-PYRANOMETER
+                                                <>
+                                                    <tr>
+                                                        <td colSpan={3} className="border border-black text-left font-bold px-1 pl-2">Rata-Rata</td>
+                                                        <td className="border border-black font-bold px-1">
+                                                            {avgStdCorrected.toFixed(4)}
+                                                            <span className="print:hidden ml-1"><SigFigBadge value={avgStdCorrected} /></span>
+                                                        </td>
+                                                        <td className="border border-black font-bold px-1">
+                                                            {avgUutData.toFixed(2)}
+                                                            <span className="print:hidden ml-1"><SigFigBadge value={avgUutData} /></span>
+                                                        </td>
+                                                        <td className="border border-black font-bold px-1">
+                                                            {avgCorrection.toFixed(6).replace(/\.?0+$/, '') || '0'}
+                                                            <span className="print:hidden ml-1"><SigFigBadge value={avgCorrection} /></span>
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colSpan={5} className="border border-black text-left font-bold px-1 pl-2">Standar Deviasi</td>
+                                                        <td className="border border-black px-1">
+                                                            {stdDevCorrection.toFixed(6).replace(/\.?0+$/, '') || '0'}
+                                                            <span className="print:hidden ml-1"><SigFigBadge value={stdDevCorrection} /></span>
+                                                        </td>
+                                                    </tr>
+                                                </>
+                                            )}
                                         </tbody>
                                     </table>
 

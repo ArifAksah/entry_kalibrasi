@@ -553,13 +553,21 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                 
                 if (isPyranometerSensor && uutSensor) {
                     // PYRANOMETER: Hitung CF (rasio) dalam %
-                    const stdReadings = rowsForCalc.map(r => r.standard_data || 0);
-                    const uutReadingsForCF = rowsForCalc.map(r => r.uut_data || 0);
+                    const stdReadings = rowsForCalc.map(r => r.standard_data || 0).filter(v => v > 0);
+                    const uutReadingsForCF = rowsForCalc.map(r => r.uut_data || 0).filter(v => v > 0);
                     
                     const cfResult = calculateCalibrationFactor(stdReadings, uutReadingsForCF);
                     
                     const range = parseFloat(uutSensor.range_capacity || '2000') || 2000;
                     const interpolatedU95 = standardCertRecord?.u95_general || 2.1;
+                    const stdMeanVal = stdReadings.length > 0 ? stdReadings.reduce((a, b) => a + b, 0) / stdReadings.length : 0;
+                    const uutMeanVal = uutReadingsForCF.length > 0 ? uutReadingsForCF.reduce((a, b) => a + b, 0) / uutReadingsForCF.length : 0;
+                    
+                    // Tipe alat standar (untuk ISO 9060 Drift lookup)
+                    const stdSensorForPyr = rowsForCalc[0]?.sensor_id_std
+                        ? sensors.find((s: any) => s.id === rowsForCalc[0].sensor_id_std)
+                        : null;
+                    const stdSensorTypeForPyr = (stdSensorForPyr as any)?.type || (stdSensorForPyr as any)?.name || '';
                     
                     const pyrResult = calculatePyranometerUncertainty({
                         cf_result: cfResult,
@@ -567,13 +575,19 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                         resolutionStd: standardCertRecord?.resolution || 0.01,
                         resolutionUut: uutSensor.resolution || 0.1,
                         range: range,
-                        sensorType: uutSensor.type || uutSensor.name || ''
+                        sensorType: uutSensor.type || uutSensor.name || '',
+                        stdMean: stdMeanVal,
+                        uutMean: uutMeanVal,
+                        stdSensorType: stdSensorTypeForPyr,
                     });
                     
-                    // Untuk pyranometer: tampilkan CF sebagai "penunjukan alat"
+                    // Untuk pyranometer: 
+                    // - uutAvg = rata-rata UUT (W/m²) untuk "Penunjukkan Alat"
+                    // - displayCorrection = CF untuk "Faktor Kalibrasi"
+                    // - uncertainty = U95% untuk "Ketidakpastian"
                     uncertainty = pyrResult.u95_percent;
-                    displayUutAvg = cfResult.cf_final; // CF_final
-                    displayCorrection = pyrResult.certificate.correction_percent; // Koreksi dalam %
+                    displayUutAvg = uutAvg; // Rata-rata UUT (W/m²)
+                    displayCorrection = cfResult.cf_final; // Faktor Kalibrasi (CF)
                 } else {
                     // BIASA: Gunakan perhitungan standar (selisih absolut)
                     const isAnalog = (instruments.find(i => i.id === certificateInstrumentId)?.instrument_type_id ?? 1) === 2;
@@ -601,12 +615,12 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                 const newTable = [{
                     title: isPyranometerSensor ? 'Hasil Kalibrasi Pyranometer / Pyranometer Calibration Result' : 'Hasil Kalibrasi / Calibration Result',
                     headers: isPyranometerSensor 
-                        ? ['Faktor Kalibrasi / Calibration Factor', 'Koreksi (%) / Correction (%)', 'Ketidakpastian (%) / Uncertainty (%)']
+                        ? ['Penunjukkan Alat / Instrument Reading', 'Faktor Kalibrasi / Calibration Factor', 'Ketidakpastian / Uncertainty']
                         : ['Penunjukan Alat / Instrument Reading', 'Koreksi / Correction', 'Ketidakpastian / Uncertainty'],
                     rows: [{
-                        key: String(displayUutAvg),
-                        unit: String(displayCorrection),
-                        value: String(uncertainty),
+                        key: isPyranometerSensor ? String(uutAvg) : String(displayUutAvg), // Pyranometer: rata-rata UUT, Biasa: rata-rata UUT
+                        unit: isPyranometerSensor ? String(displayCorrection) : String(displayCorrection), // Pyranometer: CF, Biasa: Koreksi
+                        value: String(uncertainty), // Pyranometer: U95%, Biasa: U95 absolut
                         extraValues: []
                     }]
                 }];

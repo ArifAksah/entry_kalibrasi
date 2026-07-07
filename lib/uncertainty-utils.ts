@@ -687,8 +687,14 @@ export function calculatePyranometerUncertainty(params: {
     resolutionUut: number;
     range: number;
     sensorType: string;
+    /** Rata-rata pembacaan standar (W/m²) — dipakai sebagai pembagi resolusi std */
+    stdMean?: number;
+    /** Rata-rata pembacaan UUT (W/m²) — dipakai sebagai pembagi resolusi UUT */
+    uutMean?: number;
+    /** Tipe alat standar (untuk lookup ISO 9060 Drift). Jika tidak diisi, fallback ke sensorType UUT. */
+    stdSensorType?: string;
 }): PyranometerUncertaintyResult {
-    const { cf_result, certU95_percent, resolutionStd, resolutionUut, range, sensorType } = params;
+    const { cf_result, certU95_percent, resolutionStd, resolutionUut, range, sensorType, stdMean, uutMean, stdSensorType } = params;
     
     // SAFEGUARD: Validasi CF result
     if (cf_result.n_filtered === 0 || cf_result.cf_final === 0) {
@@ -696,6 +702,8 @@ export function calculatePyranometerUncertainty(params: {
     }
     
     // 1. Repeat (dalam %)
+    // U_repeat = (stdev_CF / CF_final) × 100%
+    // Pembagi (coverage factor) = √n (jumlah data setelah filter)
     const repeatPercent = (cf_result.std_dev / cf_result.cf_final) * 100;
     const u_repeat = repeatPercent / Math.sqrt(cf_result.n_filtered);
     
@@ -704,16 +712,22 @@ export function calculatePyranometerUncertainty(params: {
     const u_cert = certStdPercent / 2;
     
     // 3. Resolusi Std (dalam %)
-    const effectiveRange = range > 0 ? range : PYRANOMETER_CONFIG.DEFAULT_RANGE;
-    const resStdPercent = (resolutionStd / effectiveRange) * 100;
+    // U_resolusi_std = (½ × resolusi_STD / X̄_STD) × 100%
+    // Pembagi: rata-rata pembacaan standar (bukan range!)
+    const effectiveStdMean = stdMean && stdMean > 0 ? stdMean : (range > 0 ? range : PYRANOMETER_CONFIG.DEFAULT_RANGE);
+    const resStdPercent = ((0.5 * resolutionStd) / effectiveStdMean) * 100;
     const u_res_std = resStdPercent / Math.sqrt(3);
     
     // 4. Drift Std (dalam %, dari ISO 9060:2018)
-    const driftPercent = getISO9060Drift(sensorType);
+    // Drift ditentukan dari tipe alat STANDAR (bukan UUT)
+    const driftSensorType = stdSensorType || sensorType;
+    const driftPercent = getISO9060Drift(driftSensorType);
     const u_drift = driftPercent / Math.sqrt(3);
     
     // 5. Resolusi UUT (dalam %)
-    const resUutPercent = (resolutionUut / effectiveRange) * 100;
+    // U_resolusi_uut = (½ × resolusi_UUT / X̄_UUT) × 100%
+    const effectiveUutMean = uutMean && uutMean > 0 ? uutMean : (range > 0 ? range : PYRANOMETER_CONFIG.DEFAULT_RANGE);
+    const resUutPercent = ((0.5 * resolutionUut) / effectiveUutMean) * 100;
     const u_res_uut = resUutPercent / Math.sqrt(3);
     
     // Components array
@@ -766,6 +780,7 @@ export function calculatePyranometerCertificate(params: {
     resolutionUut: number;
     range: number;
     sensorType: string;
+    stdSensorType?: string;
     outlierThreshold?: number;
 }): PyranometerUncertaintyResult | null {
     const { stdReadings, uutReadings, outlierThreshold, ...rest } = params;
@@ -789,9 +804,17 @@ export function calculatePyranometerCertificate(params: {
         return null;
     }
     
+    // Hitung rata-rata pembacaan untuk pembagi resolusi
+    const validStd = stdReadings.filter(v => v > 0);
+    const validUut = uutReadings.filter(v => v > 0);
+    const stdMean = validStd.length > 0 ? validStd.reduce((a, b) => a + b, 0) / validStd.length : 0;
+    const uutMean = validUut.length > 0 ? validUut.reduce((a, b) => a + b, 0) / validUut.length : 0;
+    
     // Hitung uncertainty
     return calculatePyranometerUncertainty({
         cf_result,
+        stdMean,
+        uutMean,
         ...rest
     });
 }

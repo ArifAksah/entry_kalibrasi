@@ -12,6 +12,7 @@ import { resultsToLegacyView } from '../../../../lib/validators/certificate-resu
 import { formatLatexUnit } from '../../../../lib/qc-utils'
 import { supabase } from '../../../../lib/supabase'
 import { BALAI_DATA, DEFAULT_SIGNER_TITLE } from '../../../../lib/pdf-service/templates/shared/balai-data'
+import { isPyranometer, PyranometerSensorData } from '../../../../lib/uncertainty-utils'
 
 // --- TIPE DATA KOMPREHENSIF ---
 // Saya gabungkan tipe dari ViewCertificatePage.tsx Anda ke sini
@@ -2062,9 +2063,24 @@ const ViewCertificatePage: React.FC = () => {
                                   <div className="text-[12px] font-bold text-center mb-1">Hasil Kalibrasi / <span className="italic font-normal">Calibration Result</span></div>
                                   {res.table.map((sec: any, sIdx: number) => {
                                   const rows = Array.isArray(sec?.rows) ? sec.rows : []
-                                  const headers = Array.isArray(sec?.headers) && sec.headers.length > 0
-                                    ? sec.headers
-                                    : ['Penunjukan Alat / Instrument Reading', 'Koreksi / Correction', 'Ketidakpastian / Uncertainty']
+                                  
+                                  // DETEKSI PYRANOMETER
+                                  const pyrSensorData: PyranometerSensorData | null = res?.sensorDetails ? {
+                                    name: res.sensorDetails.name,
+                                    type: res.sensorDetails.type,
+                                  } : null;
+                                  const isPyrano = isPyranometer(pyrSensorData);
+                                  
+                                  // HEADER: Gunakan dari data, atau default berdasarkan tipe sensor
+                                  let headers: string[];
+                                  if (Array.isArray(sec?.headers) && sec.headers.length > 0) {
+                                    headers = sec.headers;
+                                  } else if (isPyrano) {
+                                    headers = ['Penunjukkan Alat / Instrument Reading', 'Faktor Kalibrasi / Calibration Factor', 'Ketidakpastian / Uncertainty'];
+                                  } else {
+                                    headers = ['Penunjukan Alat / Instrument Reading', 'Koreksi / Correction', 'Ketidakpastian / Uncertainty'];
+                                  }
+                                  
                                   const resultUnit = formatUnit(res?.unitUut || res?.sensorDetails?.graduating_unit || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || '')
                                   const isDuplicateTitle = sec?.title?.toLowerCase().includes('hasil Kalibrasi') || sec?.title?.toLowerCase().includes('calibration result') || sec?.title?.toLowerCase().includes('hasil kalibrasi');
                                   return (
@@ -2076,7 +2092,7 @@ const ViewCertificatePage: React.FC = () => {
                                             <tr className="font-bold">
                                               {headers.map((h: string, i: number) => (
                                                 <td key={i} className="p-1 border border-black text-center">
-                                                  {h}<br />{resultUnit ? `(${resultUnit})` : ''}
+                                                  {h}<br />{isPyrano && i === 0 ? `(${resultUnit})` : (isPyrano && i === 2 ? '(%)' : (resultUnit ? `(${resultUnit})` : ''))}
                                                 </td>
                                               ))}
                                             </tr>
@@ -2092,8 +2108,8 @@ const ViewCertificatePage: React.FC = () => {
                                                   {headers.length > 0 ? (
                                                     <>
                                                       <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
-                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : formatUnit(row.unit || '-')}</td>
-                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.value || '-')}</td>
+                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? (isPyrano ? '-' : unitDisplay) : (isPyrano ? (row.unit || '-') : formatUnit(row.unit || '-'))}</td>
+                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? (isPyrano ? '%' : unitDisplay) : (row.value || '-')}</td>
                                                       {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
                                                         <td key={`extra-${vi}`} className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (v || '-')}</td>
                                                       ))}

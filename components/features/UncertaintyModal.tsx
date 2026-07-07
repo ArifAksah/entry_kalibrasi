@@ -389,12 +389,20 @@ function UncertaintyContent({
     
     if (isPyranometerSensor) {
         // PYRANOMETER: Gunakan perhitungan CF (rasio) dalam %
-        const stdReadings = currentData.map(row => row.standard_data || 0);
-        const uutReadingsForCF = currentData.map(row => row.uut_data || 0);
+        const stdReadings = currentData.map(row => row.standard_data || 0).filter(v => v > 0);
+        const uutReadingsForCF = currentData.map(row => row.uut_data || 0).filter(v => v > 0);
         
         const cfResult = calculateCalibrationFactor(stdReadings, uutReadingsForCF);
         
         const range = parseFloat(uutSensor?.range_capacity || '2000') || 2000;
+        const stdMeanVal = stdReadings.length > 0 ? stdReadings.reduce((a, b) => a + b, 0) / stdReadings.length : 0;
+        const uutMeanVal = uutReadingsForCF.length > 0 ? uutReadingsForCF.reduce((a, b) => a + b, 0) / uutReadingsForCF.length : 0;
+        
+        // Tipe alat standar (untuk ISO 9060 Drift lookup)
+        const stdSensor = currentData[0]?.sensor_id_std 
+            ? sensors.find((s: any) => s.id === currentData[0].sensor_id_std) 
+            : null;
+        const stdSensorType = stdSensor?.type || stdSensor?.name || '';
         
         pyranometerResult = calculatePyranometerUncertainty({
             cf_result: cfResult,
@@ -402,7 +410,10 @@ function UncertaintyContent({
             resolutionStd: resolusiStd,
             resolutionUut: resolusiUut,
             range: range,
-            sensorType: uutSensor?.type || uutSensor?.name || ''
+            sensorType: uutSensor?.type || uutSensor?.name || '',
+            stdMean: stdMeanVal,
+            uutMean: uutMeanVal,
+            stdSensorType: stdSensorType,
         });
         
         // Convert ke format UncertaintyResult untuk rendering
@@ -502,34 +513,6 @@ function UncertaintyContent({
                     <div>SET POINT RATA-RATA ALAT YANG DIKALIBRASI</div>
                     <div>{formatDec(globalUutAvg, 2)} {formatUnit(unitUut)}</div>
                 </div>
-
-                {/* Pyranometer: Tampilkan CF */}
-                {isPyranometerSensor && pyranometerResult && (
-                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                        <div className="text-sm font-semibold text-blue-800 mb-2">
-                            HASIL KALIBRASI PYRANOMETER
-                        </div>
-                        <div className="grid grid-cols-3 gap-4 text-sm">
-                            <div>
-                                <span className="text-gray-600">Faktor Kalibrasi (CF):</span>
-                                <span className="ml-2 font-bold">{pyranometerResult.cf_result.cf_final.toFixed(2)}</span>
-                            </div>
-                            <div>
-                                <span className="text-gray-600">Koreksi:</span>
-                                <span className="ml-2 font-bold">{pyranometerResult.certificate.correction_percent.toFixed(2)}%</span>
-                            </div>
-                            <div>
-                                <span className="text-gray-600">Data:</span>
-                                <span className="ml-2 font-bold">
-                                    {pyranometerResult.cf_result.n_filtered}/{pyranometerResult.cf_result.n_total}
-                                    {pyranometerResult.cf_result.outlier_indices.length > 0 && 
-                                        ` (${pyranometerResult.cf_result.outlier_indices.length} outlier)`
-                                    }
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                )}
 
                 {/* Main Table */}
                 <table className="w-full text-center border-collapse border border-black text-[12px] tabular-nums" style={{ lineHeight: '1.2' }}>

@@ -17,6 +17,7 @@ import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClass
 import { firstLegacyResult, resultsToLegacyView } from '../../lib/validators/certificate-results-render-adapter'
 import { formatLatexUnit } from '../../lib/qc-utils'
 import qcCacheService from '../../lib/qc-cache-service'
+import { isPyranometer, PyranometerSensorData } from '../../lib/uncertainty-utils'
 
 const RichTextCell: React.FC<{ value: string; className?: string }> = ({ value, className = '' }) => (
   <div
@@ -827,6 +828,24 @@ const CertificatePreview: React.FC<{
                         <div className="text-[12px] font-bold text-center mb-1">Hasil Kalibrasi / <span className="italic font-normal">Calibration Result</span></div>
                         {res.table.map((sec: any, sIdx: number) => {
                           const rows = Array.isArray(sec?.rows) ? sec.rows : []
+                          
+                          // DETEKSI PYRANOMETER
+                          const pyrSensorData: PyranometerSensorData | null = res?.sensorDetails ? {
+                            name: res.sensorDetails.name,
+                            type: res.sensorDetails.type,
+                          } : null;
+                          const isPyrano = isPyranometer(pyrSensorData);
+                          
+                          // HEADER: Gunakan dari data, atau default berdasarkan tipe sensor
+                          let headers: string[];
+                          if (Array.isArray(sec?.headers) && sec.headers.length > 0) {
+                            headers = sec.headers;
+                          } else if (isPyrano) {
+                            headers = ['Penunjukkan Alat / Instrument Reading', 'Faktor Kalibrasi / Calibration Factor', 'Ketidakpastian / Uncertainty'];
+                          } else {
+                            headers = ['Penunjukan Alat / Instrument Reading', 'Koreksi / Correction', 'Ketidakpastian / Uncertainty'];
+                          }
+                          
                           const isDuplicateTitle = sec?.title?.toLowerCase().includes('hasil kalibrasi') || sec?.title?.toLowerCase().includes('calibration result');
                           return (
                             <div key={sIdx} className="mt-2">
@@ -835,21 +854,11 @@ const CertificatePreview: React.FC<{
                               <table className="w-full text-xs border-[2px] border-black text-center border-collapse">
                                 <thead>
                                   <tr className="font-bold">
-                                    {/* Use explicit headers if available, otherwise fallback to Key/Unit/Value logic */}
-                                    {sec.headers ? (
-                                      sec.headers.map((h: string, i: number) => (
-                                        <td key={i} className="p-1 border border-black">{h}</td>
-                                      ))
-                                    ) : (
-                                      // Fallback for old data without headers
-                                      rows.length > 0 && (
-                                        <>
-                                          <td className="p-1 border border-black">Parameter</td>
-                                          <td className="p-1 border border-black">Unit</td>
-                                          <td className="p-1 border border-black">Nilai</td>
-                                        </>
-                                      )
-                                    )}
+                                    {headers.map((h: string, i: number) => (
+                                      <td key={i} className="p-1 border border-black">
+                                        {h}<br />{isPyrano && i === 0 ? `(${res?.unitUut || 'W/m²'})` : (isPyrano && i === 2 ? '(%)' : '')}
+                                      </td>
+                                    ))}
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -859,24 +868,12 @@ const CertificatePreview: React.FC<{
                                     let unitDisplay = res?.unitUut || '-';
                                     return (
                                       <tr key={rIdx}>
-                                        {/* If headers exist, map based on standard + extra values */}
-                                        {sec.headers ? (
-                                          <>
-                                            <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
-                                            <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.unit || '-')}</td>
-                                            <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.value || '-')}</td>
-                                            {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
-                                              <td key={`extra-${vi}`} className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (v || '-')}</td>
-                                            ))}
-                                          </>
-                                        ) : (
-                                          // Fallback
-                                          <>
-                                            <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
-                                            <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.unit || '-')}</td>
-                                            <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.value || '-')}</td>
-                                          </>
-                                        )}
+                                        <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
+                                        <td className="p-1 border border-black text-center">{isFirstEmptyRow ? (isPyrano ? '-' : unitDisplay) : (row.unit || '-')}</td>
+                                        <td className="p-1 border border-black text-center">{isFirstEmptyRow ? (isPyrano ? '%' : unitDisplay) : (row.value || '-')}</td>
+                                        {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
+                                          <td key={`extra-${vi}`} className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (v || '-')}</td>
+                                        ))}
                                       </tr>
                                     );
                                   })}
