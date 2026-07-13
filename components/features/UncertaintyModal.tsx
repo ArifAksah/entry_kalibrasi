@@ -335,8 +335,9 @@ function UncertaintyContent({
     const formatDec = (n: number, d: number = 4) => n.toFixed(d).replace('.', ',');
     const formatSci = (n: number, d: number = 2) => {
         if (n === 0) return '0,0E+00';
-        const sci = n.toExponential(d).toUpperCase().replace('.', ',');
-        return sci.replace(/E([+-])(\d)$/, 'E$10$2');
+        // Format: 4,81E-06 (Indonesian format with comma as decimal separator)
+        const sci = n.toExponential(d);
+        return sci.replace('.', ',').toUpperCase();
     };
 
     // Build sensor display name using the same logic as the sidebar tabs
@@ -427,23 +428,29 @@ function UncertaintyContent({
                     c.name === 'Drift Std' ? 'u_drift' : 'u_res_uut',
             u_a: c.value_percent,
             cov_factor: c.divisor,
-            deg_freedom: 50,
+            deg_freedom: c.deg_freedom,
             std_uncertainty: c.u_percent,
             sens_coeff: 1,
             ci_ui: c.u_percent,
             ci_ui_sq: Math.pow(c.u_percent, 2),
-            ci_ui_quad_vi: Math.pow(c.u_percent, 4) / 50
+            ci_ui_quad_vi: Math.pow(c.u_percent, 4) / (c.deg_freedom === Infinity ? 1e9 : c.deg_freedom)
         }));
+        
+        // Hitung effective degrees of freedom (Welch-Satterthwaite)
+        const sum_ci_ui_quad_vi = components.reduce((a, c) => a + c.ci_ui_quad_vi, 0);
+        const eff_deg_freedom = sum_ci_ui_quad_vi > 0 
+            ? Math.pow(pyranometerResult.uc_percent, 4) / sum_ci_ui_quad_vi 
+            : Infinity;
         
         // Dummy result untuk kompatibilitas rendering
         result = {
             components,
             sums: {
                 ci_ui_sq: components.reduce((a, c) => a + c.ci_ui_sq, 0),
-                ci_ui_quad_vi: components.reduce((a, c) => a + c.ci_ui_quad_vi, 0)
+                ci_ui_quad_vi: sum_ci_ui_quad_vi
             },
             comb_uncert_uc: pyranometerResult.uc_percent,
-            eff_deg_freedom_veff: 50,
+            eff_deg_freedom_veff: eff_deg_freedom,
             cov_factor_95: pyranometerResult.k_factor,
             expanded_uncert_u95: pyranometerResult.u95_percent,
             unit: '%'
@@ -539,7 +546,11 @@ function UncertaintyContent({
                                 <td className="border border-black px-1 py-0.5">{formatUnit(c.unit)}</td>
                                 <td className="border border-black px-2 py-0.5 text-left">{c.distribution}</td>
                                 <td className="border border-black px-1 py-0.5">{renderSymbol(c.symbol)}</td>
-                                <td className="border border-black px-2 py-0.5">{formatDec(c.u_a, 4)}</td>
+                                <td className="border border-black px-2 py-0.5">
+                                    {Math.abs(c.u_a) < 0.001 && c.u_a !== 0 
+                                        ? formatSci(c.u_a) 
+                                        : formatDec(c.u_a, 4)}
+                                </td>
                                 <td className="border border-black px-2 py-0.5">{formatDec(c.cov_factor, 3)}</td>
                                 <td className="border border-black px-2 py-0.5">{c.deg_freedom}</td>
                                 <td className="border border-black px-2 py-0.5">{formatSci(c.std_uncertainty)}</td>

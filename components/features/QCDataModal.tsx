@@ -562,6 +562,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                     const interpolatedU95 = standardCertRecord?.u95_general || 2.1;
                     const stdMeanVal = stdReadings.length > 0 ? stdReadings.reduce((a, b) => a + b, 0) / stdReadings.length : 0;
                     const uutMeanVal = uutReadingsForCF.length > 0 ? uutReadingsForCF.reduce((a, b) => a + b, 0) / uutReadingsForCF.length : 0;
+                    const stdMinVal = stdReadings.length > 0 ? Math.min(...stdReadings) : 0;
                     
                     // Tipe alat standar (untuk ISO 9060 Drift lookup)
                     const stdSensorForPyr = rowsForCalc[0]?.sensor_id_std
@@ -578,7 +579,10 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                         sensorType: uutSensor.type || uutSensor.name || '',
                         stdMean: stdMeanVal,
                         uutMean: uutMeanVal,
+                        stdMin: stdMinVal,
                         stdSensorType: stdSensorTypeForPyr,
+                        sensitivityStd: (standardCertRecord as any)?.sensitivity || undefined,
+                        sensitivityUut: (uutSensor as any)?.sensitivity || undefined,
                     });
                     
                     // Untuk pyranometer: 

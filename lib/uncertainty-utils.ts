@@ -410,7 +410,9 @@ export interface CalibrationFactorResult {
     n_total: number;
     n_filtered: number;
     outlier_indices: number[];
-    std_dev: number;
+    std_dev: number;         // Stdev dari data filtered
+    std_dev_all?: number;    // Stdev dari semua data (untuk Repeat)
+    n_all?: number;          // Jumlah semua data (untuk Repeat)
 }
 
 /**
@@ -422,6 +424,7 @@ export interface PyranometerUncertaintyComponent {
     u_percent: number;
     distribution: 'Normal' | 'Rectangular';
     divisor: number;
+    deg_freedom: number; // Derajat kebebasan
 }
 
 /**
@@ -533,7 +536,9 @@ function createEmptyCFResult(): CalibrationFactorResult {
         n_total: 0,
         n_filtered: 0,
         outlier_indices: [],
-        std_dev: 0
+        std_dev: 0,
+        std_dev_all: 0,
+        n_all: 0
     };
 }
 
@@ -625,7 +630,9 @@ export function calculateCalibrationFactor(
             n_total: n,
             n_filtered: n,
             outlier_indices: [],
-            std_dev: sd
+            std_dev: sd,
+            std_dev_all: sd,
+            n_all: n
         };
     }
     
@@ -640,7 +647,9 @@ export function calculateCalibrationFactor(
         n_total: n,
         n_filtered: filteredCF.length,
         outlier_indices: outlierIndices,
-        std_dev: filteredSD
+        std_dev: filteredSD,      // Stdev dari data filtered (untuk CF)
+        std_dev_all: sd,          // Stdev dari semua data (untuk Repeat)
+        n_all: n                  // Jumlah semua data (untuk Repeat)
     };
 }
 
@@ -691,60 +700,83 @@ export function calculatePyranometerUncertainty(params: {
     stdMean?: number;
     /** Rata-rata pembacaan UUT (W/m²) — dipakai sebagai pembagi resolusi UUT */
     uutMean?: number;
+    /** Nilai minimum pembacaan standar (W/m²) — dipakai sebagai pembagi resolusi */
+    stdMin?: number;
     /** Tipe alat standar (untuk lookup ISO 9060 Drift). Jika tidak diisi, fallback ke sensorType UUT. */
     stdSensorType?: string;
+    /** Sensitivitas standar (µV/Wm⁻²) — untuk hitung resolusi dari sensitivitas */
+    sensitivityStd?: number;
+    /** Sensitivitas UUT (µV/Wm⁻²) — untuk hitung resolusi dari sensitivitas */
+    sensitivityUut?: number;
 }): PyranometerUncertaintyResult {
-    const { cf_result, certU95_percent, resolutionStd, resolutionUut, range, sensorType, stdMean, uutMean, stdSensorType } = params;
+    const { cf_result, certU95_percent, resolutionStd, resolutionUut, range, sensorType, stdMean, uutMean, stdMin, stdSensorType, sensitivityStd, sensitivityUut } = params;
     
     // SAFEGUARD: Validasi CF result
     if (cf_result.n_filtered === 0 || cf_result.cf_final === 0) {
         return createEmptyPyranometerResult();
     }
     
+    // Hitung rata-rata pembacaan untuk perhitungan resolusi
+    const effectiveStdMean = stdMean && stdMean > 0 ? stdMean : range;
+    const effectiveUutMean = uutMean && uutMean > 0 ? uutMean : range;
+    
+    // Hitung resolusi efektif
+    // Gunakan resolusi dari sensor
+    const effectiveResStd = resolutionStd;
+    const effectiveResUut = resolutionUut;
+    
     // 1. Repeat (dalam %)
-    // U_repeat = (stdev_CF / CF_final) × 100%
-    // Pembagi (coverage factor) = √n (jumlah data setelah filter)
-    const repeatPercent = (cf_result.std_dev / cf_result.cf_final) * 100;
-    const u_repeat = repeatPercent / Math.sqrt(cf_result.n_filtered);
+    // Formula: U = stdev_CF / mean_CF (TANPA × 100)
+    // Cov Factor = √n_total (SEMUA data)
+    // Deg Freedom = n_total - 1
+    const repeatStdDev = cf_result.std_dev_all || cf_result.std_dev; // stdev dari SEMUA data
+    const repeatMean = cf_result.cf_final; // mean_CF
+    const repeatN = cf_result.n_all || cf_result.n_total; // SEMUA data untuk Cov Factor
+    const repeatDegFreedom = repeatN - 1; // Deg Freedom = n - 1
+    const repeatU = repeatStdDev / repeatMean; // stdev_CF / mean_CF (TANPA × 100)
+    const u_repeat = repeatU / Math.sqrt(repeatN);
     
     // 2. Sertifikat Std (dalam %)
     const certStdPercent = certU95_percent;
     const u_cert = certStdPercent / 2;
     
     // 3. Resolusi Std (dalam %)
-    // U_resolusi_std = (½ × resolusi_STD / X̄_STD) × 100%
-    // Pembagi: rata-rata pembacaan standar (bukan range!)
-    const effectiveStdMean = stdMean && stdMean > 0 ? stdMean : (range > 0 ? range : PYRANOMETER_CONFIG.DEFAULT_RANGE);
-    const resStdPercent = ((0.5 * resolutionStd) / effectiveStdMean) * 100;
+    // Formula: U = 0.5 × resolusi_STD / mean_STD (TANPA × 100)
+    const resStdPercent = effectiveStdMean > 0 ? (0.5 * effectiveResStd / effectiveStdMean) : 0;
     const u_res_std = resStdPercent / Math.sqrt(3);
     
     // 4. Drift Std (dalam %, dari ISO 9060:2018)
-    // Drift ditentukan dari tipe alat STANDAR (bukan UUT)
     const driftSensorType = stdSensorType || sensorType;
     const driftPercent = getISO9060Drift(driftSensorType);
     const u_drift = driftPercent / Math.sqrt(3);
     
     // 5. Resolusi UUT (dalam %)
-    // U_resolusi_uut = (½ × resolusi_UUT / X̄_UUT) × 100%
-    const effectiveUutMean = uutMean && uutMean > 0 ? uutMean : (range > 0 ? range : PYRANOMETER_CONFIG.DEFAULT_RANGE);
-    const resUutPercent = ((0.5 * resolutionUut) / effectiveUutMean) * 100;
+    // Formula: U = 0.5 × resolusi_UUT / mean_UUT (TANPA × 100)
+    const resUutPercent = effectiveUutMean > 0 ? (0.5 * effectiveResUut / effectiveUutMean) : 0;
     const u_res_uut = resUutPercent / Math.sqrt(3);
     
-    // Components array
+    // Components array dengan formula yang sesuai Excel
     const components: PyranometerUncertaintyComponent[] = [
-        { name: 'Repeat', value_percent: repeatPercent, u_percent: u_repeat, distribution: 'Normal', divisor: Math.sqrt(cf_result.n_filtered) },
-        { name: 'Sertifikat Std', value_percent: certStdPercent, u_percent: u_cert, distribution: 'Normal', divisor: 2 },
-        { name: 'Resolusi Std', value_percent: resStdPercent, u_percent: u_res_std, distribution: 'Rectangular', divisor: Math.sqrt(3) },
-        { name: 'Drift Std', value_percent: driftPercent, u_percent: u_drift, distribution: 'Rectangular', divisor: Math.sqrt(3) },
-        { name: 'Resolusi UUT', value_percent: resUutPercent, u_percent: u_res_uut, distribution: 'Rectangular', divisor: Math.sqrt(3) },
+        { name: 'Repeat', value_percent: repeatU, u_percent: u_repeat, distribution: 'Normal', divisor: Math.sqrt(repeatN), deg_freedom: repeatDegFreedom },
+        { name: 'Sertifikat Std', value_percent: certStdPercent, u_percent: u_cert, distribution: 'Normal', divisor: 2, deg_freedom: 150 },
+        { name: 'Resolusi Std', value_percent: resStdPercent, u_percent: u_res_std, distribution: 'Rectangular', divisor: Math.sqrt(3), deg_freedom: 50 },
+        { name: 'Drift Std', value_percent: driftPercent, u_percent: u_drift, distribution: 'Rectangular', divisor: Math.sqrt(3), deg_freedom: 50 },
+        { name: 'Resolusi UUT', value_percent: resUutPercent, u_percent: u_res_uut, distribution: 'Rectangular', divisor: Math.sqrt(3), deg_freedom: 50 },
     ];
     
     // Combined uncertainty
     const sumSq = components.reduce((a, c) => a + Math.pow(c.u_percent, 2), 0);
     const uc = Math.sqrt(sumSq);
     
-    // Coverage factor
-    const k = PYRANOMETER_CONFIG.DEFAULT_K_FACTOR;
+    // Effective degrees of freedom (Welch-Satterthwaite)
+    const sumCiUiQuadVi = components.reduce((a, c) => {
+        const vi = c.deg_freedom === Infinity ? 1e9 : c.deg_freedom;
+        return a + Math.pow(c.u_percent, 4) / vi;
+    }, 0);
+    const veff = sumCiUiQuadVi > 0 ? Math.pow(uc, 4) / sumCiUiQuadVi : Infinity;
+    
+    // Coverage factor (dihitung dari veff, bukan hardcoded)
+    const k = getCoverageFactorFor95(Math.floor(veff));
     const u95 = k * uc;
     
     return {

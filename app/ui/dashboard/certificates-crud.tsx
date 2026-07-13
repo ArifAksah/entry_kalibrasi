@@ -1042,6 +1042,7 @@ type ResultItem = {
         
         const range = parseFloat(activeUutSensor.range_capacity || '2000') || 2000;
         const interpolatedU95 = standardCertRecord?.u95_general || 2.1;
+        const stdMinVal = stdReadings.length > 0 ? Math.min(...stdReadings.filter((v: number) => v > 0)) : 0;
         
         const pyrResult = calculatePyranometerUncertainty({
           cf_result: cfResult,
@@ -1049,7 +1050,10 @@ type ResultItem = {
           resolutionStd: standardCertRecord?.resolution || 0.01,
           resolutionUut: activeUutSensor.resolution || 0.1,
           range: range,
-          sensorType: activeUutSensor.type || activeUutSensor.name || ''
+          sensorType: activeUutSensor.type || activeUutSensor.name || '',
+          stdMin: stdMinVal,
+          sensitivityStd: (standardCertRecord as any)?.sensitivity || undefined,
+          sensitivityUut: (activeUutSensor as any)?.sensitivity || undefined,
         });
         
         // Ambil unit dari data raw (unit_uut)
