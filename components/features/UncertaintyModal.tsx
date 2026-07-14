@@ -576,18 +576,18 @@ function UncertaintyContent({
                         <tr>
                             <td colSpan={9} className="border-0 border-r border-black"></td>
                             <td className="border border-black px-1 py-0.5 text-left font-normal" style={{ fontSize: '11px' }}>Eff. Deg of freedom, veff</td>
-                            <td colSpan={2} className="border border-black px-1 py-0.5 text-center">{formatSci(result.eff_deg_freedom_veff)}</td>
+                            <td colSpan={2} className="border border-black px-1 py-0.5 text-center">{result.eff_deg_freedom_veff.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         </tr>
                         <tr>
                             <td colSpan={9} className="border-0 border-r border-black"></td>
                             <td className="border border-black px-1 py-0.5 text-left font-normal" style={{ fontSize: '11px' }}>Cov. Factor for 95% CL</td>
-                            <td colSpan={2} className="border border-black px-1 py-0.5 text-center">{formatSci(result.cov_factor_95)}</td>
+                            <td colSpan={2} className="border border-black px-1 py-0.5 text-center">{result.cov_factor_95.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         </tr>
                         <tr>
                             <td colSpan={9} className="border-0 border-r border-black"></td>
                             <td className="border border-black px-1 py-0.5 text-left font-normal" style={{ fontSize: '11px' }}>Expanded uncertainty, U95</td>
                             <td colSpan={2} className="border border-black px-1 py-0.5 text-right pr-4 font-bold">
-                                <span className="border-b-[1.5px] border-black inline-block">{formatDec(result.expanded_uncert_u95, 3)}</span>
+                                <span className="border-b-[1.5px] border-black inline-block">{formatDec(result.expanded_uncert_u95, 2)}</span>
                             </td>
                         </tr>
                     </tbody>

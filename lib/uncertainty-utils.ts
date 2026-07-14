@@ -758,7 +758,7 @@ export function calculatePyranometerUncertainty(params: {
     // Components array dengan formula yang sesuai Excel
     const components: PyranometerUncertaintyComponent[] = [
         { name: 'Repeat', value_percent: repeatU, u_percent: u_repeat, distribution: 'Normal', divisor: Math.sqrt(repeatN), deg_freedom: repeatDegFreedom },
-        { name: 'Sertifikat Std', value_percent: certStdPercent, u_percent: u_cert, distribution: 'Normal', divisor: 2, deg_freedom: 150 },
+        { name: 'Sertifikat Std', value_percent: certStdPercent, u_percent: u_cert, distribution: 'Normal', divisor: 2, deg_freedom: 50 },
         { name: 'Resolusi Std', value_percent: resStdPercent, u_percent: u_res_std, distribution: 'Rectangular', divisor: Math.sqrt(3), deg_freedom: 50 },
         { name: 'Drift Std', value_percent: driftPercent, u_percent: u_drift, distribution: 'Rectangular', divisor: Math.sqrt(3), deg_freedom: 50 },
         { name: 'Resolusi UUT', value_percent: resUutPercent, u_percent: u_res_uut, distribution: 'Rectangular', divisor: Math.sqrt(3), deg_freedom: 50 },
