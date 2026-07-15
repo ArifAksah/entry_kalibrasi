@@ -4223,6 +4223,7 @@ type ResultItem = {
                                   'MK 04 - Anemometer (Kecepatan Angin)',
                                   'MK 05 - Anemometer (Arah Angin)',
                                   'MK 06 - Penakar Hujan',
+                                  'Komparasi - Komparasi Lapang sedekat mungkin membandingkan sensor per sensor dalam kondisi lingkungan dilapangan (onsite)',
                                 ].map(method => ({ id: method, name: method }))}
                                 placeholder="Pilih Metode Kalibrasi"
                                 searchPlaceholder="Cari metode kalibrasi..."
