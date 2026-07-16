@@ -247,8 +247,8 @@ export default function StationsCRUD() {
           setCurrentUserId(user.id)
           setForm(prev => ({ ...prev, created_by: user.id }))
 
-          // Use userId filtering if not admin
-          const filterUserId = role === 'admin' ? undefined : user.id
+          // Use userId filtering if not admin or calibrator
+          const filterUserId = (role === 'admin' || role === 'calibrator') ? undefined : user.id
           fetchStations({ page: 1, pageSize, userId: filterUserId })
         }
       } catch (e) {
@@ -715,7 +715,13 @@ export default function StationsCRUD() {
                           { value: '', label: 'Pilih Type' },
                           { value: '1', label: 'Meteorologi' },
                           { value: '2', label: 'Klimatologi' },
-                          { value: '3', label: 'Geofisika' }
+                          { value: '3', label: 'Geofisika' },
+                          { value: '4', label: 'BMKG Pusat' },
+                          { value: '5', label: 'Balai Besar Wilayah I' },
+                          { value: '6', label: 'Balai Besar Wilayah II' },
+                          { value: '7', label: 'Balai Besar Wilayah III' },
+                          { value: '8', label: 'Balai Besar Wilayah IV' },
+                          { value: '9', label: 'Balai Besar Wilayah V' },
                         ]
                       },
                       {

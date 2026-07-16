@@ -72,6 +72,9 @@ export const usePermissions = () => {
       if (resource === 'instrument' || resource === 'sensor') {
         return ['create', 'read', 'update', 'delete'].includes(action)
       }
+      if (resource === 'station') {
+        return ['create', 'read', 'update', 'delete'].includes(action)
+      }
       return action === 'read'
     }
 
