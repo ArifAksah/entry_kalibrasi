@@ -14,7 +14,7 @@
  *       --purge             Hapus SEMUA stasiun lama dulu (otomatis backup dulu).
  *       --force             Lepas referensi FK sebelum purge.
  *       --dry-run           Hanya preview, tidak menulis ke DB.
- *       --file <path>       Path CSV (default: data stasiun paling update.csv).
+ *       --file <path>       Path CSV (default: final_output_stasiun.csv).
  *       --created-by <uuid> Isi kolom created_by (default: null).
  *   rollback --from <file>  Pulihkan tabel station persis seperti isi file backup.
  *   set-type                Update type_id stasiun yang sudah ada dari CSV.
@@ -98,6 +98,25 @@ function toNumber(value: unknown): number | null {
   return isNaN(n) ? null : n
 }
 
+/** Mapping type_id dari teks ke angka (sesuai tabel station_type di DB) */
+const TYPE_MAP: Record<string, number> = {
+  'meteorologi': 1,
+  'klimatologi': 2,
+  'geofisika': 3,
+  'balai': 4,
+  'bmkg pusat': 5,
+}
+
+function resolveTypeId(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const str = String(value).trim()
+  // Jika sudah angka, pakai langsung
+  const asNum = Number(str)
+  if (!isNaN(asNum) && str !== '') return asNum
+  // Mapping dari teks
+  return TYPE_MAP[str.toLowerCase()] ?? null
+}
+
 function parseCsvLine(line: string, delimiter = ';'): string[] {
   const result: string[] = []
   let current = ''
@@ -156,7 +175,7 @@ function parseStationsFromCsv(filePath: string, createdBy: string | null): Stati
       region: clean(row['region']),
       province: clean(row['province']),
       regency: clean(row['regency']),
-      type_id: toNumber(row['type_id']),
+      type_id: resolveTypeId(row['type_id']),
       time_zone: clean(row['time_zone']),
       created_by: createdBy,
     })
@@ -509,7 +528,7 @@ async function main() {
   loadEnvironment()
   const argv = process.argv.slice(2)
   const command = argv[0]
-  const filePath = getFlagValue(argv, '--file') || 'data stasiun paling update.csv'
+  const filePath = getFlagValue(argv, '--file') || 'final_output_stasiun.csv'
   const purge = argv.includes('--purge')
   const force = argv.includes('--force')
   const dryRun = argv.includes('--dry-run')

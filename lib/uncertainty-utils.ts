@@ -412,6 +412,7 @@ export interface CalibrationFactorResult {
     outlier_indices: number[];
     std_dev: number;         // Stdev dari data filtered
     std_dev_all?: number;    // Stdev dari semua data (untuk Repeat)
+    mean_all?: number;       // Mean dari semua data (untuk Repeat - konsisten dengan std_dev_all)
     n_all?: number;          // Jumlah semua data (untuk Repeat)
 }
 
@@ -538,6 +539,7 @@ function createEmptyCFResult(): CalibrationFactorResult {
         outlier_indices: [],
         std_dev: 0,
         std_dev_all: 0,
+        mean_all: 0,
         n_all: 0
     };
 }
@@ -601,14 +603,14 @@ export function calculateCalibrationFactor(
     const cf_i = validPairs.map(p => p.std / p.uut);
     const n = cf_i.length;
     
-    // Hitung statistik
-    const mean = cf_i.reduce((a, b) => a + b, 0) / n;
-    const variance = cf_i.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (n - 1);
-    const sd = Math.sqrt(variance);
+    // Hitung statistik dari SEMUA data (untuk Repeat - konsisten dengan Excel)
+    const mean_all = cf_i.reduce((a, b) => a + b, 0) / n;
+    const variance_all = cf_i.reduce((a, b) => a + Math.pow(b - mean_all, 2), 0) / (n - 1);
+    const sd_all = Math.sqrt(variance_all);
     
-    // SAFEGUARD 3: Filter outlier
-    const lowerBound = mean - outlierThreshold * sd;
-    const upperBound = mean + outlierThreshold * sd;
+    // SAFEGUARD 3: Filter outlier (untuk cf_final yang lebih robust)
+    const lowerBound = mean_all - outlierThreshold * sd_all;
+    const upperBound = mean_all + outlierThreshold * sd_all;
     
     const outlierIndices: number[] = [];
     const filteredCF: number[] = [];
@@ -626,30 +628,32 @@ export function calculateCalibrationFactor(
         // Jika terlalu banyak outlier, gunakan semua data
         return {
             cf_i,
-            cf_final: mean,
+            cf_final: mean_all,
             n_total: n,
             n_filtered: n,
             outlier_indices: [],
-            std_dev: sd,
-            std_dev_all: sd,
+            std_dev: sd_all,
+            std_dev_all: sd_all,
+            mean_all: mean_all,
             n_all: n
         };
     }
     
-    // Hitung CF_final dari data bersih
+    // Hitung CF_final dari data bersih (untuk display/koreksi)
     const cfFinal = filteredCF.reduce((a, b) => a + b, 0) / filteredCF.length;
     const filteredVariance = filteredCF.reduce((a, b) => a + Math.pow(b - cfFinal, 2), 0) / (filteredCF.length - 1);
     const filteredSD = Math.sqrt(filteredVariance);
     
     return {
         cf_i,
-        cf_final: cfFinal,
+        cf_final: cfFinal,         // Mean dari data filtered (untuk display)
         n_total: n,
         n_filtered: filteredCF.length,
         outlier_indices: outlierIndices,
-        std_dev: filteredSD,      // Stdev dari data filtered (untuk CF)
-        std_dev_all: sd,          // Stdev dari semua data (untuk Repeat)
-        n_all: n                  // Jumlah semua data (untuk Repeat)
+        std_dev: filteredSD,       // Stdev dari data filtered
+        std_dev_all: sd_all,       // Stdev dari SEMUA data (untuk Repeat)
+        mean_all: mean_all,        // Mean dari SEMUA data (untuk Repeat)
+        n_all: n                   // Jumlah semua data (untuk Repeat)
     };
 }
 
@@ -726,15 +730,22 @@ export function calculatePyranometerUncertainty(params: {
     const effectiveResUut = resolutionUut;
     
     // 1. Repeat (dalam %)
-    // Formula: U = stdev_CF / mean_CF (TANPA × 100)
-    // Cov Factor = √n_total (SEMUA data)
-    // Deg Freedom = n_total - 1
-    const repeatStdDev = cf_result.std_dev_all || cf_result.std_dev; // stdev dari SEMUA data
-    const repeatMean = cf_result.cf_final; // mean_CF
-    const repeatN = cf_result.n_all || cf_result.n_total; // SEMUA data untuk Cov Factor
-    const repeatDegFreedom = repeatN - 1; // Deg Freedom = n - 1
-    const repeatU = repeatStdDev / repeatMean; // stdev_CF / mean_CF (TANPA × 100)
+    // Formula Excel: =stdev_CF / mean_CF * 100%
+    // HARUS pakai mean dan stdev dari SEMUA data (konsisten, tanpa filter outlier)
+    const repeatStdDev = cf_result.std_dev_all || cf_result.std_dev;
+    const repeatMean = cf_result.mean_all || cf_result.cf_final; // mean SEMUA data, konsisten dengan std_dev_all
+    const repeatN = cf_result.n_all || cf_result.n_total;
+    const repeatDegFreedom = repeatN - 1;
+    const repeatU = repeatStdDev / repeatMean;
     const u_repeat = repeatU / Math.sqrt(repeatN);
+    
+    console.log('[PYRANO REPEAT]', {
+        std_dev_all: repeatStdDev,
+        mean_all: repeatMean,
+        cf_final: cf_result.cf_final,
+        n: repeatN,
+        repeatU: repeatU,
+    });
     
     // 2. Sertifikat Std (dalam %)
     const certStdPercent = certU95_percent;

@@ -1,0 +1,223 @@
+name;address;station_id;wigos_id;latitude;longitude;elevation;region;province;regency;type_id;time_zone
+Stasiun Meteorologi Maimun Saleh;Bandara Maimun Saleh Sabang;96001;0-20000-1-06588;5.8764;95.334;125;Region I;Aceh;Kota Sabang;Meteorologi;UTC+07:00
+Stasiun Meteorologi Malikussaleh;Jl. Meteorologi Bandar Udara Malikussaleh, Muara Batu, Aceh Utara;96009;0-20000-1-06600;5.22869;96.94749;28;Region I;Aceh;Kab. Aceh Utara;Meteorologi;UTC+07:00
+Stasiun Meteorologi Sultan Iskandar Muda;Bandar Udara Sultan Iskandar Muda, Blang Bintang, Banda Aceh;96011;;5.52244;95.417;20;Region I;Aceh;Kab. Aceh Besar;Meteorologi;UTC+07:00
+Stasiun Meteorologi Cut Nyak Dhien Nagan Raya;Jl. Bandara Cut Nyak Dhien Desa Kuala Tuha Kec. Kuala Pesisir, Kab. Nagan Raya;96015;0-20000-0-95013;4.04928;96.24796;3;Region I;Aceh;Kab. Nagan Raya;Meteorologi;UTC+07:00
+Stasiun Klimatologi Aceh;Jl. Raya Mata Ie Kec. Darul Imarah Kab. Aceh Besar Aceh;96017;;5.404;95.464;40;Region I;Aceh;Kab. Aceh Besar;Klimatologi;UTC+07:00
+Stasiun Klimatologi Sumatera Utara;Jl. Meteorologi Raya No.17, Sampali, Kec. Percut Sei Tuan, Deli Serdang;96031;;3.62114;98.71485;0;Region I;Sumatera Utara;Kab. Deli Serdang;Klimatologi;UTC+07:00
+Stasiun Meteorologi Maritim Belawan;Jl. Raya Pelabuhan III Gabion Belawan Medan;96033;;3.78824;98.71492;3;Region I;Sumatera Utara;Kota Medan;Meteorologi;UTC+07:00
+Stasiun Meteorologi Kualanamu;Jl. Tengku Heran No. 119 Desa V Kebun Kelapa, Kec. Beringin, Deli Serdang;96035;0-20000-0-96035;3.64573;98.88488;23;Region I;Sumatera Utara;Kab. Deli Serdang;Meteorologi;UTC+07:00
+Stasiun Geofisika Deli Serdang;Jl. Geofisika No. 1 Tuntungan I, Kec. Pancurbatu, Kab. Deli Serdang, Sumatera Utara;96037;;3.501;98.56;86;Region I;Sumatera Utara;Kab. Deli Serdang;Geofisika;UTC+07:00
+Stasiun Geofisika Aceh Selatan;Jl. Bandara T. Cut Ali Desa Teupin Gajah, Kec. Pasie Raja, Kab. Aceh Selatan, Aceh;99933;;3.17333;97.28637;2;Region I;Aceh;Kab. Aceh Selatan;Geofisika;UTC+07:00
+Stasiun Meteorologi Aek Godang;Bandara Aek Godang Jl. Aek Godang Sibuhuan Km. 1,5 Aek Godang – Batangonang Padang Lawas Utara;96071;;1.55;99.45;281;Region I;Sumatera Utara;Kab. Padang Lawas Utara;Meteorologi;UTC+07:00
+Stasiun Meteorologi FL Tobing;Bandara DR. Ferdinand Lumbantobing, Jl. Ahmad Yani Pinangsori, Kel. Pinangsori, Kec. Pinangsori Kab. Tapanuli Tengah;96073;;1.55;98.88;10;Region I;Sumatera Utara;Kab. Tapanuli Tengah;Meteorologi;UTC+07:00
+Stasiun Meteorologi Binaka;Jl. Pelabuhan Udara Binaka Km.19,7 Kecamatan Gunungsitoli Idanoi, kota Gunungsitoli - Nias;96075;;1.1649;97.7036;7;Region I;Sumatera Utara;Kab. Nias;Meteorologi;UTC+07:00
+Stasiun Geofisika Gunungsitoli;Jl. Ke Alasa-Meteorologi, Dusun III, Ds. Onowaembo, Kota Gunungsitoli, Sumatera Utara;96077;;1.3;97.58;175;Region I;Sumatera Utara;Kab. Nias;Geofisika;UTC+07:00
+Stasiun Meteorologi Hang Nadim;Jl. Hang Nadim, Batu Besar, Batam;96087;;1.11667;104.11667;26;Region I;Kepulauan Riau;Kota Batam;Meteorologi;UTC+07:00
+Stasiun Meteorologi Raja Haji Abdullah;Jl. Mayjen Sutoyo Km. 12 Komplek Bandar Udara Raja Haji Abdullah Tangjung Balai Karimun;96089;;1.11667;104.11667;26;Region I;Kepulauan Riau;Kab. Karimun;Meteorologi;UTC+07:00
+Stasiun Meteorologi Raja Haji Fisabilillah;Komp. Perkantoran Bandar Udara Raja Haji Fisabilillah Tanjungpinang  Kepulauan Riau;96091;;0.9227;104.5289;15;Region I;Kepulauan Riau;Kota Tanjung Pinang;Meteorologi;UTC+07:00
+Stasiun Meteorologi Sultan Syarif Kasim II;Bandar Udara Sultan Syarif Kasim II Pekanbaru;96109;;0.45924;101.44743;39;Region I;Riau;Kota Pekanbaru;Meteorologi;UTC+07:00
+Stasiun Meteorologi Tarempa;Jl. Hang Tuah No.10 Tarempa;96145;0-20000-0-96145;3.2;106.25;2;Region I;Kepulauan Riau;Kab. Kepulauan Anambas;Meteorologi;UTC+07:00
+Stasiun Meteorologi Maritim Natuna;Jl. Adi Sucipto No.147 Ranai;96147;0-20000-0-96147;3.91206;108.39;2;Region I;Kepulauan Riau;Kab. Natuna;Meteorologi;UTC+07:00
+Stasiun Meteorologi Maritim Teluk Bayur;Jl. Sutan Syahrir Komplek Pelindo Nomor 26 Rawang, Mata Air, Padang, Sumatera Barat;96161;;-0.99639;100.37222;2;Region I;Sumatera Barat;Kota Padang;Meteorologi;UTC+07:00
+Stasiun Meteorologi Minangkabau;Jl. Mr. H. St. Moh. Rasyid, Talao Mundam, Nagari Katapiang Kec. Batang Anai, Kab. Padang Pariaman, Sumatera Barat;96163;;-0.79355;100.28917;6;Region I;Sumatera Barat;Kab. Padang Pariaman;Meteorologi;UTC+07:00
+Stasiun Geofisika Padang Panjang;Jl. Meteorologi, Silaing Bawah, Kec. Padang Panjang Barat, Kota Padang Panjang, Sumatera Barat;96165;;-0.4663;100.3797;735;Region I;Sumatera Barat;Kota Padang Panjang;Geofisika;UTC+07:00
+Stasiun Klimatologi Sumatera Barat;Jl. Raya Padang-Bukit tinggi Km. 51 Kapalo Hilalang Kec. Kayu Tanam Kab. Padang Pariaman;96167;;-0.54549;100.29786;128;Region I;Sumatera Barat;Kab. Padang Pariaman;Klimatologi;UTC+07:00
+Stasiun Meteorologi Kelas II Japura Indragiri Hulu;Jl. Lintas Timur, Sidomulyo, Kec. Lirik, Kab. Indragiri Hulu, Riau;96171;;-0.33;102.32;19;Region I;Riau;Kab. Indragiri Hulu;Meteorologi;UTC+07:00
+Stasiun Meteorologi Dabo;Jl. Garuda Po.Box 6 Dabo Singkep;96179;;-0.48;104.58;29;Region I;Kepulauan Riau;Kab. Lingga;Meteorologi;UTC+07:00
+Stasiun Klimatologi  Jambi;Jl. Jambi - Muara Bulian KM 18, Desa Simpang Sungai Duren, Kec. Jambi Luar Kota, Kab. Muaro Jambi, Jambi;96191;;-1.6019;103.48444;24;Region II;Jambi;Kab. Muaro Jambi;Klimatologi;UTC+07:00
+Stasiun Meteorologi Sultan Thaha;Jl. Sersan Udara Syawal, Paal Merah Baru, Jambi;96195;;-1.635166;103.6453;27;Region II;Jambi;Kota Jambi;Meteorologi;UTC+07:00
+Stasiun Pemantau Atmosfer Global Bukit Koto Tabang;Jl. Raya Bukittinggi - Medan Km. 15, Palupuh, Kabupaten Agam, Sumatera Barat;96169;;-0.2505;100.3823;895;Region I;Sumatera Barat;Kab. Agam;Klimatologi;UTC+07:00
+Stasiun Meteorologi Depati Parbo;Bandara Depati Parbo Kerinci;96207;;-2.083;101.45;782;Region II;Jambi;Kab. Kerinci;Meteorologi;UTC+07:00
+Stasiun Meteorologi Sultan Mahmud Badaruddin II;Jl. Sultan Mahmud Badaruddin II KM.10,5 Palembang;96221;;-2.89468;104.70129;12;Region II;Sumatera Selatan;Kota Palembang;Meteorologi;UTC+07:00
+Stasiun Klimatologi Sumatera Selatan;Jl. Mayjen Yusuf Singedekane Kawasan Musi II No.16, Keramasan, Kec. Kertapati, Kota Palembang, Sumatera Selatan;96223;;-2.92732;104.77197;11;Region II;Sumatera Selatan;Kota Palembang;Klimatologi;UTC+07:00
+Stasiun Meteorologi Depati Amir;Jl. Bandar Udara Depati Amir Pangkalpinang;96237;;-2.17;106.13;10;Region II;Kepulauan Bangka Belitung;Kota Pangkal Pinang;Meteorologi;UTC+07:00
+Stasiun Geofisika Tanjung Pandan;;96247;;-2.7575;107.65;22;Region II;Kepulauan Bangka Belitung;Kab. Belitung;Geofisika;UTC+07:00
+Stasiun Meteorologi H. AS. Hananjoeddin;Jl. Bandar Udara H AS.Hanandjoeddin Tanjungpandan;96249;;-2.75;107.75;50;Region II;Kepulauan Bangka Belitung;Kab. Belitung;Meteorologi;UTC+07:00
+Stasiun Meteorologi Fatmawati Soekarno;Jl. Raya Padang Kemiling, Kelurahan Pekan Sabtu, Kecamatan Selebar, Bengkulu;96253;;-3.8582;102.3367;24;Region II;Bengkulu;Kota Bengkulu;Meteorologi;UTC+07:00
+Stasiun Klimatologi Bengkulu;Jl. Ir. Rustandi Sugianto Bengkulu;96255;;-3.8644;102.3107;9;Region II;Bengkulu;Kota Bengkulu;Klimatologi;UTC+07:00
+Stasiun Geofisika Kepahiang;Jl. Pembangunan No. 156 Pasar Ujung, Kepahiang;96257;;-3.55;102.589;517;Region II;Bengkulu;Kab. Kepahiang;Geofisika;UTC+07:00
+Stasiun Klimatologi Lampung;Jl. Raya Lintas Sumatera KM.35 Tegineneng Pesawaran Lampung;96291;;-5.17223;105.180834;74;Region II;Lampung;Kab. Pesawaran;Klimatologi;UTC+07:00
+Stasiun Meteorologi Maritim Panjang;Jl. Yos Sudarso No.64 Way Lunik Panjang Bandar Lampung;96293;;-5.4721;105.321;7;Region II;Lampung;Kota Bandar Lampung;Meteorologi;UTC+07:00
+Stasiun Meteorologi Radin Inten II;Komp. Perkantoran Bandara Raden Inten II, KM. 28 Branti, Natar, Lampung Selatan;96295;;-5.23957;105.17417;85;Region II;Lampung;Kab. Lampung Selatan;Meteorologi;UTC+07:00
+Stasiun Geofisika Lampung Utara;Jl. Raden Intan No. 219 Kotaalam, Kotabumi Selatan, Lampung Utara, Lampung;96297;;-4.83631;104.87;60;Region II;Lampung;Kab. Lampung Utara;Geofisika;UTC+07:00
+Stasiun Meteorologi Yuvai Semaring;Long Katung, Krayan, Nunukan, Kalimantan Timur;96505;;3.86;115.68;1090;Region III;Kalimantan Utara;Kab. Nunukan;Meteorologi;UTC+08:00
+Stasiun Meteorologi Nunukan;Jl. Arief Rahman Hakim No.15 Nunukan Timur, Nunukan, Kalimantan Utara;96503;;4.13;117.67;8;Region III;Kalimantan Utara;Kab. Nunukan;Meteorologi;UTC+08:00
+Stasiun Meteorologi Juwata;Jl. Mulawarman, Bandar Udara Internasional Juwata, Tarakan Barat, Tarakan, Kalimantan Utara;96509;;3.33;117.57;6;Region III;Kalimantan Utara;Kota Tarakan;Meteorologi;UTC+08:00
+Stasiun Meteorologi Kalimarau;Jl. Bandara Kalimarau - Berau, Kalimantan Timur;96529;;2.1438827;117.4326943;13.3;Region III;Kalimantan Timur;Kab. Berau;Meteorologi;UTC+08:00
+Pos Meteorologi Paloh;;96535;;1.74;109.3;15;Region II;Kalimantan Barat;Kab. Sambas;Meteorologi;UTC+07:00
+Stasiun Meteorologi Nangapinoh;Jl. Juang Km 2,5 Komplek Bandar Udara Nanga Pinoh, Kec. Nanga Pinoh, Kab. Melawi, Kalimantan Barat;96557;;-0.42;111.47;40;Region II;Kalimantan Barat;Kab. Melawi;Meteorologi;UTC+07:00
+Stasiun Meteorologi Tebelian;Jl. Patih Tengan, Tebelian, Sintang;96559;;0.06;111.47;31;Region II;Kalimantan Barat;Kab. Sintang;Meteorologi;UTC+07:00
+Stasiun Meteorologi Pangsuma;Jl. Adi Sucipto, Kedamin Hulu, Putussibau Selatan;96565;;0.8389;112.9348;43;Region II;Kalimantan Barat;Kab. Kapuas Hulu;Meteorologi;UTC+07:00
+Stasiun Meteorologi Supadio;Jl. Adi Sucipto Km.17 Komplek Bandar Udara Supadio Pontianak, Kalimantan Barat;96581;;-0.14186;109.403;3;Region II;Kalimantan Barat;Kota Pontianak;Meteorologi;UTC+07:00
+Stasiun Klimatologi Kalimantan Barat;Jl. Raya Pontianak-Mempawah Km 20.5 Sei Nipah Kec. Jongkat, Kab. Mempawah, Kalimantan Barat;96583;;0.075;109.19;2;Region II;Kalimantan Barat;Kab. Mempawah;Klimatologi;UTC+07:00
+Stasiun Meteorologi Beringin;Jl. Pendreh No 187, Kelurahan Melayu, Kec. Teweh Tengah, Kab. Barito Utara;96595;;-0.56;114.53;42;Region III;Kalimantan Tengah;Kab. Barito Utara;Meteorologi;UTC+07:00
+Stasiun Meteorologi Aji Pangeran Tumenggung Pranoto;Jl. Pipit No.150  Kel.Bandara Kec.Sei Pinang Kota Samarinda;96607;;-0.48;117.16;10;Region III;Kalimantan Timur;Kota Samarinda;Meteorologi;UTC+08:00
+Stasiun Meteorologi Rahadi Oesman;Jl. Patimura no. 11 Kalinilam, Delta Pawan, Ketapang;96615;;-1.8;109.97;4.6;Region II;Kalimantan Barat;Kab. Ketapang;Meteorologi;UTC+07:00
+Stasiun Meteorologi Sultan Aji Muhammad Sulaiman Sepinggan;Jl. Marsma R. Iswahyudi No.356 Sepinggan Balikpapan;96633;;-1.26;116.9;3;Region III;Kalimantan Timur;Kota Balikpapan;Meteorologi;UTC+08:00
+Stasiun Geofisika Balikpapan;Jl. Marsma Iswahyudi No.354, Sepinggan, Balikpapan, Kalimantan Timur;96635;;-1.2553;116.91463;31;Region III;Kalimantan Timur;Kota Balikpapan;Geofisika;UTC+08:00
+Stasiun Meteorologi Iskandar;Jl. Iskandar Bandara Iskandar Pangkalan Bun kab. Kotawaringin Barat;96645;;-2.70446;111.66985;22;Region III;Kalimantan Tengah;Kab. Kotawaringin Barat;Meteorologi;UTC+07:00
+Stasiun Meteorologi H. Asan;Jl. Samekto, Bandar Udara Haji Asan Sampit, Kel. Baamang Hulu, Kec. Baamang, Kab. Kotawaringin Timur;96651;;-2.55;112.93;3;Region III;Kalimantan Tengah;Kab. Kotawaringin Timur;Meteorologi;UTC+07:00
+Stasiun Meteorologi Sanggu;Jl. Merdeka, Bandar Udara Sanggau, Buntok, PO Box 18;96653;-;-1.67;114.9;27;Region III;Kalimantan Tengah;Kab. Barito Selatan;Meteorologi;UTC+07:00
+Stasiun Meteorologi Tjilik Riwut;Jl. Adonis Samad, Kel. Panarung, Kec. Pahandut, Kota Palangka Raya;96655;;-2.22;113.95;11;Region III;Kalimantan Tengah;Kota Palangkaraya;Meteorologi;UTC+07:00
+Stasiun Meteorologi Syamsudin Noor;Jl. Angkasa Bandar Udara Syamsudin Noor Banjarmasin;96685;;-3.43953;114.76714;16;Region III;Kalimantan Selatan;Kota Banjarmasin;Meteorologi;UTC+08:00
+Stasiun Klimatologi Kalimantan Selatan;Jl. Trikora, Sungai Besar, Banjarbaru Selatan, Kota Banjarbaru, Kalimantan Selatan;96687;;-3.46225;114.84;48;Region III;Kalimantan Selatan;Kota Banjarbaru;Klimatologi;UTC+08:00
+Stasiun Meteorologi Gusti Syamsir Alam;Jl. Raya Stagen KM. 10, Kec. Pulau Laut Utara, Kab. Kotabaru, Kalimantan Selatan;96695;;-3.3;116.17;2;Region III;Kalimantan Selatan;Kab. Kotabaru;Meteorologi;UTC+08:00
+Stasiun Klimatologi Banten;Jl. Raya Kodam Bintaro No 82, Pondok Betung, Pondok Aren, Kota Tangerang Selatan;96733;;-6.26151;106.75084;27;Region II;Banten;Kota Tangerang Selatan;Klimatologi;UTC+07:00
+Stasiun Geofisika Tangerang;Jl. Meteorologi I No 5 Tanah Tinggi Tangerang, Kota Tangerang. Kodepos;96735;;-6.1;106.38;14;Region II;Banten;Kota Tangerang;Geofisika;UTC+07:00
+Stasiun Meteorologi Maritim Merak;Jl. Raya Taktakan No 27 Serang Banten;96737;;-6.11185;106.11;25.908;Region II;Banten;Kota Serang;Meteorologi;UTC+07:00
+Stasiun Meteorologi Budiarto;Bandar Udara Budiarto, Komplek STPI Curug, Kec. Legok, Kab. Tangerang;96739;;-6.2867;106.56389;46;Region II;Banten;Kab. Tangerang;Meteorologi;UTC+07:00
+Stasiun Meteorologi Maritim Tanjung Priok;Jl. Padamarang No. 4A Pelabuhan Tanjung Priok Jakarta Utara;96741;;-6.1078;106.88053;3;Region II;DKI Jakarta;Kota Adm. Jakarta Utara;Meteorologi;UTC+07:00
+Stasiun Geofisika Gorontalo;Jl. B.J Habibie (desa moutong) Kec. Tilongkabila Kab. Bone Bolango;96743;;0.55588;123.1406;4;Region IV;Gorontalo;Kab. Bone Bolango;Geofisika;UTC+08:00
+Pos Pengamatan Kemayoran;Jl. Angkasa 1, no 2, Kemayoran, Gunung Sahari Selatan, Jakarta Pusat;96745;;-6.155901;106.842218;4;Region II;DKI Jakarta;Kota Adm. Jakarta Pusat;Meteorologi;UTC+07:00
+Stasiun Meteorologi Soekarno Hatta;Bandara Soekarno-Hatta Gedung 725, Pajang, Benda, Kota Tangerang, Banten;96749;;-6.12;106.65;11;Region II;Banten;Kota Tangerang;Meteorologi;UTC+07:00
+Stasiun Meteorologi Citeko;Jl. Raya Citeko, Cisarua, RT.002/RW.009 Desa Citeko, Kecamatan CIsarua, Kabupaten Bogor;96751;;-6.7;106.85;920;Region II;Jawa Barat;Kab. Bogor;Meteorologi;UTC+07:00
+Stasiun Klimatologi Jawa Barat;Jl. Raya Dramaga KM 6.5 Bogor Barat, Kota Bogor, Jawa Barat;96753;;6.33;106.45;207;Region II;Jawa Barat;Kota Bogor;Klimatologi;UTC+07:00
+Stasiun Geofisika Bandung;Jl. Cemara No.66, Pasteur, Kec. Sukajadi, Kota Bandung, Jawa Barat;96783;;-6.88356;107.59733;791;Region II;Jawa Barat;Kota Bandung;Geofisika;UTC+07:00
+Stasiun Meteorologi Kertajati;Jl. Letnan Angkat Arzain No.28 Jatiwangi Majalengka, Jawa Barat;96791;;-6.7344;108.263;42.3;Region II;Jawa Barat;Kab. Majalengka;Meteorologi;UTC+07:00
+Stasiun Meteorologi Maritim Tegal;Jl. Kolonel Sugiono No. 100 Tegal;96797;;-6.5254;109.07157;3;Region II;Jawa Tengah;Kab. Tegal;Meteorologi;UTC+07:00
+Stasiun Meteorologi Tunggul Wulung;Jl. Gatot Subroto No. 20, Sidanegara, Cilacap Tengah, Cilacap;96805;;-7.7186;109.0148;6;Region II;Jawa Tengah;Kab. Cilacap;Meteorologi;UTC+07:00
+Stasiun Klimatologi Jawa Tengah;Jl. Siliwangi No. 291 Semarang;96835;;-6.9847;110.3812;6;Region II;Jawa Tengah;Kota Semarang;Klimatologi;UTC+07:00
+Stasiun Meteorologi Maritim Tanjung Emas;Jl. Yos Sudarso No.58 Pelabuhan Tanjung Emas Semarang;96837;;-6.9486;110.4199;2;Region II;Jawa Tengah;Kota Semarang;Meteorologi;UTC+07:00
+Stasiun Meteorologi Ahmad Yani;Jl. PUAD Bandar Udara Ahmad Yani Semarang;96839;;-6.97683;110.3778;5;Region II;Jawa Tengah;Kota Semarang;Meteorologi;UTC+07:00
+Stasiun Geofisika Sleman;Jl. wates km.8 Jitengan Balecatur Gamping Sleman Yogyakarta;96855;;-7.82;110.3;153;Region II;DI Yogyakarta;Kab. Sleman;Geofisika;UTC+07:00
+Stasiun Meteorologi Sangkapura;Jl. Umar Mas'ud No.4 Sangkapura - Bawean Gresik;96925;;-5.8511;112.6578;3;Region III;Jawa Timur;Kab. Gresik;Meteorologi;UTC+07:00
+Stasiun Meteorologi Perak I;Jl. Kalimas Baru 97 B Surabaya;96933;-;-7.2236;112.7239;3;Region III;Jawa Timur;Kota Surabaya;Meteorologi;UTC+07:00
+Stasiun Meteorologi Juanda;Bandar Udara Juanda Surabaya (Terminal 1), Sedati - Sidoarjo;96935;;-7.3846;112.7833;3;Region III;Jawa Timur;Kab. Sidoarjo;Meteorologi;UTC+07:00
+Stasiun Meteorologi Maritim Tanjung Perak;Jl. Kalimas Baru 97 B Surabaya;96937;-;-7.2053;112.7353;3;Region III;Jawa Timur;Kota Surabaya;Meteorologi;UTC+07:00
+Stasiun Klimatologi Jawa Timur;Jl. Zentana 33, Karangploso, Malang, Jawa Timur;96943;;-7.9008;112.5979;590;Region III;Jawa Timur;Kab. Malang;Klimatologi;UTC+07:00
+Stasiun Geofisika Pasuruan;Jl. Sedap Malam, Mlaten, Pandaan, Pasuruan, Jawa Timur;96945;;-7.70456;112.63533;862;Region III;Jawa Timur;Kab. Pasuruan;Geofisika;UTC+07:00
+Stasiun Geofisika Malang;Jl. Raya Bendungan Lahor, No. 40, Karangkates, Sumberpucung, Malang;96949;;-8.15;112.45;285;Region III;Jawa Timur;Kab. Malang;Geofisika;UTC+07:00
+Stasiun Meteorologi Trunojoyo;Jl. Raya kalianget Barat No. 8, Sumenep;96973;;-7.03976;113.914;3;Region III;Jawa Timur;Kab. Sumenep;Meteorologi;UTC+07:00
+Stasiun Geofisika Nganjuk;Jl. Pesanggrahan Sawahan Nganjuk JATIM;96975;;-7.73486;111.76682;675;Region III;Jawa Timur;Kab. Nganjuk;Geofisika;UTC+07:00
+Stasiun Meteorologi Banyuwangi;Jl. Jaksa Agung Suprapto, No.152, Banyuwangi, Jawa Timur;96987;;-8.215;114.3553;52;Region III;Jawa Timur;Kab. Banyuwangi;Meteorologi;UTC+07:00
+Stasiun Meteorologi Naha;Jl. Bandar Udara Naha, Kec. Tabukan Utara, Kab. Kep. Sangihe;97008;;3.68594;125.52881;6;Region IV;Sulawesi Utara;Kab. Kepulauan Sangihe;Meteorologi;UTC+08:00
+Stasiun Klimatologi Sulawesi Utara;Jl. Raya Paniki Atas, Desa Paniki Atas, Kec. Talawaan, Kab. Minahasa Utara;97012;;1.54585;124.9233;84;Region IV;Sulawesi Utara;Kab. Minahasa Utara;Klimatologi;UTC+08:00
+Stasiun Meteorologi Sam Ratulangi;Jl. Mr. A.A. Maramis Bandara Sam Ratulangi Manado;97014;;1.54575;124.9234;80;Region IV;Sulawesi Utara;Kota Manado;Meteorologi;UTC+08:00
+Stasiun Meteorologi Maritim Bitung;Jl. S. H. Sarundajang, Wangurer Barat, Madidir, Bitung, Sulawesi Utara;97016;;1.4431;125.1797;4;Region IV;Sulawesi Utara;Kota Bitung;Meteorologi;UTC+08:00
+Stasiun Meteorologi Sultan Bantilan;Komplek Bandar Udara Sultan Bantilan, Desa Lalos, Kec.Galang, Kab. Tolitoli Sulawesi Tengah;97028;;1.12114;120.79433;2;Region IV;Sulawesi Tengah;Kab. Toli Toli;Meteorologi;UTC+08:00
+Stasiun Meteorologi Djalaluddin;Jl. Bandara Djalaluddin Tantu, Desa Tolotio, Kec. Tibawa, Kabupaten Gorontalo, Gorontalo;97048;;0.6385;122.8525;33;Region IV;Gorontalo;Kab. Gorontalo;Meteorologi;UTC+08:00
+Stasiun Meteorologi Mutiara Sis-Al Jufri;Komplek Bandara Mutiara Palu Jl. Abdurahman Saleh Biroboli - Sulawesi Tengah;97072;;-0.91589;119.90554;79;Region IV;Sulawesi Tengah;Kota Palu;Meteorologi;UTC+08:00
+Stasiun Geofisika Palu;Jl. Sumur Yuga No. 04, Kel. Balaroa, Kec. Palu Barat, Kota Palu;97074;;-0.90536;119.8367;75;Region IV;Sulawesi Tengah;Kota Palu;Geofisika;UTC+08:00
+Stasiun Meteorologi Kasiguncu;Jl. Bandara Kasiguncu no. 202 Poso;97096;;-1.42038;120.65701;10;Region IV;Sulawesi Tengah;Kab. Poso;Meteorologi;UTC+08:00
+Stasiun Meteorologi Majene;;97120;;-3.55074;118.98054;29;Region IV;Sulawesi Barat;Kab. Majene;Meteorologi;UTC+08:00
+Stasiun Meteorologi Toraja;Jl. Bandara Toraja Kec. Mengkendek Kab. Tana Toraja - Sulawesi Selatan;97124;;-3.045325005;119.8188707;831;Region IV;Sulawesi Selatan;Kab. Tana Toraja;Meteorologi;UTC+08:00
+Stasiun Meteorologi Andi Jemma;Jl. Dirgantara no 3 kec Masamba kab Luwu Utara, Sulawesi Selatan;97126;;-2.55472;120.32422;43;Region IV;Sulawesi Selatan;Kab. Luwu Utara;Meteorologi;UTC+08:00
+Stasiun Meteorologi Sangia Ni Bandera;Jl. Protokol No. 1, Desa Dawi-Dawi,  Kec. Pomalaa, Kab. Kolaka, Sulawesi Tenggara;97142;;-4.18059;121.61077;14;Region IV;Sulawesi Tenggara;Kab. Kolaka;Meteorologi;UTC+08:00
+Stasiun Meteorologi Maritim Kendari;Jl. R.E. Martadinata No. 154 Kel. Purirano Kendari, Sulawesi Tenggara;97144;;-3.9701;122.5895;2;Region IV;Sulawesi Tenggara;Kota Kendari;Meteorologi;UTC+08:00
+Stasiun Geofisika Kendari;Jl. R.E. Martadinata No. 154 Kel. Purirano Kendari, Sulawesi Tenggara;97148;;-3.96;122.62;10;Region IV;Sulawesi Tenggara;Kota Kendari;Geofisika;UTC+08:00
+Stasiun Meteorologi Sultan Hasanuddin;Jl. Bandara Internasional Sultan Hasanuddin Hasanuddin Mandai, Maros - Sulawesi Selatan;97180;;-5.07;119.55;14;Region IV;Sulawesi Selatan;Kab. Maros;Meteorologi;UTC+08:00
+Stasiun Meteorologi Maritim Paotere;Jl. Salodong Kelurahan Untia Kecamatan Biringkanaya;97182;;-5.11375;119.41983;5;Region IV;Sulawesi Selatan;Kota Makassar;Meteorologi;UTC+08:00
+Stasiun Klimatologi Sulawesi Selatan;Jl. DR. Ratulangi no. 75A, Kel. Baju Bodoa, Kec. Maros Baru, Kab. Maros - Sulawesi Selatan;97184;0-20000-0-97184;-4.9308;119.572;13;Region IV;Sulawesi Selatan;Kab. Maros;Klimatologi;UTC+08:00
+Stasiun Geofisika Gowa;Jl. Poros Malino, Kel. Tamarunang, Sungguminasa, Kab. Gowa, Sulawesi Selatan;97186;;-5.218;119.47;22;Region IV;Sulawesi Selatan;Kab. Gowa;Geofisika;UTC+08:00
+Stasiun Meteorologi Beto Ambari;Jl. Dayanu Ikhsanuddin, Kel. Katobengke, Kec. Betoambari, Kota Bau-Bau, Sulawesi Tenggara;97192;;-5.47;122.62;233;Region IV;Sulawesi Tenggara;Kota Bau Bau;Meteorologi;UTC+08:00
+Stasiun Meteorologi I Gusti Ngurah Rai;Gedung GOI Lantai II Bandara Ngurah Rai;97230;;-8.75;115.17;4;Region III;Bali;Kab. Badung;Meteorologi;UTC+08:00
+Stasiun Geofisika Denpasar;Jl. Pulau Tarakan No 1 Denpasar Barat;97232;;-8.67689;115.21;15;Region III;Bali;Kota Denpasar;Geofisika;UTC+08:00
+Pos Pengamatan Kahang-Kahang;;97234;;-8.365;115.61083;155;Region III;Bali;Kab. Karangasem;Geofisika;UTC+08:00
+Stasiun Klimatologi Bali;Jl. Lely No. 9, Baler-bale Agung. Kecamatan Negara;97236;0-20000-0-97236;-8.341;114.6176;25;Region III;Bali;Kab. Jembrana;Klimatologi;UTC+08:00
+Stasiun Meteorologi Zainuddin Abdul Madjid;Jl. Raya Mandalika Penujak, Praya, Lombok Tengah NTB;97240;;-8.75277;116.24982;92;Region III;Nusa Tenggara Barat;Kota Mataram;Meteorologi;UTC+08:00
+Stasiun Klimatologi Nusa Tenggara Barat;Jl. Tgh. Ibrahim Khalidy, Desa Montong Are, Kec. Kediri Kab.Lombok Barat, NTB;97242;0-20000-0-97242;-8.63627;116.17094;55;Region III;Nusa Tenggara Barat;Kab. Lombok Barat;Klimatologi;UTC+08:00
+Stasiun Meteorologi Sultan Muhammad Kaharuddin;Jl. Garuda No.43 Sumbawa Besar;97260;0-20000-0-97260;-8.48845;117.41336;3.048;Region III;Nusa Tenggara Barat;Kab. Sumbawa;Meteorologi;UTC+08:00
+Stasiun Meteorologi Sultan Muhammad Salahuddin;Jl. Sultan M. Salahuddin Palibelo Bima - NTB;97270;;-8.54279;118.6928;5;Region III;Nusa Tenggara Barat;Kota Bima;Meteorologi;UTC+08:00
+Stasiun Meteorologi Komodo;Jl. Yohanes Sehadun, Labuan Bajo, Komodo, Manggarai Barat, Nusa Tenggara Timur;97282;;-8.48673;119.88683;67;Region III;Nusa Tenggara Timur;Kab. Manggarai Barat;Meteorologi;UTC+08:00
+Stasiun Meteorologi Frans Sales Lega;Jl. Satar Tacik, Ruteng, Kab.Manggarai, Nusa Tenggara Timur;97284;;-8.63;120.45;1070;Region III;Nusa Tenggara Timur;Kab. Manggarai;Meteorologi;UTC+08:00
+Stasiun Meteorologi Fransiskus Xaverius Seda;Jl. Adi Sucipto, Kec. Waioti, Kel. Alok Timur, Kab. Sikka, NTT;97300;;-8.63577;122.23752;28;Region III;Nusa Tenggara Timur;Kab. Sikka;Meteorologi;UTC+08:00
+Stasiun Meteorologi Gewayantana;Jl. Soekarno-Hatta No.76, Kec. Ile Mandiri, Flores Timur, NTT;97310;;-8.2752;122.9986;9;Region III;Nusa Tenggara Timur;Kab. Flores Timur;Meteorologi;UTC+07:00
+Stasiun Meteorologi Mali;Jl. SOEKARNO HATTA, Kel. Kabola kec. Kabola - Alor;97320;;-8.13471;124.59;10;Region III;Nusa Tenggara Timur;Kab. Alor;Meteorologi;UTC+08:00
+Stasiun Meteorologi Umbu Mehang Kunda;Jl. Adi Sucipto No.3 Kel. Mau Hau, Kab. Sumba Timur, NTT;97340;;-9.66944;120.29972;10;Region III;Nusa Tenggara Timur;Kab. Sumba Timur;Meteorologi;UTC+08:00
+Stasiun Geofisika Sumba Timur;Jl. Adi Sucipto I/8, Mauhau, Kab. Sumba Timur, NTT;97342;;-9.66917;120.29776;13;Region III;Nusa Tenggara Timur;Kab. Sumba Timur;Geofisika;UTC+08:00
+Stasiun Klimatologi Nusa Tenggara Timur;Jl. Timor Raya KM 10,7 Lasiana Kupang - NTT;97374;20000-0-1-97374;-10.13861;123.66722;19;Region III;Nusa Tenggara Timur;Kota Kupang;Klimatologi;UTC+08:00
+Stasiun Meteorologi Eltari;;97372;;-10.1678;123.67039;102;Region III;Nusa Tenggara Timur;Kota Kupang;Meteorologi;UTC+08:00
+Stasiun Geofisika Kupang;Jl. R.W. Monginsidi Pasir Panjang, Kecamatan Kota Lama, Kota Kupang - NTT;97376;;-10.16453;123.58933;56;Region III;Nusa Tenggara Timur;Kota Kupang;Geofisika;UTC+07:00
+Stasiun Meteorologi David Constatijn Saudale;Jl. Bandar Udara D.C Saudale Rote;97378;;-10.76662;123.07395;141;Region III;Nusa Tenggara Timur;Kab. Rote Ndao;Meteorologi;UTC+08:00
+Stasiun Meteorologi Tardamu;Jl. Tardamu No.12 Seba - Sabu;97380;;-10.5;121.83;15;Region III;Nusa Tenggara Timur;Kab. Kupang;Meteorologi;UTC+08:00
+Stasiun Meteorologi Gamar Malamo;Jl. Bandara Udara Gamar Malamo Ds. Dokulamo Kec. Galela Barat Kab. Halmahera Utara;97406;;1.84092;127.7905;130;Region IV;Maluku Utara;Kab. Halmahera Utara;Meteorologi;UTC+07:00
+Stasiun Meteorologi Sultan Babullah;Jl. BANDARA TERNATE, KEL. TAFURE, KEC. TERNATE UTARA, TERNATE, MALUKU UTARA;97430;;0.8333;127.38;33;Region IV;Maluku Utara;Kota Ternate;Meteorologi;UTC+09:00
+Stasiun Geofisika Ternate;Jl. Balibunga, Kel. Tabona, Kec. Ternate Selatan, Kota Ternate;97432;;0.7719;127.3667;49;Region IV;Maluku Utara;Kota Ternate;Geofisika;UTC+09:00
+Stasiun Meteorologi Oesman Sadik;Komp. BMG Bandara Oesman Sadik Labuha Bacan Halmahera Selatan;97460;;-0.63784;127.5;14;Region IV;Maluku Utara;Kab. Halmahera Selatan;Meteorologi;UTC+09:00
+Stasiun Meteorologi Domine Eduard Osok;Komplek Bandar Udara Domine Eduard Osok , Sorong - Papua Barat Daya;97502;;-0.89118;131.28575;0;Region V;Papua Barat;Kota Sorong;Meteorologi;UTC+09:00
+Stasiun Meteorologi Rendani;Jl. Trikora Rendani Manokwari - Papua Barat;97530;;-0.89227;134.05041;3;Region V;Papua Barat;Kab. Manokwari;Meteorologi;UTC+07:00
+Stasiun Meteorologi Frans Kaisiepo;Jl. Moh. Yamin, Kel. Mandala, Kec. Biak Kota, Kab. Biak Numfor Papua;97560;0-20000-0-97560;-1.19069;136.10361;11;Region V;Papua;Kab. Biak Numfor;Meteorologi;UTC+09:00
+Stasiun Meteorologi Sudjarwo Tjondronegoro;Jl. Jenderal Sudirman, Serui Kota, Yapen Selatan;97570;;-1.8754;136.23994;3;Region V;Papua;Kab. Kepulauan Yapen;Meteorologi;UTC+09:00
+Stasiun Meteorologi Mararena;Jl. Inpres Mararena, Kel. Mararena, Kec. Sarmi, Kabupaten Sarmi, Papua;97580;;-1.85;138.75;3;Region V;Papua;Kab. Sarmi;Meteorologi;UTC+09:00
+Stasiun Meteorologi Emalamo;Jl. Meteor, Fogi, Sanana, Kepulauan Sula, Maluku Utara;97600;;-2.05;126;2;Region IV;Maluku Utara;Kab. Kepulauan Sula;Meteorologi;UTC+09:00
+Stasiun Meteorologi Torea;Jl. Adi Sucipto No.01 Bandar Udara Torea Fakfak;97630;;-2.91938;132.26496;126;Region V;Papua Barat;Kab. Fak Fak;Meteorologi;UTC+09:00
+Stasiun Meteorologi Nabire;Kompleks Bandara Douw Aturure Nabire - Papua Tengah;97682;0-20000-0-97682;-3.39712;135.39171;3;Region V;Papua;Kab. Nabire;Meteorologi;UTC+09:00
+Stasiun Meteorologi Wamena;Jl. Gatot Subroto 101 Wamena Papua;97686;;-4.08861;138.94639;1653;Region V;Papua;Kab. Jayawijaya;Meteorologi;UTC+09:00
+Stasiun Meteorologi Sentani;Jl. Yabaso, Samping hanggar Heli, Komp. Bandar Udara Sentani, Sentani, Kab. Jayapura, Papua;97690;;-2.57;140.48;96;Region V;Papua;Kab. Jayapura;Meteorologi;UTC+09:00
+Stasiun Klimatologi Papua Barat;Jl. Sujarwo Condronegoro, SH. Ransiki, Kabupaten Manokwari Selatan, Papua Barat;97694;;-1.47;134.19;20;Region V;Papua Barat;Kab. Manokwari;Klimatologi;UTC+09:00
+Stasiun Geofisika Jayapura;Jl. Drs. Krisna Sunarya No.26, Angkasapura, Kec. Jayapura Utara, Kota Jayapura, Papua;97696;;5.19;96.02;0;Region V;Papua;Kota Jayapura;Geofisika;UTC+09:00
+Stasiun Meteorologi Maritim Dok II Jayapura;Jl. Soa Siu, Kel. Bhayangkara, Kec. Jayapura Utara, Kota Jayapura, Papua;97698;;-2.53;140.72;3;Region V;Papua;Kota Jayapura;Meteorologi;UTC+09:00
+Stasiun Meteorologi Namlea;Jl. Raya Lala, Desa Lala Kecamatan Namlea Kabupaten Buru;97700;;-3.25;127.08;10;Region IV;Maluku;Kab. Buru;Meteorologi;UTC+09:00
+Stasiun Meteorologi Amahai;Jl. Bandara Amahai, Kecamatan Amahai, Kabupaten Maluku Tengah, Maluku;97722;;-3.3464;128.9284;8;Region IV;Maluku;Kab. Maluku Tengah;Meteorologi;UTC+09:00
+Stasiun Meteorologi Pattimura;Jl. Dr. J. Leimena (Komplek Bandara Pattimura), Ambon;97724;;-3.7114;128.0957;14;Region IV;Maluku;Kota Ambon;Meteorologi;UTC+09:00
+Stasiun Klimatologi Maluku;Jl. Hunitetu, Kairatu, Seram Bagian Barat, Maluku;97726;;-3.25;128.4;5;Region IV;Maluku;Kab. Seram Bagian Barat;Klimatologi;UTC+09:00
+Stasiun Geofisika Ambon;Jl. AIS Nasution No. 8 Ambon, Maluku;97728;;5.34;95.98;8;Region IV;Maluku;Kota Ambon;Geofisika;UTC+09:00
+Stasiun Meteorologi Kuffar;Jl. pendidikan Geser Kec. Seram Timur;97748;;-3.8813;130.88;2;Region IV;Maluku;Kab. Seram Bagian Timur;Meteorologi;UTC+09:00
+Stasiun Meteorologi Enarotali;Jl. Titina Yogi, Kompleks Bandar Udara Enarotali, Distrik Paniai Timur, Kabupaten Paniai;97780;;-3.92688;136.38;1650;Region V;Papua;Kab. Paniai;Meteorologi;UTC+09:00
+Stasiun Meteorologi Bandaneira;Jl. Bandara Bandaneira, Desa Kampung Baru, Kecamatan Banda, Maluku Tengah;97790;;-4.52338;129.9043;15;Region IV;Maluku;Kab. Maluku Tengah;Meteorologi;UTC+09:00
+Stasiun Meteorologi Mozez Kilangin;Jl. Ahmad Yani, Bandar Udara Mozes Kilangin Timika, Papua Tengah;97796;;-4.53006;136.89348;30;Region V;Papua;Kab. Mimika;Meteorologi;UTC+09:00
+Stasiun Meteorologi Karel Sadsuitubun;Jl. Bandara Karel Sadsuitubun Ibra Kec. Kei Kecil Timur Kab. Maluku Tenggara (Kantor Operasional)<br>Jl. Karel Sadsuitubun, Kec. Pulau Dullah Selatan, Kel. Lodar El, Kota Madya Tual - Maluku (Kantor Administrasi);97810;;-5.6637;132.7362;10;Region IV;Maluku;Kab. Maluku Tenggara;Meteorologi;UTC+09:00
+Stasiun Geofisika Nabire;Kompleks Bandara Douw Aturure Nabire - Papua Tengah;97812;;-3.46;135.473;4;Region V;Papua;Kab. Nabire;Klimatologi;UTC+09:00
+Stasiun Meteorologi Tanah Merah;Kompleks Perumahan Bandar Udara Tanah Merah;97876;;-6.1;140.31;97;Region V;Papua;Kab. Boven Digoel;Meteorologi;UTC+09:00
+Stasiun Meteorologi Mathilda Batlayeri;Jl. Harapan Saumlaki, Kepulauan Tanimbar;97900;0-20000-0-97900;-7.98;131.3;24;Region IV;Maluku;Kab. Kepulauan Tanimbar;Meteorologi;UTC+09:00
+Stasiun Geofisika Maluku Tenggara Barat;Jl. Harapan Saumlaki, Kecamatan Tanimbar Selatan, Kabupaten Kepulauan Tanimbar, Maluku;97902;;5.367;95.95;23;Region IV;Maluku;Kab. Kepulauan Tanimbar;Geofisika;UTC+09:00
+Stasiun Meteorologi Mopah;Jl. PGT Bandar Udara Mopah Merauke, Rimba Jaya, Merauke, Papua Selatan;97980;;-8.52019;140.41568;0;Region V;Papua;Kab. Merauke;Meteorologi;UTC+09:00
+Stasiun Geofisika Manado;Jl. Harapan No.42, Winangun Satu, Kec. Malalayang, Kota Manado, Sulawesi Utara;97010;;1.4434;124.8389;204;Region IV;Sulawesi Utara;Kota Manado;Geofisika;UTC+08:00
+Balai Besar Meteorologi Klimatologi dan Geofisika Wilayah I;Jl. Ngumban Surbakti No.15, Sempakata, Kec. Medan Selayang, Kota Medan, Sumatera Utara;96041;;3.5397;98.64;0;Region I;Sumatera Utara;Kota Medan;Balai;UTC+07:00
+Balai Besar Meteorologi Klimatologi dan Geofisika Wilayah II;Jl. Abdul Ghani No.5, Cempaka Putih, Ciputat Timur, Tangerang Selatan;99992;;-6.30253;106.75636;41;Region II;Banten;Kota Tangerang Selatan;Balai;UTC+07:00
+Balai Besar Meteorologi Klimatologi dan Geofisika Wilayah III;Jl. Raya Tuban Badung-Bali;96003;;-8.7388;115.1788;9;Region III;Bali;Kab. Badung;Balai;UTC+08:00
+Balai Besar Meteorologi Klimatologi dan Geofisika Wilayah IV;Jl. Prof. DR. Abdurrahman Basalamah No. 4 Panakukang Makassar Sulawesi Selatan;96004;;-5.14283;119.45227;72;Region IV;Sulawesi Selatan;Kota Makassar;Balai;UTC+08:00
+Balai Besar Meteorologi Klimatologi dan Geofisika Wilayah V;Jl. Raya Abepura Entrop Kp 1572 Jayapura Selatan, Jayapura, Papua;99995;;-2.57522;140.68624;0;Region V;Papua;Kota Jayapura;Balai;UTC+09:00
+Stasiun Meteorologi Maritim Pontianak;Jl. Pelabuhan (Kompleks Pelabuhan Dwikora) Pontianak;96585;0-20000-0-96585;-0.03;109.34;4;Region II;Kalimantan Barat;Kota Pontianak;Meteorologi;UTC+07:00
+Stasiun Geofisika Aceh Besar;Jl. Raya Mata Ie Kec. Darul Imarah Kab. Aceh Besar Aceh;96013;0-20000-0-96013;5.496;95.296;32;Region I;Aceh;Kab. Aceh Besar;Geofisika;UTC+07:00
+Stasiun Klimatologi Papua;Jl. Yaring Tabri No.69, Tabri, Nimboran, Kabupaten Jayapura, Papua.;97692;0-20000-0-97692;-2.59;140.167;70;Region V;Papua;Kab. Jayapura;Klimatologi;UTC+09:00
+Stasiun Meteorologi Utarom;Jl. Bandara Utarom (Stasiun Meteorologi Utarom Kaimana), Kaimana, Papua Barat;97760;;-3.6433;133.69694;5;Region V;Papua Barat;Kab. Kaimana;Meteorologi;UTC+09:00
+Stasiun Geofisika Sorong;Jl. Danau Siwiki, Puncak Cendrawasih, Kota Sorong, Papua Barat;97504;0-20000-0-97504;-0.86;131.26;64;Region V;Papua Barat;Kota Sorong;Geofisika;UTC+09:00
+Stasiun Meteorologi Tanjung Harapan;Jl. Ulin No.119 Tanjung Selor, Kabupaten Bulungan, Kalimantan Utara;96525;;2.5;117.22;3;Region III;Kalimantan Utara;Kab. Bulungan;Meteorologi;UTC+08:00
+Stasiun Geofisika Banjarnegara;Jl. Raya Banjarmangu Km.12, Kalilunjar, Banjarmangu, Banjarnegara;96807;0-20000-0-96807;-7.333;109.7069;608;Region II;Jawa Tengah;Kab. Banjarnegara;Geofisika;UTC+07:00
+Pos Meteorologi Penggung;;96793;;-6.7553;108.53904;23;Region II;Jawa Barat;Kab. Cirebon;Meteorologi;UTC+07:00
+Stasiun Klimatologi Riau;Jl. Unggas, Simpang Tiga, Kec. Bukit Raya, Kota Pekanbaru, Riau;96107;;0.40751419;101.2172733;18;Region I;Riau;Kab. Kampar;Klimatologi;UTC+07:00
+Stasiun Klimatologi Sulawesi Tenggara;Poros Bandara, Lorong Mekar, Desa Ranooha, Kec. Ranomeeto, Kabupaten Konawe Selatan, Sulawesi Tenggara;97150;;-4.056;122.449;30;Region IV;Sulawesi Tenggara;Kab. Konawe Selatan;Klimatologi;UTC+08:00
+Stasiun Klimatologi Gorontalo;Jl. B.J Habibie (desa moutong) Kec. Tilongkabila Kab. Bone Bolango;97052;;0.555;123.14;15;Region IV;Gorontalo;Kab. Bone Bolango;Klimatologi;UTC+08:00
+Stasiun Klimatologi DI Yogyakarta;Jl. Kabupaten Km 5,5 Duwet, Sendangadi, Mlati, Sleman, Daerah Istimewa Yogyakarta;96851;;-7.731;110.354;182;Region II;DI Yogyakarta;Kab. Sleman;Klimatologi;UTC+07:00
+Stasiun Klimatologi Papua Selatan;Jl. Poros Semangga-Tanah Miring, dist. Tanah Miring;97978;;-8.387397874;140.5169272;4;Region V;Papua;Kab. Merauke;Klimatologi;UTC+09:00
+Stasiun Klimatologi Bangka Belitung;Komp. Perkantoran Terpadu Pemkab. Bangka Tengah, Jl. Kartika I, Koba, Kep. Bangka-Belitung;96239;;-2.518;106.422;5.8;Region II;Kepulauan Bangka Belitung;Kab. Bangka Tengah;Klimatologi;UTC+07:00
+Stasiun Pemantau Atmosfer Global Lore Lindu Bariri;Jl. Sapta Marga No.01, Kelurahan Birobuli Utara, Kec. Palu Selatan, Kota Palu, Sulawesi Tengah;97094;;0;0;0;Region IV;Sulawesi Tengah;Kota Palu;Klimatologi;UTC+08:00
+Stasiun Pemantau Atmosfer Global Puncak Vihara Klademak;Jl. Sungai Remu KM.08 Malanu, Malaingkedi, Kota Sorong, Papua Barat;97500;;-8.61881;120.39455;1097;Region V;Papua Barat;Kota Sorong;Klimatologi;UTC+09:00
+Stasiun Meteorologi Tuban;Jl. Raya Beji Desa Kaliuntu Kecamatan Jenu Kabupaten Tuban;96939;;-6.8229;111.99177;5;Region III;Jawa Timur;Kab. Tuban;Meteorologi;UTC+07:00
+Stasiun Geofisika Alor;Jl. Soekarno-Hatta, Kabola, Kab. Alor - NTT;97247;;2;118;10;Region III;Nusa Tenggara Timur;Kab. Alor;Geofisika;UTC+08:00
+Stasiun Geofisika Mataram;Jl. Adi Sucipto No. 10 Rembiga Selaparang Mataram NTB;99932;;-8.56419;116.09987;16;Region III;Nusa Tenggara Barat;Kota Mataram;Geofisika;UTC+08:00
+Stasiun Meteorologi Silangit;Jl. Simpang Muara No. 1 Terminal A Bandara Silangit Siborongborong, Tapanuli Utara, Sumatera Utara;96043;;2.26136;98.99357;1420;Region I;Sumatera Utara;Kab. Tapanuli Utara;Meteorologi;UTC+07:00
+Stasiun Meteorologi Maritim Ambon;Jl. AIS Nasution No. 8 Ambon, Maluku;97730;;-3.79051;128.1007;3;Region IV;Maluku;Kota Ambon;Meteorologi;UTC+09:00
+Stasiun Meteorologi Maritim Tenau;Jl. M. Praja, Alak - Kupang;97370;;-10.18857;123.52905;23;Region III;Nusa Tenggara Timur;Kota Kupang;Meteorologi;UTC+08:00
+Stasiun Meteorologi Yogyakarta;Jl. Nasional 3, Bandar Udara Yogyakarta Internasional Airport Kulon Progo;96859;;-7.90343;110.06707;8;Region II;DI Yogyakarta;Kab. Kulon Progo;Meteorologi;UTC+07:00
+Taman Alat Digital Staklim Sumsel;;96225;;-3.0156;104.43;4;Region II;Sumatera Selatan;Kota Palembang;Klimatologi;UTC+07:00
+Stasiun Meteorologi Dhoho;Bandara Dhoho Kediri, Grogol, Kec. Grogol, Kabupaten Kediri, Jawa Timur;96929;;-7.75487;111.9469;94;Region III;Jawa Timur;Kab. Kediri;Meteorologi;UTC+07:00
+Stasiun Meteorologi Tampa Padang;Jl. Abdul Malik Pattana Endeng, Rangas, Kec. Simboro dan Kepulauan Kab. Mamuju, Propinsi Sulawesi Barat;97116;;-2.58939;119.02949;0;Region IV;Sulawesi Barat;Kab. Mamuju;Meteorologi;UTC+08:00
+Stasiun Meteorologi Syukuran Aminudin Amir;Komplek Bandara SAA Luwuk, Jl. Dr. Moh. Hatta, Desa Bubung, Kec. Luwuk Selatan, Kab. Banggai, Sulawesi Tengah ;97086;;-1.04064;122.771;19;Region IV;Sulawesi Tengah;Kab. Banggai Kepulauan;Meteorologi;UTC+08:00
+Stasiun Geofisika Sukabumi;Jl. Jayanti-Citarik, Desa Jayanti, Kecamatan Palabuhanratu, Kabupaten Sukabumi, Jawa Barat;99923;;-6.97043;106.54643;15;Region II;Jawa Barat;Kab. Sukabumi;Geofisika;UTC+07:00
+Raden Sadjad TNIAU;;96149;;3.5437;108.2305;2;Region I;Kepulauan Riau;Kab. Natuna;Meteorologi;UTC+07:00
+Pangeran Mohammad Bunyamin TNIAU;;96273;;-4.360000134;105.1399994;63;Region II;Jambi;Kab. Kerinci;Meteorologi;UTC+07:00
+Harry Hadisoemantri TNIAU;;96533;;1;109;97;Region II;Kalimantan Barat;Kab. Bengkayang;Meteorologi;UTC+07:00
+Halim Perdana Kusuma TNIAU;;96747;;-6.27036;106.88926;28;Region II;DKI Jakarta;Kota Adm. Jakarta Timur;Meteorologi;UTC+07:00
+Atang Sendjaja TNIAU;;96755;;-6.544456;106.755346;176.784;Region II;Jawa Barat;Kab. Bogor;Meteorologi;UTC+07:00
+Surya Darma TNIAU;;96773;;0;0;0;Region II;Jawa Barat;Kab. Subang;Meteorologi;UTC+07:00
+Husein Sastra Negara TNIAU;;96781;;-6.90227;107.57627;746.76;Region II;Jawa Barat;Kota Bandung;Meteorologi;UTC+07:00
+Wiriadinata TNIAU;;96801;;0;0;0;Region II;Jawa Barat;Kab. Bandung;Meteorologi;UTC+07:00
+Adi Soemarmo TNIAU;;96845;;-7.519583;110.75175;127;Region II;Jawa Tengah;Kab. Karanganyar;Meteorologi;UTC+07:00
+Adisutjipto TNIAU;;96853;0-20000-0-96853;-7.47;110.26;124;Region II;DI Yogyakarta;Kab. Bantul;Meteorologi;UTC+07:00
+Detasemen Pacitan TNIAU;;96857;;0;0;0;Region II;DI Yogyakarta;Kota Yogyakarta;Meteorologi;UTC+07:00
+Iswahyudi TNIAU;;96881;;-7.37;111.32;110;Region III;Jawa Timur;Kab. Magetan;Meteorologi;UTC+07:00
+Abdul Rahman Saleh TNIAU;;96947;;-7.9372;112.7116;526;Region III;Jawa Timur;Kab. Malang;Meteorologi;UTC+07:00
+Haluoleo TNIAU;;97146;;-4.435;122.2512;50;Region IV;Sulawesi Tenggara;Kab. Konawe Selatan;Meteorologi;UTC+08:00
+Leowatimena TNIAU;;97404;;0.2;128.9;50;Region IV;Maluku Utara;Kab. Pulau Morotai;Meteorologi;UTC+09:00
+Pos Geofisika Liwa;;99921;;-5.01695;104.05891;0;Region II;Lampung;Kab. Lampung Barat;Meteorologi;UTC+07:00
+Pos Polusi Udara Cibeureum;;99925;;-6.71066667;106.9501667;1160.45;Region II;Jawa Barat;Kab. Bogor;Klimatologi;UTC+07:00
+Pos Meteorologi Melonguane;;97004;;4.0071351;126.6747032;0;Region IV;Sulawesi Utara;Kab. Kepulauan Talaud;Meteorologi;UTC+08:00
+Pos Meteorologi Kao;;97410;;0;0;0;Region IV;Maluku Utara;Kab. Halmahera Utara;Meteorologi;UTC+08:00
+Pos Meteorologi Bandara Notohadinegoro - Jember;;99927;;-8.246193;113.694912;264;Region III;Jawa Timur;Kab. Jember;Meteorologi;UTC+07:00
+Pos Meteorologi Lede Kalumbang - Tambolaka;;99931;;-9.411481;119.243169;0;Region III;Nusa Tenggara Timur;Kab. Sumba Barat Daya;Meteorologi;UTC+08:00
+Soewondo TNIAU;;96039;;3.55916;98.67111;27;Region I;Sumatera Utara;Kota Medan;Meteorologi;UTC+07:00
+Stasiun Meteorologi Singkawang;Komplek Bandar Udara Singkawang, Kelurahan Pangmilang, Kec. Singkawang Selatan, Kota Singkawang;96531;;0.787194;108.958167;5;Region II;Kalimantan Barat;Kab. Bengkayang;Meteorologi;UTC+07:00
+AWOS A. A. Bere Tallo;;99954;;0;0;0;Region III;Nusa Tenggara Timur;Kab. Belu;Meteorologi;UTC+08:00
