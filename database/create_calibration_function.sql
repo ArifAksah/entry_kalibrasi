@@ -107,7 +107,12 @@ BEGIN
         -- 3. Calculate UUT Correction (t_i_koreksi)
         -- t_i_koreksi = t_std_terkoreksi - t_alat (uut_data)
         IF NEW.uut_data IS NOT NULL THEN
-            SELECT LOWER(CONCAT_WS(' ', s.name, s.type, names.name)) LIKE ANY (
+            SELECT LOWER(CONCAT_WS(
+                ' ',
+                s.name,
+                s.type,
+                COALESCE(to_jsonb(names)->>'names', to_jsonb(names)->>'name')
+            )) LIKE ANY (
                 ARRAY['%arah angin%', '%wind direction%', '%wind vane%']
             )
             INTO v_is_wind_direction
