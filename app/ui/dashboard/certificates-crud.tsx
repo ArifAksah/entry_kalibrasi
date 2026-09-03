@@ -27,6 +27,7 @@ import RichTextEditor from '../../../components/ui/RichTextEditor'
 import { DEFAULT_NOTES_OTHERS_HTML } from '../../../lib/rich-text'
 import { firstLegacyResult, resultsToLegacyView } from '../../../lib/validators/certificate-results-render-adapter'
 import qcCacheService from '../../../lib/qc-cache-service'
+import { isWindDirectionSensor } from '../../../lib/wind-direction'
 
 // Keep TrashIcon for backward compatibility in this file
 
@@ -1015,6 +1016,14 @@ type ResultItem = {
 
       const uutInstrument = instruments.find(i => i.id === form.instrument);
       const isAnalog = (uutInstrument?.instrument_type_id ?? 1) === 2;
+      const canonicalSensorName = activeUutSensor?.sensor_name_id
+        ? instrumentNames.find(name => name.id === activeUutSensor.sensor_name_id)?.name
+        : null;
+      const isWindDirection = isWindDirectionSensor(
+        { ...activeUutSensor, sheet_name: currentData[0]?.sheet_name },
+        canonicalSensorName,
+        currentResult.notesForm?.calibration_methode
+      );
 
       // ═══════════════════════════════════════════════════════════════
       // DETEKSI PYRANOMETER & HITUNG
@@ -1075,7 +1084,8 @@ type ResultItem = {
           currentData,
           uutSensor: activeUutSensor,
           standardCertRecord: standardCertRecord,
-          isAnalog
+          isAnalog,
+          isWindDirection
         });
         uutAvg = result.uutAvg;
         correction = result.correction;
@@ -5431,6 +5441,7 @@ type ResultItem = {
               sensorId: r.sensorId ?? r.sensor_id ?? null,
               unitUut: r.unitUut ?? r.unit_uut ?? null,
               unitStd: r.unitStd ?? r.unit_std ?? null,
+              calibrationMethod: r.notesForm?.calibration_methode ?? null,
             }))}
             certificateStatus={qcModalCertificate.status}
             onCalculateSaved={async (updates) => {

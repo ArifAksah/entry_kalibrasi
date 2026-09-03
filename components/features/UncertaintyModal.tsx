@@ -10,6 +10,7 @@ import {
 import { parseCertCorrectionPoints, interpolateCorrectionFromPoints } from '../../lib/qc-utils';
 import { convertUnit, formatUnit } from '../../lib/unitConversion';
 import { resultsToLegacyView } from '../../lib/validators/certificate-results-render-adapter';
+import { circularMeanDegrees, isWindDirectionSensor, wrapWindDirectionCorrection } from '../../lib/wind-direction';
 // RawDataRow defined locally to avoid circular imports
 interface RawDataRow {
     id: any;
@@ -215,6 +216,14 @@ function UncertaintyContent({
         // Match by UUT sensor (current active tab) since standard cert is determined by UUT here.
         return r.sensorId === activeTab || (r as any).sensor_id_uut === activeTab;
     });
+    const canonicalSensorName = uutSensor?.sensor_name_id
+        ? instrumentNames.find((name) => name.id === uutSensor.sensor_name_id)?.name
+        : null;
+    const isWindDirection = isWindDirectionSensor(
+        { ...uutSensor, sheet_name: currentData[0]?.sheet_name },
+        canonicalSensorName,
+        (certMatches[0] as any)?.notesForm?.calibration_methode
+    );
 
     let standardCertRecord = null;
     if (currentData.length > 0 && certMatches && certMatches.length > 0) {
@@ -302,8 +311,11 @@ function UncertaintyContent({
     // The displayed set point: rata-rata UUT readings (matches LHKS "Rata-Rata" UUT column)
     const globalUutAvg = React.useMemo(() => {
         if (currentData.length === 0) return 0;
-        return currentData.reduce((sum, row) => sum + (row.uut_data || 0), 0) / currentData.length;
-    }, [currentData]);
+        const readings = currentData.map(row => row.uut_data || 0);
+        return isWindDirection
+            ? circularMeanDegrees(readings)
+            : readings.reduce((sum, value) => sum + value, 0) / readings.length;
+    }, [currentData, isWindDirection]);
 
     // Repeat must use std dev of UUT correction values:
     // koreksi_uut = std_terkoreksi_dalam_unit_UUT - uut_data
@@ -311,8 +323,7 @@ function UncertaintyContent({
     // before subtraction. Without this, hPa(~1007) - inHg(~29.7) = ~977 → wrong huge std dev.
     const unitStd = currentData[0]?.unit_std || '';
     const uutReadings = React.useMemo(() => {
-        if (stdCorrectionPoints.length === 0) {
-            // No cert correction data: fallback to raw UUT readings
+        if (stdCorrectionPoints.length === 0 && !isWindDirection) {
             return currentData.map(row => row.uut_data);
         }
         return currentData.map(row => {
@@ -320,15 +331,18 @@ function UncertaintyContent({
             const unitStdRow = row.unit_std || unitStd || '';
             const unitUutRow = row.unit_uut || unitUut || '';
             // Step 1: add cert correction (in std native unit)
-            const correction = interpolateCorrectionFromPoints(stdCorrectionPoints, stdData);
+            const correction = stdCorrectionPoints.length > 0
+                ? interpolateCorrectionFromPoints(stdCorrectionPoints, stdData)
+                : 0;
             const stdCorrected = stdData + correction;
             // Step 2: convert corrected standard to UUT unit, then subtract uut_data
             const stdCorrectedInUutUnit = unitStdRow && unitUutRow && unitStdRow.toLowerCase() !== unitUutRow.toLowerCase()
                 ? convertUnit(stdCorrected, unitStdRow, unitUutRow)
                 : stdCorrected;
-            return stdCorrectedInUutUnit - (row.uut_data || 0);
+            const deltaRaw = stdCorrectedInUutUnit - (row.uut_data || 0);
+            return isWindDirection ? wrapWindDirectionCorrection(deltaRaw) : deltaRaw;
         });
-    }, [currentData, stdCorrectionPoints, unitStd, unitUut]);
+    }, [currentData, stdCorrectionPoints, unitStd, unitUut, isWindDirection]);
 
 
     // Formatters
@@ -596,4 +610,3 @@ function UncertaintyContent({
         </div>
     );
 }
-

@@ -6,6 +6,7 @@ import { convertUnit, needsConversion, formatUnit } from '../../lib/unitConversi
 import { isPyranometer, PyranometerSensorData } from '../../lib/uncertainty-utils';
 import bmkgLogo from '../../app/bmkg.png';
 import { SigFigBadge } from '../ui/SigFigBadge';
+import { circularMeanDegrees, isWindDirectionSensor, wrapWindDirectionCorrection } from '../../lib/wind-direction';
 
 // Define RawDataRow interface locally if not exported, or match what's used in QCDataModal
 interface RawDataRow {
@@ -720,6 +721,17 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
 
                             const sensor = sensors.find(s => String(s.id) === sensorKey);
                             const sensorName = sensor ? getSensorDisplayName(sensor) : (data[0]?.sheet_name || `Sensor #${sensorKey}`);
+                            const canonicalSensorName = sensor?.sensor_name_id
+                                ? instrumentNames?.find((name: any) => name.id === sensor.sensor_name_id)?.name
+                                : null;
+                            const sessionResult = Array.isArray(sessionResults)
+                                ? sessionResults.find((result: any) => String(result.sensorId ?? result.sensor_id) === sensorKey)
+                                : null;
+                            const isWindDirection = isWindDirectionSensor(
+                                { ...sensor, sheet_name: data[0]?.sheet_name },
+                                canonicalSensorName,
+                                sessionResult?.notesForm?.calibration_methode
+                            );
 
                             // Get the QC limit for this sensor from master_qc
                             const qcLimit = sensorKey !== 'unknown' ? (qcLimits[sensorKey] ?? null) : null;
@@ -747,8 +759,17 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                 return convertUnit(stdCorr, row.unit_std || rowUnitStd, row.unit_uut || rowUnitUut);
                             };
 
-                            const avgStdCorrected = data.reduce((sum, row) => sum + getStdConverted(row), 0) / (totalRows || 1);
-                            const avgUutData = data.reduce((sum, row) => sum + row.uut_data, 0) / (totalRows || 1);
+                            const getUutCorrection = (row: typeof data[0]) => {
+                                const deltaRaw = getStdConverted(row) - row.uut_data;
+                                return isWindDirection ? wrapWindDirectionCorrection(deltaRaw) : deltaRaw;
+                            };
+
+                            const avgStdCorrected = isWindDirection
+                                ? circularMeanDegrees(data.map(getStdConverted))
+                                : data.reduce((sum, row) => sum + getStdConverted(row), 0) / (totalRows || 1);
+                            const avgUutData = isWindDirection
+                                ? circularMeanDegrees(data.map(row => row.uut_data))
+                                : data.reduce((sum, row) => sum + row.uut_data, 0) / (totalRows || 1);
                             
                             // DETEKSI PYRANOMETER untuk perhitungan koreksi
                             const pyrSensorDataForAvg: PyranometerSensorData | null = sensor ? {
@@ -809,11 +830,11 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                             } else {
                                 // BIASA: koreksi = Std - UUT
                                 avgCorrection = data.reduce((sum, row) => {
-                                    return sum + (getStdConverted(row) - row.uut_data);
+                                    return sum + getUutCorrection(row);
                                 }, 0) / (totalRows || 1);
                                 
                                 const varianceCorrection = data.reduce((sum, row) => {
-                                    const corr = getStdConverted(row) - row.uut_data;
+                                    const corr = getUutCorrection(row);
                                     return sum + Math.pow(corr - avgCorrection, 2);
                                 }, 0) / (totalRows - 1 || 1);
                                 stdDevCorrection = Math.sqrt(varianceCorrection);
@@ -1035,7 +1056,9 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                     rawCorrection = (row.standard_data / row.uut_data - 1) * 100;
                                                 } else {
                                                     // BIASA: koreksi = Std - UUT
-                                                    rawCorrection = stdConverted - row.uut_data;
+                                                    rawCorrection = isWindDirection
+                                                        ? wrapWindDirectionCorrection(stdConverted - row.uut_data)
+                                                        : stdConverted - row.uut_data;
                                                 }
                                                 
                                                 const qcResult = checkQCResult(rawCorrection, qcLimit);

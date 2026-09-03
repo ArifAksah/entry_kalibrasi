@@ -14,6 +14,7 @@ import {
 import { SigFigBadge } from '../ui/SigFigBadge';
 import qcCacheService from '../../lib/qc-cache-service';
 import { deserializeMap } from '../../lib/qc-cache-storage';
+import { circularMeanDegrees, isWindDirectionSensor, wrapWindDirectionCorrection } from '../../lib/wind-direction';
 
 
 interface RawDataRow {
@@ -45,6 +46,7 @@ interface QCDataModalProps {
         sensorId: number | null;
         unitUut?: string | null;
         unitStd?: string | null;
+        calibrationMethod?: string | null;
     }>;
     onCalculateSaved?: (updates: Array<{ sensorId: number | string, table: any[] }>) => void | Promise<void>;
     /**
@@ -88,6 +90,15 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
         if (s.type) return s.type;
         // 4. Fallback
         return `Sensor #${s.id}`;
+    };
+
+    const isWindDirectionRow = (row: RawDataRow): boolean => {
+        const sensor = row.sensor_id_uut ? sensors.find((s: any) => s.id === row.sensor_id_uut) : null;
+        const canonicalName = sensor?.sensor_name_id
+            ? instrumentNames.find((name) => name.id === sensor.sensor_name_id)?.name
+            : null;
+        const resultEntry = resultEntries.find((entry) => entry.sensorId === row.sensor_id_uut);
+        return isWindDirectionSensor({ ...sensor, sheet_name: row.sheet_name }, canonicalName, resultEntry?.calibrationMethod);
     };
 
 
@@ -429,9 +440,12 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                     ? convertUnit(rawStdCorrected, unitStd, unitUut)
                     : rawStdCorrected;
 
-            rawUutCorrection = (stdCorrectedInUutUnit != null && hasUutValue)
-                ? (stdCorrectedInUutUnit - (row.uut_data as number))
-                : null;
+            if (stdCorrectedInUutUnit != null && hasUutValue) {
+                const deltaRaw = stdCorrectedInUutUnit - (row.uut_data as number);
+                rawUutCorrection = isWindDirectionRow(row)
+                    ? wrapWindDirectionCorrection(deltaRaw)
+                    : deltaRaw;
+            }
         }
 
         return {
@@ -479,7 +493,10 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
                 const rowsForCalc = groupData.filter(r => r.uut_data != null);
                 if (rowsForCalc.length === 0) continue;
-                const uutAvg = rowsForCalc.reduce((sum, r) => sum + (r.uut_data as number), 0) / rowsForCalc.length;
+                const isWindDirectionGroup = isWindDirectionRow(rowsForCalc[0]);
+                const uutAvg = isWindDirectionGroup
+                    ? circularMeanDegrees(rowsForCalc.map(r => r.uut_data as number))
+                    : rowsForCalc.reduce((sum, r) => sum + (r.uut_data as number), 0) / rowsForCalc.length;
 
                 // ═══════════════════════════════════════════════════════════════
                 // DETEKSI PYRANOMETER (SEBELUM HITUNG KOREKSI)
@@ -538,7 +555,8 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                             const stdCorrectedInUutUnit = (unitStd && unitUut && needsConversion(unitStd, unitUut))
                                 ? convertUnit(rawStdCorrected, unitStd, unitUut)
                                 : rawStdCorrected;
-                            return stdCorrectedInUutUnit - (row.uut_data as number);
+                            const deltaRaw = stdCorrectedInUutUnit - (row.uut_data as number);
+                            return isWindDirectionGroup ? wrapWindDirectionCorrection(deltaRaw) : deltaRaw;
                         }).filter((v): v is number => v != null);
                         if (corrections.length > 0) {
                             correctionAvg = corrections.reduce((sum, c) => sum + c, 0) / corrections.length;
@@ -599,8 +617,11 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                         currentData: groupData,
                         uutSensor,
                         standardCertRecord,
-                        isAnalog
+                        isAnalog,
+                        isWindDirection: isWindDirectionGroup,
                     });
+                    displayUutAvg = result.uutAvg;
+                    displayCorrection = result.correction;
                     uncertainty = result.uncertainty;
                 }
 

@@ -12,6 +12,7 @@
 import { CertCorrectionPoint } from './qc-utils';
 import { convertUnit } from './unitConversion';
 import { parseCertCorrectionPoints, interpolateCorrectionFromPoints } from './qc-utils';
+import { circularMeanDegrees, isWindDirectionSensor, wrapWindDirectionCorrection } from './wind-direction';
 
 export interface UncertaintyComponent {
     name: string;
@@ -252,6 +253,7 @@ export function calculateCalibrationResult(params: {
     standardCertRecord: any;
     isAnalog?: boolean;
     unitUut?: string;
+    isWindDirection?: boolean;
 }) {
     const { currentData, uutSensor, standardCertRecord, isAnalog } = params;
     
@@ -265,6 +267,11 @@ export function calculateCalibrationResult(params: {
     const resolusiUut = isNaN(rawResolusiUut) ? 0 : rawResolusiUut;
 
     let unitUut = params.unitUut || currentData[0]?.unit_uut || uutSensor?.graduating_unit || uutSensor?.range_capacity_unit || 'Unit';
+    const isWindDirection = params.isWindDirection ?? isWindDirectionSensor({
+        name: uutSensor?.name,
+        type: uutSensor?.type,
+        sheet_name: currentData[0]?.sheet_name,
+    });
 
     const driftStd = typeof standardCertRecord?.drift === 'number' 
         ? standardCertRecord.drift 
@@ -288,24 +295,29 @@ export function calculateCalibrationResult(params: {
     });
 
     const globalStdCorrected = totalStdCorrected / currentData.length;
-    const globalUutAvg = totalUut / currentData.length;
+    const globalUutAvg = isWindDirection
+        ? circularMeanDegrees(currentData.map(row => row.uut_data || 0))
+        : totalUut / currentData.length;
 
     const unitStd = currentData[0]?.unit_std || '';
     const uutReadings = currentData.map(row => {
-        if (stdCorrectionPoints.length === 0) return row.uut_data || 0;
-        
+        if (stdCorrectionPoints.length === 0 && !isWindDirection) return row.uut_data || 0;
+
         const stdData = row.standard_data || 0;
         const unitStdRow = row.unit_std || unitStd || '';
         const unitUutRow = row.unit_uut || unitUut || '';
         
-        const correction = interpolateCorrectionFromPoints(stdCorrectionPoints, stdData);
+        const correction = stdCorrectionPoints.length > 0
+            ? interpolateCorrectionFromPoints(stdCorrectionPoints, stdData)
+            : 0;
         const stdCorrected = stdData + correction;
         
         const stdCorrectedInUutUnit = unitStdRow && unitUutRow && unitStdRow.toLowerCase() !== unitUutRow.toLowerCase()
             ? convertUnit(stdCorrected, unitStdRow, unitUutRow)
             : stdCorrected;
             
-        return stdCorrectedInUutUnit - (row.uut_data || 0);
+        const deltaRaw = stdCorrectedInUutUnit - (row.uut_data || 0);
+        return isWindDirection ? wrapWindDirectionCorrection(deltaRaw) : deltaRaw;
     });
 
     let interpolatedU95 = 0;
@@ -331,7 +343,9 @@ export function calculateCalibrationResult(params: {
     if (unitStd && unitUut && unitStd.toLowerCase() !== unitUut.toLowerCase()) {
         uutUnitStdCorrected = convertUnit(globalStdCorrected, unitStd, unitUut);
     }
-    const correctionAvg = uutUnitStdCorrected - globalUutAvg;
+    const correctionAvg = isWindDirection
+        ? uutReadings.reduce((sum, correction) => sum + correction, 0) / (uutReadings.length || 1)
+        : uutUnitStdCorrected - globalUutAvg;
 
     return {
         uutAvg: globalUutAvg,

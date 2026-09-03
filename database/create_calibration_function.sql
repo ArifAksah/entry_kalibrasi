@@ -92,6 +92,9 @@ $$ LANGUAGE plpgsql;
 -- Trigger Function to update row
 CREATE OR REPLACE FUNCTION public.trigger_calculate_calibration()
 RETURNS TRIGGER AS $$
+DECLARE
+    v_is_wind_direction BOOLEAN := FALSE;
+    v_delta NUMERIC;
 BEGIN
     -- Only calculate if we have standard data and a standard sensor ID
     IF NEW.standard_data IS NOT NULL AND NEW.sensor_id_std IS NOT NULL THEN
@@ -104,7 +107,24 @@ BEGIN
         -- 3. Calculate UUT Correction (t_i_koreksi)
         -- t_i_koreksi = t_std_terkoreksi - t_alat (uut_data)
         IF NEW.uut_data IS NOT NULL THEN
-            NEW.uut_correction := NEW.std_corrected - NEW.uut_data;
+            SELECT LOWER(CONCAT_WS(' ', s.name, s.type, names.name)) LIKE ANY (
+                ARRAY['%arah angin%', '%wind direction%', '%wind vane%']
+            )
+            INTO v_is_wind_direction
+            FROM public.sensor s
+            LEFT JOIN public.instrument_names names ON names.id = s.sensor_name_id
+            WHERE s.id = NEW.sensor_id_uut;
+
+            v_delta := NEW.std_corrected - NEW.uut_data;
+            IF COALESCE(v_is_wind_direction, FALSE) THEN
+                v_delta := MOD(v_delta, 360);
+                IF v_delta > 180 THEN
+                    v_delta := v_delta - 360;
+                ELSIF v_delta < -180 THEN
+                    v_delta := v_delta + 360;
+                END IF;
+            END IF;
+            NEW.uut_correction := v_delta;
         END IF;
     END IF;
     RETURN NEW;
@@ -115,7 +135,7 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS trg_calculate_calibration ON public.raw_data;
 
 CREATE TRIGGER trg_calculate_calibration
-BEFORE INSERT OR UPDATE OF standard_data, uut_data, sensor_id_std
+BEFORE INSERT OR UPDATE OF standard_data, uut_data, sensor_id_std, sensor_id_uut
 ON public.raw_data
 FOR EACH ROW
 EXECUTE FUNCTION public.trigger_calculate_calibration();

@@ -1,4 +1,6 @@
 
+import { wrapWindDirectionCorrection } from './wind-direction';
+
 export type SensorType = 'Temperature' | 'Humidity' | 'Pressure' | 'Wind Speed' | 'Wind Direction' | 'Rainfall';
 
 export interface QCResult {
@@ -38,7 +40,10 @@ export const checkWMOLimit = (
     // Correction = Standard - UUT (User requirement)
     // PENTING: Jangan bulatkan di tahap perhitungan — pertahankan presisi penuh.
     // Pembulatan hanya boleh dilakukan di layer display (UI), bukan di logic.
-    const correction = standardValue - uutValue;
+    const deltaRaw = standardValue - uutValue;
+    const correction = sensorType === 'Wind Direction'
+        ? wrapWindDirectionCorrection(deltaRaw)
+        : deltaRaw;
     const absCorrection = Math.abs(correction);
 
     let limit = 0;

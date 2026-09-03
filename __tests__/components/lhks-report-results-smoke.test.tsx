@@ -123,4 +123,28 @@ describe('LHKSReport renderer smoke', () => {
     expect(screen.getByText(/Automatic Weather Station/i)).toBeInTheDocument()
     expect(screen.getByText(/LAPORAN HASIL KALIBRASI SEMENTARA/i)).toBeInTheDocument()
   })
+
+  it('menampilkan koreksi arah angin sebagai selisih sudut terpendek', () => {
+    render(
+      <LHKSReport
+        {...(baseProps as any)}
+        sensors={[{ ...baseProps.sensors[0], name: 'Arah Angin', type: 'Wind Direction' }]}
+        rawData={[{
+          id: 1,
+          created_at: '2026-04-25T00:00:00Z',
+          timestamp: '2026-04-25T00:00:00Z',
+          standard_data: 54.231,
+          std_correction: -0.1183051,
+          uut_data: 354,
+          session_id: '550e8400-e29b-41d4-a716-446655440000',
+          sensor_id_uut: 42,
+          unit_std: '°',
+          unit_uut: '°',
+        }]}
+      />
+    )
+
+    expect(screen.getAllByText('60.112695')).toHaveLength(2)
+    expect(screen.queryByText('-299.887305')).not.toBeInTheDocument()
+  })
 })
