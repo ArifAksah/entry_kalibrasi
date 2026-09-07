@@ -56,6 +56,8 @@ interface RawDataRow {
   sheet_name?: string | null
   unit_uut?: string | null
   unit_std?: string | null
+  source_row_index?: number | null
+  standard_certificate_id?: number | null
 }
 
 // ─────────────────────────────────────────────
@@ -130,17 +132,17 @@ export async function computeQCData(sessionId: string): Promise<CacheEntry> {
     )
   )
 
-  const standardCertMap: Record<number, any> = {}
+  const standardCertMap: Record<number, any[]> = {}
   await Promise.all(
     stdSensorIds.map(async (stdSensorId) => {
       try {
         const res = await fetch(`/api/cert-standards?sensor_id=${stdSensorId}`)
         if (res.ok) {
           const json = await res.json()
-          // API returns array of cert records; use the first one
+          // Keep all records so a raw row can resolve its frozen certificate ID.
           const certs = json.data || json
           if (Array.isArray(certs) && certs.length > 0) {
-            standardCertMap[stdSensorId] = certs[0]
+            standardCertMap[stdSensorId] = certs
           }
         }
       } catch {
@@ -177,7 +179,11 @@ export async function computeQCData(sessionId: string): Promise<CacheEntry> {
 
     // Find standard cert for this sensor group
     const stdSensorId = groupData[0]?.sensor_id_std
-    const standardCertRecord = stdSensorId ? standardCertMap[stdSensorId] || null : null
+    const selectedCertificateId = groupData[0]?.standard_certificate_id
+    const sensorCertificates = stdSensorId ? standardCertMap[stdSensorId] || [] : []
+    const standardCertRecord = selectedCertificateId
+      ? sensorCertificates.find(certificate => Number(certificate.id) === Number(selectedCertificateId)) || null
+      : sensorCertificates[0] || null
 
     const { uutAvg, correction, uncertainty } = calculateCalibrationResult({
       currentData: groupData,

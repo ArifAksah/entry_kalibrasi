@@ -147,4 +147,29 @@ describe('LHKSReport renderer smoke', () => {
     expect(screen.getAllByText('60.112695')).toHaveLength(2)
     expect(screen.queryByText('-299.887305')).not.toBeInTheDocument()
   })
+
+  it('memprioritaskan snapshot koreksi yang dibekukan oleh QC', () => {
+    render(
+      <LHKSReport
+        {...(baseProps as any)}
+        rawData={[{
+          id: 2,
+          created_at: '2026-04-25T00:00:00Z',
+          timestamp: '2026-04-25T00:00:00Z',
+          standard_data: 10,
+          std_correction: 1,
+          std_corrected: 11,
+          uut_data: 9,
+          uut_correction: 0.25,
+          session_id: '550e8400-e29b-41d4-a716-446655440000',
+          sensor_id_uut: 42,
+          unit_std: 'degC',
+          unit_uut: 'degC',
+        }]}
+      />
+    )
+
+    expect(screen.getAllByText('0.25')).toHaveLength(2)
+  })
+
 })

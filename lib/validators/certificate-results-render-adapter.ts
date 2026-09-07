@@ -41,6 +41,7 @@ export interface LegacyResultEntry {
   session_id?: string | null
   unitUut?: string | null
   unitStd?: string | null
+  standardCertificateId?: number | null
   place: string
   startDate: string
   endDate: string
@@ -85,6 +86,9 @@ function sensorV1ToLegacyEntry(s: SensorResultV1): LegacyResultEntry {
     session_id: s.links.session_id ?? null,
     unitUut: s.setup.measurement_units?.uut || s.snapshot.graduating_unit || s.snapshot.range_capacity_unit || null,
     unitStd: s.setup.measurement_units?.std ?? null,
+    standardCertificateId: s.setup.standard_instruments
+      .map((standard) => standard.certificate_id)
+      .find((id): id is number => typeof id === 'number') ?? null,
     place: s.display.place,
     startDate: s.setup.start_date,
     endDate: s.setup.end_date,

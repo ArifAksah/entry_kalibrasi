@@ -12,7 +12,7 @@ describe('wind direction calculations', () => {
         [358, -2],
         [181, -179],
         [-181, 179],
-        [180, 180],
+        [180, -180],
         [-180, -180],
         [721, 1],
     ])('wraps %p degrees to %p degrees', (deltaRaw, expected) => {

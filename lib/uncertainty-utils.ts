@@ -10,9 +10,9 @@
  */
 
 import { CertCorrectionPoint } from './qc-utils';
-import { convertUnit } from './unitConversion';
+import { canConvertUnit, convertDeltaUnit, convertUnit, normaliseUnit } from './unitConversion';
 import { parseCertCorrectionPoints, interpolateCorrectionFromPoints } from './qc-utils';
-import { circularMeanDegrees, isWindDirectionSensor, wrapWindDirectionCorrection } from './wind-direction';
+import { isWindDirectionSensor, wrapWindDirectionCorrection } from './wind-direction';
 
 export interface UncertaintyComponent {
     name: string;
@@ -40,6 +40,25 @@ export interface UncertaintyResult {
     cov_factor_95: number;
     expanded_uncert_u95: number;
     unit: string;
+}
+
+export function normalizeStdUncertaintyComponents(params: {
+    interpolatedCertU95: number;
+    driftStd: number;
+    resolusiStd: number;
+    unitStd: string;
+    unitUut: string;
+}) {
+    const { interpolatedCertU95, driftStd, resolusiStd, unitStd, unitUut } = params;
+    const needsUnitConversion = !!unitStd && !!unitUut && normaliseUnit(unitStd) !== normaliseUnit(unitUut);
+    const converted = !needsUnitConversion || canConvertUnit(unitStd, unitUut);
+    return {
+        interpolatedCertU95: converted ? convertDeltaUnit(interpolatedCertU95, unitStd, unitUut) : interpolatedCertU95,
+        driftStd: converted ? convertDeltaUnit(driftStd, unitStd, unitUut) : driftStd,
+        resolusiStd: converted ? convertDeltaUnit(resolusiStd, unitStd, unitUut) : resolusiStd,
+        converted,
+        needsUnitConversion,
+    };
 }
 
 /**
@@ -254,6 +273,7 @@ export function calculateCalibrationResult(params: {
     isAnalog?: boolean;
     unitUut?: string;
     isWindDirection?: boolean;
+    finalCorrections?: number[];
 }) {
     const { currentData, uutSensor, standardCertRecord, isAnalog } = params;
     
@@ -295,14 +315,11 @@ export function calculateCalibrationResult(params: {
     });
 
     const globalStdCorrected = totalStdCorrected / currentData.length;
-    const globalUutAvg = isWindDirection
-        ? circularMeanDegrees(currentData.map(row => row.uut_data || 0))
-        : totalUut / currentData.length;
+    // Workbook uses AVERAGE for displayed STD/UUT headings, including Wind Direction.
+    const globalUutAvg = totalUut / currentData.length;
 
     const unitStd = currentData[0]?.unit_std || '';
-    const uutReadings = currentData.map(row => {
-        if (stdCorrectionPoints.length === 0 && !isWindDirection) return row.uut_data || 0;
-
+    const calculatedCorrections = currentData.map(row => {
         const stdData = row.standard_data || 0;
         const unitStdRow = row.unit_std || unitStd || '';
         const unitUutRow = row.unit_uut || unitUut || '';
@@ -319,6 +336,10 @@ export function calculateCalibrationResult(params: {
         const deltaRaw = stdCorrectedInUutUnit - (row.uut_data || 0);
         return isWindDirection ? wrapWindDirectionCorrection(deltaRaw) : deltaRaw;
     });
+    const finalCorrections = params.finalCorrections?.length === currentData.length
+        && params.finalCorrections.every(Number.isFinite)
+        ? params.finalCorrections
+        : calculatedCorrections;
 
     let interpolatedU95 = 0;
     if (stdCorrectionPoints.length > 0) {
@@ -329,12 +350,20 @@ export function calculateCalibrationResult(params: {
             : parseFloat(standardCertRecord.u95_general) || 0;
     }
 
-    const result = calculateUncertaintyBudget({
-        unit: unitUut,
-        uutReadings,
+    const normalizedStdComponents = normalizeStdUncertaintyComponents({
         interpolatedCertU95: interpolatedU95,
         driftStd,
         resolusiStd,
+        unitStd,
+        unitUut,
+    });
+
+    const result = calculateUncertaintyBudget({
+        unit: unitUut,
+        uutReadings: finalCorrections,
+        interpolatedCertU95: normalizedStdComponents.interpolatedCertU95,
+        driftStd: normalizedStdComponents.driftStd,
+        resolusiStd: normalizedStdComponents.resolusiStd,
         resolusiUut,
         isAnalog: !!isAnalog
     });
@@ -343,9 +372,11 @@ export function calculateCalibrationResult(params: {
     if (unitStd && unitUut && unitStd.toLowerCase() !== unitUut.toLowerCase()) {
         uutUnitStdCorrected = convertUnit(globalStdCorrected, unitStd, unitUut);
     }
-    const correctionAvg = isWindDirection
-        ? uutReadings.reduce((sum, correction) => sum + correction, 0) / (uutReadings.length || 1)
-        : uutUnitStdCorrected - globalUutAvg;
+    const correctionAvg = params.finalCorrections
+        ? finalCorrections.reduce((sum, correction) => sum + correction, 0) / (finalCorrections.length || 1)
+        : isWindDirection
+            ? finalCorrections.reduce((sum, correction) => sum + correction, 0) / (finalCorrections.length || 1)
+            : uutUnitStdCorrected - globalUutAvg;
 
     return {
         uutAvg: globalUutAvg,

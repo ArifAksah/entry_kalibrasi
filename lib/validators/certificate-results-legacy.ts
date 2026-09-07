@@ -141,6 +141,7 @@ function convertLegacyEntry(raw: unknown, index: number): SensorResultV1 {
       return {
         instrument_id: asNumberOrNull((entry as any).standardInstrumentId ?? (entry as any).standard_instrument_id),
         sensor_id: sensorId,
+        certificate_id: asNumberOrNull((entry as any).standardCertificateId ?? (entry as any).standard_certificate_id),
         name: '',
         serial_number: '',
         certificate_no: asString((entry as any).standardCertificateNumber ?? (entry as any).standard_certificate_number),
@@ -151,6 +152,7 @@ function convertLegacyEntry(raw: unknown, index: number): SensorResultV1 {
     return {
       instrument_id: asNumberOrNull(obj.instrument_id ?? obj.id),
       sensor_id: asNumberOrNull(obj.sensor_id),
+      certificate_id: asNumberOrNull(obj.certificate_id ?? (entry as any).standardCertificateId ?? (entry as any).standard_certificate_id),
       name: asString(obj.name),
       serial_number: asString(obj.serial_number ?? obj.sn),
       certificate_no: asString(

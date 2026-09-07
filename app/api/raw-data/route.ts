@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { parseCalculationSnapshots } from '../../../lib/calculation-snapshot'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -87,6 +88,41 @@ export async function PUT(req: NextRequest) {
     return saveRawData(req, true)
 }
 
+export async function PATCH(req: NextRequest) {
+    try {
+        const body = await req.json()
+        const rows = parseCalculationSnapshots(body?.calculation_snapshots)
+        if (!rows) {
+            return NextResponse.json({ error: 'Invalid or empty calculation snapshots' }, { status: 400 })
+        }
+
+        const batchSize = 25
+        let updatedCount = 0
+        for (let i = 0; i < rows.length; i += batchSize) {
+            const batch = rows.slice(i, i + batchSize)
+            const results = await Promise.all(batch.map(async ({ id, ...values }) => {
+                const { data, error } = await supabase
+                    .from('raw_data')
+                    .update(values)
+                    .eq('id', id)
+                    .select('id')
+
+                if (error) throw error
+                if (!data || data.length !== 1) {
+                    throw new Error(`Raw data row ${id} was not updated`)
+                }
+                return data[0].id
+            }))
+            updatedCount += results.length
+        }
+
+        return NextResponse.json({ message: 'Calculation snapshots saved', updatedCount })
+    } catch (error: any) {
+        console.error('[raw-data] Error saving calculation snapshots:', error)
+        return NextResponse.json({ error: error?.message || 'Failed to save calculation snapshots' }, { status: 500 })
+    }
+}
+
 async function saveRawData(req: NextRequest, replaceExisting: boolean) {
     try {
         const body = await req.json()
@@ -108,6 +144,7 @@ async function saveRawData(req: NextRequest, replaceExisting: boolean) {
                 const sheetData = sheet.data
                 const sensorIdUut = sheet.sensor_id_uut
                 const sensorIdStd = sheet.sensor_id_std
+                const standardCertificateId = sheet.standard_certificate_id || null
                 const unitStd = sheet.unit_std || null
                 const unitUut = sheet.unit_uut || null
 
@@ -157,6 +194,9 @@ async function saveRawData(req: NextRequest, replaceExisting: boolean) {
                         if (typeof timestampVal === 'number' && timestampVal > 20000) {
                             const date = new Date((timestampVal - 25569) * 86400 * 1000)
                             timestamp = date.toISOString()
+                        } else if (typeof timestampVal === 'number') {
+                            // Sequential row counters (1, 2, 3, ...) are not dates.
+                            timestamp = null
                         } else if (hasTimestamp) {
                             timestamp = new Date(timestampVal).toISOString()
                         } else {
@@ -175,6 +215,8 @@ async function saveRawData(req: NextRequest, replaceExisting: boolean) {
                         created_at: new Date().toISOString(),
                         sensor_id_uut: sensorIdUut || null,
                         sensor_id_std: sensorIdStd || null,
+                        standard_certificate_id: standardCertificateId,
+                        source_row_index: i,
                         sheet_name: sheetName || null,
                         unit_std: unitStd,
                         unit_uut: unitUut,
@@ -259,7 +301,7 @@ export async function GET(req: NextRequest) {
                 .from('raw_data')
                 .select('*')
                 .eq('session_id', session_id)
-                .order('created_at', { ascending: true })
+                .order('id', { ascending: true })
                 .range(from, from + pageSize - 1)
 
             if (error) throw error

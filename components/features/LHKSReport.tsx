@@ -2,11 +2,12 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Certificate, Instrument, Sensor, Station, CertStandard } from '../../lib/supabase';
 import { fetchQCLimitForSensor, checkQCResult, QCLimit } from '../../lib/qc-utils';
-import { convertUnit, needsConversion, formatUnit } from '../../lib/unitConversion';
+import { canConvertUnit, convertDeltaUnit, convertUnit, needsConversion, formatUnit } from '../../lib/unitConversion';
 import { isPyranometer, PyranometerSensorData } from '../../lib/uncertainty-utils';
 import bmkgLogo from '../../app/bmkg.png';
 import { SigFigBadge } from '../ui/SigFigBadge';
-import { circularMeanDegrees, isWindDirectionSensor, wrapWindDirectionCorrection } from '../../lib/wind-direction';
+import { isWindDirectionSensor, wrapWindDirectionCorrection } from '../../lib/wind-direction';
+import { compareRawDataRows } from '../../lib/raw-data-order';
 
 // Define RawDataRow interface locally if not exported, or match what's used in QCDataModal
 interface RawDataRow {
@@ -24,6 +25,8 @@ interface RawDataRow {
     sheet_name?: string;
     unit_std?: string;
     unit_uut?: string;
+    source_row_index?: number | null;
+    standard_certificate_id?: number | null;
 }
 
 interface LHKSReportProps {
@@ -169,7 +172,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
 
     // Sort each group by timestamp
     Object.keys(groupedData).forEach(key => {
-        groupedData[key].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        groupedData[key].sort(compareRawDataRows);
     });
 
     // Helper: Sample Data (Top 15 + Bottom 15)
@@ -258,7 +261,6 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
             ? ['suhu', 'temp', 'termometer', 'temperature', 'thermo']
             : ['kelemba', 'hum', 'hygro', 'rh'];
 
-        // Find rows from sensor sheets matching the env type
         const matchedRows = rawData.filter(r => {
             const name = (r.sheet_name || '').toLowerCase();
             return keywords.some(k => name.includes(k));
@@ -754,22 +756,21 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                             // agar presisi penuh, JANGAN pakai row.std_corrected dari DB
                             // karena bisa jadi sudah terbulatkan di tahap penyimpanan.
                             const getStdConverted = (row: typeof data[0]) => {
-                                const stdCorr = (row.standard_data ?? 0) + (row.std_correction ?? 0);
+                                const stdCorr = row.std_corrected ?? ((row.standard_data ?? 0) + (row.std_correction ?? 0));
                                 if (!hasUnitMismatch) return stdCorr;
                                 return convertUnit(stdCorr, row.unit_std || rowUnitStd, row.unit_uut || rowUnitUut);
                             };
 
                             const getUutCorrection = (row: typeof data[0]) => {
+                                if (row.uut_correction != null && Number.isFinite(row.uut_correction)) {
+                                    return row.uut_correction;
+                                }
                                 const deltaRaw = getStdConverted(row) - row.uut_data;
                                 return isWindDirection ? wrapWindDirectionCorrection(deltaRaw) : deltaRaw;
                             };
 
-                            const avgStdCorrected = isWindDirection
-                                ? circularMeanDegrees(data.map(getStdConverted))
-                                : data.reduce((sum, row) => sum + getStdConverted(row), 0) / (totalRows || 1);
-                            const avgUutData = isWindDirection
-                                ? circularMeanDegrees(data.map(row => row.uut_data))
-                                : data.reduce((sum, row) => sum + row.uut_data, 0) / (totalRows || 1);
+                            const avgStdCorrected = data.reduce((sum, row) => sum + getStdConverted(row), 0) / (totalRows || 1);
+                            const avgUutData = data.reduce((sum, row) => sum + row.uut_data, 0) / (totalRows || 1);
                             
                             // DETEKSI PYRANOMETER untuk perhitungan koreksi
                             const pyrSensorDataForAvg: PyranometerSensorData | null = sensor ? {
@@ -859,7 +860,12 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                 stdSensor?.type || stdInstrument?.type,
                                 stdSensor?.serial_number || stdInstrument?.serial_number
                             ].filter(p => p && !/^\d+$/.test(String(p).trim()) || typeof p === 'string' && p.trim() !== '').join(' / ') || '-';
-                            const stdDrift = matchedStdCert?.drift ? `${matchedStdCert.drift} ${qcLimit?.unit || ''}` : '-';
+                            const rawStdDrift = Number(matchedStdCert?.drift);
+                            const stdDrift = Number.isFinite(rawStdDrift)
+                                ? hasUnitMismatch && canConvertUnit(rowUnitStd, rowUnitUut)
+                                    ? `${rawStdDrift} ${formatUnit(rowUnitStd)} → ${convertDeltaUnit(rawStdDrift, rowUnitStd, rowUnitUut).toFixed(4)} ${formatUnit(rowUnitUut)}`
+                                    : `${rawStdDrift} ${formatUnit(rowUnitStd)}`
+                                : '-';
 
                             // UUT details — Daerah Ukur from Min~Max of std_corrected (actual calibration range)
                             const stdCorrectedVals = data
@@ -902,6 +908,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
 
                             // All column values displayed in UUT unit (UUT is the reference for the report)
                             const unitDisplay = formatUnit(rowUnitUut || qcLimit?.unit || sensor?.graduating_unit || sensor?.range_capacity_unit || '');
+                            const stdUnitDisplay = formatUnit(rowUnitStd || unitDisplay);
 
                             return (
                                 <div key={sensorKey} className={`no-break mb-8 w-full ${pageIdx > 0 ? 'page-break' : ''}`}>
@@ -985,7 +992,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                     <table className="w-full text-xs border-collapse border border-black text-center">
                                         <thead>
                                             <tr>
-                                                <th colSpan={isPyranometer(sensor ? { name: sensor.name, type: sensor.type } : null) ? 4 : 6} className="bg-gray-100 border border-black font-bold text-center uppercase">DATA HASIL KALIBRASI {sensorName}</th>
+                                                <th colSpan={isPyranometer(sensor ? { name: sensor.name, type: sensor.type } : null) ? 4 : hasUnitMismatch ? 7 : 6} className="bg-gray-100 border border-black font-bold text-center uppercase">DATA HASIL KALIBRASI {sensorName}</th>
                                             </tr>
                                             {isPyranometer(sensor ? { name: sensor.name, type: sensor.type } : null) ? (
                                                 // HEADER UNTUK PYRANOMETER (sama dengan QC Check Data)
@@ -1007,8 +1014,8 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                 // HEADER UNTUK NON-PYRANOMETER
                                                 <>
                                                     <tr>
-                                                        <th rowSpan={2} className="border border-black w-10">No</th>
-                                                        <th colSpan={3} className="border border-black">STANDAR</th>
+                                                        <th rowSpan={3} className="border border-black w-10">No</th>
+                                                        <th colSpan={hasUnitMismatch ? 4 : 3} className="border border-black">STANDAR</th>
                                                         <th rowSpan={2} className="border border-black leading-tight">Alat yang<br />dikalibrasi</th>
                                                         <th rowSpan={2} className="border border-black">Koreksi</th>
                                                     </tr>
@@ -1016,12 +1023,13 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                         <th className="border border-black">Pembacaan</th>
                                                         <th className="border border-black">Koreksi</th>
                                                         <th className="border border-black">Terkoreksi</th>
+                                                        {hasUnitMismatch && <th className="border border-black">Terkoreksi<br /><span className="text-[9px] font-normal">Hasil Konversi</span></th>}
                                                     </tr>
                                                     <tr>
-                                                        <th className="border border-black bg-gray-50 italic"></th>
-                                                        <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
-                                                        <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
-                                                        <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
+                                                        <th className="border border-black bg-gray-50 italic">{stdUnitDisplay}</th>
+                                                        <th className="border border-black bg-gray-50 italic">{stdUnitDisplay}</th>
+                                                        <th className="border border-black bg-gray-50 italic">{stdUnitDisplay}</th>
+                                                        {hasUnitMismatch && <th className="border border-black bg-blue-50 italic">{unitDisplay}</th>}
                                                         <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
                                                         <th className="border border-black bg-gray-50 italic">{unitDisplay}</th>
                                                     </tr>
@@ -1056,9 +1064,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                     rawCorrection = (row.standard_data / row.uut_data - 1) * 100;
                                                 } else {
                                                     // BIASA: koreksi = Std - UUT
-                                                    rawCorrection = isWindDirection
-                                                        ? wrapWindDirectionCorrection(stdConverted - row.uut_data)
-                                                        : stdConverted - row.uut_data;
+                                                    rawCorrection = getUutCorrection(row);
                                                 }
                                                 
                                                 const qcResult = checkQCResult(rawCorrection, qcLimit);
@@ -1074,7 +1080,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                     <React.Fragment key={`${row.id}-${idx}`}>
                                                         {data.length > 30 && idx === 15 && (
                                                             <tr>
-                                                                <td colSpan={isPyrano ? 4 : 6} className="border border-black text-center italic py-1 bg-gray-50 text-gray-500">
+                                                                <td colSpan={isPyrano ? 4 : hasUnitMismatch ? 7 : 6} className="border border-black text-center italic py-1 bg-gray-50 text-gray-500">
                                                                     ... {data.length - 30} titik data tersembunyi ...
                                                                 </td>
                                                             </tr>
@@ -1108,12 +1114,14 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                                     )}
                                                                 </td>
                                                                 <td className="border border-black px-1">
-                                                                    {stdConverted.toFixed(4)}
-                                                                    {hasUnitMismatch && (
-                                                                        <span className="text-[8px] text-gray-400 ml-0.5" title={`Dikonversi dari ${row.unit_std || rowUnitStd} ke ${row.unit_uut || rowUnitUut}`}>*</span>
-                                                                    )}
-                                                                    <span className="print:hidden ml-1"><SigFigBadge value={stdConverted} /></span>
+                                                                    {stdCorrected.toFixed(4)}
+                                                                    <span className="print:hidden ml-1"><SigFigBadge value={stdCorrected} /></span>
                                                                 </td>
+                                                                {hasUnitMismatch && <td className="border border-black px-1 bg-blue-50/40">
+                                                                    {stdConverted.toFixed(4)}
+                                                                    <span className="text-[8px] text-gray-400 ml-0.5" title={`Dikonversi dari ${row.unit_std || rowUnitStd} ke ${row.unit_uut || rowUnitUut}`}>*</span>
+                                                                    <span className="print:hidden ml-1"><SigFigBadge value={stdConverted} /></span>
+                                                                </td>}
                                                                 <td className="border border-black px-1">
                                                                     {row.uut_data.toFixed(2)}
                                                                     <span className="print:hidden ml-1"><SigFigBadge value={row.uut_data} /></span>
@@ -1160,7 +1168,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                 // UNTUK NON-PYRANOMETER
                                                 <>
                                                     <tr>
-                                                        <td colSpan={3} className="border border-black text-left font-bold px-1 pl-2">Rata-Rata</td>
+                                                        <td colSpan={hasUnitMismatch ? 4 : 3} className="border border-black text-left font-bold px-1 pl-2">Rata-Rata</td>
                                                         <td className="border border-black font-bold px-1">
                                                             {avgStdCorrected.toFixed(4)}
                                                             <span className="print:hidden ml-1"><SigFigBadge value={avgStdCorrected} /></span>
@@ -1175,7 +1183,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                         </td>
                                                     </tr>
                                                     <tr>
-                                                        <td colSpan={5} className="border border-black text-left font-bold px-1 pl-2">Standar Deviasi</td>
+                                                        <td colSpan={hasUnitMismatch ? 6 : 5} className="border border-black text-left font-bold px-1 pl-2">Standar Deviasi</td>
                                                         <td className="border border-black px-1">
                                                             {stdDevCorrection.toFixed(6).replace(/\.?0+$/, '') || '0'}
                                                             <span className="print:hidden ml-1"><SigFigBadge value={stdDevCorrection} /></span>
@@ -1193,7 +1201,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                     )}
                                     {hasUnitMismatch && (
                                         <div className="mt-1 text-[10px] text-gray-500 italic text-right">
-                                            * Nilai Pembacaan Standar telah dikonversi dari <strong>{formatUnit(rowUnitStd)}</strong> ke <strong>{formatUnit(rowUnitUut)}</strong> sebelum penghitungan koreksi.
+                                            * Kolom STD Pembacaan, Koreksi, dan Terkoreksi tetap dalam <strong>{formatUnit(rowUnitStd)}</strong>. Kolom Terkoreksi Hasil Konversi dan Koreksi akhir menggunakan <strong>{formatUnit(rowUnitUut)}</strong>.
                                         </div>
                                     )}
                                 </div>

@@ -2,8 +2,9 @@
  * Unit conversion utilities for meteorological sensors.
  *
  * Reference (from BMKG calibration table):
- *   Pressure: 1 inHg = 33.8639 hPa | 1 hPa = 0.02953 inHg | 1 mmHg = 1.33322 hPa
- *   Wind:     1 knot = 0.5144 m/s  | 1 m/s  = 1.9438 knots | 1 fpm = 0.00508 m/s
+ *   Constants follow the BMKG processing workbook so report calculations are reproducible.
+ *   Pressure: 1 hPa = 0.029529983071444998 inHg
+ *   Wind:     1 m/s = 1.9438444924406 knots
  *
  * Convention:
  *   Convert UUT value to the SAME unit as STD before computing correction.
@@ -25,14 +26,15 @@ export const normaliseUnit = (u: string): string => {
 type ConversionEntry = { factor: number; offset?: number };
 const CONVERSIONS: Record<string, Record<string, ConversionEntry>> = {
     // Pressure
-    inhg: { hpa: { factor: 33.8639 }, mbar: { factor: 33.8639 }, mmhg: { factor: 25.4 } },
-    hpa: { inhg: { factor: 0.02953 }, mbar: { factor: 1 }, mmhg: { factor: 0.75006 } },
-    mbar: { hpa: { factor: 1 }, inhg: { factor: 0.02953 }, mmhg: { factor: 0.75006 } },
-    mmhg: { hpa: { factor: 1.33322 }, mbar: { factor: 1.33322 }, inhg: { factor: 0.03937 } },
+    inhg: { hpa: { factor: 1 / 0.029529983071445 }, mbar: { factor: 1 / 0.029529983071445 }, mmhg: { factor: 25.4 }, bar: { factor: 1 / 0.029529983071445 / 1000 } },
+    hpa: { inhg: { factor: 0.029529983071445 }, mbar: { factor: 1 }, mmhg: { factor: 0.750062 }, bar: { factor: 0.001 } },
+    mbar: { hpa: { factor: 1 }, inhg: { factor: 0.029529983071445 }, mmhg: { factor: 0.750062 }, bar: { factor: 0.001 } },
+    mmhg: { hpa: { factor: 1 / 0.750062 }, mbar: { factor: 1 / 0.750062 }, inhg: { factor: 1 / 25.4 }, bar: { factor: 1 / 0.750062 / 1000 } },
+    bar: { hpa: { factor: 1000 }, mbar: { factor: 1000 }, inhg: { factor: 1000 * 0.029529983071445 }, mmhg: { factor: 1000 * 0.750062 } },
     // Wind speed
-    'm/s': { knot: { factor: 1.9438 }, 'kt': { factor: 1.9438 }, fpm: { factor: 196.85 } },
-    'knot': { 'm/s': { factor: 0.5144 }, fpm: { factor: 101.27 } },
-    'kt': { 'm/s': { factor: 0.5144 }, fpm: { factor: 101.27 } },
+    'm/s': { knot: { factor: 1.9438444924406 }, 'kt': { factor: 1.9438444924406 }, fpm: { factor: 196.850393700787 } },
+    'knot': { 'm/s': { factor: 1 / 1.9438444924406 }, fpm: { factor: 196.850393700787 / 1.9438444924406 } },
+    'kt': { 'm/s': { factor: 1 / 1.9438444924406 }, fpm: { factor: 196.850393700787 / 1.9438444924406 } },
     'fpm': { 'm/s': { factor: 0.00508 }, knot: { factor: 0.00987 }, 'kt': { factor: 0.00987 } },
     // Temperature
     '°c': { '°f': { factor: 9 / 5, offset: 32 } },
@@ -55,6 +57,23 @@ export function convertUnit(value: number, fromUnit: string, toUnit: string): nu
     const entry = CONVERSIONS[from]?.[to];
     if (!entry) return value; // unknown conversion → return as-is (log warning in dev)
     return value * entry.factor + (entry.offset ?? 0);
+}
+
+/** Check whether units are identical or an explicit conversion is available. */
+export function canConvertUnit(fromUnit: string, toUnit: string): boolean {
+    const from = normaliseUnit(fromUnit);
+    const to = normaliseUnit(toUnit);
+    return from === to || CONVERSIONS[from]?.[to] != null;
+}
+
+/** Convert a correction, uncertainty, drift, or resolution without applying offsets. */
+export function convertDeltaUnit(value: number, fromUnit: string, toUnit: string): number {
+    const from = normaliseUnit(fromUnit);
+    const to = normaliseUnit(toUnit);
+    if (from === to) return value;
+    const entry = CONVERSIONS[from]?.[to];
+    if (!entry) return value;
+    return value * entry.factor;
 }
 
 /**

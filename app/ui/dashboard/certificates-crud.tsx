@@ -2352,6 +2352,7 @@ type ResultItem = {
                     data: sheet.data,
                     sensor_id_uut: results[idx]?.sensorId ?? null,
                     sensor_id_std: stdSensorId,
+                    standard_certificate_id: sheetCertId || null,
                     unit_uut: uutUnit,
                     unit_std: stdUnit,
                   }
@@ -4361,32 +4362,32 @@ type ResultItem = {
                 <div className="space-y-3">
                   {envDraft.map((row, i) => (
                     <div key={i} className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 border border-gray-200 rounded-lg bg-white">
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-gray-700">Key</label>
-                        <input
-                          value={row.key}
-                          onChange={e => {
-                            const v = [...envDraft];
-                            v[i] = { ...v[i], key: e.target.value };
-                            setEnvDraft(v)
-                          }}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
-                          placeholder="Contoh: Suhu"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="block text-xs font-semibold text-gray-700">Value</label>
-                        <input
-                          value={row.value}
-                          onChange={e => {
-                            const v = [...envDraft];
-                            v[i] = { ...v[i], value: e.target.value };
-                            setEnvDraft(v)
-                          }}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
-                          placeholder="Contoh: 25°C"
-                        />
-                      </div>
+                        <div className="space-y-1">
+                          <label className="block text-xs font-semibold text-gray-700">Key</label>
+                          <input
+                            value={row.key}
+                            onChange={e => {
+                              const v = [...envDraft];
+                              v[i] = { ...v[i], key: e.target.value };
+                              setEnvDraft(v)
+                            }}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
+                            placeholder="Contoh: Suhu"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-xs font-semibold text-gray-700">Value</label>
+                          <input
+                            value={row.value}
+                            onChange={e => {
+                              const v = [...envDraft];
+                              v[i] = { ...v[i], value: e.target.value };
+                              setEnvDraft(v)
+                            }}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
+                            placeholder="Contoh: 25°C"
+                          />
+                        </div>
                     </div>
                   ))}
 
@@ -5442,6 +5443,7 @@ type ResultItem = {
               unitUut: r.unitUut ?? r.unit_uut ?? null,
               unitStd: r.unitStd ?? r.unit_std ?? null,
               calibrationMethod: r.notesForm?.calibration_methode ?? null,
+              standardCertificateId: r.standardCertificateId ?? r.standard_certificate_id ?? null,
             }))}
             certificateStatus={qcModalCertificate.status}
             onCalculateSaved={async (updates) => {

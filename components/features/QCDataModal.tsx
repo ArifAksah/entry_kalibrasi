@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { Instrument, Sensor } from '../../lib/supabase';
 import {
     fetchQCLimitForSensor, checkQCResult, QCLimit,
-    hitungKoreksiBatch
+    hitungKoreksiBatch, clearHitungKoreksiCache, buildCorrectionMapFromCertificates
 } from '../../lib/qc-utils';
 import { convertUnit, needsConversion } from '../../lib/unitConversion';
 import { 
@@ -14,7 +14,10 @@ import {
 import { SigFigBadge } from '../ui/SigFigBadge';
 import qcCacheService from '../../lib/qc-cache-service';
 import { deserializeMap } from '../../lib/qc-cache-storage';
-import { circularMeanDegrees, isWindDirectionSensor, wrapWindDirectionCorrection } from '../../lib/wind-direction';
+import { isWindDirectionSensor, wrapWindDirectionCorrection } from '../../lib/wind-direction';
+import { calculateAuditRow, calculateAuditStats } from '../../lib/calculation-audit';
+import { CalculationSnapshot, dedupeCalculationSnapshots } from '../../lib/calculation-snapshot';
+import { compareRawDataRows } from '../../lib/raw-data-order';
 
 
 interface RawDataRow {
@@ -26,9 +29,12 @@ interface RawDataRow {
     session_id: string;
     sensor_id_uut?: number;
     sensor_id_std?: number;
+    standard_certificate_id?: number | null;
+    source_row_index?: number | null;
     sheet_name?: string | null;
     unit_uut?: string | null;   // UUT data unit (reference)
     unit_std?: string | null;   // STD data unit (may need conversion to UUT unit)
+    std_correction?: number | null;
 }
 
 interface QCDataModalProps {
@@ -47,6 +53,7 @@ interface QCDataModalProps {
         unitUut?: string | null;
         unitStd?: string | null;
         calibrationMethod?: string | null;
+        standardCertificateId?: number | null;
     }>;
     onCalculateSaved?: (updates: Array<{ sensorId: number | string, table: any[] }>) => void | Promise<void>;
     /**
@@ -67,6 +74,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
     const [activeTab, setActiveTab] = useState<number | 'unknown'>('unknown');
     const [isSavingToTable, setIsSavingToTable] = useState(false);
     const [hasSavedToTable, setHasSavedToTable] = useState(false);
+    const [showCalculationAudit, setShowCalculationAudit] = useState(false);
 
     // Per UUT sensor: QC limits from master_qc
     const [qcLimits, setQcLimits] = useState<Record<string, QCLimit | null>>({});
@@ -162,6 +170,18 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
         });
         return groups;
     }, [normalizedData]);
+
+    const localCorrectionMap = React.useMemo(() => {
+        const pairs = normalizedData
+            .filter(row => row.sensor_id_std != null && row.standard_data != null)
+            .map(row => ({
+                reading: row.standard_data as number,
+                sensorStdId: row.sensor_id_std!,
+                standardCertificateId: row.standard_certificate_id
+                    ?? resultEntries.find(entry => entry.sensorId === row.sensor_id_uut)?.standardCertificateId,
+            }));
+        return buildCorrectionMapFromCertificates(pairs, standardCerts);
+    }, [normalizedData, standardCerts]);
 
     const sensorKeys = Object.keys(groupedData);
 
@@ -259,6 +279,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
         if (!sessionId || isRefreshing) return;
         setIsRefreshing(true);
         try {
+            clearHitungKoreksiCache();
             const newEntry = await qcCacheService.refresh(sessionId);
             // Update state with fresh computed results
             setCorrectionMap(deserializeMap(newEntry.correction_map));
@@ -278,14 +299,24 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
         const rows = currentData.map((row, index) => {
             const { stdCorrection, stdCorrected, uutCorrection, qc } = computeRowQC(row);
+            const audit = computeAuditRow(row);
             return {
                 'No': index + 1,
+                'Source Row': row.source_row_index ?? '',
                 'Timestamp': row.timestamp ? new Date(row.timestamp).toLocaleString('id-ID') : '',
                 'Std Reading': row.standard_data ?? '',
                 'Koreksi Std': stdCorrection,
                 'Std Terkoreksi': stdCorrected ?? '',
                 'UUT Reading': row.uut_data ?? '',
                 'Koreksi UUT': uutCorrection ?? '',
+                ...(showCalculationAudit && audit ? {
+                    'Audit Sistem': audit.systemCorrection,
+                    'Audit Excel Legacy': audit.legacyCorrection,
+                    'Selisih Sistem - Excel': audit.correctionDifference,
+                    'Koreksi STD Tersimpan': row.std_correction ?? '',
+                    'Selisih Koreksi STD Aktif - Tersimpan': audit.storedCorrectionDifference ?? '',
+                    'Sumber Koreksi STD': audit.correctionSource,
+                } : {}),
                 'Batas WMO': qc.limitStr,
                 'Status': qc.passed ? 'PASS' : 'FAIL',
             };
@@ -307,6 +338,14 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'QC Check Data');
+        if (showCalculationAudit && auditComparison) {
+            const summary = XLSX.utils.json_to_sheet([
+                { Profil: 'Sistem', Jumlah: auditComparison.system.count, 'Rata-rata': auditComparison.system.mean, 'STDEV.S': auditComparison.system.standardDeviation },
+                { Profil: 'Excel Legacy', Jumlah: auditComparison.legacy.count, 'Rata-rata': auditComparison.legacy.mean, 'STDEV.S': auditComparison.legacy.standardDeviation },
+                { Profil: 'Selisih', Jumlah: auditComparison.difference.count, 'Rata-rata': auditComparison.difference.mean, 'STDEV.S': auditComparison.difference.standardDeviation },
+            ]);
+            XLSX.utils.book_append_sheet(wb, summary, 'Ringkasan Audit');
+        }
 
         const fileName = `QC_Check_${activeSensorName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
         XLSX.writeFile(wb, fileName);
@@ -343,9 +382,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
     if (!isOpen) return null;
 
-    const currentData = (groupedData[String(activeTab)] || []).sort((a, b) => {
-        return new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime();
-    });
+    const currentData = [...(groupedData[String(activeTab)] || [])].sort(compareRawDataRows);
 
     /**
      * Get the correction from the DB-computed correctionMap for a row.
@@ -353,8 +390,8 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
      * 
      * UNTUK PYRANOMETER: Hitung koreksi sebagai (Std/UUT - 1) × 100%
      */
-    const getStdCorrection = (row: RawDataRow): { value: number; hasData: boolean } => {
-        if (row.standard_data == null) return { value: 0, hasData: false };
+    const getStdCorrection = (row: RawDataRow): { value: number; hasData: boolean; source: 'active' | 'stored' | 'missing' | 'pyranometer' } => {
+        if (row.standard_data == null) return { value: 0, hasData: false, source: 'missing' };
         
         // DETEKSI PYRANOMETER
         const sensor = row.sensor_id_uut ? sensors.find((s: any) => s.id === row.sensor_id_uut) : null;
@@ -367,14 +404,24 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
         if (isPyrano && row.uut_data != null && row.standard_data > 0 && row.uut_data > 0) {
             // PYRANOMETER: koreksi = (Std/UUT - 1) × 100%
             const cf = (row.standard_data / row.uut_data - 1) * 100;
-            return { value: cf, hasData: true };
+            return { value: cf, hasData: true, source: 'pyranometer' };
         }
         
         // BIASA: Gunakan correctionMap
-        if (!row.sensor_id_std) return { value: 0, hasData: false };
+        if (!row.sensor_id_std) return { value: 0, hasData: false, source: 'missing' };
         const key = `${row.sensor_id_std}:${row.standard_data}`;
+        const standardCertificateId = row.standard_certificate_id
+            ?? resultEntries.find(entry => entry.sensorId === row.sensor_id_uut)?.standardCertificateId;
+        const localKey = `${standardCertificateId || 'latest'}:${row.sensor_id_std}:${row.standard_data}`;
+        if (localCorrectionMap.has(localKey)) {
+            return { value: localCorrectionMap.get(localKey)!, hasData: true, source: 'active' };
+        }
         const hasData = correctionMap.has(key);
-        return { value: correctionMap.get(key) ?? 0, hasData };
+        if (hasData) return { value: correctionMap.get(key)!, hasData: true, source: 'active' };
+        if (row.std_correction != null && Number.isFinite(row.std_correction)) {
+            return { value: row.std_correction, hasData: true, source: 'stored' };
+        }
+        return { value: 0, hasData: false, source: 'missing' };
     };
 
     /**
@@ -461,6 +508,44 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
         };
     };
 
+    const computeAuditRow = (row: RawDataRow) => {
+        if (row.standard_data == null || row.uut_data == null) return null;
+        const { value: stdCorrection, source } = getStdCorrection(row);
+        const uutSensor = row.sensor_id_uut
+            ? sensors.find((sensor: any) => sensor.id === row.sensor_id_uut)
+            : null;
+        return {
+            ...calculateAuditRow({
+            standardReading: row.standard_data,
+            uutReading: row.uut_data,
+            standardCorrection: stdCorrection,
+            storedStandardCorrection: row.std_correction,
+            unitStd: row.unit_std,
+            unitUut: row.unit_uut || uutSensor?.graduating_unit || uutSensor?.range_capacity_unit,
+            isWindDirection: isWindDirectionRow(row),
+            }),
+            correctionSource: source,
+        };
+    };
+
+    const auditRows = currentData
+        .map(row => ({ row, audit: computeAuditRow(row) }))
+        .filter((item): item is { row: RawDataRow; audit: NonNullable<ReturnType<typeof computeAuditRow>> } => item.audit != null);
+    const auditComparison = auditRows.length > 0 ? {
+        system: calculateAuditStats(auditRows.map(item => item.audit.systemCorrection)),
+        legacy: calculateAuditStats(auditRows.map(item => item.audit.legacyCorrection)),
+        difference: calculateAuditStats(auditRows.map(item => item.audit.correctionDifference)),
+        storedCorrectionMismatchCount: auditRows.filter(item =>
+            item.audit.storedCorrectionDifference != null
+            && Math.abs(item.audit.storedCorrectionDifference) > 1e-12
+        ).length,
+        storedFallbackCount: auditRows.filter(item => item.audit.correctionSource === 'stored').length,
+        storedFallbackReadings: auditRows
+            .filter(item => item.audit.correctionSource === 'stored')
+            .slice(0, 5)
+            .map(item => item.row.standard_data),
+    } : null;
+
     const failCount = currentData.filter(row => {
         const qc = computeRowQC(row);
         return qc.uutCorrection != null && !qc.qc.passed;
@@ -474,9 +559,27 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
     const handleSaveToTable = async () => {
         if (sensorKeys.length === 0) return;
         if (correctionLoading) return;
+
+        const unresolvedCorrections = normalizedData.filter(row => {
+            if (row.standard_data == null || row.sensor_id_std == null) return false;
+            const sensor = row.sensor_id_uut
+                ? sensors.find((item: any) => item.id === row.sensor_id_uut)
+                : null;
+            if (isPyranometer(sensor ? { name: sensor.name, type: sensor.type } : null)) return false;
+            return getStdCorrection(row).source !== 'active';
+        });
+        if (unresolvedCorrections.length > 0) {
+            window.alert(
+                `${unresolvedCorrections.length} koreksi STD belum berhasil dihitung aktif. `
+                + 'Klik Refresh dan pastikan Fallback koreksi tersimpan = 0 sebelum menyimpan hasil.'
+            );
+            return;
+        }
+
         setIsSavingToTable(true);
         try {
             const updates: Array<{ sensorId: number | string, table: any[] }> = [];
+            const calculationSnapshots: CalculationSnapshot[] = [];
 
             for (const key of sensorKeys) {
                 const groupData = groupedData[key] || [];
@@ -487,16 +590,18 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
                 // Find standard cert for this sensor group via correctionMap data
                 const stdSensorId = groupData[0]?.sensor_id_std;
-                const standardCertRecord = stdSensorId
-                    ? standardCerts.find((c: any) => c.sensor_id === stdSensorId)
-                    : null;
+                const selectedCertificateId = groupData[0]?.standard_certificate_id
+                    ?? resultEntries.find(entry => entry.sensorId === groupData[0]?.sensor_id_uut)?.standardCertificateId;
+                const standardCertRecord = selectedCertificateId
+                    ? standardCerts.find((certificate: any) => Number(certificate.id) === Number(selectedCertificateId))
+                    : stdSensorId
+                        ? standardCerts.find((certificate: any) => certificate.sensor_id === stdSensorId)
+                        : null;
 
                 const rowsForCalc = groupData.filter(r => r.uut_data != null);
                 if (rowsForCalc.length === 0) continue;
                 const isWindDirectionGroup = isWindDirectionRow(rowsForCalc[0]);
-                const uutAvg = isWindDirectionGroup
-                    ? circularMeanDegrees(rowsForCalc.map(r => r.uut_data as number))
-                    : rowsForCalc.reduce((sum, r) => sum + (r.uut_data as number), 0) / rowsForCalc.length;
+                const uutAvg = rowsForCalc.reduce((sum, r) => sum + (r.uut_data as number), 0) / rowsForCalc.length;
 
                 // ═══════════════════════════════════════════════════════════════
                 // DETEKSI PYRANOMETER (SEBELUM HITUNG KOREKSI)
@@ -509,6 +614,26 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                 } : null;
 
                 const isPyranometerSensor = isPyranometer(pyranometerSensorData);
+                const finalCorrectionPairs = isPyranometerSensor
+                    ? []
+                    : rowsForCalc
+                        .map(row => ({ row, correction: computeRowQC(row).uutCorrection }))
+                        .filter((item): item is { row: RawDataRow; correction: number } =>
+                            item.row.standard_data != null
+                            && item.correction != null
+                            && Number.isFinite(item.correction)
+                        );
+
+                finalCorrectionPairs.forEach(({ row, correction }) => {
+                    const computed = computeRowQC(row);
+                    if (computed.stdCorrectedRaw == null) return;
+                    calculationSnapshots.push({
+                        id: row.id,
+                        std_correction: computed.stdCorrection,
+                        std_corrected: computed.stdCorrectedRaw,
+                        uut_correction: correction,
+                    });
+                });
                 
                 // Compute average correction
                 let correctionAvg = 0;
@@ -539,28 +664,9 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                     // ═══════════════════════════════════════════════════════════
                     // BIASA: Hitung koreksi dari correctionMap (interpolasi)
                     // ═══════════════════════════════════════════════════════════
-                    if (correctionMap.size > 0) {
-                        const corrections = rowsForCalc.map(row => {
-                            if (row.standard_data == null) return null;
-                            const stdCorrection = row.sensor_id_std
-                                ? (correctionMap.get(`${row.sensor_id_std}:${row.standard_data}`) ?? 0)
-                                : 0;
-                            const rawStdCorrected = row.standard_data + stdCorrection;
-                            const unitStd = row.unit_std || '';
-                            let unitUut = row.unit_uut || '';
-                            if (!unitUut && row.sensor_id_uut) {
-                                const uutSensor = sensors.find((s: any) => s.id === row.sensor_id_uut);
-                                unitUut = uutSensor?.graduating_unit || uutSensor?.range_capacity_unit || '';
-                            }
-                            const stdCorrectedInUutUnit = (unitStd && unitUut && needsConversion(unitStd, unitUut))
-                                ? convertUnit(rawStdCorrected, unitStd, unitUut)
-                                : rawStdCorrected;
-                            const deltaRaw = stdCorrectedInUutUnit - (row.uut_data as number);
-                            return isWindDirectionGroup ? wrapWindDirectionCorrection(deltaRaw) : deltaRaw;
-                        }).filter((v): v is number => v != null);
-                        if (corrections.length > 0) {
-                            correctionAvg = corrections.reduce((sum, c) => sum + c, 0) / corrections.length;
-                        }
+                    const corrections = finalCorrectionPairs.map(item => item.correction);
+                    if (corrections.length > 0) {
+                        correctionAvg = corrections.reduce((sum, correction) => sum + correction, 0) / corrections.length;
                     }
                 }
 
@@ -614,11 +720,12 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                     // BIASA: Gunakan perhitungan standar (selisih absolut)
                     const isAnalog = (instruments.find(i => i.id === certificateInstrumentId)?.instrument_type_id ?? 1) === 2;
                     const result = calculateCalibrationResult({
-                        currentData: groupData,
+                        currentData: finalCorrectionPairs.map(item => item.row),
                         uutSensor,
                         standardCertRecord,
                         isAnalog,
                         isWindDirection: isWindDirectionGroup,
+                        finalCorrections: finalCorrectionPairs.map(item => item.correction),
                     });
                     displayUutAvg = result.uutAvg;
                     displayCorrection = result.correction;
@@ -651,6 +758,29 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                 }];
 
                 updates.push({ sensorId: key === 'unknown' ? 'unknown' : Number(key), table: newTable });
+            }
+
+            if (calculationSnapshots.length > 0) {
+                const uniqueSnapshots = dedupeCalculationSnapshots(calculationSnapshots);
+                const snapshotResponse = await fetch('/api/raw-data', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ calculation_snapshots: uniqueSnapshots }),
+                });
+                if (!snapshotResponse.ok) {
+                    const payload = await snapshotResponse.json().catch(() => ({}));
+                    throw new Error(payload.error || 'Gagal menyimpan snapshot kalkulasi raw data');
+                }
+                const snapshotsById = new Map(uniqueSnapshots.map(snapshot => [String(snapshot.id), snapshot]));
+                setData(current => current.map(row => {
+                    const snapshot = snapshotsById.get(String(row.id));
+                    return snapshot ? {
+                        ...row,
+                        std_correction: snapshot.std_correction,
+                        std_corrected: snapshot.std_corrected,
+                        uut_correction: snapshot.uut_correction,
+                    } : row;
+                }));
             }
 
             if (onCalculateSaved && updates.length > 0) {
@@ -711,6 +841,18 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                     </svg>
+                                </button>
+                            )}
+                            {currentData.length > 0 && !isPyranometer(currentSensorForPyranometer) && (
+                                <button
+                                    onClick={() => setShowCalculationAudit(value => !value)}
+                                    title="Bandingkan kalkulasi Sistem dengan formula Excel Legacy"
+                                    className={`ml-1 px-2 py-1 rounded text-xs font-semibold transition-colors ${showCalculationAudit
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                        : 'text-gray-500 hover:text-amber-700 hover:bg-amber-50 border border-transparent'
+                                    }`}
+                                >
+                                    Audit {showCalculationAudit ? 'ON' : 'OFF'}
                                 </button>
                             )}
                         </h3>
@@ -785,6 +927,50 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
                             <div className="flex-1 overflow-hidden flex flex-col p-6">
                                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">
+                                    {showCalculationAudit && auditComparison && !isPyranometer(currentSensorForPyranometer) && (
+                                        <div className="p-4 border-b border-amber-200 bg-amber-50 shrink-0">
+                                            <div className="flex items-start justify-between gap-4 mb-3">
+                                                <div>
+                                                    <div className="text-xs font-bold text-amber-900 uppercase">Audit Perbandingan Kalkulasi</div>
+                                                    <div className="text-[11px] text-amber-700 mt-0.5">
+                                                        Formula resmi Sistem mengikuti workbook. Selisih harus nol bila input dan koreksi STD identik.
+                                                    </div>
+                                                </div>
+                                                <div className="text-[11px] text-amber-800 whitespace-nowrap">
+                                                    {auditComparison.system.count} pasangan valid
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                {[
+                                                    { label: 'Sistem', stats: auditComparison.system },
+                                                    { label: 'Excel Legacy', stats: auditComparison.legacy },
+                                                    { label: 'Selisih', stats: auditComparison.difference },
+                                                ].map(({ label, stats }) => (
+                                                    <div key={label} className="bg-white rounded border border-amber-200 p-2">
+                                                        <div className="text-[10px] uppercase font-semibold text-gray-500">{label}</div>
+                                                        <div className="text-xs text-gray-700 mt-1">Rata-rata: <b className="font-mono">{stats.mean.toFixed(9)}</b></div>
+                                                        <div className="text-xs text-gray-700">STDEV.S: <b className="font-mono">{stats.standardDeviation.toFixed(9)}</b></div>
+                                                    </div>
+                                                ))}
+                                                <div className="bg-white rounded border border-amber-200 p-2">
+                                                    <div className="text-[10px] uppercase font-semibold text-gray-500">Sumber Koreksi STD</div>
+                                                    <div className="text-xs text-gray-700 mt-1">Aktif vs tersimpan berbeda:</div>
+                                                    <div className={`text-sm font-bold ${auditComparison.storedCorrectionMismatchCount > 0 ? 'text-red-600' : 'text-green-700'}`}>
+                                                        {auditComparison.storedCorrectionMismatchCount} baris
+                                                    </div>
+                                                    <div className={`text-[10px] mt-1 ${auditComparison.storedFallbackCount > 0 ? 'text-amber-700' : 'text-gray-500'}`}>
+                                                        Fallback koreksi tersimpan: {auditComparison.storedFallbackCount} baris
+                                                    </div>
+                                                    {auditComparison.storedFallbackReadings.length > 0 && (
+                                                        <div className="text-[10px] text-amber-700 mt-1 break-words">
+                                                            STD: {auditComparison.storedFallbackReadings.join(', ')}
+                                                            {auditComparison.storedFallbackCount > auditComparison.storedFallbackReadings.length ? ', ...' : ''}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                     {/* Stats row */}
                                     <div className={`grid gap-3 p-4 border-b border-gray-100 shrink-0 ${isPyranometer(currentSensorForPyranometer) ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-5'}`}>
                                         <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100">
@@ -928,6 +1114,13 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                                             </th>
                                                         </>
                                                     )}
+                                                    {showCalculationAudit && !isPyranometer(currentSensorForPyranometer) && (
+                                                        <>
+                                                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase bg-amber-900/30">Sistem</th>
+                                                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase bg-amber-900/30">Excel Legacy</th>
+                                                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase bg-amber-900/30">Selisih</th>
+                                                        </>
+                                                    )}
                                                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase">UUT Reading</th>
                                                     {/* KOLOM KOREKSI UUT, BATAS WMO, STATUS - HANYA untuk non-pyranometer */}
                                                     {!isPyranometer(currentSensorForPyranometer) && (
@@ -945,6 +1138,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                             <tbody className="bg-white divide-y divide-gray-200">
                                                 {currentData.length > 0 ? currentData.map((row, index) => {
                                                     const { stdCorrection, stdCorrected, uutCorrection, hasCertData, qc } = computeRowQC(row);
+                                                    const audit = computeAuditRow(row);
                                                     const isFail = uutCorrection != null && !qc.passed;
                                                     
                                                     // DETEKSI PYRANOMETER untuk hitung CF
@@ -1007,6 +1201,15 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                                                     </td>
                                                                 </>
                                                             )}
+                                                            {showCalculationAudit && !isPyrano && (
+                                                                <>
+                                                                    <td className="px-4 py-2 text-xs font-mono bg-amber-50/40">{audit ? audit.systemCorrection.toFixed(9) : '-'}</td>
+                                                                    <td className="px-4 py-2 text-xs font-mono bg-amber-50/40">{audit ? audit.legacyCorrection.toFixed(9) : '-'}</td>
+                                                                    <td className={`px-4 py-2 text-xs font-mono bg-amber-50/40 ${audit && Math.abs(audit.correctionDifference) > 1e-12 ? 'text-amber-800 font-bold' : 'text-gray-500'}`}>
+                                                                        {audit ? audit.correctionDifference.toExponential(6) : '-'}
+                                                                    </td>
+                                                                </>
+                                                            )}
                                                             <td className="px-4 py-2 text-sm font-medium text-gray-700">
                                                                 {row.uut_data != null ? (
                                                                     <span className="inline-flex items-center gap-1.5">
@@ -1038,7 +1241,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                                     );
                                                 }) : (
                                                     <tr>
-                                                        <td colSpan={isPyranometer(currentSensorForPyranometer) ? 4 : 9} className="px-6 py-10 text-center text-gray-400 italic">
+                                                        <td colSpan={isPyranometer(currentSensorForPyranometer) ? 4 : showCalculationAudit ? 12 : 9} className="px-6 py-10 text-center text-gray-400 italic">
                                                             Tidak ada data untuk sensor ini.
                                                         </td>
                                                     </tr>

@@ -118,21 +118,29 @@ const hitungKoreksiCache = new Map<string, number>()
  * Returns the interpolated correction value from the certificate_standard table.
  * Results are cached per (reading, sensor_std_id) pair.
  */
-export async function hitungKoreksiDB(reading: number, sensorStdId: number): Promise<number> {
+export async function hitungKoreksiDB(reading: number, sensorStdId: number): Promise<number | null> {
     const key = `${sensorStdId}:${reading}`
     if (hitungKoreksiCache.has(key)) return hitungKoreksiCache.get(key)!
 
-    try {
-        const res = await fetch(`/api/hitung-koreksi?reading=${reading}&sensor_std_id=${sensorStdId}`)
-        if (!res.ok) { hitungKoreksiCache.set(key, 0); return 0 }
-        const json = await res.json()
-        const correction = typeof json.correction === 'number' ? json.correction : 0
-        hitungKoreksiCache.set(key, correction)
-        return correction
-    } catch {
-        hitungKoreksiCache.set(key, 0)
-        return 0
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            const res = await fetch(`/api/hitung-koreksi?reading=${reading}&sensor_std_id=${sensorStdId}`)
+            if (res.ok) {
+                const json = await res.json()
+                const correction = Number(json.correction)
+                if (Number.isFinite(correction)) {
+                    hitungKoreksiCache.set(key, correction)
+                    return correction
+                }
+            }
+        } catch {
+            // Retry transient network errors below.
+        }
+        if (attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, attempt * 150))
+        }
     }
+    return null
 }
 
 /**
@@ -164,21 +172,81 @@ export async function hitungKoreksiBatch(
 
                 missing.forEach(p => {
                     const key = `${p.sensorStdId}:${p.reading}`
-                    const correction = Number(corrections[key] ?? 0)
-                    hitungKoreksiCache.set(key, Number.isFinite(correction) ? correction : 0)
+                    if (!(key in corrections)) return
+                    const correction = Number(corrections[key])
+                    if (Number.isFinite(correction)) hitungKoreksiCache.set(key, correction)
                 })
+
+                // Retry only points omitted by the batch response. A transient RPC
+                // failure must not silently become a persisted correction fallback.
+                const unresolved = missing.filter(p =>
+                    !hitungKoreksiCache.has(`${p.sensorStdId}:${p.reading}`)
+                )
+                for (let i = 0; i < unresolved.length; i += 5) {
+                    await Promise.all(
+                        unresolved.slice(i, i + 5)
+                            .map(p => hitungKoreksiDB(p.reading, p.sensorStdId))
+                    )
+                }
             } else {
-                await Promise.all(missing.map(p => hitungKoreksiDB(p.reading, p.sensorStdId)))
+                for (let i = 0; i < missing.length; i += 5) {
+                    await Promise.all(
+                        missing.slice(i, i + 5)
+                            .map(p => hitungKoreksiDB(p.reading, p.sensorStdId))
+                    )
+                }
             }
         } catch {
-            await Promise.all(missing.map(p => hitungKoreksiDB(p.reading, p.sensorStdId)))
+            for (let i = 0; i < missing.length; i += 5) {
+                await Promise.all(
+                    missing.slice(i, i + 5)
+                        .map(p => hitungKoreksiDB(p.reading, p.sensorStdId))
+                )
+            }
         }
     }
     // All results are now cached — build return map
     const result = new Map<string, number>()
     pairs.forEach(p => {
         const key = `${p.sensorStdId}:${p.reading}`
-        result.set(key, hitungKoreksiCache.get(key) ?? 0)
+        const correction = hitungKoreksiCache.get(key)
+        if (correction != null) result.set(key, correction)
+    })
+    return result
+}
+
+/** Build deterministic corrections from one latest certificate per STD sensor. */
+export function buildCorrectionMapFromCertificates(
+    pairs: Array<{ reading: number; sensorStdId: number; standardCertificateId?: number | null }>,
+    certificates: any[]
+): Map<string, number> {
+    const latestBySensor = new Map<number, any>()
+    certificates.forEach(certificate => {
+        const sensorId = Number(certificate?.sensor_id)
+        if (!Number.isFinite(sensorId)) return
+        const current = latestBySensor.get(sensorId)
+        const currentTime = current?.calibration_date ? new Date(current.calibration_date).getTime() : -Infinity
+        const candidateTime = certificate?.calibration_date ? new Date(certificate.calibration_date).getTime() : -Infinity
+        if (!current || candidateTime > currentTime) latestBySensor.set(sensorId, certificate)
+    })
+
+    const pointsBySensor = new Map<number, CertCorrectionPoint[]>()
+    latestBySensor.forEach((certificate, sensorId) => {
+        const points = parseCertCorrectionPoints(certificate)
+        if (points.length > 0) pointsBySensor.set(sensorId, points)
+    })
+
+    const result = new Map<string, number>()
+    pairs.forEach(({ reading, sensorStdId, standardCertificateId }) => {
+        const selectedCertificate = standardCertificateId
+            ? certificates.find(certificate => Number(certificate?.id) === Number(standardCertificateId))
+            : null
+        const points = selectedCertificate
+            ? parseCertCorrectionPoints(selectedCertificate)
+            : pointsBySensor.get(sensorStdId)
+        if (!points || points.length === 0) return
+        const key = `${standardCertificateId || 'latest'}:${sensorStdId}:${reading}`
+        result.set(key, interpolateCorrectionFromPoints(points, reading))
     })
     return result
 }
@@ -272,5 +340,9 @@ export function checkQCResult(correction: number, limit: QCLimit | null): {
 /** Clears all in-memory caches */
 export function clearQCLimitCache() {
     cache.clear()
+    hitungKoreksiCache.clear()
+}
+
+export function clearHitungKoreksiCache() {
     hitungKoreksiCache.clear()
 }

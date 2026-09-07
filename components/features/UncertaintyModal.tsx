@@ -5,12 +5,13 @@ import { Certificate, Instrument, Sensor } from '../../lib/supabase';
 import { 
     calculateUncertaintyBudget, UncertaintyResult, UncertaintyComponent, interpolateU95FromPoints,
     isPyranometer, calculateCalibrationFactor, calculatePyranometerUncertainty,
-    PyranometerUncertaintyResult, PyranometerSensorData
+    PyranometerUncertaintyResult, PyranometerSensorData, normalizeStdUncertaintyComponents
 } from '../../lib/uncertainty-utils';
 import { parseCertCorrectionPoints, interpolateCorrectionFromPoints } from '../../lib/qc-utils';
 import { convertUnit, formatUnit } from '../../lib/unitConversion';
 import { resultsToLegacyView } from '../../lib/validators/certificate-results-render-adapter';
-import { circularMeanDegrees, isWindDirectionSensor, wrapWindDirectionCorrection } from '../../lib/wind-direction';
+import { isWindDirectionSensor, wrapWindDirectionCorrection } from '../../lib/wind-direction';
+import { compareRawDataRows } from '../../lib/raw-data-order';
 // RawDataRow defined locally to avoid circular imports
 interface RawDataRow {
     id: any;
@@ -24,6 +25,8 @@ interface RawDataRow {
     sheet_name?: string | null;
     unit_uut?: string | null;
     unit_std?: string | null;
+    source_row_index?: number | null;
+    standard_certificate_id?: number | null;
 }
 
 interface UncertaintyModalProps {
@@ -85,9 +88,7 @@ export default function UncertaintyModal({
         );
     }
 
-    const currentData = (groupedData[String(activeTab)] || []).sort((a, b) => {
-        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-    });
+    const currentData = [...(groupedData[String(activeTab)] || [])].sort(compareRawDataRows);
 
     const resolveSensorName = (s: any) => {
         if (!s) return 'Unknown Sensor';
@@ -226,7 +227,11 @@ function UncertaintyContent({
     );
 
     let standardCertRecord = null;
-    if (currentData.length > 0 && certMatches && certMatches.length > 0) {
+    const rawStandardCertificateId = currentData[0]?.standard_certificate_id;
+    if (rawStandardCertificateId) {
+        standardCertRecord = standardCerts.find(c => Number(c.id) === Number(rawStandardCertificateId)) ?? null;
+    }
+    if (!standardCertRecord && currentData.length > 0 && certMatches && certMatches.length > 0) {
         // Try cert_no from V1 standardInstruments (resolved via standardCerts), then legacy standardCertificateId
         const m = certMatches[0] as any;
         if (m.standardCertificateId) {
@@ -312,20 +317,19 @@ function UncertaintyContent({
     const globalUutAvg = React.useMemo(() => {
         if (currentData.length === 0) return 0;
         const readings = currentData.map(row => row.uut_data || 0);
-        return isWindDirection
-            ? circularMeanDegrees(readings)
-            : readings.reduce((sum, value) => sum + value, 0) / readings.length;
+        return readings.reduce((sum, value) => sum + value, 0) / readings.length;
     }, [currentData, isWindDirection]);
 
     // Repeat must use std dev of UUT correction values:
     // koreksi_uut = std_terkoreksi_dalam_unit_UUT - uut_data
     // CRITICAL: convert standard_data from its unit (unit_std, e.g. hPa) to uut unit (unit_uut, e.g. inHg)
     // before subtraction. Without this, hPa(~1007) - inHg(~29.7) = ~977 → wrong huge std dev.
-    const unitStd = currentData[0]?.unit_std || '';
+    const stdSensor = stdSensorId ? sensors.find((sensor: any) => sensor.id === stdSensorId) : null;
+    const unitStd = currentData[0]?.unit_std
+        || stdSensor?.graduating_unit
+        || stdSensor?.range_capacity_unit
+        || '';
     const uutReadings = React.useMemo(() => {
-        if (stdCorrectionPoints.length === 0 && !isWindDirection) {
-            return currentData.map(row => row.uut_data);
-        }
         return currentData.map(row => {
             const stdData = row.standard_data || 0;
             const unitStdRow = row.unit_std || unitStd || '';
@@ -393,6 +397,13 @@ function UncertaintyContent({
             ? standardCertRecord.u95_general
             : parseFloat(standardCertRecord.u95_general) || 0;
     }
+    const normalizedStdComponents = normalizeStdUncertaintyComponents({
+        interpolatedCertU95: interpolatedU95,
+        driftStd,
+        resolusiStd,
+        unitStd,
+        unitUut,
+    });
 
     // ═══════════════════════════════════════════════════════════════
     // HITUNG UNCERTAINTY (CONDITIONAL: PYRANOMETER vs BIASA)
@@ -414,9 +425,6 @@ function UncertaintyContent({
         const uutMeanVal = uutReadingsForCF.length > 0 ? uutReadingsForCF.reduce((a, b) => a + b, 0) / uutReadingsForCF.length : 0;
         
         // Tipe alat standar (untuk ISO 9060 Drift lookup)
-        const stdSensor = currentData[0]?.sensor_id_std 
-            ? sensors.find((s: any) => s.id === currentData[0].sensor_id_std) 
-            : null;
         const stdSensorType = stdSensor?.type || stdSensor?.name || '';
         
         pyranometerResult = calculatePyranometerUncertainty({
@@ -474,9 +482,9 @@ function UncertaintyContent({
         result = calculateUncertaintyBudget({
             unit: unitUut,
             uutReadings,
-            interpolatedCertU95: interpolatedU95,
-            driftStd,
-            resolusiStd,
+            interpolatedCertU95: normalizedStdComponents.interpolatedCertU95,
+            driftStd: normalizedStdComponents.driftStd,
+            resolusiStd: normalizedStdComponents.resolusiStd,
             resolusiUut,
             isAnalog
         });
@@ -534,13 +542,31 @@ function UncertaintyContent({
                     <div>SET POINT RATA-RATA ALAT YANG DIKALIBRASI</div>
                     <div>{formatDec(globalUutAvg, 2)} {formatUnit(unitUut)}</div>
                 </div>
+                {!isPyranometerSensor && (
+                    <div className={`mb-4 px-3 py-2 border text-xs ${normalizedStdComponents.converted
+                        ? 'bg-blue-50 border-blue-200 text-blue-900'
+                        : 'bg-red-50 border-red-300 text-red-800'
+                    }`}>
+                        <div><b>Unit STD:</b> {formatUnit(unitStd) || '-'} &nbsp;→&nbsp; <b>Unit output/UUT:</b> {formatUnit(unitUut)}</div>
+                        {normalizedStdComponents.needsUnitConversion && normalizedStdComponents.converted && (
+                            <div className="mt-1">
+                                U95 Sertifikat: {formatDec(interpolatedU95, 4)} {formatUnit(unitStd)} → {formatDec(normalizedStdComponents.interpolatedCertU95, 4)} {formatUnit(unitUut)};
+                                {' '}Drift STD: {formatDec(driftStd, 4)} → {formatDec(normalizedStdComponents.driftStd, 4)};
+                                {' '}Resolusi STD: {formatDec(resolusiStd, 4)} → {formatDec(normalizedStdComponents.resolusiStd, 4)}.
+                            </div>
+                        )}
+                        {normalizedStdComponents.needsUnitConversion && !normalizedStdComponents.converted && (
+                            <div className="mt-1 font-bold">Konversi unit tidak didukung. Nilai uncertainty STD belum dapat dinormalisasi.</div>
+                        )}
+                    </div>
+                )}
 
                 {/* Main Table */}
                 <table className="w-full text-center border-collapse border border-black text-[12px] tabular-nums" style={{ lineHeight: '1.2' }}>
                     <thead>
                         <tr>
                             <th className="border border-black font-normal py-1 px-1">Uncert source/<br />Komponen</th>
-                            <th className="border border-black font-normal py-1 px-1">Unit/<br />Satuan</th>
+                            <th className="border border-black font-normal py-1 px-1">Unit Output/<br />Satuan UUT</th>
                             <th className="border border-black font-normal py-1 px-1">Distribusi</th>
                             <th className="border border-black font-normal py-1 px-1">Symbol</th>
                             <th className="border border-black font-normal py-1 px-1">U atau a</th>
@@ -601,7 +627,7 @@ function UncertaintyContent({
                             <td colSpan={9} className="border-0 border-r border-black"></td>
                             <td className="border border-black px-1 py-0.5 text-left font-normal" style={{ fontSize: '11px' }}>Expanded uncertainty, U95</td>
                             <td colSpan={2} className="border border-black px-1 py-0.5 text-right pr-4 font-bold">
-                                <span className="border-b-[1.5px] border-black inline-block">{formatDec(result.expanded_uncert_u95, 2)}</span>
+                                <span className="border-b-[1.5px] border-black inline-block">{formatDec(result.expanded_uncert_u95, 2)} {formatUnit(result.unit)}</span>
                             </td>
                         </tr>
                     </tbody>

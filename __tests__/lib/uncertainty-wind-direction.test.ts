@@ -1,7 +1,7 @@
 import { calculateCalibrationResult } from '../../lib/uncertainty-utils';
 
 describe('calculateCalibrationResult for wind direction', () => {
-    it('wraps each correction and uses the circular UUT mean', () => {
+    it('wraps each correction and uses the workbook arithmetic UUT mean', () => {
         const result = calculateCalibrationResult({
             currentData: [
                 { standard_data: 1, uut_data: 359, unit_std: '°', unit_uut: '°' },
@@ -11,7 +11,7 @@ describe('calculateCalibrationResult for wind direction', () => {
             standardCertRecord: null,
         });
 
-        expect(result.uutAvg).toBeCloseTo(0, 10);
+        expect(result.uutAvg).toBeCloseTo(180, 10);
         expect(result.correction).toBeCloseTo(0, 10);
         expect(result.uncertainty).toBeLessThan(30);
     });

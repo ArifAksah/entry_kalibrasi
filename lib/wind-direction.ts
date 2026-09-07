@@ -21,13 +21,10 @@ export function isWindDirectionSensor(
         || /\bmk\s*0?5\b/.test(identity);
 }
 
-/** Return the shortest signed angular difference while preserving exact +/-180 values. */
+/** Match the workbook formula MOD(delta + 180, 360) - 180. */
 export function wrapWindDirectionCorrection(deltaRaw: number): number {
     if (!Number.isFinite(deltaRaw)) return deltaRaw;
-
-    let correction = deltaRaw % 360;
-    if (correction > 180) correction -= 360;
-    if (correction < -180) correction += 360;
+    const correction = ((deltaRaw + 180) % 360 + 360) % 360 - 180;
     return Object.is(correction, -0) ? 0 : correction;
 }
 

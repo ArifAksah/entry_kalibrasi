@@ -101,6 +101,7 @@ export const StandardInstrumentRefSchema = z.object({
   /** Link ke master — Opsi C akan jadi FK ke instruments.id */
   instrument_id: z.number().int().nullable().optional(),
   sensor_id: z.number().int().nullable().optional(),
+  certificate_id: z.number().int().nullable().optional(),
   name: z.string(),
   serial_number: z.string().default(''),
   certificate_no: z.string().default(''),
