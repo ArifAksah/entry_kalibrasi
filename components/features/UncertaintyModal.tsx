@@ -12,6 +12,7 @@ import { convertUnit, formatUnit } from '../../lib/unitConversion';
 import { resultsToLegacyView } from '../../lib/validators/certificate-results-render-adapter';
 import { isWindDirectionSensor, wrapWindDirectionCorrection } from '../../lib/wind-direction';
 import { compareRawDataRows } from '../../lib/raw-data-order';
+import { DecimalPrecisionControl } from '../ui/DecimalPrecisionControl';
 // RawDataRow defined locally to avoid circular imports
 interface RawDataRow {
     id: any;
@@ -206,6 +207,9 @@ function UncertaintyContent({
     certificate: Certificate;
     instrumentNames: Array<{ id: number; name: string }>;
 }) {
+    // Default display precision for uncertainty figures. Only presentation:
+    // stored values and result certificate rows always keep full precision.
+    const [decimalPrecision, setDecimalPrecision] = useState(4);
     // 1. Preparation
     const uutSensor = activeTab !== 'unknown' ? sensors.find(s => s.id === activeTab) : null;
     const stdSensorId = currentData.length > 0 ? currentData[0].sensor_id_std : null;
@@ -350,7 +354,7 @@ function UncertaintyContent({
 
 
     // Formatters
-    const formatDec = (n: number, d: number = 4) => n.toFixed(d).replace('.', ',');
+    const formatDec = (n: number, d: number = decimalPrecision) => n.toFixed(d).replace('.', ',');
     const formatSci = (n: number, d: number = 2) => {
         if (n === 0) return '0,0E+00';
         // Format: 4,81E-06 (Indonesian format with comma as decimal separator)
@@ -537,27 +541,18 @@ function UncertaintyContent({
                     </span>
                 </div>
 
+                <div className="flex justify-end mb-2">
+                    <DecimalPrecisionControl value={decimalPrecision} onChange={setDecimalPrecision} />
+                </div>
+
                 {/* Set Point Indicator */}
                 <div className="flex gap-4 mb-1 text-[15px]">
                     <div>SET POINT RATA-RATA ALAT YANG DIKALIBRASI</div>
-                    <div>{formatDec(globalUutAvg, 2)} {formatUnit(unitUut)}</div>
+                    <div>{formatDec(globalUutAvg)} {formatUnit(unitUut)}</div>
                 </div>
                 {!isPyranometerSensor && (
-                    <div className={`mb-4 px-3 py-2 border text-xs ${normalizedStdComponents.converted
-                        ? 'bg-blue-50 border-blue-200 text-blue-900'
-                        : 'bg-red-50 border-red-300 text-red-800'
-                    }`}>
-                        <div><b>Unit STD:</b> {formatUnit(unitStd) || '-'} &nbsp;→&nbsp; <b>Unit output/UUT:</b> {formatUnit(unitUut)}</div>
-                        {normalizedStdComponents.needsUnitConversion && normalizedStdComponents.converted && (
-                            <div className="mt-1">
-                                U95 Sertifikat: {formatDec(interpolatedU95, 4)} {formatUnit(unitStd)} → {formatDec(normalizedStdComponents.interpolatedCertU95, 4)} {formatUnit(unitUut)};
-                                {' '}Drift STD: {formatDec(driftStd, 4)} → {formatDec(normalizedStdComponents.driftStd, 4)};
-                                {' '}Resolusi STD: {formatDec(resolusiStd, 4)} → {formatDec(normalizedStdComponents.resolusiStd, 4)}.
-                            </div>
-                        )}
-                        {normalizedStdComponents.needsUnitConversion && !normalizedStdComponents.converted && (
-                            <div className="mt-1 font-bold">Konversi unit tidak didukung. Nilai uncertainty STD belum dapat dinormalisasi.</div>
-                        )}
+                    <div className="mb-4 px-3 py-2 border text-xs bg-blue-50 border-blue-200 text-blue-900">
+                        <b>Satuan hasil (unit UUT):</b> {formatUnit(unitUut) || '-'}
                     </div>
                 )}
 
@@ -589,7 +584,7 @@ function UncertaintyContent({
                                 <td className="border border-black px-2 py-0.5">
                                     {Math.abs(c.u_a) < 0.001 && c.u_a !== 0 
                                         ? formatSci(c.u_a) 
-                                        : formatDec(c.u_a, 4)}
+                                        : formatDec(c.u_a)}
                                 </td>
                                 <td className="border border-black px-2 py-0.5">{formatDec(c.cov_factor, 3)}</td>
                                 <td className="border border-black px-2 py-0.5">{c.deg_freedom}</td>
@@ -627,7 +622,7 @@ function UncertaintyContent({
                             <td colSpan={9} className="border-0 border-r border-black"></td>
                             <td className="border border-black px-1 py-0.5 text-left font-normal" style={{ fontSize: '11px' }}>Expanded uncertainty, U95</td>
                             <td colSpan={2} className="border border-black px-1 py-0.5 text-right pr-4 font-bold">
-                                <span className="border-b-[1.5px] border-black inline-block">{formatDec(result.expanded_uncert_u95, 2)} {formatUnit(result.unit)}</span>
+                                <span className="border-b-[1.5px] border-black inline-block">{formatDec(result.expanded_uncert_u95)} {formatUnit(result.unit)}</span>
                             </td>
                         </tr>
                     </tbody>

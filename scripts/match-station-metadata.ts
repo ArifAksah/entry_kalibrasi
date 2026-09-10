@@ -20,7 +20,7 @@ import * as fs from 'fs'
 loadEnv({ path: '.env' })
 loadEnv({ path: '.env.local', override: true })
 
-const CSV_PATH = 'metadata stasiun mkg.csv'
+const CSV_PATH = 'scripts/data/metadata stasiun mkg.csv'
 
 type MetaRow = {
   name: string

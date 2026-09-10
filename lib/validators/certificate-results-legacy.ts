@@ -197,6 +197,9 @@ function convertLegacyEntry(raw: unknown, index: number): SensorResultV1 {
       key: asString(r.key),
       value: asString(r.value),
       unit: asString(r.unit),
+      ...(r.uncertaintyMeta && typeof r.uncertaintyMeta === 'object'
+        ? { uncertaintyMeta: r.uncertaintyMeta as any }
+        : {}),
       ...(Array.isArray(r.extraValues) && r.extraValues.length > 0
         ? { extraValues: (r.extraValues as unknown[]).map((x) => asString(x)) }
         : {}),

@@ -20,14 +20,15 @@ if (!supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// Admin client for server-side operations
+// Admin client uses the service role on the server. The anon fallback prevents
+// this shared module from embedding the service-role secret in browser bundles.
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || ''
 
-if (!supabaseServiceKey) {
+if (typeof window === 'undefined' && !supabaseServiceKey) {
   console.warn('SUPABASE_SERVICE_ROLE_KEY not found. Admin operations may fail.')
 }
 
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey || supabaseAnonKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false
@@ -111,6 +112,8 @@ export interface RawData {
   id: number
   created_at: string
   session_id: string
+  source_row_index?: number | null
+  standard_certificate_id?: number | null
   data: any // JSONB or array
   filename: string
   uploaded_by: string

@@ -35,10 +35,6 @@ const nextConfig = {
     NEXT_PUBLIC_SUPABASE_ANON_KEY:
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
       process.env.ANON_KEY,
-    // Map service role key name used by server routes
-    SUPABASE_SERVICE_ROLE_KEY:
-      process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.SERVICE_ROLE_KEY,
   },
 };
 

@@ -9,7 +9,9 @@ import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
 import { formatUnit, needsConversion } from '../../../../lib/unitConversion'
 import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClassName } from '../../../../lib/rich-text'
 import { resultsToLegacyView } from '../../../../lib/validators/certificate-results-render-adapter'
-import { formatLatexUnit } from '../../../../lib/qc-utils'
+import { calculateRoomCondition } from '../../../../lib/room-condition'
+import { formatCalibrationCorrection, formatCalibrationUncertainty } from '../../../../lib/result-display-format'
+import { DecimalPrecisionControl } from '../../../../components/ui/DecimalPrecisionControl'
 import { supabase } from '../../../../lib/supabase'
 import type { TemplateConfig, CertificateType } from '../../../../lib/pdf-service/types'
 import { initializeTemplates } from '../../../../lib/pdf-service/templates'
@@ -275,45 +277,13 @@ const PrintCertificatePage: React.FC = () => {
   const qrRenderedCountRef = useRef<number>(0)
   const expectedQRCodesRef = useRef<number>(0)
   const [allRawData, setAllRawData] = useState<any[]>([])
+  const [rawDataSettled, setRawDataSettled] = useState(false)
+  const [lookupsSettled, setLookupsSettled] = useState(false)
+  const [decimalPrecision, setDecimalPrecision] = useState(4)
   const [templateConfig, setTemplateConfig] = useState<TemplateConfig | null>(null)
 
   const computeEnvCondition = useCallback((type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
-    const matchedRows = sensorRawData.filter(r => {
-      const rawUnit = String(r.unit_std || r.unit_uut || '');
-      const unit = formatLatexUnit(rawUnit).toLowerCase().trim();
-      const name = (r.sheet_name || r.name || r.category || '').toLowerCase();
-
-      if (type === 'suhu') {
-        const unitIsTemp = unit && (unit.includes('°c') || unit.includes('c') || unit.includes('celcius') || unit.includes('celsius'));
-        const nameIsTemp = ['suhu', 'temp', 'termometer', 'temperature', 'thermo'].some(k => name.includes(k));
-        return unitIsTemp || (nameIsTemp && !unit);
-      }
-
-      const unitIsHum = unit && (unit.includes('%') || unit.includes('rh') || unit.includes('r.h') || unit.includes('kelembaban') || unit.includes('humidity') || unit.includes('hum'));
-      const nameIsHum = ['kelembab', 'lembab', 'humidity', 'hum', 'hygro', 'rh', 'r.h'].some(k => name.includes(k));
-      return unitIsHum || (nameIsHum && !unit);
-    });
-
-    if (matchedRows.length === 0) return '-';
-
-    const values = matchedRows
-      .map(r => {
-        if (r.std_corrected != null) return Number(r.std_corrected);
-        const standardData = Number(r.standard_data);
-        const stdCorrection = Number(r.std_correction ?? 0);
-        return Number.isFinite(standardData) ? standardData + stdCorrection : NaN;
-      })
-      .filter(v => typeof v === 'number' && !isNaN(v));
-
-    if (values.length === 0) return '-';
-
-    const minV = Math.min(...values);
-    const maxV = Math.max(...values);
-    const mean = (minV + maxV) / 2;
-    const halfRange = maxV - mean;
-
-    const unit = type === 'suhu' ? '°C' : '%';
-    return `(${mean.toFixed(1)} ± ${halfRange.toFixed(1)}) ${unit}`;
+    return calculateRoomCondition(type, sensorRawData)?.display ?? '-';
   }, []);
 
 
@@ -339,9 +309,36 @@ const PrintCertificatePage: React.FC = () => {
   }, [stations, cert])
   const resolvedStationAddress = useMemo(() => (cert?.station_address ?? null) || (station?.address ?? null), [cert, station])
   const instrument = useMemo(() => {
+    // Resolve display name: 'names' is a FK id into instrument_names; name_alias is the text.
+    const resolveInstrumentName = (row: any): string | null => {
+      let name: string | null = row?.name_alias || row?.name || null
+      if (row?.names != null) {
+        const rec = instrumentNames.find((n: any) => Number(n.id) === Number(row.names))
+        if (rec?.name) name = rec.name
+      }
+      return name
+    }
+
+    // Priority 1: joined instrument_data from the certificate API (render-token branch)
+    const instrumentData = (cert as any)?.instrument_data
+    if (instrumentData) {
+      return {
+        ...instrumentData,
+        name: resolveInstrumentName(instrumentData),
+        manufacturer: instrumentData.manufacturer || null,
+        type: instrumentData.type || null,
+        serial_number: instrumentData.serial_number || null,
+        others: instrumentData.others || null,
+        station_id: instrumentData.station_id ?? undefined,
+      } as any
+    }
+
+    // Priority 2: from the instruments list (or /api/instruments/:id top-up)
     const targetId = cert?.instrument != null ? Number(cert.instrument) : null
-    return targetId != null ? instruments.find(i => i.id != null && Number(i.id) === targetId) || null : null
-  }, [instruments, cert])
+    const found = targetId != null ? instruments.find(i => i.id != null && Number(i.id) === targetId) || null : null
+    if (!found) return null
+    return { ...found, name: resolveInstrumentName(found) } as any
+  }, [instruments, cert, instrumentNames])
   const authorized = useMemo(() => {
     return findPersonelById(personel, cert?.authorized_by)
   }, [personel, cert])
@@ -374,6 +371,61 @@ const PrintCertificatePage: React.FC = () => {
   }, [cert])
   const resultData = useMemo(() => (results && results.length > 0 ? results[0] : null), [results])
 
+  const requiredSensorIds = useMemo(() => Array.from(new Set(
+    results.flatMap((result: any) => [
+      result?.sensorId,
+      ...(Array.isArray(result?.notesForm?.standardInstruments)
+        ? result.notesForm.standardInstruments
+        : []),
+    ])
+      .filter((value: any) => value != null)
+      .map((value: any) => Number(value))
+      .filter(Number.isFinite)
+  )), [results])
+
+  const requiredPersonelIds = useMemo(() => Array.from(new Set([
+    cert?.authorized_by,
+    cert?.verifikator_1,
+    cert?.verifikator_2,
+    cert?.verifikator_3,
+  ].filter(Boolean).map(String))), [cert])
+
+  const resultSessionIds = useMemo(() => Array.from(new Set(
+    results.map((result: any) => result?.session_id).filter(Boolean).map(String)
+  )), [results])
+
+  const requiredResourcesReady = useMemo(() => {
+    if (!cert || !templateConfig || !lookupsSettled || !rawDataSettled) return false
+    if (cert.instrument != null && !instrument) return false
+    if (cert.station != null && !station) return false
+    if (!requiredPersonelIds.every(id => personel.some(p => String(p.id) === id))) return false
+    if (!requiredSensorIds.every(id => sensors.some(sensor => Number(sensor.id) === id))) return false
+    if (resultSessionIds.length > 0 && allRawData.length === 0) return false
+    return true
+  }, [
+    cert,
+    templateConfig,
+    lookupsSettled,
+    rawDataSettled,
+    instrument,
+    station,
+    requiredPersonelIds,
+    personel,
+    requiredSensorIds,
+    sensors,
+    resultSessionIds,
+    allRawData.length,
+  ])
+
+  useEffect(() => {
+    if (!requiredResourcesReady) return
+    // Release the loading screen only after every required record is present.
+    // The readiness flag is set by the next effect after React renders pages.
+    setLoading(false)
+  }, [requiredResourcesReady])
+
+  const printDataReadyRef = useRef(false)
+
   useEffect(() => {
     if (typeof document === 'undefined' || typeof window === 'undefined') return
 
@@ -384,44 +436,13 @@ const PrintCertificatePage: React.FC = () => {
       return
     }
 
-    const resultSensorIds = (results || [])
-      .map((result: any) => result?.sensorId)
-      .filter((sensorId: any) => sensorId !== null && sensorId !== undefined)
-      .map((sensorId: any) => Number(sensorId))
-      .filter(Number.isFinite)
-    const resultSessionIds = Array.from(new Set((results || [])
-      .map((result: any) => result?.session_id)
-      .filter(Boolean)))
-
-    const hasInstrument = cert?.instrument == null || Boolean(instrument)
-    const hasStation = cert?.station == null || Boolean(station) || Boolean(cert?.station_address)
-    const hasAuthorized = cert?.authorized_by == null || Boolean(authorized) || personel.length > 0
-    const hasSensorLookups = resultSensorIds.length === 0 || resultSensorIds.every((sensorId: number) =>
-      sensors.some((sensor: any) => Number(sensor.id) === sensorId)
-    )
-    const hasRawData = resultSessionIds.length === 0 || allRawData.length > 0
-
-    document.body.dataset.printDataReady = cert && hasInstrument && hasStation && hasAuthorized && hasSensorLookups && hasRawData
-      ? 'true'
-      : 'false'
-  }, [cert, instrument, station, authorized, personel.length, results, sensors, allRawData.length])
-
-  // Fallback: force printDataReady after 20s even if some secondary data is still loading
-  // This prevents infinite timeout when raw data fetch is slow
-  useEffect(() => {
-    if (typeof document === 'undefined' || typeof window === 'undefined') return
-    const urlParams = new URLSearchParams(window.location.search)
-    if (urlParams.get('pdf') !== 'true') return
-
-    const fallbackTimer = setTimeout(() => {
-      if (document.body.dataset.printDataReady !== 'true' && cert) {
-        console.warn('[Print] Forcing printDataReady=true after 35s fallback timeout')
-        document.body.dataset.printDataReady = 'true'
-      }
-    }, 35000)
-
-    return () => clearTimeout(fallbackTimer)
-  }, [cert])
+    if (requiredResourcesReady || printDataReadyRef.current) {
+      printDataReadyRef.current = true
+      document.body.dataset.printDataReady = 'true'
+    } else {
+      document.body.dataset.printDataReady = 'false'
+    }
+  }, [requiredResourcesReady])
 
   // Ringkasan sensor untuk field "Lain-lain / Others" di halaman 1
   const sensorsSummary = useMemo(() => {
@@ -500,6 +521,49 @@ const PrintCertificatePage: React.FC = () => {
       }
     }
 
+    // Helper: retry fetch for secondary data. A transient DB/API failure must
+    // not silently strip Identitas Alat / Pemilik / Pejabat / Standar /
+    // Verifikator out of the printed & signed PDF. Several API routes answer
+    // with HTTP 200 + EMPTY list when Supabase is momentarily unreachable
+    // ("falling back to empty list so the UI keeps working") — for the print
+    // page that is indistinguishable from "no data" and produces a certificate
+    // full of "-" placeholders. Treat an empty 200 as transient too.
+    const fetchWithRetry = async (
+      url: string,
+      timeoutMs = 12000,
+      headers?: HeadersInit,
+      attempts = 3,
+    ): Promise<Response | null> => {
+      let lastRes: Response | null = null
+      for (let attempt = 1; attempt <= attempts; attempt++) {
+        const res = await fetchWithTimeout(url, timeoutMs, headers)
+        lastRes = res
+
+        const looksTransientError = !!res && !res.ok && ![401, 403, 404].includes(res.status)
+        let emptyList200 = false
+        if (res?.ok) {
+          try {
+            const body = await res.clone().json()
+            const arr = Array.isArray(body) ? body : body?.data
+            emptyList200 = Array.isArray(arr) && arr.length === 0
+          } catch { emptyList200 = false }
+        }
+
+        if (res && !looksTransientError && !emptyList200) return res
+
+        if (attempt < attempts) {
+          const delay = 600 * attempt
+          console.warn(
+            `[Print] Transient failure for ${url}` +
+            (emptyList200 ? ' (empty list — DB unreachable fallback?)' : ` (HTTP ${res?.status ?? 'network error'})`) +
+            `, retry ${attempt + 1}/${attempts - 1} in ${delay}ms`
+          )
+          await new Promise(r => setTimeout(r, delay))
+        }
+      }
+      return lastRes
+    }
+
     const safeJson = async (res: Response | null): Promise<any> => {
       if (!res || !res.ok) return null
       try { return await res.json() } catch { return null }
@@ -533,18 +597,98 @@ const PrintCertificatePage: React.FC = () => {
         if (!c) throw new Error('Sertifikat tidak ditemukan / response kosong')
         console.log('[Print] Certificate loaded:', c?.id, 'results format:', Array.isArray(c?.results) ? 'V0-array' : (c?.results?.schema_version ? `V${c.results.schema_version}` : 'null/other'))
         setCert(c)
-        // Page can render now — clear loading even if secondary data still pending.
-        setLoading(false)
+
+        // Merge-by-id (later wins per field) so a fast single-record top-up is
+        // never wiped when the slow paginated list eventually arrives without it.
+        const mergeById = (prev: any[], next: any[]) => {
+          const byKey = new Map<string, any>()
+          prev.forEach(x => { if (x?.id != null) byKey.set(String(x.id), x) })
+          next.forEach(x => {
+            if (x?.id != null) {
+              const key = String(x.id)
+              byKey.set(key, { ...(byKey.get(key) || {}), ...x })
+            }
+          })
+          return Array.from(byKey.values())
+        }
+
+        // FAST TOP-UP: fetch exactly the records this certificate references
+        // (/api/…/:id is a tiny indexed query). This is what keeps Nama Alat,
+        // Pemilik, Pejabat, Verifikator, and Standar Kalibrasi out of '-' when
+        // the big paginated lists are slow or transiently fail.
+        try {
+            const jobs: Promise<void>[] = []
+            if (c?.instrument != null) {
+              jobs.push((async () => {
+                const r = await fetchWithTimeout(`/api/instruments/${c.instrument}`, 8000, undefined)
+                const row = r ? await safeJson(r) : null
+                if (row && (row as any).id != null) {
+                  setInstruments(prev => (prev.some(i => Number(i.id) === Number((row as any).id)) ? prev : [...prev, row]))
+                  console.log('[Print] Top-up instrument', (row as any).id)
+                }
+              })())
+            }
+            if (c?.station != null) {
+              jobs.push((async () => {
+                const r = await fetchWithTimeout(`/api/stations/${c.station}`, 8000)
+                const row = r ? await safeJson(r) : null
+                if (row && (row as any).id != null) {
+                  setStations(prev => (prev.some(s => Number(s.id) === Number((row as any).id)) ? prev : [...prev, row]))
+                  console.log('[Print] Top-up station', (row as any).id)
+                }
+              })())
+            }
+            ;[c?.authorized_by, (c as any)?.verifikator_1, (c as any)?.verifikator_2, (c as any)?.verifikator_3]
+              .filter(Boolean)
+              .forEach((pid: any) => {
+                jobs.push((async () => {
+                  const r = await fetchWithTimeout(`/api/personel/${pid}`, 8000)
+                  const row = r ? await safeJson(r) : null
+                  const person = Array.isArray(row) ? row[0] : (row?.id != null ? row : (row?.data?.id != null ? row.data : null))
+                  if (person?.id) {
+                    setPersonel(prev => (prev.some(p => String(p.id) === String(person.id)) ? prev : [...prev, person]))
+                    console.log('[Print] Top-up personel', String(person.id).slice(0, 8))
+                  }
+                })())
+              })
+            const sensorRefIds = Array.from(new Set(
+              resultsToLegacyView(c.results || []).flatMap((r: any) => [
+                r?.sensorId, ...(Array.isArray(r?.notesForm?.standardInstruments) ? r.notesForm.standardInstruments : []),
+              ]).filter((v: any) => v != null).map((v: any) => Number(v))
+            )).filter(Number.isFinite)
+            sensorRefIds.forEach((sid: number) => {
+              jobs.push((async () => {
+                const r = await fetchWithTimeout(`/api/sensors/${sid}`, 8000)
+                const payload = r ? await safeJson(r) : null
+                const row = Array.isArray(payload) ? payload[0] : (payload?.data?.id != null ? payload.data : (payload?.id != null ? payload : null))
+                if (row?.id != null) {
+                  setSensors(prev => (prev.some(s => Number(s.id) === Number(row.id)) ? prev : [...prev, row]))
+                  console.log('[Print] Top-up sensor', row.id)
+                }
+              })())
+            })
+            const settled = await Promise.allSettled(jobs)
+            const failedCount = settled.filter(result => result.status === 'rejected').length
+            if (failedCount > 0) {
+              console.warn(`[Print] ${failedCount} required top-up request(s) failed`)
+            }
+        } catch (e) {
+          console.warn('[Print] Top-up fetches failed:', e)
+        } finally {
+          setLookupsSettled(true)
+        }
 
         // PRIORITY FETCH: Raw data (needed for suhu/kelembaban in PDF)
-        // Fetch this BEFORE other secondary data to ensure it loads in time
+        // mode=room asks the API for ONLY the temp/humidity sheets — the full
+        // session blob (4-6 thousand rows) was blowing the 12s timeout and
+        // making Suhu / RH print as '-'.
         if (c?.results) {
           try {
             const parsedResults = resultsToLegacyView(c.results)
             const sessionIds = Array.from(new Set(parsedResults.map((r: any) => r.session_id).filter(Boolean)))
             if (sessionIds.length > 0) {
               const responses = await Promise.all(
-                sessionIds.map((sid: any) => fetchWithTimeout(`/api/raw-data?session_id=${sid}`, 20000, certificateHeaders))
+                sessionIds.map((sid: any) => fetchWithRetry(`/api/raw-data?session_id=${sid}&mode=room`, 15000, undefined))
               )
               const jsons = await Promise.all(responses.map(r => safeJson(r)))
               const merged = jsons.flatMap((j: any) => (j?.data ?? []))
@@ -552,37 +696,41 @@ const PrintCertificatePage: React.FC = () => {
             }
           } catch (e) {
             console.error('[Print] Failed to fetch raw data:', e)
+          } finally {
+            setRawDataSettled(true)
           }
+        } else {
+          setRawDataSettled(true)
         }
 
         // SECONDARY (non-blocking): kick off in parallel; we'll setState as each finishes.
 
         // Personel
         ;(async () => {
-          const r = await fetchWithTimeout('/api/personel', 12000)
+          const r = await fetchWithRetry('/api/personel', 10000)
           const p = await safeJson(r)
-          if (Array.isArray(p)) setPersonel(p)
+          if (Array.isArray(p)) setPersonel(prev => mergeById(p, prev))
         })()
 
         // Sensors
         ;(async () => {
           try {
-            const first = await fetchWithTimeout('/api/sensors?page=1&pageSize=100', 12000)
+            const first = await fetchWithRetry('/api/sensors?page=1&pageSize=100', 10000)
             const firstPayload = await safeJson(first)
             if (!firstPayload) return
             const firstData = unwrapListResponse(firstPayload)
             const totalPages = Array.isArray(firstPayload) ? 1 : Number(firstPayload?.totalPages ?? 1)
-            if (totalPages <= 1) {
-              setSensors(firstData)
-            } else {
+            let listData = firstData
+            if (totalPages > 1) {
               const restRes = await Promise.all(
                 Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map((page) =>
-                  fetchWithTimeout(`/api/sensors?page=${page}&pageSize=100`, 12000)
+                  fetchWithRetry(`/api/sensors?page=${page}&pageSize=100`, 10000)
                 )
               )
               const restPayloads = await Promise.all(restRes.map(r => safeJson(r)))
-              setSensors([...firstData, ...restPayloads.flatMap(unwrapListResponse)])
+              listData = [...firstData, ...restPayloads.flatMap(unwrapListResponse)]
             }
+            setSensors(prev => mergeById(listData, prev))
           } catch (e) {
             console.error('[Print] Failed to fetch sensors:', e)
           }
@@ -590,7 +738,7 @@ const PrintCertificatePage: React.FC = () => {
 
         // Instrument names
         ;(async () => {
-          const r = await fetchWithTimeout('/api/instrument-names', 12000)
+          const r = await fetchWithRetry('/api/instrument-names', 10000)
           const inData = await safeJson(r)
           if (inData) setInstrumentNames(Array.isArray(inData) ? inData : (inData?.data ?? []))
         })()
@@ -598,22 +746,22 @@ const PrintCertificatePage: React.FC = () => {
         // Instruments — paginated
         ;(async () => {
           try {
-            const first = await fetchWithTimeout('/api/instruments?page=1&pageSize=100', 12000)
+            const first = await fetchWithRetry('/api/instruments?page=1&pageSize=100', 10000)
             const fj = await safeJson(first)
             if (!fj) return
             const firstData = Array.isArray(fj) ? fj : (fj?.data ?? [])
             const totalPages = (Array.isArray(fj) ? 1 : (fj?.totalPages ?? 1)) as number
-            if (totalPages <= 1) {
-              setInstruments(firstData)
-            } else {
+            let listData = firstData
+            if (totalPages > 1) {
               const restRes = await Promise.all(
                 Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-                  .map(p => fetchWithTimeout(`/api/instruments?page=${p}&pageSize=100`, 12000))
+                  .map(p => fetchWithRetry(`/api/instruments?page=${p}&pageSize=100`, 10000))
               )
               const restJsons = await Promise.all(restRes.map(r => safeJson(r)))
               const restData = restJsons.flatMap((j: any) => Array.isArray(j) ? j : (j?.data ?? []))
-              setInstruments([...firstData, ...restData])
+              listData = [...firstData, ...restData]
             }
+            setInstruments(prev => mergeById(listData, prev))
           } catch (e) {
             console.error('[Print] Failed to fetch instruments:', e)
           }
@@ -622,22 +770,22 @@ const PrintCertificatePage: React.FC = () => {
         // Stations — paginated
         ;(async () => {
           try {
-            const first = await fetchWithTimeout('/api/stations?page=1&pageSize=100', 12000)
+            const first = await fetchWithRetry('/api/stations?page=1&pageSize=100', 10000)
             const fj = await safeJson(first)
             if (!fj) return
             const firstData = Array.isArray(fj) ? fj : (fj?.data ?? [])
             const totalPages = (Array.isArray(fj) ? 1 : (fj?.totalPages ?? 1)) as number
-            if (totalPages <= 1) {
-              setStations(firstData)
-            } else {
+            let listData = firstData
+            if (totalPages > 1) {
               const restRes = await Promise.all(
                 Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-                  .map(p => fetchWithTimeout(`/api/stations?page=${p}&pageSize=100`, 12000))
+                  .map(p => fetchWithRetry(`/api/stations?page=${p}&pageSize=100`, 10000))
               )
               const restJsons = await Promise.all(restRes.map(r => safeJson(r)))
               const restData = restJsons.flatMap((j: any) => Array.isArray(j) ? j : (j?.data ?? []))
-              setStations([...firstData, ...restData])
+              listData = [...firstData, ...restData]
             }
+            setStations(prev => mergeById(listData, prev))
           } catch (e) {
             console.error('[Print] Failed to fetch stations:', e)
           }
@@ -649,11 +797,14 @@ const PrintCertificatePage: React.FC = () => {
       }
     }
 
-    // Watchdog: ensure loading flag is cleared even if everything else fails.
+    // Hard failure, not a force-render: never generate a partial certificate.
+    // If required resources are unavailable after two minutes, show an error
+    // and let the PDF renderer report the failure instead of saving "Memuat…".
     const watchdog = setTimeout(() => {
-      console.warn('[Print] Watchdog timeout (25s) — forcing loading=false')
+      console.error('[Print] Required resources timeout (120s)')
+      setError('Data sertifikat belum lengkap setelah 120 detik. Periksa koneksi database lalu coba lagi.')
       setLoading(false)
-    }, 25000)
+    }, 120000)
 
     load().finally(() => clearTimeout(watchdog))
   }, [params.id])
@@ -802,7 +953,21 @@ const PrintCertificatePage: React.FC = () => {
     return () => clearTimeout(t)
   }, [loading, cert, verificationLoaded, handleQRRendered, isDownloadMode])
 
-  if (loading) return <div className="p-8 text-gray-600 text-center text-lg">Memuat data sertifikat untuk dicetak...</div>
+  if (loading) return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+      <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-lg">
+        <div className="relative mx-auto mb-5 h-16 w-16">
+          <div className="absolute inset-0 rounded-full border-4 border-blue-100" />
+          <div className="absolute inset-0 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+          <div className="absolute inset-3 animate-pulse rounded-full bg-blue-50" />
+        </div>
+        <p className="text-lg font-semibold text-slate-900">Menyiapkan sertifikat</p>
+        <p className="mt-2 text-sm leading-5 text-slate-600">Memuat identitas alat, pemilik, personel, standar kalibrasi, dan kondisi lingkungan.</p>
+        <p className="mt-4 text-xs font-medium text-amber-700">Mohon tunggu. PDF hanya dibuat setelah seluruh data siap.</p>
+        <span className="sr-only">Memuat data sertifikat untuk dicetak...</span>
+      </div>
+    </div>
+  )
   if (error || !cert) return <div className="p-8 text-red-600 text-center text-lg">Gagal memuat data: {error || 'Sertifikat tidak ditemukan'}</div>
 
   // --- STYLING UNTUK PRINT ---
@@ -1933,6 +2098,8 @@ const PrintCertificatePage: React.FC = () => {
                             const sensorRawData = sensorSessionId ? allRawData.filter(rd => String(rd.session_id || '') === String(sensorSessionId)) : [];
                             const rawSuhu = computeEnvCondition('suhu', sensorRawData);
                             const rawHum = computeEnvCondition('kelembaban', sensorRawData);
+                            const suhuCondition = calculateRoomCondition('suhu', sensorRawData);
+                            const humCondition = calculateRoomCondition('kelembaban', sensorRawData);
 
                             let envList = Array.isArray(res?.environment) ? [...res.environment] : [];
 
@@ -1947,7 +2114,7 @@ const PrintCertificatePage: React.FC = () => {
                               if (!hasHum && rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
                             }
 
-                            const envRows: Array<{ label: string; labelEng: string; value: React.ReactNode }> = envList.map((env: any) => {
+                            const envRows: Array<{ label: string; labelEng: string; initial: React.ReactNode; final: React.ReactNode }> = envList.map((env: any) => {
                               const key = String(env?.key || '')
                               const lower = key.toLowerCase()
                               const isSuhu = lower.includes('suhu')
@@ -1960,16 +2127,13 @@ const PrintCertificatePage: React.FC = () => {
                                   : `${key} `
                               const eng = isSuhu ? 'Temperature' : isHum ? 'Relative Humidity' : ''
 
-                              let finalValue = env?.value || '-'
-
-                              // Override with computed QC data if available
-                              if (isSuhu && rawSuhu !== '-') {
-                                finalValue = rawSuhu
-                              } else if (isHum && rawHum !== '-') {
-                                finalValue = rawHum
+                              const fallbackValue = env?.value || '-'
+                              return {
+                                label,
+                                labelEng: eng,
+                                initial: isSuhu ? suhuCondition?.initialDisplay ?? fallbackValue : isHum ? humCondition?.initialDisplay ?? fallbackValue : fallbackValue,
+                                final: isSuhu ? suhuCondition?.finalDisplay ?? fallbackValue : isHum ? humCondition?.finalDisplay ?? fallbackValue : fallbackValue,
                               }
-
-                              return { label, labelEng: eng, value: finalValue }
                             })
 
                             return (
@@ -1986,24 +2150,20 @@ const PrintCertificatePage: React.FC = () => {
                                       </td>
                                     </tr>
                                   ))}
-                                  {/* Environment as label-value lines (no table) */}
                                   {envRows.length > 0 && (
                                     <tr>
                                       <td className="w-[45%]" />
                                       <td className="w-[5%]" />
                                       <td className="align-top" colSpan={2}>
                                         <div className="text-sm font-bold mb-1">Kondisi Lingkungan / <span className="italic">Environment condition</span></div>
-                                        <div className="space-y-1">
-                                          {envRows.map((er, idx) => (
-                                            <div key={idx} className="grid grid-cols-[45%_5%_1fr] text-[10px]">
-                                              <div className="font-semibold">
-                                                {er.label}<span className="italic">{er.labelEng}</span>
-                                              </div>
-                                              <div>:</div>
-                                              <div>{er.value}</div>
-                                            </div>
-                                          ))}
-                                        </div>
+                                        <table className="w-full text-[10px]">
+                                          <thead><tr><th className="text-left"></th><th className="text-left">Awal</th><th className="text-left">Akhir</th></tr></thead>
+                                          <tbody>{envRows.map((er, idx) => <tr key={idx}>
+                                            <td className="font-semibold">{er.label}<span className="italic">{er.labelEng}</span></td>
+                                            <td>{er.initial}</td>
+                                            <td>{er.final}</td>
+                                          </tr>)}</tbody>
+                                        </table>
                                       </td>
                                     </tr>
                                   )}
@@ -2016,7 +2176,9 @@ const PrintCertificatePage: React.FC = () => {
                         {/* Hasil Kalibrasi per Sensor */}
                         {Array.isArray(res?.table) && res.table.length > 0 && (
                           <div className="mt-6 space-y-3 w-[85%] mx-auto">
-                            <div className="text-[12px] font-bold text-center mb-1">Hasil Kalibrasi / <span className="italic font-normal">Calibration Result</span></div>
+                            <div className="text-[12px] font-bold text-center mb-1 flex items-center justify-center gap-4">Hasil Kalibrasi / <span className="italic font-normal">Calibration Result</span>
+                              {!isPdfMode && <DecimalPrecisionControl value={decimalPrecision} onChange={setDecimalPrecision} />}
+                            </div>
                             {res.table.map((sec: any, sIdx: number) => {
                               const rows = Array.isArray(sec?.rows) ? sec.rows : []
                               
@@ -2061,8 +2223,8 @@ const PrintCertificatePage: React.FC = () => {
                                           {headers.length > 0 ? (
                                             <>
                                               <td className="p-1 border border-black text-center">{row.key || '-'}</td>
-                                              <td className="p-1 border border-black text-center">{isPyrano ? (row.unit || '-') : formatUnit(row.unit || '-')}</td>
-                                              <td className="p-1 border border-black text-center">{row.value || '-'}</td>
+                                              <td className="p-1 border border-black text-center">{isPyrano ? formatCalibrationCorrection(row.unit, true, decimalPrecision) : formatCalibrationCorrection(row.unit, false, decimalPrecision)}</td>
+                                              <td className="p-1 border border-black text-center">{formatCalibrationUncertainty(row.value, isPyrano, decimalPrecision)}</td>
                                               {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
                                                 <td key={`extra-${vi}`} className="p-1 border border-black text-center">{v || '-'}</td>
                                               ))}
@@ -2071,8 +2233,8 @@ const PrintCertificatePage: React.FC = () => {
                                             // Fallback
                                             <>
                                               <td className="p-1 border border-black text-center">{row.key || '-'}</td>
-                                              <td className="p-1 border border-black text-center">{formatUnit(row.unit || '-')}</td>
-                                              <td className="p-1 border border-black text-center">{row.value || '-'}</td>
+                                              <td className="p-1 border border-black text-center">{formatCalibrationCorrection(row.unit, isPyrano, decimalPrecision)}</td>
+                                              <td className="p-1 border border-black text-center">{formatCalibrationUncertainty(row.value, isPyrano, decimalPrecision)}</td>
                                             </>
                                           )}
                                         </tr>

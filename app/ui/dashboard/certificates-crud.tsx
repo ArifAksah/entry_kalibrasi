@@ -28,6 +28,7 @@ import { DEFAULT_NOTES_OTHERS_HTML } from '../../../lib/rich-text'
 import { firstLegacyResult, resultsToLegacyView } from '../../../lib/validators/certificate-results-render-adapter'
 import qcCacheService from '../../../lib/qc-cache-service'
 import { isWindDirectionSensor } from '../../../lib/wind-direction'
+import { finalizeCertificateUncertaintyWithMaster, FinalCertificateUncertainty } from '../../../lib/cmc-config'
 
 // Keep TrashIcon for backward compatibility in this file
 
@@ -367,7 +368,7 @@ const SearchableDropdown = ({
 }
 
 const CertificatesCRUD: React.FC = () => {
-  const { certificates, loading, error, addCertificate, updateCertificate, deleteCertificate } = useCertificates()
+  const { certificates, loading, error, addCertificate, updateCertificate, deleteCertificate, refetch: refetchCertificates } = useCertificates()
   const { completeRepair, resetVerification } = useCertificateVerification()
   const { user } = useAuth()
   const { can, canEndpoint, role } = usePermissions()
@@ -440,6 +441,36 @@ const CertificatesCRUD: React.FC = () => {
       showError('Failed to download PDF. Please try again.')
     }
   }
+
+  // ⚠️ DEV-ONLY — REMOVE BEFORE PRODUCTION
+  // Reset sertifikat completed → 'sent' + hapus verifikasi level-4 + kosongkan pdf_path
+  // supaya bisa di-TTE ulang dengan PDF hasil render terbaru.
+  const devResetForResign = async (item: Certificate) => {
+    if (!window.confirm(
+      `DEV: Reset sertifikat "${item.no_certificate}" agar bisa di-TTE ulang?\n\n` +
+      'Status → sent, PDF lama dilepas (file lama tetap ada di storage), ' +
+      'verifikator 1-3 TIDAK dihapus.'
+    )) return
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Not authenticated')
+      const res = await fetch(`/api/certificates/${item.id}/reset-for-resign`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload?.error || `HTTP ${res.status}`)
+      const signerInfo = payload?.signer
+        ? ` Login sebagai penandatangan: ${payload.signer.name || '-'}${payload.signer.email ? ` (${payload.signer.email})` : ''}.`
+        : ''
+      showSuccess((payload?.message || 'Sertifikat di-reset untuk TTE ulang') + signerInfo)
+      refetchCertificates()
+    } catch (err) {
+      console.error('Dev reset failed:', err)
+      showError(err instanceof Error ? `Reset gagal: ${err.message}` : 'Reset gagal')
+    }
+    setActionDropdownOpenId(null)
+  }
   const isCalibrator = role === 'calibrator'
 
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -499,6 +530,41 @@ const CertificatesCRUD: React.FC = () => {
   const getAnyResultSessionId = (rawResults: unknown): string | null => {
     const entries = resultsToLegacyView(rawResults)
     return entries.map((r: any) => r.session_id).find((sid: any) => !!sid) ?? null
+  }
+
+  /** Sensor UUT lengkap untuk sebuah instrumen.
+   *  Gabungkan sensor nested dari `instruments[]` (kini membawa resolution/graduating)
+   *  dengan state `sensors` (dari /api/sensors) sehingga ketidakpastian (U95) yang
+   *  dipakai resoluosi UUT terbaca dengan benar dan tidak jatuh ke 0. */
+  const getFullSensorsForInstrument = (instrument: number | string | null | undefined): any[] => {
+    const nested = instruments?.find(i => i.id === instrument)?.sensor || []
+    const full: any[] = []
+    const seen = new Set<number | string>()
+    for (const s of nested) {
+      const id = s?.id != null ? s.id : (s as any)?.sensor_id
+      if (id == null) { full.push(s); continue }
+      if (seen.has(id)) continue
+      seen.add(id)
+      const dbSensor = sensors?.find((x: any) => String(x.id) === String(id))
+      full.push({ ...s, ...(dbSensor || {}) })
+    }
+    return full
+  }
+
+  /** Opsi dropdown personel yg difilter by role; pastikan nilai terpilih
+   *  selalu tampil walau role-nya berubah orangnya nonaktif/terhapus. */
+  const signatoryOptions = (allowedRoles: string[], selectedId: string | number | null) => {
+    const toOption = (p: any) => ({
+      id: String(p.id),
+      name: p.nip ? `${p.name} (${p.nip})` : p.name,
+      description: p.nip || '',
+    })
+    const options = personel.filter(p => allowedRoles.includes(p.role || '')).map(toOption)
+    if (selectedId && !options.some(o => o.id === String(selectedId))) {
+      const selected = personel.find(p => String(p.id) === String(selectedId))
+      if (selected) options.unshift(toOption({ ...selected, nip: selected.nip || undefined }))
+    }
+    return options
   }
 
   const getVerificationLevelLabel = (level: number | null | undefined) => {
@@ -1040,6 +1106,7 @@ type ResultItem = {
       let uutAvg: number;
       let correction: number;
       let uncertainty: number;
+      let uncertaintyDecision: FinalCertificateUncertainty | null = null;
       let headers: string[];
 
       if (isPyranometerSensor && activeUutSensor) {
@@ -1090,6 +1157,17 @@ type ResultItem = {
         uutAvg = result.uutAvg;
         correction = result.correction;
         uncertainty = result.uncertainty;
+
+        // Aturan workbook: nilai masuk sertifikat = MAX(U95, CMC)
+        uncertaintyDecision = await finalizeCertificateUncertaintyWithMaster(uncertainty, {
+          uutSensor: activeUutSensor,
+          calibrationMethod: currentResult.notesForm?.calibration_methode,
+          sheetName: currentData[0]?.sheet_name,
+          unitStd: currentData[0]?.unit_std,
+          unitUut: currentData[0]?.unit_uut,
+          measurementPoint: uutAvg,
+        });
+        uncertainty = uncertaintyDecision.finalU95;
         headers = ['Penunjukan Alat', 'Koreksi', 'Ketidakpastian'];
       }
 
@@ -1098,11 +1176,23 @@ type ResultItem = {
       if (!v[sectionIndex]) return;
 
       v[sectionIndex].headers = headers;
-      
+
       const newRow = {
-        key: uutAvg.toFixed(2), // Pembacaan Alat: 2 desimal
-        unit: correction.toFixed(isPyranometerSensor ? 2 : 4), // CF: 2 desimal, Koreksi: 4 desimal
-        value: uncertainty.toFixed(isPyranometerSensor ? 2 : 4), // U95%: 2 desimal, U95 absolut: 4 desimal
+        // Simpan presisi penuh (tanpa CMC/MAX). Pembulatan hanya dilakukan renderer.
+        key: String(uutAvg),
+        unit: String(correction),
+        value: String(uncertainty),
+        ...(uncertaintyDecision ? { uncertaintyMeta: {
+          raw_u95: uncertaintyDecision.rawU95,
+          reported_u95: uncertaintyDecision.finalU95,
+          reporting_rule: 'MAX_U95_CMC',
+          cmc_profile_id: uncertaintyDecision.cmc?.profileId ?? null,
+          cmc_profile_code: uncertaintyDecision.cmc?.profileCode ?? null,
+          cmc_version: uncertaintyDecision.cmc?.version ?? null,
+          cmc_value_native: uncertaintyDecision.cmc?.cmcNative ?? null,
+          cmc_unit_native: uncertaintyDecision.cmc?.nativeUnit ?? null,
+          cmc_value_output: uncertaintyDecision.cmc?.cmcOutput ?? null,
+        }} : {}),
         extraValues: []
       };
 
@@ -1801,11 +1891,19 @@ type ResultItem = {
   const openModal = (item?: Certificate) => {
     if (item) {
       setEditing(item)
+      // Debugging log
+      console.log('[openModal] Opening edit for certificate:', item.no_certificate, {
+        authorized_by: item.authorized_by,
+        verifikator_1: (item as any).verifikator_1,
+        verifikator_2: (item as any).verifikator_2,
+        verifikator_3: (item as any).verifikator_3,
+        resultsPreview: Array.isArray((item as any)?.results?.sensors) ? (item as any).results.sensors.length : 0,
+      })
       setForm({
         no_certificate: item.no_certificate,
         no_order: item.no_order,
         no_identification: item.no_identification,
-        authorized_by: item.authorized_by,
+        authorized_by: item.authorized_by ?? null,
         verifikator_1: (item as any).verifikator_1 ?? null,
         verifikator_2: (item as any).verifikator_2 ?? null,
         verifikator_3: (item as any).verifikator_3 ?? null,
@@ -1862,34 +1960,59 @@ type ResultItem = {
       }
 
       const enrichedResults = savedResults.map((r: any, idx: number) => {
-        const orig = originalSensors[idx]
-        if (!orig) return r
-        // V1 entry: extract from setup.standard_instruments
-        if (orig.links) {
+        const orig = originalSensors[idx] || null
+
+        if (orig?.links) {
+          // V1 entry: extract from setup.standard_instruments
           const std = orig.setup?.standard_instruments?.[0] ?? null
-          const resolvedStandardInstrumentId = resolveStandardInstrumentId(std?.instrument_id ?? std?.sensor_id)
-          const matchedCert = std?.certificate_no
-            ? standardCerts.find((c: any) =>
-                c.no_certificate === std.certificate_no &&
-                (std?.sensor_id ? c.sensor_id === std.sensor_id : true)
-              ) ?? standardCerts.find((c: any) => c.no_certificate === std.certificate_no) ?? null
+
+          // 1) Resolve certificate record first — certificate_id is the most
+          //    reliable anchor; it survives even in data damaged by the old
+          //    QC-save round-trip (which used to strip instrument_id and
+          //    certificate_no).
+          let matchedCert = std?.certificate_id
+            ? standardCerts.find((c: any) => Number(c.id) === Number(std.certificate_id)) ?? null
             : null
+          if (!matchedCert && std?.certificate_no) {
+            matchedCert = standardCerts.find((c: any) =>
+              String(c.no_certificate || '').trim() === String(std.certificate_no).trim() &&
+              (std?.sensor_id ? Number(c.sensor_id) === Number(std.sensor_id) : true)
+            ) ?? standardCerts.find((c: any) =>
+              String(c.no_certificate || '').trim() === String(std.certificate_no).trim()
+            ) ?? null
+          }
+          if (!matchedCert && std?.sensor_id) {
+            matchedCert = standardCerts.find((c: any) => Number(c.sensor_id) === Number(std.sensor_id)) ?? null
+          }
+
+          // 2) Resolve instrument ID: prefer stored value, else derive from
+          //    the matched certificate's sensor.
+          let resolvedStandardInstrumentId = resolveStandardInstrumentId(std?.instrument_id ?? std?.sensor_id)
+          if (!resolvedStandardInstrumentId && matchedCert?.sensor_id) {
+            resolvedStandardInstrumentId = resolveStandardInstrumentId(matchedCert.sensor_id)
+          }
+
+          // 3) Certificate number: prefer stored value, else the matched row.
+          const restoredCertNo = (std?.certificate_no && String(std.certificate_no).trim() !== '')
+            ? std.certificate_no
+            : (matchedCert?.no_certificate ?? null)
+
           return {
             ...r,
             standardInstrumentId: resolvedStandardInstrumentId,
-            standardCertificateId: matchedCert?.id ?? null,
-            standardCertificateNumber: std?.certificate_no ?? null,
+            standardCertificateId: matchedCert?.id ?? (r?.standardCertificateId ?? null),
+            standardCertificateNumber: restoredCertNo ?? (r?.standardCertificateNumber ?? null),
           }
         }
         // V0 entry: these fields are already in r (passthrough from resultsToLegacyView)
         // Also restore unitUut/unitStd from V0 if present (fallback when raw data not loaded yet)
         return {
           ...r,
-          standardInstrumentId: orig.standardInstrumentId ?? r.standardInstrumentId ?? null,
-          standardCertificateId: orig.standardCertificateId ?? r.standardCertificateId ?? null,
-          standardCertificateNumber: orig.standardCertificateNumber ?? r.standardCertificateNumber ?? null,
-          unitUut: orig.unitUut ?? r.unitUut ?? null,
-          unitStd: orig.unitStd ?? r.unitStd ?? null,
+          standardInstrumentId: orig?.standardInstrumentId ?? r.standardInstrumentId ?? null,
+          standardCertificateId: orig?.standardCertificateId ?? r.standardCertificateId ?? null,
+          standardCertificateNumber: orig?.standardCertificateNumber ?? r.standardCertificateNumber ?? null,
+          unitUut: orig?.unitUut ?? r.unitUut ?? null,
+          unitStd: orig?.unitStd ?? r.unitStd ?? null,
         }
       })
 
@@ -1897,8 +2020,31 @@ type ResultItem = {
 
       // Restore global standard instrument from first result (if available)
       const firstResult = enrichedResults[0] as any
-      setGlobalStandardInstrumentId(firstResult?.standardInstrumentId ?? null)
-      setGlobalStandardCertificateNumber(firstResult?.standardCertificateNumber ?? null)
+
+      // First try: get from enriched results
+      let restoredStdInstrumentId = firstResult?.standardInstrumentId ?? null
+      let restoredStdCertNumber = firstResult?.standardCertificateNumber ?? null
+
+      // Last-resort recovery for older certificates whose standard_instruments
+      // was damaged by the previous QC-save round-trip (instrument_id /
+      // certificate_no stripped). Only standardCertificateId survives, so
+      // re-derive the instrument + certificate number from it.
+      if (!restoredStdInstrumentId || !restoredStdCertNumber) {
+        const fallbackCert = firstResult?.standardCertificateId
+          ? standardCerts.find((c: any) => Number(c.id) === Number(firstResult.standardCertificateId)) ?? null
+          : null
+        if (fallbackCert) {
+          if (!restoredStdInstrumentId) {
+            restoredStdInstrumentId = resolveStandardInstrumentId(fallbackCert.sensor_id)
+          }
+          if (!restoredStdCertNumber) {
+            restoredStdCertNumber = fallbackCert.no_certificate ?? null
+          }
+        }
+      }
+
+      setGlobalStandardInstrumentId(restoredStdInstrumentId ?? null)
+      setGlobalStandardCertificateNumber(restoredStdCertNumber ?? null)
 
       // Restore sessionDetails from first result
       if (firstResult?.startDate || firstResult?.endDate || firstResult?.place) {
@@ -2941,6 +3087,20 @@ type ResultItem = {
                               </button>
                             )}
 
+                            {/* ⚠️ DEV-ONLY — REMOVE BEFORE PRODUCTION */}
+                            {process.env.NODE_ENV !== 'production' && (role === 'admin' || role === 'calibrator') && (item.pdf_path || item.status === 'completed') && (
+                              <button
+                                onClick={() => devResetForResign(item)}
+                                className="flex items-center gap-2 w-full text-left px-4 py-2 text-xs text-orange-700 hover:bg-orange-50 transition-colors border-t border-dashed border-orange-200"
+                                title="Reset sertifikat (status→sent, hapus verifikasi TTE & pdf_path) agar bisa di-TTE ulang dengan PDF hasil render terbaru. KHUSUS DEV. Butuh NEXT_PUBLIC_DEV_RESET_PDF=true agar endpoint menerima."
+                              >
+                                <svg className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                Reset untuk TTE Ulang (dev)
+                              </button>
+                            )}
+
                             <button
                               onClick={() => {
                                 const sessionId = getAnyResultSessionId(item.results);
@@ -3358,13 +3518,7 @@ type ResultItem = {
                         id="form-authorized-by"
                         value={form.authorized_by}
                         onChange={(value) => setForm({ ...form, authorized_by: value as string | null })}
-                        options={personel
-                          .filter(p => p.role === 'assignor')
-                          .map(p => ({
-                            id: p.id,
-                            name: p.nip ? `${p.name} (${p.nip})` : p.name,
-                            nip: p.nip || ''
-                          }))}
+                        options={signatoryOptions(['assignor'], form.authorized_by)}
                         placeholder="Pilih personel"
                         searchPlaceholder="Cari authorized by..."
                       />
@@ -3375,13 +3529,7 @@ type ResultItem = {
                         id="form-verifikator-1"
                         value={(form as any).verifikator_1 ?? null}
                         onChange={(value) => setForm({ ...form, verifikator_1: value as string | null } as any)}
-                        options={personel
-                          .filter(p => p.role === 'verifikator')
-                          .map(p => ({
-                            id: p.id,
-                            name: p.nip ? `${p.name} (${p.nip})` : p.name,
-                            nip: p.nip || ''
-                          }))}
+                        options={signatoryOptions(['verifikator'], (form as any).verifikator_1 ?? null)}
                         placeholder="Pilih verifikator 1"
                         searchPlaceholder="Cari verifikator 1..."
                       />
@@ -3392,13 +3540,7 @@ type ResultItem = {
                         id="form-verifikator-2"
                         value={(form as any).verifikator_2 ?? null}
                         onChange={(value) => setForm({ ...form, verifikator_2: value as string | null } as any)}
-                        options={personel
-                          .filter(p => p.role === 'verifikator')
-                          .map(p => ({
-                            id: p.id,
-                            name: p.nip ? `${p.name} (${p.nip})` : p.name,
-                            nip: p.nip || ''
-                          }))}
+                        options={signatoryOptions(['verifikator'], (form as any).verifikator_2 ?? null)}
                         placeholder="Pilih verifikator 2"
                         searchPlaceholder="Cari verifikator 2..."
                       />
@@ -3409,13 +3551,7 @@ type ResultItem = {
                         id="form-verifikator-3"
                         value={(form as any).verifikator_3 ?? null}
                         onChange={(value) => setForm({ ...form, verifikator_3: value as string | null } as any)}
-                        options={personel
-                          .filter(p => p.role === 'verifikator')
-                          .map(p => ({
-                            id: p.id,
-                            name: p.nip ? `${p.name} (${p.nip})` : p.name,
-                            nip: p.nip || ''
-                          }))}
+                        options={signatoryOptions(['verifikator'], (form as any).verifikator_3 ?? null)}
                         placeholder="Pilih verifikator 3"
                         searchPlaceholder="Cari verifikator 3..."
                       />
@@ -5433,9 +5569,7 @@ type ResultItem = {
             certificateId={String(qcModalCertificate.id)}
             certificateInstrumentId={qcModalCertificate.instrument || undefined}
             instruments={instruments}
-            sensors={
-              instruments.find(i => i.id === qcModalCertificate.instrument)?.sensor || []
-            }
+            sensors={getFullSensorsForInstrument(qcModalCertificate.instrument)}
             instrumentNames={instrumentNames}
             standardCerts={standardCerts}
             resultEntries={resultsToLegacyView(qcModalCertificate.results).map((r: any) => ({

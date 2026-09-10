@@ -67,6 +67,8 @@ const PersonelPage: React.FC = () => {
     prevPage,
     refresh,
     setRoleLocal,
+    includeInactive,
+    toggleIncludeInactive,
   } = usePersonel(1, 10)
 
   const { alert, showSuccess, showError, hideAlert } = useAlert()
@@ -237,17 +239,33 @@ const PersonelPage: React.FC = () => {
   }
 
   const removePerson = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this person?')) return
+    if (!confirm('Personel akan dinonaktifkan dan akun tidak dapat login. Riwayat sertifikat tetap aman. Lanjutkan?')) return
     try {
       const response = await fetch(`/api/personel/${id}`, { method: 'DELETE' })
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to delete personel')
+        throw new Error(errorData.error || 'Failed to disable personel')
       }
-      showSuccess('Personel berhasil dihapus!')
-      refresh() // Refresh data after deleting
+      showSuccess('Personel berhasil dinonaktifkan!')
+      refresh() // Refresh data after disabling
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to delete'
+      const errorMessage = err instanceof Error ? err.message : 'Failed to disable'
+      showError(errorMessage)
+    }
+  }
+
+  const reactivatePerson = async (id: string) => {
+    if (!confirm('Aktifkan kembali personel ini dan izinkan akun untuk login?')) return
+    try {
+      const response = await fetch(`/api/personel/${id}/reactivate`, { method: 'POST' })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to reactivate personel')
+      }
+      showSuccess('Personel berhasil diaktifkan kembali!')
+      refresh()
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to reactivate'
       showError(errorMessage)
     }
   }
@@ -297,7 +315,7 @@ const PersonelPage: React.FC = () => {
               </div>
 
               <div className="bg-white p-6 rounded-xl shadow-md">
-                <div className="mb-4">
+                <div className="mb-4 flex items-center gap-4 flex-wrap">
                   <input
                     type="text"
                     value={searchTerm}
@@ -307,6 +325,10 @@ const PersonelPage: React.FC = () => {
                     name="personel-search"
                     className="w-full max-w-sm px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                   />
+                  <label className="inline-flex items-center gap-2 text-sm text-gray-600 select-none cursor-pointer">
+                    <input type="checkbox" checked={includeInactive} onChange={toggleIncludeInactive} className="accent-blue-600 h-4 w-4" />
+                    Tampilkan personel nonaktif
+                  </label>
                 </div>
 
                 {error && <div className="mb-4 text-red-600 bg-red-100 p-3 rounded-lg">Error: {error}</div>}
@@ -319,6 +341,7 @@ const PersonelPage: React.FC = () => {
                         <th className="px-6 py-3">Kontak</th>
                         <th className="px-6 py-3">Posisi</th>
                         <th className="px-6 py-3">Role</th>
+                        <th className="px-6 py-3 text-center">Status</th>
                         <th className="px-6 py-3 text-center">Actions</th>
                       </tr>
                     </thead>
@@ -329,6 +352,7 @@ const PersonelPage: React.FC = () => {
                             <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-3/4"></div></td>
                             <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-full"></div></td>
                             <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-1/2"></div></td>
+                            <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-1/4"></div></td>
                             <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-1/4"></div></td>
                             <td className="px-6 py-4"><div className="h-8 bg-gray-200 rounded w-full"></div></td>
                           </tr>
@@ -362,9 +386,21 @@ const PersonelPage: React.FC = () => {
                               />
                               {savingRole === p.id && <span className="ml-2 text-xs text-gray-500">Menyimpan...</span>}
                             </td>
+                            <td className="px-6 py-4 text-center">
+                              {p.is_active === false
+                                ? <span className="inline-flex rounded-full border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">Nonaktif</span>
+                                : <span className="inline-flex rounded-full border border-green-300 bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">Aktif</span>}
+                            </td>
                             <td className="px-6 py-4 text-center space-x-2">
+                              {p.is_active === false && (
+                                <button onClick={() => reactivatePerson(p.id)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition-colors" title="Aktifkan kembali">
+                                  Aktifkan
+                                </button>
+                              )}
                               <EditButton onClick={() => openModal(p)} title="Edit Personel" />
-                              <DeleteButton onClick={() => removePerson(p.id)} title="Hapus Personel" />
+                              {p.is_active !== false && (
+                                <DeleteButton onClick={() => removePerson(p.id)} title="Nonaktifkan Personel" />
+                              )}
                             </td>
                           </tr>
                         ))

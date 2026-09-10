@@ -17,6 +17,7 @@ import { deserializeMap } from '../../lib/qc-cache-storage';
 import { isWindDirectionSensor, wrapWindDirectionCorrection } from '../../lib/wind-direction';
 import { calculateAuditRow, calculateAuditStats } from '../../lib/calculation-audit';
 import { CalculationSnapshot, dedupeCalculationSnapshots } from '../../lib/calculation-snapshot';
+import { finalizeCertificateUncertaintyWithMaster, FinalCertificateUncertainty } from '../../lib/cmc-config';
 import { compareRawDataRows } from '../../lib/raw-data-order';
 
 
@@ -672,6 +673,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
                 // Hitung uncertainty
                 let uncertainty: number;
+                let uncertaintyDecision: FinalCertificateUncertainty | null = null;
                 let displayUutAvg = uutAvg;
                 let displayCorrection = correctionAvg;
                 
@@ -730,6 +732,18 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                     displayUutAvg = result.uutAvg;
                     displayCorrection = result.correction;
                     uncertainty = result.uncertainty;
+
+                    // Aturan workbook: nilai masuk sertifikat = MAX(U95, CMC)
+                    const activeEntry = resultEntries.find(entry => entry.sensorId === groupData[0]?.sensor_id_uut);
+                    uncertaintyDecision = await finalizeCertificateUncertaintyWithMaster(uncertainty, {
+                        uutSensor,
+                        calibrationMethod: activeEntry?.calibrationMethod,
+                        sheetName: groupData[0]?.sheet_name,
+                        unitStd: groupData[0]?.unit_std,
+                        unitUut: groupData[0]?.unit_uut,
+                        measurementPoint: displayUutAvg,
+                    });
+                    uncertainty = uncertaintyDecision.finalU95;
                 }
 
                 // DEBUG: Log final values
@@ -753,6 +767,17 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                         key: isPyranometerSensor ? String(uutAvg) : String(displayUutAvg), // Pyranometer: rata-rata UUT, Biasa: rata-rata UUT
                         unit: isPyranometerSensor ? String(displayCorrection) : String(displayCorrection), // Pyranometer: CF, Biasa: Koreksi
                         value: String(uncertainty), // Pyranometer: U95%, Biasa: U95 absolut
+                        ...(uncertaintyDecision ? { uncertaintyMeta: {
+                            raw_u95: uncertaintyDecision.rawU95,
+                            reported_u95: uncertaintyDecision.finalU95,
+                            reporting_rule: 'MAX_U95_CMC',
+                            cmc_profile_id: uncertaintyDecision.cmc?.profileId ?? null,
+                            cmc_profile_code: uncertaintyDecision.cmc?.profileCode ?? null,
+                            cmc_version: uncertaintyDecision.cmc?.version ?? null,
+                            cmc_value_native: uncertaintyDecision.cmc?.cmcNative ?? null,
+                            cmc_unit_native: uncertaintyDecision.cmc?.nativeUnit ?? null,
+                            cmc_value_output: uncertaintyDecision.cmc?.cmcOutput ?? null,
+                        }} : {}),
                         extraValues: []
                     }]
                 }];

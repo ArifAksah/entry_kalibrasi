@@ -15,7 +15,9 @@ import { supabase } from '../../lib/supabase'
 import QCDataModal from '../../components/features/QCDataModal'
 import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClassName } from '../../lib/rich-text'
 import { firstLegacyResult, resultsToLegacyView } from '../../lib/validators/certificate-results-render-adapter'
-import { formatLatexUnit } from '../../lib/qc-utils'
+import { calculateRoomCondition } from '../../lib/room-condition'
+import { formatCalibrationReading, formatCalibrationCorrection, formatCalibrationUncertainty } from '../../lib/result-display-format'
+import { DecimalPrecisionControl } from '../../components/ui/DecimalPrecisionControl'
 import qcCacheService from '../../lib/qc-cache-service'
 import { isPyranometer, PyranometerSensorData } from '../../lib/uncertainty-utils'
 
@@ -308,45 +310,10 @@ const CertificatePreview: React.FC<{
 
   // Raw data for computing environmental conditions from imported Excel
   const [allRawData, setAllRawData] = useState<any[]>([])
+  const [decimalPrecision, setDecimalPrecision] = useState(4)
 
   const computeEnvCondition = useCallback((type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
-    const matchedRows = sensorRawData.filter(r => {
-      const rawUnit = String(r.unit_std || r.unit_uut || '');
-      const unit = formatLatexUnit(rawUnit).toLowerCase().trim();
-      const name = (r.sheet_name || r.name || r.category || '').toLowerCase();
-
-      if (type === 'suhu') {
-        const unitIsTemp = unit && (unit.includes('°c') || unit.includes('c') || unit.includes('celcius') || unit.includes('celsius'));
-        const nameIsTemp = ['suhu', 'temp', 'termometer', 'temperature', 'thermo'].some(k => name.includes(k));
-        return unitIsTemp || (nameIsTemp && !unit);
-      }
-
-      const unitIsHum = unit && (unit.includes('%') || unit.includes('rh') || unit.includes('r.h') || unit.includes('kelembaban') || unit.includes('humidity') || unit.includes('hum'));
-      const nameIsHum = ['kelembab', 'lembab', 'humidity', 'hum', 'hygro', 'rh', 'r.h'].some(k => name.includes(k));
-      return unitIsHum || (nameIsHum && !unit);
-    });
-
-    if (matchedRows.length === 0) return '-';
-
-    const values = matchedRows
-      .map(r => {
-        if (r.std_corrected != null) return Number(r.std_corrected);
-        const sd = Number(r.standard_data);
-        const sc = Number(r.std_correction ?? 0);
-        if (!isNaN(sd)) return sd + sc;
-        return NaN;
-      })
-      .filter(v => typeof v === 'number' && !isNaN(v));
-
-    if (values.length === 0) return '-';
-
-    const minV = Math.min(...values);
-    const maxV = Math.max(...values);
-    const mean = (minV + maxV) / 2;
-    const halfRange = maxV - mean;
-
-    const unit = type === 'suhu' ? '°C' : '%';
-    return `(${mean.toFixed(1)} ± ${halfRange.toFixed(1)}) ${unit}`;
+    return calculateRoomCondition(type, sensorRawData)?.display ?? '-';
   }, []);
 
   // Fetch raw data from imported Excel for environmental condition computation
@@ -747,12 +714,14 @@ const CertificatePreview: React.FC<{
                         { label: 'Tanggal Kalibrasi / ', labelEng: 'Calibration Date', value: end },
                         { label: 'Tempat Kalibrasi / ', labelEng: 'Calibration Place', value: place },
                       ]
-                      const envRows: Array<{ label: string; labelEng: string; value: React.ReactNode }> = (() => {
+                      const envRows: Array<{ label: string; labelEng: string; initial: React.ReactNode; final: React.ReactNode }> = (() => {
                         // Get raw data for this sensor's session
                         const sensorSessionId = res?.session_id;
                         const sensorRawData = sensorSessionId ? allRawData.filter((rd: any) => String(rd.session_id || '') === String(sensorSessionId)) : [];
                         const rawSuhu = computeEnvCondition('suhu', sensorRawData);
                         const rawHum = computeEnvCondition('kelembaban', sensorRawData);
+                        const suhuCondition = calculateRoomCondition('suhu', sensorRawData);
+                        const humCondition = calculateRoomCondition('kelembaban', sensorRawData);
 
                         let envList = Array.isArray(res?.environment) ? [...res.environment] : [];
 
@@ -776,16 +745,13 @@ const CertificatePreview: React.FC<{
                           const label = isSuhu ? 'Suhu / ' : isHum ? 'Kelembaban / ' : `${key} `
                           const eng = isSuhu ? 'Temperature' : isHum ? 'Relative Humidity' : ''
 
-                          let finalValue: React.ReactNode = env?.value || '-'
-
-                          // Override with computed value from raw Excel data if available
-                          if (isSuhu && rawSuhu !== '-') {
-                            finalValue = rawSuhu
-                          } else if (isHum && rawHum !== '-') {
-                            finalValue = rawHum
+                          const fallbackValue: React.ReactNode = env?.value || '-'
+                          return {
+                            label,
+                            labelEng: eng,
+                            initial: isSuhu ? suhuCondition?.initialDisplay ?? fallbackValue : isHum ? humCondition?.initialDisplay ?? fallbackValue : fallbackValue,
+                            final: isSuhu ? suhuCondition?.finalDisplay ?? fallbackValue : isHum ? humCondition?.finalDisplay ?? fallbackValue : fallbackValue,
                           }
-
-                          return { label, labelEng: eng, value: finalValue }
                         })
                       })()
                       return (
@@ -802,21 +768,17 @@ const CertificatePreview: React.FC<{
                                 </td>
                               </tr>
                             ))}
-                            {envRows.length > 0 && (
-                              <tr>
-                                <td />
-                                <td />
-                                <td className="text-sm font-bold" colSpan={2}>Kondisi Lingkungan / <span className="italic">Environment</span></td>
-                              </tr>
-                            )}
-                            {envRows.map((row, i) => (
-                              <tr key={`env-${i}`}>
-                                <td />
-                                <td />
-                                <td className="align-top font-semibold">{row.label}<span className="italic">{row.labelEng}</span></td>
-                                <td className="align-top">: {row.value}</td>
-                              </tr>
-                            ))}
+                            {envRows.length > 0 && <tr><td /><td /><td colSpan={2}>
+                              <div className="text-sm font-bold mb-1">Kondisi Lingkungan / <span className="italic">Environment</span></div>
+                              <table className="w-full text-sm">
+                                <thead><tr><th className="text-left"></th><th className="text-left">Awal</th><th className="text-left">Akhir</th></tr></thead>
+                                <tbody>{envRows.map((row, i) => <tr key={`env-${i}`}>
+                                  <td className="font-semibold">{row.label}<span className="italic">{row.labelEng}</span></td>
+                                  <td>{row.initial}</td>
+                                  <td>{row.final}</td>
+                                </tr>)}</tbody>
+                              </table>
+                            </td></tr>}
                           </tbody>
                         </table>
                       )
@@ -825,7 +787,9 @@ const CertificatePreview: React.FC<{
                     {/* Calibration Result Tables (mirror print) */}
                     {Array.isArray(res?.table) && res.table.length > 0 && (
                       <div className="mt-6 space-y-3 w-[85%] mx-auto">
-                        <div className="text-[12px] font-bold text-center mb-1">Hasil Kalibrasi / <span className="italic font-normal">Calibration Result</span></div>
+                        <div className="text-[12px] font-bold text-center mb-1 flex items-center justify-center gap-4">Hasil Kalibrasi / <span className="italic font-normal">Calibration Result</span>
+                          <DecimalPrecisionControl value={decimalPrecision} onChange={setDecimalPrecision} />
+                        </div>
                         {res.table.map((sec: any, sIdx: number) => {
                           const rows = Array.isArray(sec?.rows) ? sec.rows : []
                           
@@ -869,8 +833,8 @@ const CertificatePreview: React.FC<{
                                     return (
                                       <tr key={rIdx}>
                                         <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
-                                        <td className="p-1 border border-black text-center">{isFirstEmptyRow ? (isPyrano ? '-' : unitDisplay) : (row.unit || '-')}</td>
-                                        <td className="p-1 border border-black text-center">{isFirstEmptyRow ? (isPyrano ? '%' : unitDisplay) : (row.value || '-')}</td>
+                                        <td className="p-1 border border-black text-center">{isFirstEmptyRow ? (isPyrano ? '-' : unitDisplay) : (isPyrano ? formatCalibrationCorrection(row.unit, true, decimalPrecision) : formatCalibrationCorrection(row.unit, false, decimalPrecision))}</td>
+                                        <td className="p-1 border border-black text-center">{isFirstEmptyRow ? (isPyrano ? '%' : unitDisplay) : formatCalibrationUncertainty(row.value, isPyrano, decimalPrecision)}</td>
                                         {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
                                           <td key={`extra-${vi}`} className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (v || '-')}</td>
                                         ))}
@@ -1085,11 +1049,12 @@ const DraftView: React.FC<{
   stations: Station[]
   instruments: Instrument[]
   instrumentNames: any[]
+  standardCerts?: any[]
   personel: Personel[]
   onSendToVerifiers: (certificateId: number) => Promise<void>
   onBack?: () => void
   onUpdateCertificate?: (certificateId: number, updates: Partial<Certificate>) => Promise<void>
-}> = ({ certificate, stations, instruments, instrumentNames, personel, onSendToVerifiers, onBack, onUpdateCertificate }) => {
+}> = ({ certificate, stations, instruments, instrumentNames, standardCerts = [], personel, onSendToVerifiers, onBack, onUpdateCertificate }) => {
   const [showModal, setShowModal] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [hasSent, setHasSent] = useState(false)
@@ -1284,6 +1249,7 @@ const DraftView: React.FC<{
           instruments.find(i => i.id === certificate.instrument)?.sensor || []
         }
         instrumentNames={instrumentNames}
+        standardCerts={standardCerts}
         certificateStatus={certificate.status}
         onCalculateSaved={async (updates) => {
           if (!onUpdateCertificate) return
@@ -1577,6 +1543,7 @@ const DraftViewPage: React.FC = () => {
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [instrumentNames, setInstrumentNames] = useState<any[]>([])
   const [personel, setPersonel] = useState<Personel[]>([])
+  const [standardCerts, setStandardCerts] = useState<any[]>([])
   const [selectedCertificateId, setSelectedCertificateId] = useState<number | null>(null)
 
   // Get certificate ID from URL params
@@ -1592,22 +1559,25 @@ const DraftViewPage: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [stationsRes, instrumentsRes, personelRes, instrNamesRes] = await Promise.all([
+        const [stationsRes, instrumentsRes, personelRes, instrNamesRes, certStandardsRes] = await Promise.all([
           fetch('/api/stations?page=1&pageSize=100'),
           fetch('/api/instruments?page=1&pageSize=100'),
           fetch('/api/personel'),
-          fetch('/api/instrument-names')
+          fetch('/api/instrument-names'),
+          fetch('/api/cert-standards')
         ])
 
         const stationsData = await stationsRes.json()
         const instrumentsData = await instrumentsRes.json()
         const personelData = await personelRes.json()
         const instrNamesData = await instrNamesRes.json()
+        const certStandardsData = await certStandardsRes.json()
 
         setStations(Array.isArray(stationsData) ? stationsData : (stationsData?.data ?? []))
         setInstruments(Array.isArray(instrumentsData) ? instrumentsData : (instrumentsData?.data ?? []))
         setPersonel(Array.isArray(personelData) ? personelData : [])
         setInstrumentNames(Array.isArray(instrNamesData) ? instrNamesData : (instrNamesData?.data ?? []))
+        setStandardCerts(Array.isArray(certStandardsData) ? certStandardsData : (certStandardsData?.data ?? []))
       } catch (error) {
         console.error('Error loading data:', error)
       }
@@ -1773,6 +1743,7 @@ const DraftViewPage: React.FC = () => {
                     stations={stations}
                     instruments={instruments}
                     instrumentNames={instrumentNames}
+                    standardCerts={standardCerts}
                     personel={personel}
                     onSendToVerifiers={handleSendToVerifiers}
                     onBack={handleBack}

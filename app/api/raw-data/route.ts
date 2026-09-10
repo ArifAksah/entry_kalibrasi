@@ -287,9 +287,43 @@ export async function GET(req: NextRequest) {
     try {
         const { searchParams } = new URL(req.url)
         const session_id = searchParams.get('session_id')
+        // lean=true → hanya kolom yang dibutuhkan renderer (room condition suhu/RH,
+        // rekonstruksi sheet). Menghindari select `*` yang menarik blob per baris
+        // dan membuat sesi besar butuh 15-45 detik (meledakkan timeout halaman
+        // print sehingga Suhu/Kelembaban tercetak '-').
+        const lean = searchParams.get('lean') === 'true'
+        const mode = searchParams.get('mode')
 
         if (!session_id) {
             return NextResponse.json({ error: 'Missing session_id' }, { status: 400 })
+        }
+
+        if (lean) {
+            const { data, error } = await supabase
+                .from('raw_data')
+                .select('id, created_at, timestamp, standard_data, uut_data, sensor_id_uut, sensor_id_std, session_id, std_correction, std_corrected, sheet_name, unit_std, unit_uut, source_row_index')
+                .eq('session_id', session_id)
+                .order('id', { ascending: true })
+
+            if (error) throw error
+            console.log('[raw-data] lean fetched rows for session', session_id, (data ?? []).length)
+            return NextResponse.json({ data: data ?? [] })
+        }
+
+        // mode=room → hanya baris suhu/kelembaban (rujuk lib/room-condition.ts).
+        // Dipakai halaman print: Suhu/RH saja yang butuh raw_data, tidak perlu
+        // menarik seluruh sesi (4-6 ribu baris = lambat & memboroskan timeout).
+        if (mode === 'room') {
+            const { data, error } = await supabase
+                .from('raw_data')
+                .select('id, timestamp, standard_data, sensor_id_uut, sensor_id_std, session_id, std_correction, std_corrected, sheet_name, unit_std, unit_uut')
+                .eq('session_id', session_id)
+                .or('sheet_name.ilike.*suhu*,sheet_name.ilike.*temp*,sheet_name.ilike.*termo*,sheet_name.ilike.*hygro*,sheet_name.ilike.*lembab*,sheet_name.ilike.*lambab*,sheet_name.ilike.*humid*,sheet_name.ilike.*rh*')
+                .order('id', { ascending: true })
+
+            if (error) throw error
+            console.log('[raw-data] room-condition rows for session', session_id, (data ?? []).length)
+            return NextResponse.json({ data: data ?? [] })
         }
 
         const pageSize = 1000

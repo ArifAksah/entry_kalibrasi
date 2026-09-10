@@ -190,6 +190,7 @@ const sections: NavSection[] = [
         icon: Icon.database,
       },
       { name: "Master QC", href: "/master-qc", icon: Icon.beaker },
+      { name: "Master CMC", href: "/master-cmc", icon: Icon.beaker },
       { name: "Master Satuan", href: "/units", icon: Icon.beaker },
     ],
   },

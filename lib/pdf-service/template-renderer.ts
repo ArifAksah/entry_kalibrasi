@@ -14,11 +14,11 @@ import { createPdfRenderToken } from '../pdf-render-token'
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 /** Overall render timeout (ms) */
-const DEFAULT_TIMEOUT_MS = 120_000
+const DEFAULT_TIMEOUT_MS = 240_000
 /** Navigation timeout (ms) */
 const NAVIGATION_TIMEOUT_MS = 60_000
 /** Content readiness timeout (ms) */
-const CONTENT_READINESS_TIMEOUT_MS = 45_000
+const CONTENT_READINESS_TIMEOUT_MS = 120_000
 /** QR canvas render timeout (ms) */
 const QR_RENDER_TIMEOUT_MS = 15_000
 
@@ -472,12 +472,18 @@ class TemplateRendererImpl implements TemplateRenderer {
           hasPageContainer: !!document.querySelector('.page-container'),
           hasCoverFooter: !!document.querySelector('.page-1-footer'),
           hasResultsFooter: !!document.querySelector('.print-repeat-footer'),
+          printDataReady: document.body?.dataset?.printDataReady ?? 'NOT_SET',
+          loadingText: Array.from(document.querySelectorAll('*')).some(
+            el => el.textContent?.trim() === 'Memuat data sertifikat untuk dicetak...'
+          ),
         }))
         throw new Error(
           `PRINT_RENDER_FAILED: Content not ready for rendering. ` +
             `hasPageContainer=${debugInfo.hasPageContainer}, ` +
             `hasCoverFooter=${debugInfo.hasCoverFooter}, ` +
-            `hasResultsFooter=${debugInfo.hasResultsFooter}. ` +
+            `hasResultsFooter=${debugInfo.hasResultsFooter}, ` +
+            `printDataReady=${debugInfo.printDataReady}, ` +
+            `loading=${debugInfo.loadingText}. ` +
             `Preview: ${debugInfo.bodyPreview.substring(0, 180)}`
         )
       }

@@ -8,6 +8,7 @@ import bmkgLogo from '../../app/bmkg.png';
 import { SigFigBadge } from '../ui/SigFigBadge';
 import { isWindDirectionSensor, wrapWindDirectionCorrection } from '../../lib/wind-direction';
 import { compareRawDataRows } from '../../lib/raw-data-order';
+import { calculateRoomCondition } from '../../lib/room-condition';
 
 // Define RawDataRow interface locally if not exported, or match what's used in QCDataModal
 interface RawDataRow {
@@ -257,30 +258,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
     };
 
     const computeEnvCondition = (type: 'suhu' | 'kelembaban'): string => {
-        const keywords = type === 'suhu'
-            ? ['suhu', 'temp', 'termometer', 'temperature', 'thermo']
-            : ['kelemba', 'hum', 'hygro', 'rh'];
-
-        const matchedRows = rawData.filter(r => {
-            const name = (r.sheet_name || '').toLowerCase();
-            return keywords.some(k => name.includes(k));
-        });
-
-        if (matchedRows.length === 0) return '-';
-
-        const values = matchedRows
-            .map(r => cleanStdValue(r))
-            .filter((v): v is number => v != null);
-
-        if (values.length === 0) return '-';
-
-        const minV = Math.min(...values);
-        const maxV = Math.max(...values);
-        const mean = (minV + maxV) / 2;
-        const halfRange = maxV - mean;
-
-        const unit = type === 'suhu' ? '°C' : '%';
-        return `(${mean.toFixed(1)} ± ${halfRange.toFixed(1)}) ${unit}`;
+        return calculateRoomCondition(type, rawData)?.display ?? '-';
     };
 
     return (
@@ -553,11 +531,10 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                     </tbody>
                                 </table>
 
-                                {/* Kondisi Ruang - computed from raw data */}
+                                {/* Kondisi Ruang - mengikuti kolom Awal/Akhir workbook */}
                                 {(() => {
-                                    // Compute from raw data first (preferred)
-                                    const computedTemp = computeEnvCondition('suhu');
-                                    const computedHum = computeEnvCondition('kelembaban');
+                                    const tempCondition = calculateRoomCondition('suhu', rawData);
+                                    const humCondition = calculateRoomCondition('kelembaban', rawData);
 
                                     // Fallback: sessionResults.environment or environmentConditions
                                     const globalTemp = effectiveEnvironmentConditions?.temperature;
@@ -572,10 +549,12 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                         e.key?.toLowerCase().includes('kelemba') || e.key?.toLowerCase().includes('hum') || e.key?.toLowerCase().includes('rh')
                                     )?.value || globalHum;
 
-                                    const tempDisplay = computedTemp !== '-' ? computedTemp : (fallbackTemp || '-');
-                                    const humDisplay = computedHum !== '-' ? computedHum : (fallbackHum || '-');
+                                    const tempInitial = tempCondition?.initialDisplay ?? fallbackTemp ?? '-';
+                                    const tempFinal = tempCondition?.finalDisplay ?? fallbackTemp ?? '-';
+                                    const humInitial = humCondition?.initialDisplay ?? fallbackHum ?? '-';
+                                    const humFinal = humCondition?.finalDisplay ?? fallbackHum ?? '-';
 
-                                    if (tempDisplay === '-' && humDisplay === '-') return null;
+                                    if (tempInitial === '-' && humInitial === '-') return null;
 
                                     return (
                                         <table className="w-full border-none text-left mt-1">
@@ -583,16 +562,22 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                 <tr>
                                                     <td className="border-none" style={{ width: '44%' }}></td>
                                                     <td className="border-none w-2"></td>
-                                                    <td className="border-none font-semibold" style={{ width: '28%' }}>Suhu</td>
-                                                    <td className="border-none font-semibold" style={{ width: '28%' }}>Kelembaban</td>
+                                                    <td className="border-none font-semibold" style={{ width: '18%' }}>Awal</td>
+                                                    <td className="border-none font-semibold" style={{ width: '18%' }}>Akhir</td>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 <tr>
-                                                    <td className="border-none align-top pl-6">Selama Kalibrasi</td>
+                                                    <td className="border-none align-top pl-6">Temperatur</td>
                                                     <td className="border-none align-top">:</td>
-                                                    <td className="border-none align-top">{tempDisplay}</td>
-                                                    <td className="border-none align-top">{humDisplay}</td>
+                                                    <td className="border-none align-top">{tempInitial}</td>
+                                                    <td className="border-none align-top">{tempFinal}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="border-none align-top pl-6">Kelembapan</td>
+                                                    <td className="border-none align-top">:</td>
+                                                    <td className="border-none align-top">{humInitial}</td>
+                                                    <td className="border-none align-top">{humFinal}</td>
                                                 </tr>
                                             </tbody>
                                         </table>
@@ -949,12 +934,25 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                                                     <table className="w-full text-left border-none border-collapse bg-transparent">
                                                                         <tbody>
                                                                             <tr className="border-t border-black">
-                                                                                <td className="border-none border-r border-black text-left px-1 w-1/3">Temperatur</td>
-                                                                                <td className="border-none px-1">{computeEnvCondition('suhu') !== '-' ? computeEnvCondition('suhu') : (temp !== '-' ? temp : '-')}</td>
+                                                                                <td className="border-none border-r border-black text-left px-1 w-1/3"></td>
+                                                                                <td className="border-none px-1">
+                                                                                    <span className="inline-block w-1/2 font-semibold">Awal</span>
+                                                                                    <span className="inline-block w-1/2 font-semibold">Akhir</span>
+                                                                                </td>
+                                                                            </tr>
+                                                                            <tr className="border-t border-black">
+                                                                                <td className="border-none border-r border-black text-left px-1">Temperatur</td>
+                                                                                <td className="border-none px-1">
+                                                                                    <span className="inline-block w-1/2">{calculateRoomCondition('suhu', rawData)?.initialDisplay ?? tempAwal}</span>
+                                                                                    <span className="inline-block w-1/2">{calculateRoomCondition('suhu', rawData)?.finalDisplay ?? tempAkhir}</span>
+                                                                                </td>
                                                                             </tr>
                                                                             <tr className="border-t border-black">
                                                                                 <td className="border-none border-r border-black text-left px-1">Kelembapan</td>
-                                                                                <td className="border-none px-1">{computeEnvCondition('kelembaban') !== '-' ? computeEnvCondition('kelembaban') : (hum !== '-' ? hum : '-')}</td>
+                                                                                <td className="border-none px-1">
+                                                                                    <span className="inline-block w-1/2">{calculateRoomCondition('kelembaban', rawData)?.initialDisplay ?? humAwal}</span>
+                                                                                    <span className="inline-block w-1/2">{calculateRoomCondition('kelembaban', rawData)?.finalDisplay ?? humAkhir}</span>
+                                                                                </td>
                                                                             </tr>
                                                                         </tbody>
                                                                     </table>

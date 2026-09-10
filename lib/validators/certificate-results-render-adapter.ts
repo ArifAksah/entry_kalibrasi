@@ -42,6 +42,11 @@ export interface LegacyResultEntry {
   unitUut?: string | null
   unitStd?: string | null
   standardCertificateId?: number | null
+  /** Instrument ID alat standar (dari setup.standard_instruments[].instrument_id).
+   *  Tanpa ini, dropdown "Alat Standar" kosong saat edit setelah resultsToLegacyView. */
+  standardInstrumentId?: number | null
+  /** Nomor sertifikat standar (dari setup.standard_instruments[].certificate_no). */
+  standardCertificateNumber?: string | null
   place: string
   startDate: string
   endDate: string
@@ -89,6 +94,12 @@ function sensorV1ToLegacyEntry(s: SensorResultV1): LegacyResultEntry {
     standardCertificateId: s.setup.standard_instruments
       .map((standard) => standard.certificate_id)
       .find((id): id is number => typeof id === 'number') ?? null,
+    standardInstrumentId: s.setup.standard_instruments
+      .map((standard) => standard.instrument_id)
+      .find((id): id is number => typeof id === 'number') ?? null,
+    standardCertificateNumber: s.setup.standard_instruments
+      .map((standard) => standard.certificate_no)
+      .find((no): no is string => typeof no === 'string' && no.trim() !== '') ?? null,
     place: s.display.place,
     startDate: s.setup.start_date,
     endDate: s.setup.end_date,
@@ -99,6 +110,7 @@ function sensorV1ToLegacyEntry(s: SensorResultV1): LegacyResultEntry {
         key: r.key,
         value: r.value,
         unit: r.unit,
+        ...(r.uncertaintyMeta ? { uncertaintyMeta: r.uncertaintyMeta } : {}),
         ...(r.extraValues && r.extraValues.length > 0 ? { extraValues: r.extraValues } : {}),
       })),
     })),

@@ -105,8 +105,12 @@ export const useCertificateVerification = () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) throw new Error('Not authenticated')
       
-      const res = await fetch('/api/certificate-verification/pending', {
-        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      const res = await fetch(`/api/certificate-verification/pending?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Cache-Control': 'no-cache',
+        }
       })
       if (!res.ok) throw new Error('Failed to fetch pending certificates')
       const data = await res.json()
@@ -336,6 +340,21 @@ export const useCertificateVerification = () => {
   useEffect(() => { 
     fetchVerifications()
     fetchPendingCertificates()
+  }, [])
+
+  // Daftar penandatangan harus segera membaca status terbaru setelah sertifikat
+  // di-reset dari halaman lain. Sebelumnya data hanya di-fetch sekali saat mount,
+  // sehingga status lama "completed" tetap tampil dan tombol TTE tidak muncul.
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') fetchPendingCertificates()
+    }
+    window.addEventListener('focus', refreshWhenVisible)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      window.removeEventListener('focus', refreshWhenVisible)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
   }, [])
 
   return { 

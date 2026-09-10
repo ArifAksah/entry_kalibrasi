@@ -9,7 +9,9 @@ import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
 import { formatUnit, needsConversion } from '../../../../lib/unitConversion'
 import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClassName } from '../../../../lib/rich-text'
 import { resultsToLegacyView } from '../../../../lib/validators/certificate-results-render-adapter'
-import { formatLatexUnit } from '../../../../lib/qc-utils'
+import { calculateRoomCondition } from '../../../../lib/room-condition'
+import { formatCalibrationReading, formatCalibrationCorrection, formatCalibrationUncertainty } from '../../../../lib/result-display-format'
+import { DecimalPrecisionControl } from '../../../../components/ui/DecimalPrecisionControl'
 import { supabase } from '../../../../lib/supabase'
 import { BALAI_DATA, DEFAULT_SIGNER_TITLE } from '../../../../lib/pdf-service/templates/shared/balai-data'
 import { isPyranometer, PyranometerSensorData } from '../../../../lib/uncertainty-utils'
@@ -283,53 +285,10 @@ const ViewCertificatePage: React.FC = () => {
   const qrRenderedCountRef = useRef<number>(0)
   const expectedQRCodesRef = useRef<number>(0)
   const [allRawData, setAllRawData] = useState<any[]>([])
+  const [decimalPrecision, setDecimalPrecision] = useState(4)
 
   const computeEnvCondition = useCallback((type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
-    // Gunakan unit_std / unit_uut dari raw data untuk identifikasi lebih akurat
-    // Format LaTeX units (e.g., ^\circ C) ke readable (°C) sebelum compare
-    const matchedRows = sensorRawData.filter(r => {
-      const rawUnit = String(r.unit_std || r.unit_uut || '');
-      const unit = formatLatexUnit(rawUnit).toLowerCase().trim();
-      const name = (r.sheet_name || r.name || r.category || '').toLowerCase();
-
-      if (type === 'suhu') {
-        // Unit-based: °C, C, celcius, celsius
-        const unitIsTemp = unit && (unit.includes('°c') || unit.includes('c') || unit.includes('celcius') || unit.includes('celsius'));
-        // Name-based fallback
-        const nameIsTemp = ['suhu', 'temp', 'termometer', 'temperature', 'thermo'].some(k => name.includes(k));
-        return unitIsTemp || (nameIsTemp && !unit); // prefer unit if present
-      } else {
-        // kelembaban
-        // Unit-based: %, RH, r.h, kelembaban, humidity
-        const unitIsHum = unit && (unit.includes('%') || unit.includes('rh') || unit.includes('r.h') || unit.includes('kelembaban') || unit.includes('humidity') || unit.includes('hum'));
-        // Name-based fallback
-        const nameIsHum = ['kelembab', 'lembab', 'humidity', 'hum', 'hygro', 'rh', 'r.h'].some(k => name.includes(k));
-        return unitIsHum || (nameIsHum && !unit);
-      }
-    });
-
-    if (matchedRows.length === 0) return '-';
-
-    // Robust number extraction: handle string values from API
-    const values = matchedRows
-      .map(r => {
-        if (r.std_corrected != null) return Number(r.std_corrected);
-        const sd = Number(r.standard_data);
-        const sc = Number(r.std_correction ?? 0);
-        if (!isNaN(sd)) return sd + sc;
-        return NaN;
-      })
-      .filter(v => typeof v === 'number' && !isNaN(v));
-
-    if (values.length === 0) return '-';
-
-    const minV = Math.min(...values);
-    const maxV = Math.max(...values);
-    const mean = (minV + maxV) / 2;
-    const halfRange = maxV - mean;
-
-    const unit = type === 'suhu' ? '°C' : '%';
-    return `(${mean.toFixed(1)} ± ${halfRange.toFixed(1)}) ${unit}`;
+    return calculateRoomCondition(type, sensorRawData)?.display ?? '-';
   }, []);
 
   // Helper to resolve canonical sensor name
@@ -1977,6 +1936,8 @@ const ViewCertificatePage: React.FC = () => {
                                   const sensorRawData = sensorSessionId ? allRawData.filter(rd => String(rd.session_id || '') === String(sensorSessionId)) : [];
                                   const rawSuhu = computeEnvCondition('suhu', sensorRawData);
                                   const rawHum = computeEnvCondition('kelembaban', sensorRawData);
+                                  const suhuCondition = calculateRoomCondition('suhu', sensorRawData);
+                                  const humCondition = calculateRoomCondition('kelembaban', sensorRawData);
 
                                   let envList = Array.isArray(res?.environment) ? [...res.environment] : [];
 
@@ -1991,7 +1952,7 @@ const ViewCertificatePage: React.FC = () => {
                                     if (!hasHum && rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
                                   }
 
-                                  const envRows: Array<{ label: string; labelEng: string; value: React.ReactNode }> = envList.map((env: any) => {
+                                  const envRows: Array<{ label: string; labelEng: string; initial: React.ReactNode; final: React.ReactNode }> = envList.map((env: any) => {
                                     const key = String(env?.key || '')
                                     const lower = key.toLowerCase()
                                     const isSuhu = lower.includes('suhu')
@@ -2004,16 +1965,13 @@ const ViewCertificatePage: React.FC = () => {
                                         : `${key} `
                                     const eng = isSuhu ? 'Temperature' : isHum ? 'Relative Humidity' : ''
 
-                                    let finalValue = env?.value || '-'
-
-                                    // Override with computed QC data if available
-                                    if (isSuhu && rawSuhu !== '-') {
-                                      finalValue = rawSuhu
-                                    } else if (isHum && rawHum !== '-') {
-                                      finalValue = rawHum
+                                    const fallbackValue = env?.value || '-'
+                                    return {
+                                      label,
+                                      labelEng: eng,
+                                      initial: isSuhu ? suhuCondition?.initialDisplay ?? fallbackValue : isHum ? humCondition?.initialDisplay ?? fallbackValue : fallbackValue,
+                                      final: isSuhu ? suhuCondition?.finalDisplay ?? fallbackValue : isHum ? humCondition?.finalDisplay ?? fallbackValue : fallbackValue,
                                     }
-
-                                    return { label, labelEng: eng, value: finalValue }
                                   })
 
                                   return (
@@ -2030,24 +1988,20 @@ const ViewCertificatePage: React.FC = () => {
                                             </td>
                                           </tr>
                                         ))}
-                                        {/* Environment as label-value lines (no table) */}
                                         {envRows.length > 0 && (
                                           <tr>
                                             <td className="w-[45%]" />
                                             <td className="w-[5%]" />
                                             <td className="align-top" colSpan={2}>
                                               <div className="text-sm font-bold mb-1">Kondisi Lingkungan / <span className="italic">Environment condition</span></div>
-                                              <div className="space-y-1">
-                                                {envRows.map((er, idx) => (
-                                                  <div key={idx} className="grid grid-cols-[45%_5%_1fr] text-[10px]">
-                                                    <div className="font-semibold">
-                                                      {er.label}<span className="italic">{er.labelEng}</span>
-                                                    </div>
-                                                    <div>:</div>
-                                                    <div>{er.value}</div>
-                                                  </div>
-                                                ))}
-                                              </div>
+                                              <table className="w-full text-[10px]">
+                                                <thead><tr><th className="text-left"></th><th className="text-left">Awal</th><th className="text-left">Akhir</th></tr></thead>
+                                                <tbody>{envRows.map((er, idx) => <tr key={idx}>
+                                                  <td className="font-semibold">{er.label}<span className="italic">{er.labelEng}</span></td>
+                                                  <td>{er.initial}</td>
+                                                  <td>{er.final}</td>
+                                                </tr>)}</tbody>
+                                              </table>
                                             </td>
                                           </tr>
                                         )}
@@ -2060,7 +2014,10 @@ const ViewCertificatePage: React.FC = () => {
                               {/* Hasil Kalibrasi per Sensor */}
                               {Array.isArray(res?.table) && res.table.length > 0 && (
                                 <div className="mt-6 space-y-3 w-[85%] mx-auto">
-                                  <div className="text-[12px] font-bold text-center mb-1">Hasil Kalibrasi / <span className="italic font-normal">Calibration Result</span></div>
+                                  <div className="text-[12px] font-bold text-center mb-1 flex items-center justify-center gap-4">
+                                    Hasil Kalibrasi / <span className="italic font-normal">Calibration Result</span>
+                                    <DecimalPrecisionControl value={decimalPrecision} onChange={setDecimalPrecision} />
+                                  </div>
                                   {res.table.map((sec: any, sIdx: number) => {
                                   const rows = Array.isArray(sec?.rows) ? sec.rows : []
                                   
@@ -2108,8 +2065,8 @@ const ViewCertificatePage: React.FC = () => {
                                                   {headers.length > 0 ? (
                                                     <>
                                                       <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
-                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? (isPyrano ? '-' : unitDisplay) : (isPyrano ? (row.unit || '-') : formatUnit(row.unit || '-'))}</td>
-                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? (isPyrano ? '%' : unitDisplay) : (row.value || '-')}</td>
+                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? (isPyrano ? '-' : unitDisplay) : (isPyrano ? formatCalibrationCorrection(row.unit, true, decimalPrecision) : formatCalibrationCorrection(row.unit, false, decimalPrecision))}</td>
+                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? (isPyrano ? '%' : unitDisplay) : formatCalibrationUncertainty(row.value, isPyrano, decimalPrecision)}{!isPyrano && row.uncertaintyMeta ? <span title={`U95 hitung: ${row.uncertaintyMeta.raw_u95}\nCMC: ${row.uncertaintyMeta.cmc_value_output ?? '-'} ${row.uncertaintyMeta.cmc_unit_native ?? ''}\nRule: ${row.uncertaintyMeta.reporting_rule}`} className="ml-1 inline-block h-3.5 w-3.5 align-middle cursor-help rounded-full bg-blue-100 text-[8px] leading-none text-center text-blue-700">i</span> : null}</td>
                                                       {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
                                                         <td key={`extra-${vi}`} className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (v || '-')}</td>
                                                       ))}
@@ -2118,8 +2075,8 @@ const ViewCertificatePage: React.FC = () => {
                                                     // Fallback
                                                     <>
                                                       <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
-                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : formatUnit(row.unit || '-')}</td>
-                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.value || '-')}</td>
+                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : formatCalibrationCorrection(row.unit, isPyrano, decimalPrecision)}</td>
+                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : formatCalibrationUncertainty(row.value, isPyrano, decimalPrecision)}</td>
                                                     </>
                                                   )}
                                                 </tr>

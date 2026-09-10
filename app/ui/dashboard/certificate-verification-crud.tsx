@@ -115,10 +115,27 @@ const CertificateVerificationCRUD: React.FC = () => {
   const [isPassphraseModalOpen, setIsPassphraseModalOpen] = useState(false)
   const [passphrase, setPassphrase] = useState('')
   const [isSigning, setIsSigning] = useState(false)
+  const [signingSuccess, setSigningSuccess] = useState(false)
+  const [signingSeconds, setSigningSeconds] = useState(0)
   const [passphraseError, setPassphraseError] = useState<string | null>(null)
   // Ref untuk menyimpan certificate ID tepat saat passphrase modal dibuka
   // Menghindari stale closure / selectedCertificate ter-reset sebelum signing selesai
   const signingCertificateIdRef = React.useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!isSigning) return
+    setSigningSeconds(0)
+    const interval = window.setInterval(() => setSigningSeconds(value => value + 1), 1000)
+    return () => window.clearInterval(interval)
+  }, [isSigning])
+
+  const signingProgressText = signingSeconds < 8
+    ? 'Memvalidasi sertifikat dan otorisasi penandatangan...'
+    : signingSeconds < 25
+      ? 'Memuat identitas alat, pemilik, personel, dan standar kalibrasi...'
+      : signingSeconds < 60
+        ? 'Menyusun seluruh halaman PDF dan kondisi lingkungan...'
+        : 'Mengirim dokumen ke BSrE dan menyimpan PDF bertanda tangan...'
 
   // BSrE Verification State
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false)
@@ -371,6 +388,7 @@ const CertificateVerificationCRUD: React.FC = () => {
         setIsSubmitting(false)
         setPassphrase('')
         setPassphraseError(null)
+        setSigningSuccess(false)
         // Simpan certificate ID ke ref agar tidak hilang saat modal transition
         signingCertificateIdRef.current = String(selectedCertificate.id)
         setIsPassphraseModalOpen(true)
@@ -482,6 +500,7 @@ const CertificateVerificationCRUD: React.FC = () => {
         setIsSubmitting(false)
         setPassphrase('')
         setPassphraseError(null)
+        setSigningSuccess(false)
         signingCertificateIdRef.current = String(selectedCertificate.id)
         setIsPassphraseModalOpen(true)
         return
@@ -1699,7 +1718,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                 </svg>
                 <h3 className="text-lg font-semibold text-gray-900">Tanda Tangan Elektronik (TTE)</h3>
               </div>
-              {!isSigning && (
+              {!isSigning && !signingSuccess && (
                 <button
                   onClick={() => {
                     setIsPassphraseModalOpen(false)
@@ -1725,16 +1744,28 @@ const CertificateVerificationCRUD: React.FC = () => {
               </div>
 
               {/* Loading state saat proses berlangsung */}
-              {isSigning ? (
+              {signingSuccess ? (
+                <div className="flex flex-col items-center justify-center py-6 space-y-4">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                    <svg className="h-9 w-9" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-base font-semibold text-emerald-800">Dokumen berhasil ditandatangani</p>
+                    <p className="mt-1 text-xs text-slate-500">PDF lengkap telah selesai dibuat dan disimpan. Daftar akan diperbarui.</p>
+                  </div>
+                </div>
+              ) : isSigning ? (
                 <div className="flex flex-col items-center justify-center py-6 space-y-4">
                   <div className="relative">
                     <div className="w-16 h-16 rounded-full border-4 border-blue-100"></div>
                     <div className="w-16 h-16 rounded-full border-4 border-blue-600 border-t-transparent animate-spin absolute inset-0"></div>
                   </div>
                   <div className="text-center space-y-1">
-                    <p className="text-sm font-semibold text-gray-800">Sedang memproses...</p>
-                    <p className="text-xs text-gray-500">Membuat PDF dan mengirim ke BSrE untuk penandatanganan.</p>
-                    <p className="text-xs text-amber-600 font-medium">Proses ini dapat memakan waktu 1-3 menit, harap tunggu.</p>
+                    <p className="text-sm font-semibold text-gray-800">Menyiapkan PDF bertanda tangan</p>
+                    <p className="text-xs text-gray-600">{signingProgressText}</p>
+                    <p className="text-xs text-amber-600 font-medium">Berjalan {signingSeconds} detik. Jangan menutup atau me-refresh halaman.</p>
                   </div>
                 </div>
               ) : passphraseError && passphraseError.toLowerCase().includes('nik') ? null : (
@@ -1796,7 +1827,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                   Atur NIK di Profil
                 </a>
               )}
-              {!isSigning && (
+              {!isSigning && !signingSuccess && (
                 <button
                   type="button"
                   onClick={() => {
@@ -1809,7 +1840,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                   Batal
                 </button>
               )}
-              {!(passphraseError && passphraseError.toLowerCase().includes('nik')) && (
+              {!signingSuccess && !(passphraseError && passphraseError.toLowerCase().includes('nik')) && (
                 <button
                   type="button"
                   data-sign-btn
@@ -1824,6 +1855,7 @@ const CertificateVerificationCRUD: React.FC = () => {
 
                     // Clear error sebelum mulai
                     setPassphraseError(null)
+                    setSigningSuccess(false)
 
                     try {
                       setIsSigning(true)
@@ -1944,16 +1976,18 @@ const CertificateVerificationCRUD: React.FC = () => {
                       // === SUCCESS ===
                       setIsSigning(false)
                       setPassphrase('')
-                      setIsPassphraseModalOpen(false)
+                      setSigningSuccess(true)
                       localStorage.setItem('certificate_signed', JSON.stringify({
                         certificateId: selectedCertificate.id,
                         timestamp: Date.now()
                       }))
                       // Tampilkan notifikasi sukses menggunakan useAlert (bukan window.alert)
                       // window.alert() bisa di-suppress browser saat async handler sebelum reload
-                      showSuccess('Dokumen berhasil ditandatangani. Halaman akan diperbarui...')
-                      // Tunggu 3 detik agar notifikasi terlihat sebelum reload
+                      showSuccess('Dokumen berhasil ditandatangani dan PDF lengkap telah disimpan.')
+                      // Pertahankan panel sukses agar pengguna mendapat konfirmasi visual.
                       setTimeout(() => {
+                        setIsPassphraseModalOpen(false)
+                        setSigningSuccess(false)
                         window.location.reload()
                       }, 3000)
 

@@ -528,7 +528,7 @@ async function main() {
   loadEnvironment()
   const argv = process.argv.slice(2)
   const command = argv[0]
-  const filePath = getFlagValue(argv, '--file') || 'final_output_stasiun.csv'
+  const filePath = getFlagValue(argv, '--file') || 'scripts/data/final_output_stasiun.csv'
   const purge = argv.includes('--purge')
   const force = argv.includes('--force')
   const dryRun = argv.includes('--dry-run')

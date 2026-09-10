@@ -55,7 +55,9 @@ export function normalizeStdUncertaintyComponents(params: {
     return {
         interpolatedCertU95: converted ? convertDeltaUnit(interpolatedCertU95, unitStd, unitUut) : interpolatedCertU95,
         driftStd: converted ? convertDeltaUnit(driftStd, unitStd, unitUut) : driftStd,
-        resolusiStd: converted ? convertDeltaUnit(resolusiStd, unitStd, unitUut) : resolusiStd,
+        // Workbook keeps the numeric STD resolution unchanged, then applies /2
+        // in the uncertainty budget even when the output unit differs.
+        resolusiStd,
         converted,
         needsUnitConversion,
     };
@@ -106,8 +108,7 @@ export function interpolateU95FromPoints(
  * Using Student's t-distribution table approximation for 95% CL.
  */
 export function getCoverageFactorFor95(veff: number): number {
-    // Round to nearest integer for table lookup
-    const v = Math.round(veff);
+    const v = Math.floor(veff);
 
     if (v <= 0) return 2.0; // Fallback
 
@@ -124,25 +125,22 @@ export function getCoverageFactorFor95(veff: number): number {
         120: 1.980, 1000: 1.962
     };
 
-    if (tTable[v]) return tTable[v];
+    if (v <= 30 && tTable[v]) return tTable[v];
 
-    // Interpolate or find closest for values not explicitly in table
-    const keys = Object.keys(tTable).map(Number).sort((a, b) => a - b);
-    if (v > keys[keys.length - 1]) return 1.96; // Approaches normal distribution
-
-    // Find bounds
-    let lower = 1, upper = 2;
-    for (let i = 0; i < keys.length - 1; i++) {
-        if (v > keys[i] && v < keys[i + 1]) {
-            lower = keys[i];
-            upper = keys[i + 1];
-            break;
-        }
-    }
-
-    // Linear interpolation between the two bounds
-    const fraction = (v - lower) / (upper - lower);
-    return tTable[lower] - fraction * (tTable[lower] - tTable[upper]);
+    // Cornish-Fisher expansion for the 97.5th percentile of Student's t.
+    // Workbook LOOKUP values match t_{0.975, floor(veff)} rather than a coarse
+    // linear interpolation between only a few tabulated degrees of freedom.
+    const z = 1.959963984540054;
+    const z2 = z * z;
+    const z3 = z2 * z;
+    const z5 = z3 * z2;
+    const z7 = z5 * z2;
+    const z9 = z7 * z2;
+    return z
+        + (z3 + z) / (4 * v)
+        + (5 * z5 + 16 * z3 + 3 * z) / (96 * v ** 2)
+        + (3 * z7 + 19 * z5 + 17 * z3 - 15 * z) / (384 * v ** 3)
+        + (79 * z9 + 776 * z7 + 1482 * z5 - 1920 * z3 - 945 * z) / (92160 * v ** 4);
 }
 
 /**
@@ -221,8 +219,9 @@ export function calculateUncertaintyBudget(params: {
     // 2. Sertifikat Std: U=U95, div=2.000, vi=50
     addComponent('Sertifikat Std', 'Normal', 'u_sertf', interpolatedCertU95, 2.0, 50);
 
-    // 3. Drift Std: a=drift, div=√3 (digital) or √6 (analog), vi=50
-    addComponent('Drift Std', resDist, 'u_drift', driftStd, resDivisor, 50);
+    // 3. Drift Std: workbook uses a=drift/2, div=√3 or √6, vi=50
+    const a_drift_std = driftStd / 2;
+    addComponent('Drift Std', resDist, 'u_drift', a_drift_std, resDivisor, 50);
 
     // 4. Resolusi Std: a=resolusi/2, div=√3 (digital) or √6 (analog), vi=50
     const a_res_std = resolusiStd / 2;
@@ -242,7 +241,7 @@ export function calculateUncertaintyBudget(params: {
     const eff_deg_freedom_veff = sum_ci_ui_quad_vi > 0 ? Math.pow(comb_uncert_uc, 4) / sum_ci_ui_quad_vi : Infinity;
 
     // Coverage Factor 95%
-    const cov_factor_95 = getCoverageFactorFor95(Math.floor(eff_deg_freedom_veff));
+    const cov_factor_95 = getCoverageFactorFor95(eff_deg_freedom_veff);
 
     // Expanded uncertainty
     const expanded_uncert_u95 = cov_factor_95 * comb_uncert_uc;

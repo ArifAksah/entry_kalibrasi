@@ -242,7 +242,7 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
         const hasResultsFooter = !!document.querySelector('.print-repeat-footer')
         if (!hasCoverFooter && !hasResultsFooter) return false
         return true
-      }, { timeout: 30000 }).then(() => true).catch(() => {
+      }, { timeout: 120000 }).then(() => true).catch(() => {
         console.log('[PDF Helper] Content readiness timeout')
         return false
       })
@@ -1091,4 +1091,3 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
     return { success: false, error: error.message || 'Unknown error' }
   }
 }
-

@@ -16,7 +16,7 @@ describe('uncertainty component unit normalization', () => {
         expect(normalized.converted).toBe(true);
         expect(normalized.interpolatedCertU95).toBeCloseTo(0.933045356371488, 12);
         expect(normalized.driftStd).toBeCloseTo(0.7512958963282919, 12);
-        expect(normalized.resolusiStd).toBeCloseTo(0.19438444924406, 12);
+        expect(normalized.resolusiStd).toBeCloseTo(0.1, 12);
 
         const result = calculateUncertaintyBudget({
             unit: 'knot',
@@ -30,9 +30,9 @@ describe('uncertainty component unit normalization', () => {
         expect(result.components.find(component => component.name === 'Sertifikat Std')?.u_a)
             .toBeCloseTo(0.933045356371488, 12);
         expect(result.components.find(component => component.name === 'Drift Std')?.u_a)
-            .toBeCloseTo(0.7512958963282919, 12);
+            .toBeCloseTo(0.37564794816414593, 12);
         expect(result.components.find(component => component.name === 'Resolusi Std')?.u_a)
-            .toBeCloseTo(0.09719222462203, 12);
+            .toBeCloseTo(0.05, 12);
         expect(result.components.every(component => component.unit === 'knot')).toBe(true);
     });
 

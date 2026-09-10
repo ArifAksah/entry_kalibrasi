@@ -38,51 +38,26 @@ export async function GET(request: NextRequest) {
       stationSelect = "station!inner(id, name, user_stations!inner(user_id))";
     }
 
-    // 2. Determine Sensor Join Logic
-    // If filtering for standard, use !inner join to enforce standard sensor existence
-    let sensorSelect =
-      "sensor!left(id, name, type, serial_number, is_standard, sensor_name_id)";
-    if (type === "standard") {
-      sensorSelect =
-        "sensor!inner(id, name, type, serial_number, is_standard, sensor_name_id)";
-    }
-
-    // Query dasar dengan join ke tabel station dan sensor (untuk filtering)
-    // 3. Compose Query
-    // Explicitly select all columns including names (FK to instrument_names)
-    let query = supabaseAdmin
-      .from("instrument")
-      .select(`
-        id,
-        manufacturer,
-        type,
-        serial_number,
-        name_alias,
-        others,
-        names,
-        instrument_code_id,
-        instrument_type_id,
-        instrument_id,
-        memiliki_lebih_satu,
-        station_id,
-        created_at,
-        ${stationSelect},
-        ${sensorSelect}
-      `, { count: "exact" });
-
-    // 4. Apply Filters
-    if (type === "standard") {
-      query = query.eq("sensor.is_standard", true);
-    }
+    // 2. Tentukan Sensor Join Logic + komposisi query
+    // NOTE: kolom resolution/graduating/range_capacity harus ikut diselect agar
+    // U95 ketidakpastian (yang memakai resolusi UUT/STD) terbaca saat hitung di
+    // QCDataModal. Kalau tidak, resolusi jatuh ke 0 dan uncertainty salah kecil.
+    // Bila kolom-kolom itu belum ada di DB (migrasi belum dijalankan / schema
+    // cache belum refresh), query retry memakai daftar kolom lama agar list
+    // instrumen tidak 500 dan halaman print/edit tetap berfungsi.
+    const sensorFields =
+      "id, name, type, serial_number, is_standard, sensor_name_id, " +
+      "resolution, graduating, graduating_unit, range_capacity, range_capacity_unit";
+    const sensorFieldsLegacy =
+      "id, name, type, serial_number, is_standard, sensor_name_id";
 
     // Untuk filter 'uut': sembunyikan instrumen yang memiliki sensor standar
     // (mis. alat standar), sehingga daftar hanya menampilkan UUT murni.
     // Relasi utama: kolom `sensor.instrument_id` (FK pada tabel sensor menunjuk ke instrument),
     // serta tabel junction `instrument_sensors` untuk konfigurasi multi-sensor lama.
+    const uutExcluded = new Set<number>();
     if (type === "uut") {
       try {
-        const excludedSet = new Set<number>();
-
         // 1) Instrumen dengan sensor langsung (sensor.instrument_id) berstatus standar
         const { data: directStandardSensors } = await supabaseAdmin
           .from("sensor")
@@ -91,7 +66,7 @@ export async function GET(request: NextRequest) {
 
         (directStandardSensors || []).forEach((row: any) => {
           const instrumentId = Number(row.instrument_id);
-          if (Number.isFinite(instrumentId)) excludedSet.add(instrumentId);
+          if (Number.isFinite(instrumentId)) uutExcluded.add(instrumentId);
         });
 
         // 2) Instrumen multi-sensor via tabel junction `instrument_sensors`
@@ -109,17 +84,9 @@ export async function GET(request: NextRequest) {
           if (!junctionError) {
             (linkedInstruments || []).forEach((row: any) => {
               const instrumentId = Number(row.instrument_id);
-              if (Number.isFinite(instrumentId)) excludedSet.add(instrumentId);
+              if (Number.isFinite(instrumentId)) uutExcluded.add(instrumentId);
             });
           }
-        }
-
-        if (excludedSet.size > 0) {
-          query = query.not(
-            "id",
-            "in",
-            `(${Array.from(excludedSet).join(",")})`,
-          );
         }
       } catch (filterError) {
         console.warn(
@@ -129,25 +96,85 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Tambahkan filter pencarian jika ada query 'q'
-    if (q) {
-      query = query.or(
-              `manufacturer.ilike.%${q}%,type.ilike.%${q}%,serial_number.ilike.%${q}%,name_alias.ilike.%${q}%,others.ilike.%${q}%`,
-            );
+    const buildInstrumentsQuery = (sensorFieldList: string) => {
+      // Filter untuk standard gunakan !inner agar hanya instrumen bersensor standar
+      const sensorSelect =
+        type === "standard"
+          ? `sensor!inner(${sensorFieldList})`
+          : `sensor!left(${sensorFieldList})`;
+
+      let queryBuilder = supabaseAdmin
+        .from("instrument")
+        .select(
+          `
+        id,
+        manufacturer,
+        type,
+        serial_number,
+        name_alias,
+        others,
+        names,
+        instrument_code_id,
+        instrument_type_id,
+        instrument_id,
+        memiliki_lebih_satu,
+        station_id,
+        created_at,
+        ${stationSelect},
+        ${sensorSelect}
+      `,
+          { count: "exact" },
+        );
+
+      if (type === "standard") {
+        queryBuilder = queryBuilder.eq("sensor.is_standard", true);
+      }
+
+      if (type === "uut" && uutExcluded.size > 0) {
+        queryBuilder = queryBuilder.not(
+          "id",
+          "in",
+          `(${Array.from(uutExcluded).join(",")})`,
+        );
+      }
+
+      // Tambahkan filter pencarian jika ada query 'q'
+      if (q) {
+        queryBuilder = queryBuilder.or(
+          `manufacturer.ilike.%${q}%,type.ilike.%${q}%,serial_number.ilike.%${q}%,name_alias.ilike.%${q}%,others.ilike.%${q}%`,
+        );
+      }
+
+      if (userId) {
+        queryBuilder = queryBuilder.eq("station.user_stations.user_id", userId);
+      }
+
+      // Terapkan paginasi dan pengurutan
+      const start = (page - 1) * pageSize;
+      const end = start + pageSize - 1;
+
+      return queryBuilder.order("created_at", { ascending: false }).range(start, end);
+    };
+
+    // Eksekusi query — dengan fallback kolom sensor lama bila perlu
+    let { data, error, count } = await buildInstrumentsQuery(sensorFields);
+
+    const isMissingSensorColumn =
+      !!error &&
+      /could not find .*(resolution|graduating|range_capacity)/i.test(
+        String(error.message || ""),
+      );
+
+    if (isMissingSensorColumn) {
+      console.warn(
+        "[instruments] Kolom sensor baru belum ada di DB, retry dengan daftar kolom lama:",
+        error?.message,
+      );
+      const retryRes = await buildInstrumentsQuery(sensorFieldsLegacy);
+      data = retryRes.data;
+      error = retryRes.error;
+      count = retryRes.count;
     }
-
-    if (userId) {
-      query = query.eq("station.user_stations.user_id", userId);
-    }
-
-    // Terapkan paginasi dan pengurutan
-    const start = (page - 1) * pageSize;
-    const end = start + pageSize - 1;
-
-    query = query.order("created_at", { ascending: false }).range(start, end);
-
-    // Eksekusi query
-    const { data, error, count } = await query;
 
     // Error handling yang lebih baik
     if (error) {

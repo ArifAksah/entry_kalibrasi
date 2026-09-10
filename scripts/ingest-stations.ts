@@ -492,7 +492,7 @@ async function main() {
   loadEnvironment()
   const argv = process.argv.slice(2)
   const command = argv[0]
-  const filePath = getFlagValue(argv, '--file') || 'tabular_upt_bmkg.xlsx'
+  const filePath = getFlagValue(argv, '--file') || 'scripts/data/tabular_upt_bmkg.xlsx'
   const purge = argv.includes('--purge')
   const force = argv.includes('--force')
   const dryRun = argv.includes('--dry-run')

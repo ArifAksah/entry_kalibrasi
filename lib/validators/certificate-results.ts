@@ -74,6 +74,17 @@ export const ResultTableRowSchema = z.object({
   unit: z.string().default(''),
   /** Nilai tambahan untuk tabel multi-kolom (mis. pengulangan). */
   extraValues: z.array(z.string()).optional(),
+  uncertaintyMeta: z.object({
+    raw_u95: z.number(),
+    reported_u95: z.number(),
+    reporting_rule: z.string(),
+    cmc_profile_id: z.number().nullable().optional(),
+    cmc_profile_code: z.string().nullable().optional(),
+    cmc_version: z.number().nullable().optional(),
+    cmc_value_native: z.number().nullable().optional(),
+    cmc_unit_native: z.string().nullable().optional(),
+    cmc_value_output: z.number().nullable().optional(),
+  }).optional(),
 })
 
 /** Satu tabel (punya judul + list baris). */

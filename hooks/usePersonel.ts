@@ -12,6 +12,7 @@ export type Person = {
   station_id?: string | number | null
   balai_id?: number | null
   signer_title?: string | null
+  is_active?: boolean | null
 }
 
 export type UsePersonelReturn = {
@@ -28,6 +29,8 @@ export type UsePersonelReturn = {
   prevPage: () => void
   refresh: () => Promise<void>
   setRoleLocal: (user_id: string, role: Person['role']) => void
+  includeInactive: boolean
+  toggleIncludeInactive: () => void
 }
 
 const usePersonel = (initialPage = 1, pageSize = 10): UsePersonelReturn => {
@@ -38,6 +41,7 @@ const usePersonel = (initialPage = 1, pageSize = 10): UsePersonelReturn => {
   const [totalPages, setTotalPages] = useState<number>(1)
   const [currentPage, setCurrentPage] = useState<number>(initialPage)
   const [searchTerm, setSearchTerm] = useState<string>('')
+  const [includeInactive, setIncludeInactive] = useState(false)
 
   const abortRef = useRef<AbortController | null>(null)
 
@@ -55,6 +59,7 @@ const usePersonel = (initialPage = 1, pageSize = 10): UsePersonelReturn => {
       params.set('page', String(currentPage))
       params.set('pageSize', String(pageSize))
       if (searchTerm) params.set('search', searchTerm)
+      if (includeInactive) params.set('includeInactive', 'true')
 
       const res = await fetch(`/api/personel?${params.toString()}`, { signal: controller.signal })
       if (!res.ok) {
@@ -105,7 +110,7 @@ const usePersonel = (initialPage = 1, pageSize = 10): UsePersonelReturn => {
   useEffect(() => {
     fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, pageSize])
+  }, [currentPage, pageSize, includeInactive])
 
   // Debounce search
   useEffect(() => {
@@ -133,6 +138,11 @@ const usePersonel = (initialPage = 1, pageSize = 10): UsePersonelReturn => {
     setItems(prev => prev.map(p => p.id === user_id ? { ...p, role } : p))
   }
 
+  const toggleIncludeInactive = () => {
+    setIncludeInactive(prev => !prev)
+    setCurrentPage(1)
+  }
+
   return {
     items,
     loading,
@@ -147,6 +157,8 @@ const usePersonel = (initialPage = 1, pageSize = 10): UsePersonelReturn => {
     prevPage,
     refresh,
     setRoleLocal,
+    includeInactive,
+    toggleIncludeInactive,
   }
 }
 

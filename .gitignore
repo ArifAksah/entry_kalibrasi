@@ -108,3 +108,21 @@ temp/
 sqlMigrate
 
 # Certificate PDF storage (local filesystem)
+tsbuildinfo
+
+# Sensitive keys
+.env.keys
+.env.production
+!deploy/.env.production
+
+# Runtime PDF output (generated certificates)
+/e-certificate-signed/
+
+# DB/session backup snapshots
+/backups/
+
+# Build incremental cache
+*.tsbuildinfo
+
+# Station dataset inputs (ingest scripts only; large/binary, not part of app)
+/scripts/data/
