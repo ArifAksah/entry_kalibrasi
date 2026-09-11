@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { clientSafeMessage } from '../../../../lib/api-error'
 
 // Use service role client to bypass RLS and get all stations
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
 
       if (error) {
         console.error('Supabase error fetching all stations:', error)
-        return NextResponse.json({ error: error.message }, { status: 500 })
+        return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
       }
 
       if (totalCount === null) {

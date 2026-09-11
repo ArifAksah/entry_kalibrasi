@@ -6,6 +6,7 @@ import {
   ResultsValidationError,
 } from '../../../lib/validators/certificate-results-normalize'
 import { authenticateRequest, filterCertificatesForUser, getUserRole } from '../../../lib/certificate-access'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 // Using shared supabaseAdmin with env fallbacks for consistency
 
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
         console.warn('[certificates] Supabase unreachable, returning empty list fallback.')
         return NextResponse.json([])
       }
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     }
 
     const visibleCertificates = await filterCertificatesForUser(user.id, role, data || [])

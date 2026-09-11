@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../../lib/supabase'
 import { createClient } from '@supabase/supabase-js'
+import { clientSafeMessage } from '../../../../lib/api-error'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,7 +20,7 @@ export async function GET(
       .select('*')
       .eq('id', id)
       .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     return NextResponse.json(data)
   } catch (e) {
     return NextResponse.json({ error: 'Failed to fetch record' }, { status: 500 })
@@ -58,7 +59,7 @@ export async function PUT(
       .eq('id', id)
       .select()
       .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     return NextResponse.json(data)
   } catch (e) {
     return NextResponse.json({ error: 'Failed to update record' }, { status: 500 })
@@ -75,7 +76,7 @@ export async function DELETE(
       .from('notes_instrumen_standard')
       .delete()
       .eq('id', id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     return NextResponse.json({ message: 'Deleted' })
   } catch (e) {
     return NextResponse.json({ error: 'Failed to delete record' }, { status: 500 })

@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../../../lib/supabase'
+import { requireCertWorkflowAccess } from '../../../../../lib/api-auth'
+import { clientSafeMessage } from '../../../../../lib/api-error'
 
 export async function POST(request: NextRequest) {
   try {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session?.access_token) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-
     const { certificate_id, completion_notes } = await request.json()
 
     if (!certificate_id) {
       return NextResponse.json({ error: 'Certificate ID is required' }, { status: 400 })
     }
+
+    const gate = await requireCertWorkflowAccess(request, certificate_id, {
+      matchColumns: ['authorized_by', 'assignor', 'sent_by', 'created_by'],
+      message: 'Hanya admin atau petugas yang menangani sertifikat ini yang dapat menyelesaikan perbaikan',
+    })
+    if (gate instanceof NextResponse) return gate
 
     // Call the database function to complete repair
     const { data, error } = await supabase.rpc('complete_certificate_repair', {
@@ -19,7 +24,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, data })

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../../lib/supabase'
+import { clientSafeMessage } from '../../../../lib/api-error'
 
 // GET - Get single sensor name
 export async function GET(
@@ -15,7 +16,7 @@ export async function GET(
       .single()
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 404 })
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 404 })
     }
 
     return NextResponse.json({ data })
@@ -46,7 +47,7 @@ export async function PUT(
       .single()
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 400 })
     }
 
     return NextResponse.json({ data })
@@ -68,7 +69,7 @@ export async function DELETE(
       .eq('id', id)
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 400 })
     }
 
     return NextResponse.json({ message: 'Sensor name deleted successfully' })

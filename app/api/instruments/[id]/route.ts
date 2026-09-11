@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { clientSafeMessage } from '../../../../lib/api-error'
 
 // Use service role client to avoid RLS issues on server-side updates
 const supabaseAdmin = createClient(
@@ -53,7 +54,7 @@ export async function GET(
       .single();
 
     if (error)
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
     return NextResponse.json(data);
   } catch (e) {
     return NextResponse.json(
@@ -123,7 +124,7 @@ export async function PUT(
       .single();
 
     if (error)
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 400 });
     return NextResponse.json(data);
   } catch (e) {
     return NextResponse.json(

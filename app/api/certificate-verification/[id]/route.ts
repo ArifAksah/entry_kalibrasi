@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { clientSafeMessage } from '../../../../lib/api-error'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -64,7 +65,7 @@ export async function GET(
         .single()
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
+        return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
       }
       return NextResponse.json(data)
     } else {
@@ -83,7 +84,7 @@ export async function GET(
         .order('created_at', { ascending: false })
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
+        return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
       }
       return NextResponse.json(data)
     }
@@ -196,7 +197,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     }
 
     return NextResponse.json(data, { status: 201 })
@@ -271,7 +272,7 @@ export async function PUT(
       .single()
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     }
 
     // If Verifikator 1 approved after a rejection from Verifikator 2,
@@ -403,7 +404,7 @@ export async function DELETE(
       .eq('id', id)
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     }
 
     return NextResponse.json({ message: 'Verification deleted successfully' })

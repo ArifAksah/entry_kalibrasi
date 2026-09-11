@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { generateAndSaveCertificatePDF } from '../../../lib/certificate-pdf-helper'
 import fs from 'fs'
 import path from 'path'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 /**
  * Test endpoint to manually trigger PDF generation
@@ -44,18 +45,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: 'PDF generated successfully',
-        pdfPath: result.pdfPath,
-        filePath: filePath,
         fileExists: fileExists,
         fileSize: fileSize,
-        storageDirectory: storageDir,
         storageDirectoryExists: fs.existsSync(storageDir)
       })
     } else {
       return NextResponse.json({
         success: false,
-        error: result.error,
-        storageDirectory: storageDir,
+        error: clientSafeMessage(result.error, 'PDF gagal dibuat.'),
         storageDirectoryExists: fs.existsSync(storageDir)
       }, { status: 500 })
     }
@@ -63,8 +60,7 @@ export async function POST(request: NextRequest) {
     console.error('[Test PDF] Error:', error)
     return NextResponse.json({
       success: false,
-      error: error.message || 'Unknown error',
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      error: clientSafeMessage(error, 'PDF gagal dibuat.')
     }, { status: 500 })
   }
 }
@@ -74,26 +70,21 @@ export async function POST(request: NextRequest) {
  */
 export async function GET() {
   try {
-    const cwd = process.cwd()
-    const storageDir = path.join(cwd, 'e-certificate-signed')
+    const storageDir = path.join(process.cwd(), 'e-certificate-signed')
     const dirExists = fs.existsSync(storageDir)
     
-    let files: string[] = []
+    let fileCount = 0
     if (dirExists) {
-      files = fs.readdirSync(storageDir).filter(f => f.endsWith('.pdf'))
+      fileCount = fs.readdirSync(storageDir).filter(f => f.endsWith('.pdf')).length
     }
 
     return NextResponse.json({
-      currentWorkingDirectory: cwd,
-      storageDirectory: storageDir,
       directoryExists: dirExists,
-      fileCount: files.length,
-      files: files
+      fileCount
     })
   } catch (error: any) {
     return NextResponse.json({
-      error: error.message
+      error: clientSafeMessage(error, 'Status penyimpanan PDF tidak dapat diperiksa.')
     }, { status: 500 })
   }
 }
-

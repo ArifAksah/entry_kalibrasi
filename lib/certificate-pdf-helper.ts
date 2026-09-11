@@ -669,8 +669,8 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
 
             const formDataBody = Buffer.concat(formDataParts)
             console.log(`[PDF Helper] FormData body size: ${formDataBody.length} bytes`)
-            console.log(`[PDF Helper] Boundary: ${boundary}`)
-            console.log(`[PDF Helper] Sending with parameters: nik=${nik}, passphrase=***, tampilan=invisible, page=1, image=false, linkQR=${linkQR || '(empty - QR already in document)'}, xAxis=0, yAxis=0, width=0, height=0`)
+            // Note: `nik` is PII → never log its raw value. Same for passphrase/token.
+            console.log(`[PDF Helper] Sending to BSrE: has_nik=${!!nik}, has_passphrase=${!!passphrase}, tampilan=invisible, page=1, image=false, linkQR=${linkQR ? 'yes' : '(empty — QR already in document)'}`)
             console.log(`[PDF Helper] Note: QR code already exists in document, using invisible mode to avoid duplicate QR code`)
 
             const signResponse = await fetch(signEndpoint, {

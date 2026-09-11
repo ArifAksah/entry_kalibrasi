@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../lib/supabase'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 // GET - Get all sensors
 export async function GET(request: NextRequest) {
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
       .range(start, end)
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 400 })
     }
 
     const total = count || 0
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 400 })
     }
 
     // Return the created row directly

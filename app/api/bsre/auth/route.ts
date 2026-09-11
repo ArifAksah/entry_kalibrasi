@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '../../../../lib/api-auth'
 
-// Handler untuk GET dan POST (fleksibilitas)
-async function handleAuthRequest() {
+async function handleAuthRequest(request: NextRequest) {
+  const gate = await requireAdmin(request)
+  if (gate instanceof NextResponse) return gate
+
   // 1. Ambil konfigurasi dari .env.local
   const baseURL = process.env.BSRE_BASE_URL
   const username = process.env.BSRE_USERNAME
@@ -9,13 +12,7 @@ async function handleAuthRequest() {
 
   // Validasi konfigurasi
   if (!baseURL || !username || !password) {
-    return NextResponse.json(
-      { 
-        error: 'Konfigurasi BSrE belum lengkap di server.',
-        required: ['BSRE_BASE_URL', 'BSRE_USERNAME', 'BSRE_PASSWORD']
-      },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Layanan BSrE belum dikonfigurasi.' }, { status: 503 })
   }
 
   try {
@@ -27,9 +24,13 @@ async function handleAuthRequest() {
     // 3. Request ke BSrE dengan Basic Auth (Server to Server)
     // Ini akan berjalan dari server Next.js Anda yang sudah "Terhubung" ke VPN
     // Endpoint dapat disesuaikan sesuai kebutuhan (misalnya untuk test status user)
-    const testEndpoint = `${baseURL}/api/user/status/1234567890123452`
+    const testNik = process.env.BSRE_TEST_NIK
+    if (!testNik) {
+      return NextResponse.json({ error: 'BSrE test identity belum dikonfigurasi.' }, { status: 503 })
+    }
+    const testEndpoint = `${baseURL}/api/user/status/${encodeURIComponent(testNik)}`
     
-    console.log(`Menghubungi BSrE di: ${testEndpoint} dengan Basic Auth...`)
+    console.log('Menghubungi BSrE untuk pemeriksaan koneksi...')
 
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 30000) // Timeout 30 detik
@@ -46,46 +47,42 @@ async function handleAuthRequest() {
     clearTimeout(timeoutId)
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
       return NextResponse.json(
         {
           error: 'Gagal autentikasi ke BSrE',
-          details: errorData || `HTTP ${response.status}: ${response.statusText}`,
           status: response.status
         },
         { status: response.status }
       )
     }
 
-    const data = await response.json()
+    await response.body?.cancel()
 
     // 3. Berhasil! Kirim response kembali ke frontend
     console.log('Berhasil autentikasi ke BSrE.')
     return NextResponse.json({
       success: true,
       message: 'Berhasil terhubung ke BSrE',
-      data: data,
       authenticated: true
     })
   } catch (error: any) {
-    console.error('Gagal koneksi ke BSrE:', error.message)
+    console.error('Gagal koneksi ke BSrE:', error)
 
     // Handle timeout atau network errors
     if (error.name === 'AbortError') {
       return NextResponse.json(
         {
           error: 'Gagal koneksi ke BSrE',
-          details: 'Request timeout (30 detik). Pastikan server terhubung ke VPN dan BSrE dapat diakses.'
+          details: 'Request timeout (30 detik). Layanan BSrE tidak merespons.'
         },
         { status: 504 }
       )
     }
 
-    // Berikan pesan error yang jelas untuk debugging
     return NextResponse.json(
       {
         error: 'Gagal koneksi ke BSrE',
-        details: error.message || 'Unknown error'
+        details: 'Layanan BSrE tidak tersedia.'
       },
       { status: 500 }
     )
@@ -94,13 +91,10 @@ async function handleAuthRequest() {
 
 // Export untuk POST method
 export async function POST(request: NextRequest) {
-  console.log('[BSrE Auth] POST request received')
-  return handleAuthRequest()
+  return handleAuthRequest(request)
 }
 
 // Export untuk GET method (opsional, untuk fleksibilitas)
 export async function GET(request: NextRequest) {
-  console.log('[BSrE Auth] GET request received')
-  return handleAuthRequest()
+  return handleAuthRequest(request)
 }
-

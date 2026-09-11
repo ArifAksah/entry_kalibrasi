@@ -6,7 +6,6 @@ import SideNav from '../ui/dashboard/sidenav';
 import Header from '../ui/dashboard/header';
 import Alert from '../../components/ui/Alert';
 import { useAlert } from '../../hooks/useAlert';
-import { supabase } from '../../lib/supabase';
 
 const RegisterPage: React.FC = () => {
   const { alert, showSuccess, showError, showWarning, hideAlert } = useAlert()
@@ -76,49 +75,31 @@ const RegisterPage: React.FC = () => {
     setLoading(true)
     hideAlert()
     try {
-      const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/confirm-email` : undefined
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: form.email,
-        password: form.password,
-        options: {
-          emailRedirectTo: redirectTo,
-          data: { name: form.name, phone: form.phone, nip: form.nip },
-        },
-      })
-      if (signUpError) throw new Error(signUpError.message)
-      const userId = signUpData.user?.id
-      if (!userId) throw new Error('Failed to get user id')
+      if (form.role === 'user_station' && !form.station_id) {
+        throw new Error('Untuk role user_station, wajib memilih Station.')
+      }
 
-      // Use API route with service role to bypass RLS
-      const res = await fetch('/api/personel', {
+      // Server-side (admin-gated) flow: creates auth account, personel row,
+      // role assignment, and station membership atomically. Open self-service
+      // registration (supabase.auth.signUp from the browser) was removed as
+      // part of the H4 security fix — only admins can register personnel.
+      const res = await fetch('/api/personel/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: userId,
           name: form.name,
           nip: form.nip,
           phone: form.phone,
           email: form.email,
+          password: form.password,
+          role: form.role || undefined,
+          station_id: form.station_id ? parseInt(form.station_id as any, 10) : undefined,
         }),
       })
-      const body = await res.json()
-      if (!res.ok) throw new Error(body.error || 'Failed to save personel profile')
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error || 'Gagal mendaftarkan personel')
 
-      // Assign role via admin endpoint
-      if (form.role) {
-        if (form.role === 'user_station' && !form.station_id) {
-          throw new Error('Untuk role user_station, wajib memilih Station.')
-        }
-        const roleRes = await fetch('/api/user-roles', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_id: userId, role: form.role, station_id: form.station_id ? parseInt(form.station_id as any) : null })
-        })
-        const roleBody = await roleRes.json().catch(()=>({}))
-        if (!roleRes.ok) throw new Error(roleBody?.error || 'Gagal menyimpan role user')
-      }
-
-      showSuccess('Registration successful. Please check your email to confirm.')
+      showSuccess('Personel berhasil didaftarkan. Notifikasi akun telah dikirim.')
       setForm({ name: '', nip: '', phone: '', email: '', password: '', role: '' as any, station_id: '' as any })
     } catch (e) {
       showError(e instanceof Error ? e.message : 'Registration failed')

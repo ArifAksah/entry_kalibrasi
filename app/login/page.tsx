@@ -39,7 +39,11 @@ const LoginPage: React.FC = () => {
       });
 
       if (error) {
-        showError(error.message)
+        // M6 (account enumeration) fix: never surface the IdP's specific
+        // message (e.g. "Email not confirmed" vs "Invalid login credentials")
+        // — always show one generic response.
+        console.warn('Login failed:', error.message)
+        showError('Email atau password salah.')
         return
       }
 

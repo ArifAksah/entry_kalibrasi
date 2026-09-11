@@ -2,7 +2,12 @@
 
 import React, { useState, useEffect, useMemo } from 'react'
 import { useStations } from '../../../hooks/useStations'
-import { Station, StationInsert, Personel, RefStation } from '../../../lib/supabase'
+import {
+  Station,
+  StationInsert,
+  Personel,
+  RefStation,
+} from '../../../lib/supabase'
 import { supabase } from '../../../lib/supabase'
 import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
@@ -11,36 +16,92 @@ import Loading from '../../../components/ui/Loading'
 import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
 import { usePermissions } from '../../../hooks/usePermissions'
 import Toast from '../../../components/ui/Toast'
+import { Spinner } from '../../../components/ui/Loading'
 
 // SVG Icons untuk tampilan yang lebih elegan
-const EditIcon = ({ className = "" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+const EditIcon = ({ className = '' }) => (
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+    />
   </svg>
 )
 
-const TrashIcon = ({ className = "" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+const TrashIcon = ({ className = '' }) => (
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+    />
   </svg>
 )
 
-const PlusIcon = ({ className = "" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+const PlusIcon = ({ className = '' }) => (
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M12 4v16m8-8H4"
+    />
   </svg>
 )
 
-const CloseIcon = ({ className = "" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+const CloseIcon = ({ className = '' }) => (
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M6 18L18 6M6 6l12 12"
+    />
   </svg>
 )
 
-const StationIcon = ({ className = "" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+const StationIcon = ({ className = '' }) => (
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+    />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+    />
   </svg>
 )
 
@@ -71,7 +132,15 @@ interface WilayahRegency {
 }
 
 export default function StationsCRUD() {
-  const { stations, loading, error, addStation, updateStation, deleteStation, fetchStations } = useStations()
+  const {
+    stations,
+    loading,
+    error,
+    addStation,
+    updateStation,
+    deleteStation,
+    fetchStations,
+  } = useStations()
 
   const { can, canEndpoint, role } = usePermissions()
 
@@ -93,14 +162,22 @@ export default function StationsCRUD() {
   const [isLoadingRef, setIsLoadingRef] = useState(false)
 
   // Toast notification state
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
-  
+  const [toast, setToast] = useState<{
+    message: string
+    type: 'success' | 'error' | 'info'
+  } | null>(null)
+
   // Confirm modal state
-  const [confirmState, setConfirmState] = useState<{ isOpen: boolean; id: number | null; title: string; message: string }>({
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean
+    id: number | null
+    title: string
+    message: string
+  }>({
     isOpen: false,
     id: null,
     title: 'Konfirmasi',
-    message: ''
+    message: '',
   })
 
   // State for Wilayah API
@@ -122,7 +199,6 @@ export default function StationsCRUD() {
     regency: '',
     created_by: '', // Will be set to current user
   })
-
 
   // Search Reference Stations
   useEffect(() => {
@@ -153,18 +229,20 @@ export default function StationsCRUD() {
   // Fetch Provinces on mount
   useEffect(() => {
     fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json')
-      .then(res => res.json())
-      .then(data => setProvinces(data))
-      .catch(err => console.error('Error fetching provinces:', err))
+      .then((res) => res.json())
+      .then((data) => setProvinces(data))
+      .catch((err) => console.error('Error fetching provinces:', err))
   }, [])
 
   // Fetch Regencies when Province ID changes
   useEffect(() => {
     if (selectedProvId) {
-      fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${selectedProvId}.json`)
-        .then(res => res.json())
-        .then(data => setRegencies(data))
-        .catch(err => console.error('Error fetching regencies:', err))
+      fetch(
+        `https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${selectedProvId}.json`,
+      )
+        .then((res) => res.json())
+        .then((data) => setRegencies(data))
+        .catch((err) => console.error('Error fetching regencies:', err))
     } else {
       setRegencies([])
     }
@@ -173,13 +251,15 @@ export default function StationsCRUD() {
   const selectRefStation = (ref: RefStation) => {
     // Try to match province to set ID for regency fetching
     if (ref.propinsi_name && provinces.length > 0) {
-      const match = provinces.find(p => p.name.toLowerCase() === ref.propinsi_name.toLowerCase())
+      const match = provinces.find(
+        (p) => p.name.toLowerCase() === ref.propinsi_name.toLowerCase(),
+      )
       if (match) {
         setSelectedProvId(match.id)
       }
     }
 
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
       station_id: ref.station_wmo_id || ref.wigos_id || ref.station_id || '', // Use WMO/WIGOS as station_id
       name: ref.station_name,
@@ -192,7 +272,7 @@ export default function StationsCRUD() {
       regency: ref.kabupaten_name || '',
       // Map station_type_id to integer ID
       type_id: ref.station_type_id || null,
-      address: `Station ID: ${ref.station_id}, ${ref.kabupaten_name}, ${ref.propinsi_name}` // Auto-generate simple address
+      address: `Station ID: ${ref.station_id}, ${ref.kabupaten_name}, ${ref.propinsi_name}`, // Auto-generate simple address
     }))
     setRefSearch('')
     setShowRefDropdown(false)
@@ -202,10 +282,12 @@ export default function StationsCRUD() {
   useEffect(() => {
     const getCurrentUser = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser()
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
         if (user) {
           setCurrentUserId(user.id)
-          setForm(prev => ({ ...prev, created_by: user.id }))
+          setForm((prev) => ({ ...prev, created_by: user.id }))
         }
       } catch (e) {
         console.error('Failed to get current user:', e)
@@ -242,13 +324,16 @@ export default function StationsCRUD() {
       if (!role) return
 
       try {
-        const { data: { user } } = await supabase.auth.getUser()
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
         if (user) {
           setCurrentUserId(user.id)
-          setForm(prev => ({ ...prev, created_by: user.id }))
+          setForm((prev) => ({ ...prev, created_by: user.id }))
 
           // Use userId filtering if not admin or calibrator
-          const filterUserId = (role === 'admin' || role === 'calibrator') ? undefined : user.id
+          const filterUserId =
+            role === 'admin' || role === 'calibrator' ? undefined : user.id
           fetchStations({ page: 1, pageSize, userId: filterUserId })
         }
       } catch (e) {
@@ -267,7 +352,7 @@ export default function StationsCRUD() {
 
     const q = search.trim().toLowerCase()
     if (!q) return data
-    return data.filter(s => {
+    return data.filter((s) => {
       const hay = [
         s.station_id,
         s.name,
@@ -275,8 +360,10 @@ export default function StationsCRUD() {
         s.address,
         s.region,
         s.province,
-        s.regency
-      ].map(v => String(v ?? '').toLowerCase()).join(' ')
+        s.regency,
+      ]
+        .map((v) => String(v ?? '').toLowerCase())
+        .join(' ')
       return hay.includes(q)
     })
   }, [stations, search])
@@ -297,7 +384,10 @@ export default function StationsCRUD() {
     }
   }, [filteredStations])
 
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(filteredStations.length / pageSize)), [filteredStations])
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredStations.length / pageSize)),
+    [filteredStations],
+  )
   const pagedStations = useMemo(() => {
     const start = (currentPage - 1) * pageSize
     return filteredStations.slice(start, start + pageSize)
@@ -351,7 +441,10 @@ export default function StationsCRUD() {
 
     // Ensure created_by is set to current user
     // Ensure created_by is set to current user
-    const finalPayload = { ...form, created_by: currentUserId || form.created_by } as StationInsert
+    const finalPayload = {
+      ...form,
+      created_by: currentUserId || form.created_by,
+    } as StationInsert
 
     if (!finalPayload.created_by) {
       setToast({ message: 'Please log in to create a station', type: 'error' })
@@ -381,7 +474,7 @@ export default function StationsCRUD() {
       isOpen: true,
       id,
       title: 'Konfirmasi Hapus',
-      message: 'Apakah Anda yakin ingin menghapus stasiun ini?'
+      message: 'Apakah Anda yakin ingin menghapus stasiun ini?',
     })
   }
 
@@ -394,7 +487,12 @@ export default function StationsCRUD() {
       console.error('Error deleting station:', e)
       setToast({ message: 'Failed to delete station', type: 'error' })
     } finally {
-      setConfirmState({ isOpen: false, id: null, title: 'Konfirmasi', message: '' })
+      setConfirmState({
+        isOpen: false,
+        id: null,
+        title: 'Konfirmasi',
+        message: '',
+      })
     }
   }
 
@@ -403,8 +501,14 @@ export default function StationsCRUD() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <Breadcrumb items={[{ label: 'Stations', href: '#' }, { label: 'Manager' }]} />
-        {can('instrument', 'read') && can('instrument', 'read') && can('certificate', 'read') && can('sensor', 'read') && null}
+        <Breadcrumb
+          items={[{ label: 'Stations', href: '#' }, { label: 'Manager' }]}
+        />
+        {can('instrument', 'read') &&
+          can('instrument', 'read') &&
+          can('certificate', 'read') &&
+          can('sensor', 'read') &&
+          null}
         {can('instrument', 'read') && null}
         {can('sensor', 'read') && null}
         {can('certificate', 'read') && null}
@@ -556,40 +660,71 @@ export default function StationsCRUD() {
         <div className="flex items-center gap-3">
           <input
             value={search}
-            onChange={e => { setSearch(e.target.value); setCurrentPage(1) }}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setCurrentPage(1)
+            }}
             placeholder="Search station..."
             className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          {loading && (
-            <span className="text-sm text-gray-500">Loading...</span>
-          )}
+          {loading && <span className="text-sm text-gray-500">Loading...</span>}
           {can('station', 'create') && (
-            <button onClick={() => openModal()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add New</button>
+            <button
+              onClick={() => openModal()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Add New
+            </button>
           )}
         </div>
       </div>
 
-
       <Card>
         <Table
-          headers={['ID (WMO)', 'Name', 'Type', 'Region', 'Province', 'Actions']}
+          headers={[
+            'ID (WMO)',
+            'Name',
+            'Type',
+            'Region',
+            'Province',
+            'Actions',
+          ]}
           columnClasses={['w-28', 'w-48', 'w-28', 'w-40', 'w-40', 'w-28']}
           tableClassName="min-w-full table-fixed divide-y divide-gray-200"
         >
           {pagedStations.map((item) => (
             <tr key={item.id} className="hover:bg-gray-50">
-              <td className="px-6 py-4 text-sm text-gray-900 truncate">{item.station_id || '-'}</td>
-              <td className="px-6 py-4 text-sm text-gray-900 truncate">{item.name}</td>
-              <td className="px-6 py-4 text-sm text-gray-900 truncate">{(item as any).station_type?.name || '-'}</td>
-              <td className="px-6 py-4 text-sm text-gray-900 truncate">{item.region}</td>
-              <td className="px-6 py-4 text-sm text-gray-900 truncate">{item.province}</td>
-              <td className="px-6 py-4 text-sm font-medium space-x-2">
-                {can('station', 'update') && canEndpoint('PUT', `/api/stations/${item.id}`) && (
-                  <EditButton onClick={() => openModal(item)} title="Edit Station" />
-                )}
-                {can('station', 'delete') && canEndpoint('DELETE', `/api/stations/${item.id}`) && (
-                  <DeleteButton onClick={() => handleDelete(item.id)} title="Delete Station" />
-                )}
+              <td className="px-4 py-3 text-sm text-gray-900 truncate">
+                {item.station_id || '-'}
+              </td>
+              <td className="px-4 py-3 text-sm text-gray-900 truncate">
+                {item.name}
+              </td>
+              <td className="px-4 py-3 text-sm text-gray-900 truncate">
+                {(item as any).station_type?.name || '-'}
+              </td>
+              <td className="px-4 py-3 text-sm text-gray-900 truncate">
+                {item.region}
+              </td>
+              <td className="px-4 py-3 text-sm text-gray-900 truncate">
+                {item.province}
+              </td>
+              <td className="px-4 py-3 text-sm font-medium space-x-2">
+                {' '}
+                {can('station', 'update') &&
+                  canEndpoint('PUT', `/api/stations/${item.id}`) && (
+                    <EditButton
+                      onClick={() => openModal(item)}
+                      title="Edit Station"
+                    />
+                  )}
+                {can('station', 'delete') &&
+                  canEndpoint('DELETE', `/api/stations/${item.id}`) && (
+                    <DeleteButton
+                      onClick={() => handleDelete(item.id)}
+                      title="Delete Station"
+                    />
+                  )}
               </td>
             </tr>
           ))}
@@ -597,29 +732,38 @@ export default function StationsCRUD() {
         {/* Pagination controls */}
         <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
           <div className="text-sm text-gray-600">
-            Page <span className="font-medium">{currentPage}</span> of <span className="font-medium">{totalPages}</span>
+            Page <span className="font-medium">{currentPage}</span> of{' '}
+            <span className="font-medium">{totalPages}</span>
           </div>
           <div className="inline-flex items-center gap-2">
             <button
               className={`px-3 py-1 rounded border ${currentPage === 1 ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
               disabled={currentPage === 1}
               onClick={() => setCurrentPage(1)}
-            >First</button>
+            >
+              First
+            </button>
             <button
               className={`px-3 py-1 rounded border ${currentPage === 1 ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
               disabled={currentPage === 1}
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-            >Prev</button>
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            >
+              Prev
+            </button>
             <button
               className={`px-3 py-1 rounded border ${currentPage === totalPages ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
               disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-            >Next</button>
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Next
+            </button>
             <button
               className={`px-3 py-1 rounded border ${currentPage === totalPages ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
               disabled={currentPage === totalPages}
               onClick={() => setCurrentPage(totalPages)}
-            >Last</button>
+            >
+              Last
+            </button>
           </div>
         </div>
       </Card>
@@ -640,7 +784,9 @@ export default function StationsCRUD() {
                       {editing ? 'Edit Station' : 'Create New Station'}
                     </h2>
                     <p className="text-blue-100 text-xs mt-0.5">
-                      {editing ? 'Update existing station details' : 'Fill in the station information below'}
+                      {editing
+                        ? 'Update existing station details'
+                        : 'Fill in the station information below'}
                     </p>
                   </div>
                 </div>
@@ -664,7 +810,9 @@ export default function StationsCRUD() {
                       <StationIcon className="w-4 h-4 text-[#1e377c]" />
                     </div>
                     <div className="flex-1">
-                      <h3 className="text-base font-bold text-gray-900">Station Information</h3>
+                      <h3 className="text-base font-bold text-gray-900">
+                        Station Information
+                      </h3>
                     </div>
                     {/* Reference Search */}
                     {!editing && (
@@ -672,28 +820,41 @@ export default function StationsCRUD() {
                         <input
                           placeholder="Cari dari Referensi BMKG..."
                           value={refSearch}
-                          onChange={e => { setRefSearch(e.target.value); setShowRefDropdown(true); }}
+                          onChange={(e) => {
+                            setRefSearch(e.target.value)
+                            setShowRefDropdown(true)
+                          }}
                           onFocus={() => setShowRefDropdown(true)}
-                          onBlur={() => setTimeout(() => setShowRefDropdown(false), 200)}
+                          onBlur={() =>
+                            setTimeout(() => setShowRefDropdown(false), 200)
+                          }
                           className="w-full px-3 py-1.5 text-xs border border-blue-200 rounded-md focus:ring-2 focus:ring-blue-500 bg-blue-50/50"
                         />
                         {showRefDropdown && refSearch.length > 2 && (
                           <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
                             {isLoadingRef ? (
-                              <div className="p-2 text-xs text-gray-500 text-center">Loading...</div>
+                              <div className="p-2 text-xs text-gray-500 text-center">
+                                Loading...
+                              </div>
                             ) : refStations.length > 0 ? (
-                              refStations.map(ref => (
+                              refStations.map((ref) => (
                                 <div
                                   key={ref.station_id}
                                   onMouseDown={() => selectRefStation(ref)}
                                   className="p-2 hover:bg-blue-50 cursor-pointer border-b last:border-0"
                                 >
-                                  <div className="font-semibold text-xs text-gray-900">{ref.station_name}</div>
-                                  <div className="text-[10px] text-gray-500">{ref.kabupaten_name}, {ref.propinsi_name}</div>
+                                  <div className="font-semibold text-xs text-gray-900">
+                                    {ref.station_name}
+                                  </div>
+                                  <div className="text-[10px] text-gray-500">
+                                    {ref.kabupaten_name}, {ref.propinsi_name}
+                                  </div>
                                 </div>
                               ))
                             ) : (
-                              <div className="p-2 text-xs text-gray-500 text-center">No results</div>
+                              <div className="p-2 text-xs text-gray-500 text-center">
+                                No results
+                              </div>
                             )}
                           </div>
                         )}
@@ -703,12 +864,33 @@ export default function StationsCRUD() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {[
-                      { label: 'Station ID / WMO ID', value: form.station_id || '', onChange: (e: any) => setForm({ ...form, station_id: e.target.value }), type: 'text', required: false, placeholder: 'Ex: 96745 or STN001' },
-                      { label: 'Name *', value: form.name, onChange: (e: any) => setForm({ ...form, name: e.target.value }), type: 'text', required: true },
+                      {
+                        label: 'Station ID / WMO ID',
+                        value: form.station_id || '',
+                        onChange: (e: any) =>
+                          setForm({ ...form, station_id: e.target.value }),
+                        type: 'text',
+                        required: false,
+                        placeholder: 'Ex: 96745 or STN001',
+                      },
+                      {
+                        label: 'Name *',
+                        value: form.name,
+                        onChange: (e: any) =>
+                          setForm({ ...form, name: e.target.value }),
+                        type: 'text',
+                        required: true,
+                      },
                       {
                         label: 'Type',
                         value: form.type_id || '',
-                        onChange: (e: any) => setForm({ ...form, type_id: e.target.value ? parseInt(e.target.value) : null }),
+                        onChange: (e: any) =>
+                          setForm({
+                            ...form,
+                            type_id: e.target.value
+                              ? parseInt(e.target.value)
+                              : null,
+                          }),
                         type: 'select',
                         required: false,
                         options: [
@@ -722,12 +904,13 @@ export default function StationsCRUD() {
                           { value: '7', label: 'Balai Besar Wilayah III' },
                           { value: '8', label: 'Balai Besar Wilayah IV' },
                           { value: '9', label: 'Balai Besar Wilayah V' },
-                        ]
+                        ],
                       },
                       {
                         label: 'Time Zone *',
                         value: form.time_zone || '',
-                        onChange: (e: any) => setForm({ ...form, time_zone: e.target.value }),
+                        onChange: (e: any) =>
+                          setForm({ ...form, time_zone: e.target.value }),
                         type: 'select',
                         required: true,
                         options: [
@@ -735,12 +918,14 @@ export default function StationsCRUD() {
                           { value: 'UTC+07:00', label: 'WIB (UTC+07:00)' },
                           { value: 'UTC+08:00', label: 'WITA (UTC+08:00)' },
                           { value: 'UTC+09:00', label: 'WIT (UTC+09:00)' },
-                          { value: 'UTC+00:00', label: 'UTC (UTC+00:00)' }
-                        ]
+                          { value: 'UTC+00:00', label: 'UTC (UTC+00:00)' },
+                        ],
                       },
                     ].map((field, index) => (
                       <div key={index} className="space-y-1">
-                        <label className="block text-xs font-semibold text-gray-700">{field.label}</label>
+                        <label className="block text-xs font-semibold text-gray-700">
+                          {field.label}
+                        </label>
                         {field.type === 'select' ? (
                           <select
                             required={field.required}
@@ -767,11 +952,15 @@ export default function StationsCRUD() {
                     ))}
 
                     <div className="md:col-span-2 space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Address *</label>
+                      <label className="block text-xs font-semibold text-gray-700">
+                        Address *
+                      </label>
                       <textarea
                         required
                         value={form.address}
-                        onChange={e => setForm({ ...form, address: e.target.value })}
+                        onChange={(e) =>
+                          setForm({ ...form, address: e.target.value })
+                        }
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] focus:border-transparent transition-all duration-200 bg-white text-sm"
                         rows={2}
                       />
@@ -784,21 +973,61 @@ export default function StationsCRUD() {
                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#1e377c] to-[#2a4a9d]"></div>
                   <div className="flex items-center space-x-2 mb-3 mt-2">
                     <div className="p-1.5 bg-blue-50 rounded-lg">
-                      <svg className="w-4 h-4 text-[#1e377c]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <svg
+                        className="w-4 h-4 text-[#1e377c]"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
                       </svg>
                     </div>
-                    <h3 className="text-base font-bold text-gray-900">Location Details</h3>
+                    <h3 className="text-base font-bold text-gray-900">
+                      Location Details
+                    </h3>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {[
-                      { label: 'Latitude', value: form.latitude || '', onChange: (e: any) => setForm({ ...form, latitude: e.target.value }), type: 'text', required: false },
-                      { label: 'Longitude', value: form.longitude || '', onChange: (e: any) => setForm({ ...form, longitude: e.target.value }), type: 'text', required: false },
-                      { label: 'Elevation (m)', value: form.elevation || '', onChange: (e: any) => setForm({ ...form, elevation: e.target.value }), type: 'text', required: false },
+                      {
+                        label: 'Latitude',
+                        value: form.latitude || '',
+                        onChange: (e: any) =>
+                          setForm({ ...form, latitude: e.target.value }),
+                        type: 'text',
+                        required: false,
+                      },
+                      {
+                        label: 'Longitude',
+                        value: form.longitude || '',
+                        onChange: (e: any) =>
+                          setForm({ ...form, longitude: e.target.value }),
+                        type: 'text',
+                        required: false,
+                      },
+                      {
+                        label: 'Elevation (m)',
+                        value: form.elevation || '',
+                        onChange: (e: any) =>
+                          setForm({ ...form, elevation: e.target.value }),
+                        type: 'text',
+                        required: false,
+                      },
                     ].map((field, index) => (
                       <div key={index} className="space-y-1">
-                        <label className="block text-xs font-semibold text-gray-700">{field.label}</label>
+                        <label className="block text-xs font-semibold text-gray-700">
+                          {field.label}
+                        </label>
                         <input
                           required={field.required}
                           type={field.type}
@@ -811,10 +1040,14 @@ export default function StationsCRUD() {
 
                     {/* Region Select */}
                     <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Region *</label>
+                      <label className="block text-xs font-semibold text-gray-700">
+                        Region *
+                      </label>
                       <select
                         value={form.region}
-                        onChange={(e) => setForm({ ...form, region: e.target.value })}
+                        onChange={(e) =>
+                          setForm({ ...form, region: e.target.value })
+                        }
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] focus:border-transparent transition-all duration-200 bg-white text-sm"
                         required
                       >
@@ -829,47 +1062,65 @@ export default function StationsCRUD() {
 
                     {/* Province Dropdown */}
                     <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Province *</label>
+                      <label className="block text-xs font-semibold text-gray-700">
+                        Province *
+                      </label>
                       <select
                         value={form.province} // Needs to handle text value, but sync with ID
                         onChange={(e) => {
-                          const selectedOpt = e.target.selectedOptions[0];
-                          const id = selectedOpt.getAttribute('data-id') || '';
-                          setForm({ ...form, province: e.target.value, regency: '' });
-                          setSelectedProvId(id);
+                          const selectedOpt = e.target.selectedOptions[0]
+                          const id = selectedOpt.getAttribute('data-id') || ''
+                          setForm({
+                            ...form,
+                            province: e.target.value,
+                            regency: '',
+                          })
+                          setSelectedProvId(id)
                         }}
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] focus:border-transparent transition-all duration-200 bg-white text-sm"
                         required
                       >
                         <option value="">Select Province</option>
-                        {provinces.map(p => (
-                          <option key={p.id} value={p.name} data-id={p.id}>{p.name}</option>
+                        {provinces.map((p) => (
+                          <option key={p.id} value={p.name} data-id={p.id}>
+                            {p.name}
+                          </option>
                         ))}
                         {/* Fallback for existing value not in list */}
-                        {form.province && !provinces.some(p => p.name === form.province) && (
-                          <option value={form.province}>{form.province}</option>
-                        )}
+                        {form.province &&
+                          !provinces.some((p) => p.name === form.province) && (
+                            <option value={form.province}>
+                              {form.province}
+                            </option>
+                          )}
                       </select>
                     </div>
 
                     {/* Regency Dropdown */}
                     <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Regency *</label>
+                      <label className="block text-xs font-semibold text-gray-700">
+                        Regency *
+                      </label>
                       <select
                         value={form.regency}
-                        onChange={(e) => setForm({ ...form, regency: e.target.value })}
+                        onChange={(e) =>
+                          setForm({ ...form, regency: e.target.value })
+                        }
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] focus:border-transparent transition-all duration-200 bg-white text-sm"
                         required
                         disabled={!form.province}
                       >
                         <option value="">Select Regency</option>
-                        {regencies.map(r => (
-                          <option key={r.id} value={r.name}>{r.name}</option>
+                        {regencies.map((r) => (
+                          <option key={r.id} value={r.name}>
+                            {r.name}
+                          </option>
                         ))}
                         {/* Fallback for existing value not in list */}
-                        {form.regency && !regencies.some(r => r.name === form.regency) && (
-                          <option value={form.regency}>{form.regency}</option>
-                        )}
+                        {form.regency &&
+                          !regencies.some((r) => r.name === form.regency) && (
+                            <option value={form.regency}>{form.regency}</option>
+                          )}
                       </select>
                     </div>
                   </div>
@@ -880,15 +1131,29 @@ export default function StationsCRUD() {
                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#1e377c] to-[#2a4a9d]"></div>
                   <div className="flex items-center space-x-2 mb-3 mt-2">
                     <div className="p-1.5 bg-blue-50 rounded-lg">
-                      <svg className="w-4 h-4 text-[#1e377c]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      <svg
+                        className="w-4 h-4 text-[#1e377c]"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                        />
                       </svg>
                     </div>
-                    <h3 className="text-base font-bold text-gray-900">Created By</h3>
+                    <h3 className="text-base font-bold text-gray-900">
+                      Created By
+                    </h3>
                   </div>
                   <div className="grid grid-cols-1 gap-3">
                     <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-gray-700">Current User</label>
+                      <label className="block text-xs font-semibold text-gray-700">
+                        Current User
+                      </label>
                       <div className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm">
                         {personelMap[currentUserId || ''] || 'Current User'}
                       </div>
@@ -915,16 +1180,24 @@ export default function StationsCRUD() {
                   >
                     {isSubmitting ? (
                       <>
-                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                        <Spinner
+                          size="xs"
+                          tone="blue"
+                          className="border-white"
+                        />
                         Saving...
                       </>
-                    ) : editing ? 'Update Station' : 'Create Station'}
+                    ) : editing ? (
+                      'Update Station'
+                    ) : (
+                      'Create Station'
+                    )}
                   </button>
                 </div>
               </form>
             </div>
-          </div >
-        </div >
+          </div>
+        </div>
       )}
 
       {/* Toast Notification */}
@@ -943,16 +1216,35 @@ export default function StationsCRUD() {
           <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6">
             <div className="flex items-center space-x-3 mb-4">
               <div className="p-2 bg-yellow-50 rounded-full">
-                <svg className="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                <svg
+                  className="w-6 h-6 text-yellow-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900">{confirmState.title}</h3>
+              <h3 className="text-lg font-semibold text-gray-900">
+                {confirmState.title}
+              </h3>
             </div>
             <p className="text-sm text-gray-600 mb-6">{confirmState.message}</p>
             <div className="flex justify-end space-x-2">
               <button
-                onClick={() => setConfirmState({ isOpen: false, id: null, title: 'Konfirmasi', message: '' })}
+                onClick={() =>
+                  setConfirmState({
+                    isOpen: false,
+                    id: null,
+                    title: 'Konfirmasi',
+                    message: '',
+                  })
+                }
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
               >
                 Batal
@@ -967,6 +1259,6 @@ export default function StationsCRUD() {
           </div>
         </div>
       )}
-    </div >
+    </div>
   )
 }

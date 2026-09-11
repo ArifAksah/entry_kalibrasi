@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../../lib/supabase'
+import { clientSafeMessage } from '../../../../lib/api-error'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,7 +50,7 @@ export async function PUT(
 
         if (error) {
             console.error('Error updating standard cert:', error)
-            return NextResponse.json({ error: error.message }, { status: 500 })
+            return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
         }
 
         return NextResponse.json(data)
@@ -72,7 +73,7 @@ export async function DELETE(
 
         if (error) {
             console.error('Error deleting standard cert:', error)
-            return NextResponse.json({ error: error.message }, { status: 500 })
+            return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
         }
 
         return NextResponse.json({ message: 'Certificate deleted successfully' })

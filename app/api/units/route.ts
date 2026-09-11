@@ -1,6 +1,7 @@
 
 import { supabaseAdmin } from '../../../lib/supabase';
 import { NextResponse } from 'next/server';
+import { clientSafeMessage } from '../../../lib/api-error'
 
 async function requireAuthenticatedUser(request: Request) {
     const authHeader = request.headers.get('authorization');
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
     const { data, error } = await query;
 
     if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
     }
 
     return NextResponse.json(data);
@@ -59,12 +60,12 @@ export async function POST(request: Request) {
             .single();
 
         if (error) {
-            return NextResponse.json({ error: error.message }, { status: 500 });
+            return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
         }
 
         return NextResponse.json(data);
     } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
     }
 }
 
@@ -88,12 +89,12 @@ export async function PUT(request: Request) {
             .single();
 
         if (error) {
-            return NextResponse.json({ error: error.message }, { status: 500 });
+            return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
         }
 
         return NextResponse.json(data);
     } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
     }
 }
 
@@ -114,7 +115,7 @@ export async function DELETE(request: Request) {
         .eq('id', id);
 
     if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
     }
 
     return NextResponse.json({ message: 'Unit deleted successfully' });

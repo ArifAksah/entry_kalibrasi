@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../lib/supabase'
 import { createClient } from '@supabase/supabase-js'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 // Service role client to bypass RLS for validation and writes
 const supabaseAdmin = createClient(
@@ -19,7 +20,7 @@ export async function GET() {
       .select('*')
       .order('created_at', { ascending: false })
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     return NextResponse.json(data)
   } catch (e) {
     return NextResponse.json({ error: 'Failed to fetch verifikator records' }, { status: 500 })
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     return NextResponse.json(data, { status: 201 })
   } catch (e) {
     return NextResponse.json({ error: 'Failed to create verifikator record' }, { status: 500 })

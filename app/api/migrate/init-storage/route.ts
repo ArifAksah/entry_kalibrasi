@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { CERTIFICATE_PDF_BUCKET, ensurePdfBucketExists } from '../../../../lib/certificate-pdf-storage'
+import { clientSafeMessage } from '../../../../lib/api-error'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -29,8 +30,7 @@ export async function POST(_request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: `Bucket '${CERTIFICATE_PDF_BUCKET}' sudah ada`,
-        bucket: existingBucket,
-        action: 'already_exists'
+      action: 'already_exists'
       })
     }
 
@@ -58,9 +58,8 @@ export async function POST(_request: NextRequest) {
       console.error(`[Init Storage] ❌ Gagal membuat bucket:`, createErr)
       return NextResponse.json({
         success: false,
-        error: createErr.message || 'Gagal membuat bucket',
-        bucket_name: CERTIFICATE_PDF_BUCKET,
-        supabase_url: supabaseUrl
+        error: clientSafeMessage(createErr, 'Gagal membuat bucket'),
+        bucket_name: CERTIFICATE_PDF_BUCKET
       }, { status: 500 })
     }
 
@@ -69,14 +68,13 @@ export async function POST(_request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: `Bucket '${CERTIFICATE_PDF_BUCKET}' berhasil dibuat`,
-      bucket: newBucket,
       action: 'created'
     })
   } catch (error: any) {
     console.error('[Init Storage] Internal error:', error)
     return NextResponse.json({
       success: false,
-      error: error.message || 'Internal server error',
+      error: clientSafeMessage(error, 'Storage gagal diinisialisasi.'),
     }, { status: 500 })
   }
 }
@@ -87,7 +85,6 @@ export async function POST(_request: NextRequest) {
  */
 export async function GET() {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const hasServiceKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
 
     // Cek apakah bucket ada
@@ -102,21 +99,19 @@ export async function GET() {
         .list('signed', { limit: 100 })
 
       if (listErr) {
-        listError = listErr.message
+        listError = clientSafeMessage(listErr, 'Daftar objek tidak dapat dibaca.')
       } else {
         objectCount = listData?.length || 0
       }
     } catch (listEx: any) {
-      listError = listEx?.message || 'Unknown error listing objects'
+      listError = clientSafeMessage(listEx, 'Daftar objek tidak dapat dibaca.')
     }
 
     return NextResponse.json({
-      supabase_url: supabaseUrl,
       service_key_available: hasServiceKey,
       bucket_name: CERTIFICATE_PDF_BUCKET,
       bucket_exists: !getBucketErr && Boolean(bucket),
-      bucket_info: bucket || null,
-      bucket_error: getBucketErr?.message || null,
+      bucket_error: getBucketErr ? clientSafeMessage(getBucketErr, 'Bucket tidak dapat diperiksa.') : null,
       storage_access: {
         objects_in_signed_folder: objectCount,
         list_error: listError
@@ -124,7 +119,7 @@ export async function GET() {
     })
   } catch (error: any) {
     return NextResponse.json({
-      error: error.message || 'Internal server error',
+      error: clientSafeMessage(error, 'Status storage tidak dapat diperiksa.'),
     }, { status: 500 })
   }
 }

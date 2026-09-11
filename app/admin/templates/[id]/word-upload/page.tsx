@@ -89,7 +89,10 @@ const TAG_CATEGORIES = [
     tags: [
       { tag: '${nama_penandatangan}', desc: 'Nama pejabat penandatangan' },
       { tag: '${nip_penandatangan}', desc: 'NIP pejabat penandatangan' },
-      { tag: '${jabatan_penandatangan}', desc: 'Jabatan pejabat penandatangan' },
+      {
+        tag: '${jabatan_penandatangan}',
+        desc: 'Jabatan pejabat penandatangan',
+      },
       { tag: '${nama_teknisi}', desc: 'Nama teknisi pelaksana' },
       { tag: '${nip_teknisi}', desc: 'NIP teknisi pelaksana' },
       { tag: '${nama_verifikator}', desc: 'Nama verifikator/pemeriksa' },
@@ -127,7 +130,6 @@ const TAG_CATEGORIES = [
   },
 ]
 
-
 // ─── Upload Zone Component ───────────────────────────────────────────────────
 
 interface UploadZoneProps {
@@ -141,7 +143,16 @@ interface UploadZoneProps {
   section: 'cover' | 'results'
 }
 
-function UploadZone({ label, description, state, onStateChange, showPreview, onTogglePreview, templateId, section }: UploadZoneProps) {
+function UploadZone({
+  label,
+  description,
+  state,
+  onStateChange,
+  showPreview,
+  onTogglePreview,
+  templateId,
+  section,
+}: UploadZoneProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
   const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null)
@@ -172,7 +183,9 @@ function UploadZone({ label, description, state, onStateChange, showPreview, onT
       }
 
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
         if (!session?.access_token) {
           setPreviewError('Sesi login tidak ditemukan')
           setPreviewLoading(false)
@@ -181,7 +194,7 @@ function UploadZone({ label, description, state, onStateChange, showPreview, onT
 
         const url = `/api/admin/templates/preview-from-service?template_id=${encodeURIComponent(templateId)}&section=${encodeURIComponent(section)}`
         const res = await fetch(url, {
-          headers: { 'Authorization': `Bearer ${session.access_token}` },
+          headers: { Authorization: `Bearer ${session.access_token}` },
         })
 
         if (cancelled) return
@@ -189,7 +202,9 @@ function UploadZone({ label, description, state, onStateChange, showPreview, onT
         if (!res.ok) {
           if (res.status === 503 && retryCount < MAX_RETRIES) {
             retryCount++
-            console.log(`[Preview] Retry ${retryCount}/${MAX_RETRIES} after 503 (service starting)...`)
+            console.log(
+              `[Preview] Retry ${retryCount}/${MAX_RETRIES} after 503 (service starting)...`,
+            )
             setTimeout(() => {
               if (!cancelled) fetchPreview()
             }, RETRY_DELAY_MS)
@@ -197,12 +212,18 @@ function UploadZone({ label, description, state, onStateChange, showPreview, onT
           }
 
           if (res.status === 503) {
-            setPreviewError('Service template tidak tersedia. Pastikan service Python berjalan.')
+            setPreviewError(
+              'Service template tidak tersedia. Pastikan service Python berjalan.',
+            )
           } else if (res.status === 404) {
-            setPreviewError('File template tidak ditemukan di service. Upload ulang file .docx untuk melihat preview.')
+            setPreviewError(
+              'File template tidak ditemukan di service. Upload ulang file .docx untuk melihat preview.',
+            )
           } else {
             const errorData = await res.json().catch(() => ({}))
-            setPreviewError(errorData.error || `Gagal memuat preview (HTTP ${res.status})`)
+            setPreviewError(
+              errorData.error || `Gagal memuat preview (HTTP ${res.status})`,
+            )
           }
           setPreviewLoading(false)
           return
@@ -216,7 +237,9 @@ function UploadZone({ label, description, state, onStateChange, showPreview, onT
         }
       } catch (err) {
         if (!cancelled) {
-          setPreviewError('Preview tidak tersedia. Service mungkin belum berjalan.')
+          setPreviewError(
+            'Preview tidak tersedia. Service mungkin belum berjalan.',
+          )
           setPreviewLoading(false)
         }
       }
@@ -240,89 +263,102 @@ function UploadZone({ label, description, state, onStateChange, showPreview, onT
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewBlobUrl])
 
-  const handleUpload = useCallback(async (file: File) => {
-    if (!file.name.endsWith('.docx')) {
-      onStateChange({
-        ...INITIAL_STATE,
-        status: 'error',
-        errorMessage: 'Format file tidak didukung. Gunakan file .docx',
-      })
-      return
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      onStateChange({
-        ...INITIAL_STATE,
-        status: 'error',
-        errorMessage: 'Ukuran file melebihi 10MB',
-      })
-      return
-    }
-
-    onStateChange({ ...state, status: 'uploading', errorMessage: null })
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
+  const handleUpload = useCallback(
+    async (file: File) => {
+      if (!file.name.endsWith('.docx')) {
         onStateChange({
           ...INITIAL_STATE,
           status: 'error',
-          errorMessage: 'Sesi login tidak ditemukan',
+          errorMessage: 'Format file tidak didukung. Gunakan file .docx',
         })
         return
       }
 
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('template_id', templateId)
-      formData.append('section', section)
+      if (file.size > 10 * 1024 * 1024) {
+        onStateChange({
+          ...INITIAL_STATE,
+          status: 'error',
+          errorMessage: 'Ukuran file melebihi 10MB',
+        })
+        return
+      }
 
-      const res = await fetch('/api/admin/templates/upload-to-service', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${session.access_token}` },
-        body: formData,
-      })
+      onStateChange({ ...state, status: 'uploading', errorMessage: null })
 
-      if (!res.ok) {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        if (!session?.access_token) {
+          onStateChange({
+            ...INITIAL_STATE,
+            status: 'error',
+            errorMessage: 'Sesi login tidak ditemukan',
+          })
+          return
+        }
+
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('template_id', templateId)
+        formData.append('section', section)
+
+        const res = await fetch('/api/admin/templates/upload-to-service', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          body: formData,
+        })
+
+        if (!res.ok) {
+          const data = await res.json()
+          const errorMsg =
+            res.status === 503
+              ? 'Service template tidak tersedia. Pastikan service Python berjalan.'
+              : data.error || 'Gagal mengupload template'
+          onStateChange({
+            ...INITIAL_STATE,
+            status: 'error',
+            errorMessage: errorMsg,
+          })
+          return
+        }
+
         const data = await res.json()
-        const errorMsg = res.status === 503
-          ? 'Service template tidak tersedia. Pastikan service Python berjalan.'
-          : data.error || 'Gagal mengupload template'
+        onStateChange({
+          status: 'uploaded',
+          html: null,
+          fileName: file.name,
+          warnings: [],
+          detectedTags: [
+            ...(data.variables || []),
+            ...(data.loops || []).map((l: string) => `loop: ${l}`),
+          ],
+          errorMessage: null,
+          templatePath: data.path || null,
+          detectedVariables: data.variables || [],
+          detectedLoops: data.loops || [],
+        })
+      } catch {
         onStateChange({
           ...INITIAL_STATE,
           status: 'error',
-          errorMessage: errorMsg,
+          errorMessage:
+            'Service template tidak tersedia. Pastikan service Python berjalan.',
         })
-        return
       }
+    },
+    [state, onStateChange, templateId, section],
+  )
 
-      const data = await res.json()
-      onStateChange({
-        status: 'uploaded',
-        html: null,
-        fileName: file.name,
-        warnings: [],
-        detectedTags: [...(data.variables || []), ...(data.loops || []).map((l: string) => `loop: ${l}`)],
-        errorMessage: null,
-        templatePath: data.path || null,
-        detectedVariables: data.variables || [],
-        detectedLoops: data.loops || [],
-      })
-    } catch {
-      onStateChange({
-        ...INITIAL_STATE,
-        status: 'error',
-        errorMessage: 'Service template tidak tersedia. Pastikan service Python berjalan.',
-      })
-    }
-  }, [state, onStateChange, templateId, section])
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setDragOver(false)
-    const file = e.dataTransfer.files[0]
-    if (file) handleUpload(file)
-  }, [handleUpload])
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      setDragOver(false)
+      const file = e.dataTransfer.files[0]
+      if (file) handleUpload(file)
+    },
+    [handleUpload],
+  )
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -333,11 +369,14 @@ function UploadZone({ label, description, state, onStateChange, showPreview, onT
     setDragOver(false)
   }, [])
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) handleUpload(file)
-    if (fileInputRef.current) fileInputRef.current.value = ''
-  }, [handleUpload])
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (file) handleUpload(file)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    },
+    [handleUpload],
+  )
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5">
@@ -368,13 +407,26 @@ function UploadZone({ label, description, state, onStateChange, showPreview, onT
               : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
           }`}
         >
-          <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          <svg
+            className="mx-auto h-12 w-12 text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+            />
           </svg>
           <p className="mt-3 text-sm text-gray-600">
-            Drag & drop file .docx atau <span className="text-blue-600 font-medium">klik untuk pilih</span>
+            Drag & drop file .docx atau{' '}
+            <span className="text-blue-600 font-medium">klik untuk pilih</span>
           </p>
-          <p className="mt-1 text-xs text-gray-400">Maksimal 10MB &middot; Format: .docx</p>
+          <p className="mt-1 text-xs text-gray-400">
+            Maksimal 10MB &middot; Format: .docx
+          </p>
           <input
             ref={fileInputRef}
             type="file"
@@ -388,7 +440,9 @@ function UploadZone({ label, description, state, onStateChange, showPreview, onT
       {state.status === 'uploading' && (
         <div className="border-2 border-dashed border-blue-300 bg-blue-50 rounded-lg p-10 text-center">
           <div className="animate-spin mx-auto h-8 w-8 border-2 border-blue-600 border-t-transparent rounded-full"></div>
-          <p className="mt-3 text-sm text-blue-600">Mengupload template ke service...</p>
+          <p className="mt-3 text-sm text-blue-600">
+            Mengupload template ke service...
+          </p>
         </div>
       )}
 
@@ -416,16 +470,30 @@ function UploadZone({ label, description, state, onStateChange, showPreview, onT
       {state.status === 'uploaded' && (
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            <svg
+              className="w-5 h-5 text-green-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 13l4 4L19 7"
+              />
             </svg>
-            <span className="text-sm text-green-700 font-medium">{state.fileName}</span>
+            <span className="text-sm text-green-700 font-medium">
+              {state.fileName}
+            </span>
           </div>
 
           {/* Warnings */}
           {state.warnings.length > 0 && (
             <div className="bg-yellow-50 border border-yellow-200 rounded p-3 mb-3">
-              <p className="text-xs font-medium text-yellow-800 mb-1">Peringatan:</p>
+              <p className="text-xs font-medium text-yellow-800 mb-1">
+                Peringatan:
+              </p>
               <ul className="text-xs text-yellow-700 list-disc list-inside">
                 {state.warnings.slice(0, 5).map((w, i) => (
                   <li key={i}>{w}</li>
@@ -440,10 +508,15 @@ function UploadZone({ label, description, state, onStateChange, showPreview, onT
           {/* Detected variables from Python service */}
           {state.detectedVariables.length > 0 && (
             <div className="mb-3">
-              <p className="text-xs font-medium text-gray-700 mb-1">Variabel terdeteksi:</p>
+              <p className="text-xs font-medium text-gray-700 mb-1">
+                Variabel terdeteksi:
+              </p>
               <div className="flex flex-wrap gap-1">
                 {state.detectedVariables.map((v, i) => (
-                  <span key={i} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5 font-mono">
+                  <span
+                    key={i}
+                    className="text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5 font-mono"
+                  >
                     {`{{ ${v} }}`}
                   </span>
                 ))}
@@ -454,10 +527,15 @@ function UploadZone({ label, description, state, onStateChange, showPreview, onT
           {/* Detected loops from Python service */}
           {state.detectedLoops.length > 0 && (
             <div className="mb-3">
-              <p className="text-xs font-medium text-gray-700 mb-1">Loop terdeteksi:</p>
+              <p className="text-xs font-medium text-gray-700 mb-1">
+                Loop terdeteksi:
+              </p>
               <div className="flex flex-wrap gap-1">
                 {state.detectedLoops.map((l, i) => (
-                  <span key={i} className="text-xs bg-purple-50 text-purple-700 border border-purple-200 rounded px-1.5 py-0.5 font-mono">
+                  <span
+                    key={i}
+                    className="text-xs bg-purple-50 text-purple-700 border border-purple-200 rounded px-1.5 py-0.5 font-mono"
+                  >
                     {`{% for ... in ${l} %}`}
                   </span>
                 ))}
@@ -469,7 +547,10 @@ function UploadZone({ label, description, state, onStateChange, showPreview, onT
           {state.templatePath && (
             <div className="mb-3">
               <p className="text-xs text-gray-500">
-                Path: <code className="bg-gray-100 px-1 rounded">{state.templatePath}</code>
+                Path:{' '}
+                <code className="bg-gray-100 px-1 rounded">
+                  {state.templatePath}
+                </code>
               </p>
             </div>
           )}
@@ -487,7 +568,9 @@ function UploadZone({ label, description, state, onStateChange, showPreview, onT
               {previewLoading && (
                 <div className="p-6 text-center">
                   <div className="animate-spin mx-auto h-6 w-6 border-2 border-blue-600 border-t-transparent rounded-full"></div>
-                  <p className="mt-2 text-xs text-gray-500">Memuat preview...</p>
+                  <p className="mt-2 text-xs text-gray-500">
+                    Memuat preview...
+                  </p>
                 </div>
               )}
               {previewError && !previewLoading && (
@@ -501,7 +584,14 @@ function UploadZone({ label, description, state, onStateChange, showPreview, onT
                       // Trigger useEffect by briefly clearing and restoring
                       const currentPath = state.templatePath
                       onStateChange({ ...state, templatePath: null })
-                      setTimeout(() => onStateChange({ ...state, templatePath: currentPath }), 100)
+                      setTimeout(
+                        () =>
+                          onStateChange({
+                            ...state,
+                            templatePath: currentPath,
+                          }),
+                        100,
+                      )
                     }}
                     className="text-xs text-blue-600 hover:text-blue-800 font-medium"
                   >
@@ -541,7 +631,6 @@ function UploadZone({ label, description, state, onStateChange, showPreview, onT
   )
 }
 
-
 // ─── Main Page Component ─────────────────────────────────────────────────────
 
 export default function WordUploadPage() {
@@ -569,7 +658,9 @@ export default function WordUploadPage() {
   useEffect(() => {
     async function fetchTemplate() {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
         if (!session?.access_token) {
           setError('Sesi login tidak ditemukan. Silakan login ulang.')
           setLoading(false)
@@ -577,7 +668,7 @@ export default function WordUploadPage() {
         }
 
         const res = await fetch(`/api/admin/templates/${id}`, {
-          headers: { 'Authorization': `Bearer ${session.access_token}` },
+          headers: { Authorization: `Bearer ${session.access_token}` },
         })
 
         if (!res.ok) {
@@ -667,7 +758,9 @@ export default function WordUploadPage() {
     setSaveSuccess(false)
 
     try {
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
       if (!session?.access_token) {
         setError('Sesi login tidak ditemukan. Silakan login ulang.')
         setSaving(false)
@@ -678,7 +771,7 @@ export default function WordUploadPage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           cover_html: coverState.html,
@@ -711,7 +804,15 @@ export default function WordUploadPage() {
     } finally {
       setSaving(false)
     }
-  }, [id, coverState.html, coverState.templatePath, resultsState.html, resultsState.templatePath, headerFooter.repeatingHeader, headerFooter.repeatingFooter])
+  }, [
+    id,
+    coverState.html,
+    coverState.templatePath,
+    resultsState.html,
+    resultsState.templatePath,
+    headerFooter.repeatingHeader,
+    headerFooter.repeatingFooter,
+  ])
 
   if (loading) {
     return (
@@ -750,14 +851,27 @@ export default function WordUploadPage() {
               onClick={() => router.push('/admin/templates')}
               className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1 mb-4"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
+                />
               </svg>
               Kembali ke Daftar
             </button>
-            <h1 className="text-xl font-bold text-gray-900">Upload Template Word</h1>
+            <h1 className="text-xl font-bold text-gray-900">
+              Upload Template Word
+            </h1>
             <p className="text-sm text-gray-500 mt-1">
-              {template.name} &middot; {template.certificate_type} &middot; Versi {template.version}
+              {template.name} &middot; {template.certificate_type} &middot;
+              Versi {template.version}
             </p>
           </div>
 
@@ -783,25 +897,52 @@ export default function WordUploadPage() {
 
           {/* Instructions */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-            <h3 className="text-sm font-semibold text-blue-900 mb-2">Petunjuk</h3>
+            <h3 className="text-sm font-semibold text-blue-900 mb-2">
+              Petunjuk
+            </h3>
             <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
               <li>Upload 2 file Word terpisah:</li>
-              <li className="ml-4">1. <strong>Template Cover</strong> — halaman pertama (header, judul, data alat/pemilik/pengesahan)</li>
-              <li className="ml-4">2. <strong>Template Hasil</strong> — halaman per sensor (header kecil, data sensor, tabel hasil, catatan)</li>
-              <li>Template Hasil akan di-loop untuk setiap sensor yang dikalibrasi</li>
-              <li>Gunakan tag <code className="bg-blue-100 px-1 rounded">${'${variabel}'}</code> untuk data yang akan diisi otomatis</li>
+              <li className="ml-4">
+                1. <strong>Template Cover</strong> — halaman pertama (header,
+                judul, data alat/pemilik/pengesahan)
+              </li>
+              <li className="ml-4">
+                2. <strong>Template Hasil</strong> — halaman per sensor (header
+                kecil, data sensor, tabel hasil, catatan)
+              </li>
+              <li>
+                Template Hasil akan di-loop untuk setiap sensor yang dikalibrasi
+              </li>
+              <li>
+                Gunakan tag{' '}
+                <code className="bg-blue-100 px-1 rounded">
+                  ${'${variabel}'}
+                </code>{' '}
+                untuk data yang akan diisi otomatis
+              </li>
             </ul>
           </div>
 
           {/* Guide Section */}
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
-            <h3 className="text-sm font-semibold text-gray-900 mb-2">Panduan Membuat Template:</h3>
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">
+              Panduan Membuat Template:
+            </h3>
             <ol className="text-sm text-gray-700 space-y-1 list-decimal list-inside">
               <li>Download contoh template di atas</li>
               <li>Edit layout sesuai kebutuhan (font, tabel, border, logo)</li>
-              <li>Pastikan tag <code className="bg-gray-100 px-1 rounded">${'${variabel}'}</code> tetap utuh (jangan edit isi tag)</li>
+              <li>
+                Pastikan tag{' '}
+                <code className="bg-gray-100 px-1 rounded">
+                  ${'${variabel}'}
+                </code>{' '}
+                tetap utuh (jangan edit isi tag)
+              </li>
               <li>Simpan sebagai .docx dan upload di zona yang sesuai</li>
-              <li>Jika hanya upload Cover (tanpa Hasil), sistem akan menggunakan mode 1-file</li>
+              <li>
+                Jika hanya upload Cover (tanpa Hasil), sistem akan menggunakan
+                mode 1-file
+              </li>
             </ol>
           </div>
 
@@ -809,7 +950,12 @@ export default function WordUploadPage() {
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-4 text-sm">
               {error}
-              <button onClick={() => setError(null)} className="ml-2 text-red-500 hover:text-red-700">✕</button>
+              <button
+                onClick={() => setError(null)}
+                className="ml-2 text-red-500 hover:text-red-700"
+              >
+                ✕
+              </button>
             </div>
           )}
 
@@ -852,35 +998,61 @@ export default function WordUploadPage() {
           <div className="mt-6 bg-white rounded-lg border border-gray-200 shadow-sm">
             <button
               type="button"
-              onClick={() => setHeaderFooter(prev => ({ ...prev, headerExpanded: !prev.headerExpanded }))}
+              onClick={() =>
+                setHeaderFooter((prev) => ({
+                  ...prev,
+                  headerExpanded: !prev.headerExpanded,
+                }))
+              }
               className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 transition-colors rounded-lg"
             >
               <div>
-                <h3 className="text-sm font-semibold text-gray-900">Header Berulang (opsional)</h3>
-                <p className="text-xs text-gray-500 mt-0.5">HTML yang muncul di atas setiap halaman PDF. Gunakan tag {'${variabel}'} untuk data dinamis.</p>
+                <h3 className="text-sm font-semibold text-gray-900">
+                  Header Berulang (opsional)
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  HTML yang muncul di atas setiap halaman PDF. Gunakan tag{' '}
+                  {'${variabel}'} untuk data dinamis.
+                </p>
               </div>
               <svg
                 className={`w-5 h-5 text-gray-400 transition-transform ${headerFooter.headerExpanded ? 'rotate-180' : ''}`}
-                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
               </svg>
             </button>
             {headerFooter.headerExpanded && (
               <div className="px-4 pb-4 border-t border-gray-100">
                 <textarea
                   value={headerFooter.repeatingHeader}
-                  onChange={(e) => setHeaderFooter(prev => ({ ...prev, repeatingHeader: e.target.value }))}
+                  onChange={(e) =>
+                    setHeaderFooter((prev) => ({
+                      ...prev,
+                      repeatingHeader: e.target.value,
+                    }))
+                  }
                   placeholder='<div style="text-align: center; font-size: 9pt; border-bottom: 1px solid #000; padding-bottom: 4px;">BMKG - Laboratorium Kalibrasi | No. ${nomor_sertifikat}</div>'
                   rows={4}
                   className="mt-3 w-full text-xs font-mono border border-gray-300 rounded-md p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
                 />
                 {headerFooter.repeatingHeader && (
                   <div className="mt-2">
-                    <p className="text-xs font-medium text-gray-600 mb-1">Preview:</p>
+                    <p className="text-xs font-medium text-gray-600 mb-1">
+                      Preview:
+                    </p>
                     <div
                       className="border border-gray-200 rounded p-2 bg-gray-50 text-xs"
-                      dangerouslySetInnerHTML={{ __html: headerFooter.repeatingHeader }}
+                      dangerouslySetInnerHTML={{
+                        __html: headerFooter.repeatingHeader,
+                      }}
                     />
                   </div>
                 )}
@@ -892,35 +1064,62 @@ export default function WordUploadPage() {
           <div className="mt-4 bg-white rounded-lg border border-gray-200 shadow-sm">
             <button
               type="button"
-              onClick={() => setHeaderFooter(prev => ({ ...prev, footerExpanded: !prev.footerExpanded }))}
+              onClick={() =>
+                setHeaderFooter((prev) => ({
+                  ...prev,
+                  footerExpanded: !prev.footerExpanded,
+                }))
+              }
               className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 transition-colors rounded-lg"
             >
               <div>
-                <h3 className="text-sm font-semibold text-gray-900">Footer Berulang (opsional)</h3>
-                <p className="text-xs text-gray-500 mt-0.5">{"HTML yang muncul di bawah setiap halaman PDF. Gunakan <span class='pageNumber'></span> untuk nomor halaman."}</p>
+                <h3 className="text-sm font-semibold text-gray-900">
+                  Footer Berulang (opsional)
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {
+                    "HTML yang muncul di bawah setiap halaman PDF. Gunakan <span class='pageNumber'></span> untuk nomor halaman."
+                  }
+                </p>
               </div>
               <svg
                 className={`w-5 h-5 text-gray-400 transition-transform ${headerFooter.footerExpanded ? 'rotate-180' : ''}`}
-                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
               </svg>
             </button>
             {headerFooter.footerExpanded && (
               <div className="px-4 pb-4 border-t border-gray-100">
                 <textarea
                   value={headerFooter.repeatingFooter}
-                  onChange={(e) => setHeaderFooter(prev => ({ ...prev, repeatingFooter: e.target.value }))}
+                  onChange={(e) =>
+                    setHeaderFooter((prev) => ({
+                      ...prev,
+                      repeatingFooter: e.target.value,
+                    }))
+                  }
                   placeholder='<div style="text-align: center; font-size: 8pt; color: #666;">FM-KL-01 | Halaman <span class="pageNumber"></span> dari <span class="totalPages"></span></div>'
                   rows={4}
                   className="mt-3 w-full text-xs font-mono border border-gray-300 rounded-md p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
                 />
                 {headerFooter.repeatingFooter && (
                   <div className="mt-2">
-                    <p className="text-xs font-medium text-gray-600 mb-1">Preview:</p>
+                    <p className="text-xs font-medium text-gray-600 mb-1">
+                      Preview:
+                    </p>
                     <div
                       className="border border-gray-200 rounded p-2 bg-gray-50 text-xs"
-                      dangerouslySetInnerHTML={{ __html: headerFooter.repeatingFooter }}
+                      dangerouslySetInnerHTML={{
+                        __html: headerFooter.repeatingFooter,
+                      }}
                     />
                   </div>
                 )}
@@ -938,7 +1137,13 @@ export default function WordUploadPage() {
             </button>
             <button
               onClick={handleSave}
-              disabled={saving || (!coverState.html && !coverState.templatePath && !resultsState.html && !resultsState.templatePath)}
+              disabled={
+                saving ||
+                (!coverState.html &&
+                  !coverState.templatePath &&
+                  !resultsState.html &&
+                  !resultsState.templatePath)
+              }
               className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {saving ? 'Menyimpan...' : 'Simpan Template'}
@@ -949,9 +1154,12 @@ export default function WordUploadPage() {
 
       {/* Sidebar - Variable Tags */}
       <div className="w-72 border-l border-gray-200 bg-gray-50 overflow-auto p-4">
-        <h2 className="text-sm font-semibold text-gray-900 mb-3">Tag Variabel</h2>
+        <h2 className="text-sm font-semibold text-gray-900 mb-3">
+          Tag Variabel
+        </h2>
         <p className="text-xs text-gray-500 mb-4">
-          Gunakan tag berikut di file Word Anda. Tag akan diganti dengan data sertifikat saat generate PDF.
+          Gunakan tag berikut di file Word Anda. Tag akan diganti dengan data
+          sertifikat saat generate PDF.
         </p>
         <div className="space-y-4">
           {TAG_CATEGORIES.map((cat) => (
@@ -965,7 +1173,9 @@ export default function WordUploadPage() {
                     <code className="text-xs bg-white border border-gray-200 rounded px-1.5 py-0.5 text-blue-700 font-mono block">
                       {t.tag}
                     </code>
-                    <p className="text-xs text-gray-500 mt-0.5 ml-1">{t.desc}</p>
+                    <p className="text-xs text-gray-500 mt-0.5 ml-1">
+                      {t.desc}
+                    </p>
                   </div>
                 ))}
               </div>

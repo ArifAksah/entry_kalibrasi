@@ -1,10 +1,10 @@
-'use client';
+'use client'
 
-import React from 'react';
-import ProtectedRoute from '../components/ProtectedRoute';
-import SideNav from './ui/dashboard/sidenav';
-import Header from './ui/dashboard/header';
-import RoleBasedDashboard from './ui/dashboard/role-based-dashboard';
+import React from 'react'
+import ProtectedRoute from '../components/ProtectedRoute'
+import SideNav from './ui/dashboard/sidenav'
+import Header from './ui/dashboard/header'
+import RoleBasedDashboard from './ui/dashboard/role-based-dashboard'
 
 const HomePage: React.FC = () => {
   return (
@@ -13,7 +13,7 @@ const HomePage: React.FC = () => {
         <SideNav />
         <div className="bg-gray-50">
           <Header />
-          <div className="p-6 max-w-7xl mx-auto">
+          <div className="p-4 sm:p-6 mx-auto max-w-[1600px]">
             <div id="role-based-dashboard">
               <RoleBasedDashboard />
             </div>
@@ -21,7 +21,7 @@ const HomePage: React.FC = () => {
         </div>
       </div>
     </ProtectedRoute>
-  );
-};
+  )
+}
 
-export default HomePage;
+export default HomePage

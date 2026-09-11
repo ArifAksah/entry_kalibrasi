@@ -1,14 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../lib/supabase'
+import { getCaller, isAdminCaller, isRenderAuthorized, requireAdmin, unauthorized } from '../../../lib/api-auth'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
     try {
-      const { searchParams } = new URL(request.url)
-      const includeInactive = searchParams.get('includeInactive') === 'true'
+      const isRender = isRenderAuthorized(request)
+      const caller = isRender ? null : await getCaller(request)
+      // headless PDF renderer (signed print flow) gets the same restricted
+      // projection as non-admin users: no NIK/telepon.
+      if (!isRender && !caller) return unauthorized()
+      const is_admin = !isRender && isAdminCaller(caller!)
 
-      let query = supabaseAdmin.from('personel').select('*')
+      const { searchParams } = new URL(request.url)
+      const includeInactive = is_admin && searchParams.get('includeInactive') === 'true'
+
+      // C3 (PII exposure): NIK/telepon hanya boleh dibaca admin. Kolom lain
+      // (id, name, nip, email) tetap diberikan ke user login karena dikonsumsi
+      // dropdown penunjukan verifikator/penandatangan pada alur sertifikat;
+      // renderer PDF cukup id+name.
+      const columns = is_admin ? '*' : (isRender ? 'id, name' : 'id, name, nip, email')
+
+      let query = supabaseAdmin.from('personel').select(columns)
       if (!includeInactive) {
         query = query.or('is_active.eq.true,is_active.is.null')
       }
@@ -22,7 +37,7 @@ export async function GET(request: NextRequest) {
       // supaya dropdown personel di halaman lain tidak ikut kosong.
       if (personelError && /is_active/i.test(personelError.message || '')) {
         console.warn('[personel] is_active filter failed (column missing?), retrying unfiltered:', personelError.message)
-        const retry = await supabaseAdmin.from('personel').select('*').order('created_at', { ascending: false })
+        const retry = await supabaseAdmin.from('personel').select(columns).order('created_at', { ascending: false })
         personelData = retry.data
         personelError = retry.error
       }
@@ -35,6 +50,13 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: personelError.message }, { status: 500 })
       }
 
+      // Renderer PDF hanya butuh id+name, tanpa merge role.
+      if (isRender) {
+        return NextResponse.json(personelData || [])
+      }
+
+      // Semua user login tetap dapat role/station_id (dipakai dropdown
+      // penunjukan petugas), bukan NIK/telepon.
       const { data: rolesData, error: rolesError } = await supabaseAdmin
         .from('user_roles')
         .select('user_id, role, station_id')
@@ -67,6 +89,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const adminGate = await requireAdmin(request)
+    if (adminGate instanceof NextResponse) return adminGate
+
     const body = await request.json()
     const { id, name, nip, nik, phone, email } = body
     if (!id || !name || !email) {
@@ -79,7 +104,7 @@ export async function POST(request: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     return NextResponse.json(data, { status: 201 })
   } catch (e) {
     console.error('Create personel error:', e)

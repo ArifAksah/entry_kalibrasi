@@ -1,5 +1,6 @@
 import React from 'react';
 import './globals.css';
+import '../lib/supabase'; // installs browser fetch -> api auth bridge (side effect)
 import { AuthProvider } from '../contexts/AuthContext';
 
 const RootLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {

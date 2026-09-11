@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateRequest, getUserRole } from '@/lib/certificate-access'
 import { uploadTemplate } from '@/lib/pdf-service/python-service-client'
+import { clientSafeMessage } from '@/lib/api-error'
 
 /**
  * POST /api/admin/templates/upload-to-service
@@ -91,7 +92,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: error.message || 'Gagal mengupload template' },
+      { error: clientSafeMessage(error, 'Gagal mengupload template') },
       { status: 500 }
     )
   }

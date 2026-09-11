@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin as supabase } from '../../../../lib/supabase';
+import { requireAdmin } from '../../../../lib/api-auth';
 import { sendEmail } from '../../../../lib/brevo';
 import { buildAccountConfirmationHtml } from '../../../../lib/email-templates';
 
@@ -21,10 +22,11 @@ async function sendAccountConfirmationEmail(email: string, name: string): Promis
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('Starting simple signup process...');
-    
+    // H4 (open registration) fix: account creation is admin-driven only.
+    const gate = await requireAdmin(request);
+    if (gate instanceof NextResponse) return gate;
+
     const { email, password, userData } = await request.json();
-    console.log('Received data:', { email, userData });
 
     if (!email || !password) {
       return NextResponse.json(
@@ -43,8 +45,6 @@ export async function POST(request: NextRequest) {
         data: userData
       },
     });
-
-    console.log('Supabase signup result:', { signUpData, signUpError });
 
     if (signUpError) {
       console.error('Supabase signup error:', signUpError);

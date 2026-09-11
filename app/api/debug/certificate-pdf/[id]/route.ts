@@ -8,6 +8,7 @@ import {
   tryReadLocalPdf,
 } from '../../../../../lib/certificate-pdf-storage'
 import { authorizeCertificateAccess } from '../../../../../lib/certificate-access'
+import { clientSafeMessage } from '../../../../../lib/api-error'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -98,6 +99,6 @@ export async function GET(
       },
     })
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Debug check failed' }, { status: 500 })
+    return NextResponse.json({ error: clientSafeMessage(error) || 'Debug check failed' }, { status: 500 })
   }
 }

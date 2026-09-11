@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 // Use service role client to avoid RLS issues on server-side
 const supabaseAdmin = createClient(
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('Error fetching certificate logs:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     }
 
     const totalItems = count || 0

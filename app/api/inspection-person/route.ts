@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../lib/supabase'
 import { createClient } from '@supabase/supabase-js'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,7 +15,7 @@ export async function GET() {
       .from('inspection_person')
       .select('*')
       .order('created_at', { ascending: false })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     return NextResponse.json(data)
   } catch (e) {
     return NextResponse.json({ error: 'Failed to fetch inspection_person' }, { status: 500 })
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
       .insert({ result: result || null, inspection_by: inspection_by || null })
       .select()
       .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     return NextResponse.json(data, { status: 201 })
   } catch (e) {
     return NextResponse.json({ error: 'Failed to create inspection_person' }, { status: 500 })

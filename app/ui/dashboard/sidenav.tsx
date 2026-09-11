@@ -1,12 +1,12 @@
-"use client";
+'use client'
 
-import React, { useMemo } from "react";
-import Image from "next/image";
-import { usePathname } from "next/navigation";
-import { usePermissions } from "../../../hooks/usePermissions";
+import React, { useMemo } from 'react'
+import Image from 'next/image'
+import { usePathname } from 'next/navigation'
+import { usePermissions } from '../../../hooks/usePermissions'
 
-type NavItem = { name: string; href: string; icon: React.ReactNode };
-type NavSection = { title: string; items: NavItem[] };
+type NavItem = { name: string; href: string; icon: React.ReactNode }
+type NavSection = { title: string; items: NavItem[] }
 
 const Icon = {
   dashboard: (
@@ -145,129 +145,129 @@ const Icon = {
       />
     </svg>
   ),
-};
+}
 
 const sections: NavSection[] = [
   {
-    title: "Ringkasan",
-    items: [{ name: "Dashboard", href: "/", icon: Icon.dashboard }],
+    title: 'Ringkasan',
+    items: [{ name: 'Dashboard', href: '/', icon: Icon.dashboard }],
   },
   {
-    title: "Instrumen",
-    items: [{ name: "Instrumen", href: "/instruments", icon: Icon.tool }],
+    title: 'Instrumen',
+    items: [{ name: 'Instrumen', href: '/instruments', icon: Icon.tool }],
   },
   {
-    title: "Stasiun",
-    items: [{ name: "Stasiun", href: "/stations", icon: Icon.building }],
+    title: 'Stasiun',
+    items: [{ name: 'Stasiun', href: '/stations', icon: Icon.building }],
   },
   {
-    title: "Dokumen",
+    title: 'Dokumen',
     items: [
-      { name: "Sertifikat", href: "/certificates", icon: Icon.doc },
-      { name: "Log Sertifikat", href: "/certificate-logs", icon: Icon.clock },
-      { name: "Surat", href: "/letters", icon: Icon.mail },
+      { name: 'Sertifikat', href: '/certificates', icon: Icon.doc },
+      { name: 'Log Sertifikat', href: '/certificate-logs', icon: Icon.clock },
+      { name: 'Surat', href: '/letters', icon: Icon.mail },
     ],
   },
   {
-    title: "Administrasi",
+    title: 'Administrasi',
     items: [
-      { name: "Manajemen Personel", href: "/personel", icon: Icon.doc },
+      { name: 'Manajemen Personel', href: '/personel', icon: Icon.doc },
       {
-        name: "Penugasan Stasiun",
-        href: "/user-stations",
+        name: 'Penugasan Stasiun',
+        href: '/user-stations',
         icon: Icon.building,
       },
-      { name: "Template Sertifikat", href: "/admin/templates", icon: Icon.doc },
-      { name: "WhatsApp", href: "/wa-settings", icon: Icon.mail },
+      { name: 'Template Sertifikat', href: '/admin/templates', icon: Icon.doc },
+      { name: 'WhatsApp', href: '/wa-settings', icon: Icon.mail },
     ],
   },
   {
-    title: "Master Data",
+    title: 'Master Data',
     items: [
       {
-        name: "Master Instrumen",
-        href: "/master-instrument-names",
+        name: 'Master Instrumen',
+        href: '/master-instrument-names',
         icon: Icon.database,
       },
-      { name: "Master QC", href: "/master-qc", icon: Icon.beaker },
-      { name: "Master CMC", href: "/master-cmc", icon: Icon.beaker },
-      { name: "Master Satuan", href: "/units", icon: Icon.beaker },
+      { name: 'Master QC', href: '/master-qc', icon: Icon.beaker },
+      { name: 'Master CMC', href: '/master-cmc', icon: Icon.beaker },
+      { name: 'Master Satuan', href: '/units', icon: Icon.beaker },
     ],
   },
-];
+]
 
 const SideNav: React.FC = () => {
-  const pathname = usePathname();
-  const { loading, role } = usePermissions();
+  const pathname = usePathname()
+  const { loading, role } = usePermissions()
 
   const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
+    href === '/' ? pathname === '/' : pathname.startsWith(href)
 
   const filteredSections = useMemo(() => {
-    if (loading) return [];
+    if (loading) return []
 
     const roleBasedSections = sections
       .map((section) => {
-        if (section.title === "Ringkasan") {
-          return section;
+        if (section.title === 'Ringkasan') {
+          return section
         }
 
-        if (section.title === "Administrasi") {
-          if (role === "admin") {
-            return section;
+        if (section.title === 'Administrasi') {
+          if (role === 'admin') {
+            return section
           }
-          return { ...section, items: [] };
+          return { ...section, items: [] }
         }
 
-        if (section.title === "Master Data") {
-          if (role === "admin" || role === "calibrator") {
-            return section;
+        if (section.title === 'Master Data') {
+          if (role === 'admin' || role === 'calibrator') {
+            return section
           }
-          return { ...section, items: [] };
+          return { ...section, items: [] }
         }
 
-        if (section.title === "Dokumen") {
+        if (section.title === 'Dokumen') {
           const filteredItems = section.items.filter((item) => {
-            if (item.href === "/letters") {
-              return role === "admin" || role === "assignor";
+            if (item.href === '/letters') {
+              return role === 'admin' || role === 'assignor'
             }
-            if (item.href === "/certificate-logs") {
-              return role === "admin" || role === "assignor";
+            if (item.href === '/certificate-logs') {
+              return role === 'admin' || role === 'assignor'
             }
-            if (item.href === "/certificates") {
-              return role !== "verifikator" && role !== "assignor";
+            if (item.href === '/certificates') {
+              return role !== 'verifikator' && role !== 'assignor'
             }
-            return true;
-          });
+            return true
+          })
 
-          if (role === "verifikator" || role === "assignor") {
+          if (role === 'verifikator' || role === 'assignor') {
             filteredItems.push({
-              name: "Verifikasi Sertifikat",
-              href: "/certificate-verification",
+              name: 'Verifikasi Sertifikat',
+              href: '/certificate-verification',
               icon: Icon.check,
-            });
+            })
           }
 
-          return { ...section, items: filteredItems };
+          return { ...section, items: filteredItems }
         }
 
         const filteredItems = section.items.filter((item) => {
-          if (["/instruments", "/stations"].includes(item.href)) {
-            if (role === "verifikator" || role === "assignor") {
-              return false;
+          if (['/instruments', '/stations'].includes(item.href)) {
+            if (role === 'verifikator' || role === 'assignor') {
+              return false
             }
-            return true;
+            return true
           }
 
-          return true;
-        });
+          return true
+        })
 
-        return { ...section, items: filteredItems };
+        return { ...section, items: filteredItems }
       })
-      .filter((section) => section.items.length > 0);
+      .filter((section) => section.items.length > 0)
 
-    return roleBasedSections;
-  }, [loading, role]);
+    return roleBasedSections
+  }, [loading, role])
 
   if (loading) {
     return (
@@ -296,7 +296,7 @@ const SideNav: React.FC = () => {
           ))}
         </nav>
       </aside>
-    );
+    )
   }
 
   return (
@@ -312,7 +312,7 @@ const SideNav: React.FC = () => {
               alt="Logo SIMKAL"
               fill
               className="drop-shadow-lg object-contain object-center"
-              style={{ filter: "none" }}
+              style={{ filter: 'none' }}
               priority
             />
           </div>
@@ -342,15 +342,15 @@ const SideNav: React.FC = () => {
                       href={item.href}
                       className={`group flex items-center space-x-3 px-3 py-3 rounded-xl transition-all duration-300 border-l-4 ${
                         isActive(item.href)
-                          ? "bg-gradient-to-r from-blue-600/30 to-cyan-600/30 text-white border-cyan-400 shadow-lg"
-                          : "text-slate-300 hover:bg-slate-700/50 hover:text-white border-transparent hover:border-cyan-400/50 hover:shadow-md"
+                          ? 'bg-gradient-to-r from-blue-600/30 to-cyan-600/30 text-white border-cyan-400 shadow-lg'
+                          : 'text-slate-300 hover:bg-slate-700/50 hover:text-white border-transparent hover:border-cyan-400/50 hover:shadow-md'
                       }`}
                     >
                       <span
                         className={`flex-shrink-0 transition-transform duration-300 group-hover:scale-110 ${
                           isActive(item.href)
-                            ? "text-cyan-400"
-                            : "text-slate-400 group-hover:text-cyan-400"
+                            ? 'text-cyan-400'
+                            : 'text-slate-400 group-hover:text-cyan-400'
                         }`}
                       >
                         {item.icon}
@@ -376,7 +376,7 @@ const SideNav: React.FC = () => {
         </p>
       </div>
     </aside>
-  );
-};
+  )
+}
 
-export default SideNav;
+export default SideNav

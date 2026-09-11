@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../lib/supabase'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
             USING (
               EXISTS (
                 SELECT 1 FROM public.user_roles 
-                WHERE user_roles.id = auth.uid() 
+                WHERE user_roles.user_id = auth.uid()
                 AND user_roles.role = 'admin'
               )
             );
@@ -43,7 +44,7 @@ export async function GET(request: NextRequest) {
               user_id = auth.uid() OR
               EXISTS (
                 SELECT 1 FROM public.user_roles 
-                WHERE user_roles.id = auth.uid() 
+                WHERE user_roles.user_id = auth.uid()
                 AND user_roles.role IN ('admin', 'manager')
               )
             );
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
 
       if (error) {
         console.error('Error creating table:', error)
-        return NextResponse.json({ error: error.message }, { status: 500 })
+        return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
       }
 
       return NextResponse.json({ message: 'Table created successfully' })

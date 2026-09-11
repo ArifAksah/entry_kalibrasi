@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { canUserAccessCertificate, filterCertificatesForUser } from '../../../../lib/certificate-access';
+import { clientSafeMessage } from '../../../../lib/api-error'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -57,7 +58,7 @@ export async function GET(request: NextRequest) {
         .or(`verifikator_1.eq.${user.id},verifikator_2.eq.${user.id},authorized_by.eq.${user.id}`)
         .order('created_at', { ascending: false });
 
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
       certificates = data;
     } else if (userRole === 'admin') {
       // Admin sees all certificates but with limited actions
@@ -66,7 +67,7 @@ export async function GET(request: NextRequest) {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
       certificates = data;
     } else if (userRole === 'calibrator') {
       const { data, error } = await supabaseAdmin
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
       certificates = data;
     } else {
       const { data, error } = await supabaseAdmin
@@ -82,7 +83,7 @@ export async function GET(request: NextRequest) {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
       certificates = await filterCertificatesForUser(user.id, userRole, data || []);
     }
 
@@ -173,7 +174,7 @@ export async function PUT(request: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
 
     return NextResponse.json(data);
   } catch (error) {
@@ -221,7 +222,7 @@ export async function DELETE(request: NextRequest) {
       .delete()
       .eq('id', id);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
 
     return NextResponse.json({ message: 'Certificate deleted successfully' });
   } catch (error) {

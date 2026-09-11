@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -37,7 +38,7 @@ export async function GET() {
       if (code === '42P01' || /relation .* does not exist/i.test(msg) || /permission denied/i.test(msg)) {
         return NextResponse.json([])
       }
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     }
     return NextResponse.json(data)
   } catch (e) {
@@ -240,7 +241,7 @@ export async function POST(request: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     
     // Create log entry for verification action
     try {

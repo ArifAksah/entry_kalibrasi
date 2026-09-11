@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../lib/supabase'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 // GET - Ambil semua tipe instrumen dari tabel instrument_types (sudah ada di DB)
 export async function GET() {
@@ -11,7 +12,7 @@ export async function GET() {
 
         if (error) {
             console.error('GET /api/instrument-types error:', error)
-            return NextResponse.json({ error: error.message }, { status: 500 })
+            return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
         }
 
         return NextResponse.json({ data })

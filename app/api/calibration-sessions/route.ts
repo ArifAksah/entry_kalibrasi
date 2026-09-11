@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../lib/supabase'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 const buildSessionPayload = (body: any) => ({
     station_id: body.station_id ? parseInt(body.station_id) : null,
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(data)
     } catch (error: any) {
         console.error('Error creating calibration session (catch):', error)
-        return NextResponse.json({ error: error.message || 'Unknown error' }, { status: 500 })
+        return NextResponse.json({ error: clientSafeMessage(error) || 'Unknown error' }, { status: 500 })
     }
 }
 
@@ -73,7 +74,7 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json(data)
     } catch (error: any) {
         console.error('Error updating calibration session (catch):', error)
-        return NextResponse.json({ error: error.message || 'Unknown error' }, { status: 500 })
+        return NextResponse.json({ error: clientSafeMessage(error) || 'Unknown error' }, { status: 500 })
     }
 }
 
@@ -93,6 +94,6 @@ export async function GET(req: NextRequest) {
         if (error) throw error
         return NextResponse.json(data)
     } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
+        return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     }
 }

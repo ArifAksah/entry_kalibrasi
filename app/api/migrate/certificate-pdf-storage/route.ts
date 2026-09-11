@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { clientSafeMessage } from '../../../../lib/api-error'
 import {
   buildStoragePdfPath,
   isStoragePdfPath,
@@ -22,7 +23,7 @@ export async function GET() {
       .order('id', { ascending: true })
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     }
 
     const rows = (data || []).map((cert: any) => {
@@ -46,7 +47,7 @@ export async function GET() {
       rows,
     })
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Failed to inspect certificate PDFs' }, { status: 500 })
+    return NextResponse.json({ error: clientSafeMessage(error) || 'Failed to inspect certificate PDFs' }, { status: 500 })
   }
 }
 
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await query
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     }
 
     const results: Array<Record<string, any>> = []
@@ -164,6 +165,6 @@ export async function POST(request: NextRequest) {
       results,
     })
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Migration failed' }, { status: 500 })
+    return NextResponse.json({ error: clientSafeMessage(error) || 'Migration failed' }, { status: 500 })
   }
 }

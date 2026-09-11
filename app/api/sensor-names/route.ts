@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../lib/supabase'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 // GET - Get all sensor names
 export async function GET() {
@@ -10,7 +11,7 @@ export async function GET() {
       .order('created_at', { ascending: false })
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 400 })
     }
 
     return NextResponse.json({ data })
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 400 })
     }
 
     return NextResponse.json({ data }, { status: 201 })

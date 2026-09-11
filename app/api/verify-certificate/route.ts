@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { authorizeCertificateAccess } from '../../../lib/certificate-access'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -242,9 +243,9 @@ export async function GET(request: NextRequest) {
     })
   } catch (e: any) {
     console.error('💥 [API] Unexpected error:', e)
-    return NextResponse.json({ 
-      error: e?.message || 'Internal error',
-      stack: process.env.NODE_ENV === 'development' ? e?.stack : undefined
-    }, { status: 500 })
+    return NextResponse.json(
+      { error: clientSafeMessage(e, 'Verifikasi sertifikat gagal.') },
+      { status: 500 },
+    )
   }
 }

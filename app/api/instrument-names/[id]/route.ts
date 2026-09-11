@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "../../../../lib/supabase";
 import { InstrumentNameUpdate } from "../../../../lib/supabase";
+import { clientSafeMessage } from '../../../../lib/api-error'
 
 export async function GET(
   request: NextRequest,
@@ -15,7 +16,7 @@ export async function GET(
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
     }
 
     return NextResponse.json(data);
@@ -54,7 +55,7 @@ export async function PUT(
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
     }
 
     // Map 'names' to 'name' for frontend compatibility
@@ -101,7 +102,7 @@ export async function DELETE(
           { status: 400 },
         );
       }
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
     }
 
     return NextResponse.json({

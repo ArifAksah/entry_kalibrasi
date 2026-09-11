@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../../lib/supabase'
+import { requireRoles } from '../../../../lib/api-auth'
+import { clientSafeMessage } from '../../../../lib/api-error'
 
 export async function GET(
   request: NextRequest,
@@ -13,7 +15,7 @@ export async function GET(
       .eq('id', id)
       .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     return NextResponse.json(data)
   } catch (e) {
     return NextResponse.json({ error: 'Failed to fetch station' }, { status: 500 })
@@ -25,6 +27,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminGate = await requireRoles(request, ['admin', 'calibrator'])
+    if (adminGate instanceof NextResponse) return adminGate
+
     const { id } = await params
     const body = await request.json()
     const {
@@ -91,7 +96,7 @@ export async function PUT(
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     return NextResponse.json(data)
   } catch (e) {
     return NextResponse.json({ error: 'Failed to update station' }, { status: 500 })
@@ -103,13 +108,16 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const adminGate = await requireRoles(request, ['admin', 'calibrator'])
+    if (adminGate instanceof NextResponse) return adminGate
+
     const { id } = await params
     const { error } = await supabase
       .from('station')
       .delete()
       .eq('id', id)
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     return NextResponse.json({ message: 'Station deleted successfully' })
   } catch (e) {
     return NextResponse.json({ error: 'Failed to delete station' }, { status: 500 })

@@ -14,10 +14,14 @@ const UserStationsPage: React.FC = () => {
         <SideNav />
         <div className="flex-1 overflow-auto">
           <Header />
-          <main className="p-6 max-w-7xl mx-auto">
+          <main className="p-4 sm:p-6 mx-auto max-w-[1600px]">
             <div className="mb-6">
-              <h1 className="text-2xl font-bold text-gray-900">User Station Assignment</h1>
-              <p className="text-gray-600 mt-1">Assign multiple stations to users</p>
+              <h1 className="text-2xl font-bold text-gray-900">
+                User Station Assignment
+              </h1>
+              <p className="text-gray-600 mt-1">
+                Assign multiple stations to users
+              </p>
             </div>
             <UserStationAssignment />
           </main>

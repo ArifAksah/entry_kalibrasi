@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../../lib/supabase'
+import { clientSafeMessage } from '../../../../lib/api-error'
 
 function getMasterQcErrorMessage(error: any) {
     if (error?.code === '23505') {
@@ -133,7 +134,7 @@ export async function DELETE(
 
         if (error) {
             console.error(`DELETE /api/master-qc/${id} error:`, error)
-            return NextResponse.json({ error: error.message }, { status: 400 })
+            return NextResponse.json({ error: clientSafeMessage(error) }, { status: 400 })
         }
 
         return NextResponse.json({ message: 'Data berhasil dihapus' })

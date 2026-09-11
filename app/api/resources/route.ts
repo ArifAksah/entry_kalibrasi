@@ -1,10 +1,16 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
+import { requireAdmin } from '../../../lib/api-auth'
 
-// Enumerate available API resources dynamically from folder structure under app/api
-// Returns top-level directory names as resource identifiers, excluding utility endpoints
-export async function GET() {
+// Enumerate available API resources dynamically from folder structure under app/api.
+// Returns top-level directory names as resource identifiers, excluding utility endpoints.
+// ⚠️ This reveals the full internal API surface, so it is restricted to admins;
+// unauthenticated / low-privilege callers should not be able to map every endpoint.
+export async function GET(request: NextRequest) {
+  const gate = await requireAdmin(request)
+  if (gate instanceof NextResponse) return gate
+
   try {
     const projectRoot = process.cwd()
     const apiDir = path.join(projectRoot, 'app', 'api')
@@ -14,12 +20,10 @@ export async function GET() {
     }
 
     const dirents = fs.readdirSync(apiDir, { withFileTypes: true })
-    // Consider only directories (each directory is one resource namespace)
     let resources = dirents
       .filter((d) => d.isDirectory())
       .map((d) => d.name)
 
-    // Exclude internal/utility endpoints that shouldn't appear as resources
     const EXCLUDE = new Set<string>([
       'resources',
       'role-permissions',
@@ -28,11 +32,8 @@ export async function GET() {
     ])
 
     resources = resources.filter((name) => !EXCLUDE.has(name))
-
-    // Also, flatten directories that contain only route files without nested resources
-    // We keep the top-level names; nested subroutes can be represented as the same resource
     return NextResponse.json(resources.sort())
-  } catch (e) {
+  } catch {
     return NextResponse.json({ error: 'Failed to enumerate resources' }, { status: 500 })
   }
 }

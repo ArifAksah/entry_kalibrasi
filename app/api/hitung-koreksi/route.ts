@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../lib/supabase'
 import { interpolateCorrectionFromPoints, parseCertCorrectionPoints } from '../../../lib/qc-utils'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,7 +44,7 @@ export async function GET(request: NextRequest) {
 
         if (error) {
             console.error('Error calling hitung_koreksi RPC:', error)
-            return NextResponse.json({ error: error.message }, { status: 500 })
+            return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
         }
 
         return NextResponse.json({ correction: data ?? 0 })
@@ -127,7 +128,9 @@ export async function POST(request: NextRequest) {
                 .limit(1)
 
             if (error || !certificates?.[0]) {
-                const message = error?.message || `Certificate standard not found for sensor ${sensorStdId}`
+                const message = error
+                    ? clientSafeMessage(error, 'Gagal membaca sertifikat standar')
+                    : `Certificate standard not found for sensor ${sensorStdId}`
                 sensorPairs.forEach(pair => {
                     errors[`${sensorStdId}:${pair.reading}`] = message
                 })
@@ -156,7 +159,7 @@ export async function POST(request: NextRequest) {
                 try {
                     return { key, correction: await calculateCorrectionWithRetry(pair.reading, pair.sensorStdId) }
                 } catch (error: any) {
-                    return { key, error: error?.message || errors[key] }
+                    return { key, error: clientSafeMessage(error, errors[key] || 'Gagal menghitung koreksi') }
                 }
             }))
             retried.forEach(result => {

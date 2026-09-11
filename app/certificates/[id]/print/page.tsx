@@ -7,28 +7,49 @@ import QRCodeStyling from 'qr-code-styling'
 import QRCode from 'react-qr-code'
 import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
 import { formatUnit, needsConversion } from '../../../../lib/unitConversion'
-import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClassName } from '../../../../lib/rich-text'
+import {
+  isDefaultNotesOthersValue,
+  normalizeRichTextValue,
+  richTextContentClassName,
+} from '../../../../lib/rich-text'
 import { resultsToLegacyView } from '../../../../lib/validators/certificate-results-render-adapter'
 import { calculateRoomCondition } from '../../../../lib/room-condition'
-import { formatCalibrationCorrection, formatCalibrationUncertainty } from '../../../../lib/result-display-format'
+import {
+  formatCalibrationCorrection,
+  formatCalibrationUncertainty,
+} from '../../../../lib/result-display-format'
 import { DecimalPrecisionControl } from '../../../../components/ui/DecimalPrecisionControl'
 import { supabase } from '../../../../lib/supabase'
-import type { TemplateConfig, CertificateType } from '../../../../lib/pdf-service/types'
+import type {
+  TemplateConfig,
+  CertificateType,
+} from '../../../../lib/pdf-service/types'
 import { initializeTemplates } from '../../../../lib/pdf-service/templates'
 import { defaultRegistry } from '../../../../lib/pdf-service/template-registry'
 import { determineCertificateType } from '../../../../lib/pdf-service/type-determinator'
-import { BALAI_DATA, DEFAULT_SIGNER_TITLE } from '../../../../lib/pdf-service/templates/shared/balai-data'
+import {
+  BALAI_DATA,
+  DEFAULT_SIGNER_TITLE,
+} from '../../../../lib/pdf-service/templates/shared/balai-data'
 import { CoverPageHeader } from './components/CoverPageHeader'
 import { CoverPageTitle } from './components/CoverPageTitle'
 import { ResultsPageFooter } from './components/ResultsPageFooter'
-import { isPyranometer, PyranometerSensorData } from '../../../../lib/uncertainty-utils'
+import {
+  isPyranometer,
+  PyranometerSensorData,
+} from '../../../../lib/uncertainty-utils'
 
 // --- TIPE DATA KOMPREHENSIF ---
 // Saya gabungkan tipe dari ViewCertificatePage.tsx Anda ke sini
 // agar kita memiliki akses ke cert.results, verifikator, dll.
 
 type KV = { key: string; value: string }
-type TableRow = { key: string; unit: string; value: string; extraValues?: string[] }
+type TableRow = {
+  key: string
+  unit: string
+  value: string
+  extraValues?: string[]
+}
 type TableSection = { title: string; headers?: string[]; rows: TableRow[] }
 type ResultItem = {
   sensorId: number | null
@@ -38,11 +59,11 @@ type ResultItem = {
   environment: KV[]
   table: TableSection[] // Catatan: Tipe ini mungkin perlu disesuaikan untuk Tabel 1
   notesForm: {
-    traceable_to_si_through: string;
-    reference_document: string;
-    calibration_methode: string;
-    others: string;
-    others_enabled?: boolean;
+    traceable_to_si_through: string
+    reference_document: string
+    calibration_methode: string
+    others: string
+    others_enabled?: boolean
     standardInstruments: number[]
   }
   sensorDetails?: any
@@ -95,45 +116,71 @@ type Instrument = {
 }
 type Personel = { id: string; name: string | null }
 
-const findPersonelById = (personel: Personel[], id: string | number | null | undefined) => {
+const findPersonelById = (
+  personel: Personel[],
+  id: string | number | null | undefined,
+) => {
   if (id == null || id === '') return null
   const targetId = String(id)
-  return personel.find(p => p.id != null && String(p.id) === targetId) || null
+  return personel.find((p) => p.id != null && String(p.id) === targetId) || null
 }
 
 // --- Komponen Label Helper ---
 // Untuk meniru format label di PDF (Indo bold + English italic)
-const PdfLabel: React.FC<{ indo: string; eng: string; className?: string }> = ({ indo, eng, className = '' }) => (
+const PdfLabel: React.FC<{ indo: string; eng: string; className?: string }> = ({
+  indo,
+  eng,
+  className = '',
+}) => (
   <div className={`leading-tight ${className}`}>
     <div className="cert-text-id">{indo}</div>
     <div className="cert-text-en">{eng}</div>
   </div>
 )
 
-const RichTextCell: React.FC<{ value: string; className?: string }> = ({ value, className = '' }) => (
+const RichTextCell: React.FC<{ value: string; className?: string }> = ({
+  value,
+  className = '',
+}) => (
   <div
     className={`${richTextContentClassName} whitespace-normal ${className}`}
     dangerouslySetInnerHTML={{ __html: normalizeRichTextValue(value) }}
   />
 )
 
-const isOthersEnabled = (notesForm: { others?: string | null; others_enabled?: boolean | null } | null | undefined) =>
+const isOthersEnabled = (
+  notesForm:
+    | { others?: string | null; others_enabled?: boolean | null }
+    | null
+    | undefined,
+) =>
   typeof notesForm?.others_enabled === 'boolean'
     ? notesForm.others_enabled
     : Boolean(notesForm?.others)
 
 const unwrapListResponse = (payload: any): any[] =>
-  Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : [])
+  Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.data)
+      ? payload.data
+      : []
 
 // --- Komponen QR Code dengan styling (modules/finder) dan logo BMKG di tengah ---
 const QRCodeWithBMKGLogo: React.FC<{
-  value: string;
-  size: number;
-  logoSize?: number;
-  className?: string;
-  fgColor?: string; // warna modul (merah/hitam)
-  onRendered?: () => void; // Callback ketika QR code selesai di-render
-}> = ({ value, size, logoSize = 16, className = '', fgColor = '#000000', onRendered }) => {
+  value: string
+  size: number
+  logoSize?: number
+  className?: string
+  fgColor?: string // warna modul (merah/hitam)
+  onRendered?: () => void // Callback ketika QR code selesai di-render
+}> = ({
+  value,
+  size,
+  logoSize = 16,
+  className = '',
+  fgColor = '#000000',
+  onRendered,
+}) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const qrRef = useRef<QRCodeStyling | null>(null)
   const renderedRef = useRef<boolean>(false)
@@ -158,7 +205,11 @@ const QRCodeWithBMKGLogo: React.FC<{
           cornersSquareOptions: { color: '#000000', type: 'square' },
           cornersDotOptions: { color: '#000000' },
           image: bmkgLogo.src,
-          imageOptions: { crossOrigin: 'anonymous', margin: 4, imageSize: logoSize / size },
+          imageOptions: {
+            crossOrigin: 'anonymous',
+            margin: 4,
+            imageSize: logoSize / size,
+          },
           margin: 6,
         })
         qrRef.current.append(containerRef.current)
@@ -172,7 +223,11 @@ const QRCodeWithBMKGLogo: React.FC<{
           cornersSquareOptions: { color: '#000000', type: 'square' },
           cornersDotOptions: { color: '#000000' },
           image: bmkgLogo.src,
-          imageOptions: { crossOrigin: 'anonymous', margin: 4, imageSize: logoSize / size },
+          imageOptions: {
+            crossOrigin: 'anonymous',
+            margin: 4,
+            imageSize: logoSize / size,
+          },
           margin: 6,
         })
       }
@@ -229,10 +284,10 @@ const QRCodeWithBMKGLogo: React.FC<{
 }
 
 const FooterQRCode: React.FC<{
-  value: string;
-  size?: number;
-  fgColor?: string;
-  onRendered?: () => void;
+  value: string
+  size?: number
+  fgColor?: string
+  onRendered?: () => void
 }> = ({ value, size = 52, fgColor = '#000000', onRendered }) => {
   useEffect(() => {
     const timer = window.setTimeout(() => onRendered?.(), 0)
@@ -240,8 +295,22 @@ const FooterQRCode: React.FC<{
   }, [value, fgColor, onRendered])
 
   return (
-    <div className="footer-qr-rendered" style={{ width: size, height: size, position: 'relative', background: '#fff' }}>
-      <QRCode value={value || ' '} size={size} bgColor="#FFFFFF" fgColor={fgColor} level="H" />
+    <div
+      className="footer-qr-rendered"
+      style={{
+        width: size,
+        height: size,
+        position: 'relative',
+        background: '#fff',
+      }}
+    >
+      <QRCode
+        value={value || ' '}
+        size={size}
+        bgColor="#FFFFFF"
+        fgColor={fgColor}
+        level="H"
+      />
       <img
         src={bmkgLogo.src}
         alt=""
@@ -280,40 +349,66 @@ const PrintCertificatePage: React.FC = () => {
   const [rawDataSettled, setRawDataSettled] = useState(false)
   const [lookupsSettled, setLookupsSettled] = useState(false)
   const [decimalPrecision, setDecimalPrecision] = useState(4)
-  const [templateConfig, setTemplateConfig] = useState<TemplateConfig | null>(null)
+  const [templateConfig, setTemplateConfig] = useState<TemplateConfig | null>(
+    null,
+  )
 
-  const computeEnvCondition = useCallback((type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
-    return calculateRoomCondition(type, sensorRawData)?.display ?? '-';
-  }, []);
-
+  const computeEnvCondition = useCallback(
+    (type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
+      return calculateRoomCondition(type, sensorRawData)?.display ?? '-'
+    },
+    [],
+  )
 
   // Helper to resolve canonical sensor name
-  const resolveSensorName = useCallback((res: any, fallbackIndex: number) => {
-    const sd = res?.sensorDetails || {}
-    const targetId = res?.sensorId != null ? Number(res.sensorId) : null
-    const sensorRecord = targetId != null
-      ? sensors.find((s: any) => s.id != null && Number(s.id) === targetId)
-      : undefined
-    let canonicalName = undefined
-    if (sensorRecord?.sensor_name_id != null) {
-      canonicalName = instrumentNames.find((n: any) => n.id != null && Number(n.id) === Number(sensorRecord.sensor_name_id))?.name
-    }
-    // Priority: canonical name from instrument_names table > sensorDetails.name > sensorDetails.id fallback
-    return canonicalName || sensorRecord?.name || sd.name || (targetId ? `Sensor ID ${targetId}` : null) || sd.type || `Sensor ${fallbackIndex + 1}`
-  }, [sensors, instrumentNames])
+  const resolveSensorName = useCallback(
+    (res: any, fallbackIndex: number) => {
+      const sd = res?.sensorDetails || {}
+      const targetId = res?.sensorId != null ? Number(res.sensorId) : null
+      const sensorRecord =
+        targetId != null
+          ? sensors.find((s: any) => s.id != null && Number(s.id) === targetId)
+          : undefined
+      let canonicalName = undefined
+      if (sensorRecord?.sensor_name_id != null) {
+        canonicalName = instrumentNames.find(
+          (n: any) =>
+            n.id != null &&
+            Number(n.id) === Number(sensorRecord.sensor_name_id),
+        )?.name
+      }
+      // Priority: canonical name from instrument_names table > sensorDetails.name > sensorDetails.id fallback
+      return (
+        canonicalName ||
+        sensorRecord?.name ||
+        sd.name ||
+        (targetId ? `Sensor ID ${targetId}` : null) ||
+        sd.type ||
+        `Sensor ${fallbackIndex + 1}`
+      )
+    },
+    [sensors, instrumentNames],
+  )
 
   // Menggunakan useMemo untuk data turunan
   const station = useMemo(() => {
     const targetId = cert?.station != null ? Number(cert.station) : null
-    return targetId != null ? stations.find(s => s.id != null && Number(s.id) === targetId) || null : null
+    return targetId != null
+      ? stations.find((s) => s.id != null && Number(s.id) === targetId) || null
+      : null
   }, [stations, cert])
-  const resolvedStationAddress = useMemo(() => (cert?.station_address ?? null) || (station?.address ?? null), [cert, station])
+  const resolvedStationAddress = useMemo(
+    () => (cert?.station_address ?? null) || (station?.address ?? null),
+    [cert, station],
+  )
   const instrument = useMemo(() => {
     // Resolve display name: 'names' is a FK id into instrument_names; name_alias is the text.
     const resolveInstrumentName = (row: any): string | null => {
       let name: string | null = row?.name_alias || row?.name || null
       if (row?.names != null) {
-        const rec = instrumentNames.find((n: any) => Number(n.id) === Number(row.names))
+        const rec = instrumentNames.find(
+          (n: any) => Number(n.id) === Number(row.names),
+        )
         if (rec?.name) name = rec.name
       }
       return name
@@ -335,7 +430,11 @@ const PrintCertificatePage: React.FC = () => {
 
     // Priority 2: from the instruments list (or /api/instruments/:id top-up)
     const targetId = cert?.instrument != null ? Number(cert.instrument) : null
-    const found = targetId != null ? instruments.find(i => i.id != null && Number(i.id) === targetId) || null : null
+    const found =
+      targetId != null
+        ? instruments.find((i) => i.id != null && Number(i.id) === targetId) ||
+          null
+        : null
     if (!found) return null
     return { ...found, name: resolveInstrumentName(found) } as any
   }, [instruments, cert, instrumentNames])
@@ -349,7 +448,9 @@ const PrintCertificatePage: React.FC = () => {
     }
     // Priority 2: derive from template config (Balai name)
     if (templateConfig && templateConfig.header.balaiName) {
-      const balaiEntry = Object.values(BALAI_DATA).find(b => b.name === templateConfig.header.balaiName)
+      const balaiEntry = Object.values(BALAI_DATA).find(
+        (b) => b.name === templateConfig.header.balaiName,
+      )
       return balaiEntry?.signerTitle || templateConfig.header.balaiName
     }
     // Priority 3: default
@@ -369,37 +470,77 @@ const PrintCertificatePage: React.FC = () => {
   const results = useMemo(() => {
     return resultsToLegacyView((cert as any)?.results)
   }, [cert])
-  const resultData = useMemo(() => (results && results.length > 0 ? results[0] : null), [results])
+  const resultData = useMemo(
+    () => (results && results.length > 0 ? results[0] : null),
+    [results],
+  )
 
-  const requiredSensorIds = useMemo(() => Array.from(new Set(
-    results.flatMap((result: any) => [
-      result?.sensorId,
-      ...(Array.isArray(result?.notesForm?.standardInstruments)
-        ? result.notesForm.standardInstruments
-        : []),
-    ])
-      .filter((value: any) => value != null)
-      .map((value: any) => Number(value))
-      .filter(Number.isFinite)
-  )), [results])
+  const requiredSensorIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          results
+            .flatMap((result: any) => [
+              result?.sensorId,
+              ...(Array.isArray(result?.notesForm?.standardInstruments)
+                ? result.notesForm.standardInstruments
+                : []),
+            ])
+            .filter((value: any) => value != null)
+            .map((value: any) => Number(value))
+            .filter(Number.isFinite),
+        ),
+      ),
+    [results],
+  )
 
-  const requiredPersonelIds = useMemo(() => Array.from(new Set([
-    cert?.authorized_by,
-    cert?.verifikator_1,
-    cert?.verifikator_2,
-    cert?.verifikator_3,
-  ].filter(Boolean).map(String))), [cert])
+  const requiredPersonelIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [
+            cert?.authorized_by,
+            cert?.verifikator_1,
+            cert?.verifikator_2,
+            cert?.verifikator_3,
+          ]
+            .filter(Boolean)
+            .map(String),
+        ),
+      ),
+    [cert],
+  )
 
-  const resultSessionIds = useMemo(() => Array.from(new Set(
-    results.map((result: any) => result?.session_id).filter(Boolean).map(String)
-  )), [results])
+  const resultSessionIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          results
+            .map((result: any) => result?.session_id)
+            .filter(Boolean)
+            .map(String),
+        ),
+      ),
+    [results],
+  )
 
   const requiredResourcesReady = useMemo(() => {
-    if (!cert || !templateConfig || !lookupsSettled || !rawDataSettled) return false
+    if (!cert || !templateConfig || !lookupsSettled || !rawDataSettled)
+      return false
     if (cert.instrument != null && !instrument) return false
     if (cert.station != null && !station) return false
-    if (!requiredPersonelIds.every(id => personel.some(p => String(p.id) === id))) return false
-    if (!requiredSensorIds.every(id => sensors.some(sensor => Number(sensor.id) === id))) return false
+    if (
+      !requiredPersonelIds.every((id) =>
+        personel.some((p) => String(p.id) === id),
+      )
+    )
+      return false
+    if (
+      !requiredSensorIds.every((id) =>
+        sensors.some((sensor) => Number(sensor.id) === id),
+      )
+    )
+      return false
     if (resultSessionIds.length > 0 && allRawData.length === 0) return false
     return true
   }, [
@@ -484,20 +625,26 @@ const PrintCertificatePage: React.FC = () => {
       config = defaultRegistry.get(typeParam)
     } else {
       // Determine from certificate data
-      const certType = determineCertificateType({
-        calibration_place: cert.calibration_place,
-        calibration_kind: cert.calibration_kind,
-        balai_id: cert.balai_id,
-        is_standard: cert.is_standard,
-        certificate_type: cert.certificate_type,
-      }, cert.id)
+      const certType = determineCertificateType(
+        {
+          calibration_place: cert.calibration_place,
+          calibration_kind: cert.calibration_kind,
+          balai_id: cert.balai_id,
+          is_standard: cert.is_standard,
+          certificate_type: cert.certificate_type,
+        },
+        cert.id,
+      )
       config = defaultRegistry.get(certType)
     }
     setTemplateConfig(config)
   }, [cert])
 
   // Total pages: 1 (cover) + max(1, N per sensor). No separate closing page.
-  const totalPrintedPages = useMemo(() => 1 + Math.max(1, results?.length ?? 0), [results])
+  const totalPrintedPages = useMemo(
+    () => 1 + Math.max(1, results?.length ?? 0),
+    [results],
+  )
 
   useEffect(() => {
     const id = Number(params.id)
@@ -508,11 +655,39 @@ const PrintCertificatePage: React.FC = () => {
     }
 
     // Helper: fetch with timeout to prevent any single hung request from blocking page
-    const fetchWithTimeout = async (url: string, timeoutMs = 12000, headers?: HeadersInit): Promise<Response | null> => {
+    // In signed-PDF render mode (headless Chromium, no session) every /api
+    // request needs the render token headers used by proxy.ts + route guards.
+    const renderScopeHeaders = (() => {
+      if (typeof window === 'undefined') return {} as Record<string, string>
+      const sp = new URLSearchParams(window.location.search)
+      const renderToken = sp.get('render_token')
+      const renderTs = sp.get('render_ts')
+      if (renderToken && renderTs) {
+        return {
+          'x-pdf-render-token': renderToken,
+          'x-pdf-render-ts': renderTs,
+          'x-pdf-render-cert': String(id),
+        }
+      }
+      return {} as Record<string, string>
+    })()
+
+    const fetchWithTimeout = async (
+      url: string,
+      timeoutMs = 12000,
+      headers?: HeadersInit,
+    ): Promise<Response | null> => {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), timeoutMs)
       try {
-        return await fetch(url, { signal: controller.signal, headers })
+        const mergedHeaders = {
+          ...renderScopeHeaders,
+          ...(headers as Record<string, string> | undefined),
+        }
+        return await fetch(url, {
+          signal: controller.signal,
+          headers: mergedHeaders,
+        })
       } catch (e) {
         console.warn(`[Print] fetch failed/timeout: ${url}`, e)
         return null
@@ -539,14 +714,17 @@ const PrintCertificatePage: React.FC = () => {
         const res = await fetchWithTimeout(url, timeoutMs, headers)
         lastRes = res
 
-        const looksTransientError = !!res && !res.ok && ![401, 403, 404].includes(res.status)
+        const looksTransientError =
+          !!res && !res.ok && ![401, 403, 404].includes(res.status)
         let emptyList200 = false
         if (res?.ok) {
           try {
             const body = await res.clone().json()
             const arr = Array.isArray(body) ? body : body?.data
             emptyList200 = Array.isArray(arr) && arr.length === 0
-          } catch { emptyList200 = false }
+          } catch {
+            emptyList200 = false
+          }
         }
 
         if (res && !looksTransientError && !emptyList200) return res
@@ -555,10 +733,12 @@ const PrintCertificatePage: React.FC = () => {
           const delay = 600 * attempt
           console.warn(
             `[Print] Transient failure for ${url}` +
-            (emptyList200 ? ' (empty list — DB unreachable fallback?)' : ` (HTTP ${res?.status ?? 'network error'})`) +
-            `, retry ${attempt + 1}/${attempts - 1} in ${delay}ms`
+              (emptyList200
+                ? ' (empty list — DB unreachable fallback?)'
+                : ` (HTTP ${res?.status ?? 'network error'})`) +
+              `, retry ${attempt + 1}/${attempts - 1} in ${delay}ms`,
           )
-          await new Promise(r => setTimeout(r, delay))
+          await new Promise((r) => setTimeout(r, delay))
         }
       }
       return lastRes
@@ -566,7 +746,11 @@ const PrintCertificatePage: React.FC = () => {
 
     const safeJson = async (res: Response | null): Promise<any> => {
       if (!res || !res.ok) return null
-      try { return await res.json() } catch { return null }
+      try {
+        return await res.json()
+      } catch {
+        return null
+      }
     }
 
     const load = async () => {
@@ -585,25 +769,45 @@ const PrintCertificatePage: React.FC = () => {
           certificateHeaders['x-pdf-render-token'] = renderToken
           certificateHeaders['x-pdf-render-ts'] = renderTimestamp
         } else {
-          const { data: { session } } = await supabase.auth.getSession()
+          const {
+            data: { session },
+          } = await supabase.auth.getSession()
           if (!session?.access_token) throw new Error('Not authenticated')
           certificateHeaders['Authorization'] = `Bearer ${session.access_token}`
         }
 
-        const cRes = await fetchWithTimeout(`/api/certificates/${id}`, 15000, certificateHeaders)
+        const cRes = await fetchWithTimeout(
+          `/api/certificates/${id}`,
+          15000,
+          certificateHeaders,
+        )
         if (!cRes) throw new Error('Timeout: gagal memuat data sertifikat')
         const c = await safeJson(cRes)
-        if (!cRes.ok) throw new Error(c?.error || `Failed to load certificate (HTTP ${cRes.status})`)
+        if (!cRes.ok)
+          throw new Error(
+            c?.error || `Failed to load certificate (HTTP ${cRes.status})`,
+          )
         if (!c) throw new Error('Sertifikat tidak ditemukan / response kosong')
-        console.log('[Print] Certificate loaded:', c?.id, 'results format:', Array.isArray(c?.results) ? 'V0-array' : (c?.results?.schema_version ? `V${c.results.schema_version}` : 'null/other'))
+        console.log(
+          '[Print] Certificate loaded:',
+          c?.id,
+          'results format:',
+          Array.isArray(c?.results)
+            ? 'V0-array'
+            : c?.results?.schema_version
+              ? `V${c.results.schema_version}`
+              : 'null/other',
+        )
         setCert(c)
 
         // Merge-by-id (later wins per field) so a fast single-record top-up is
         // never wiped when the slow paginated list eventually arrives without it.
         const mergeById = (prev: any[], next: any[]) => {
           const byKey = new Map<string, any>()
-          prev.forEach(x => { if (x?.id != null) byKey.set(String(x.id), x) })
-          next.forEach(x => {
+          prev.forEach((x) => {
+            if (x?.id != null) byKey.set(String(x.id), x)
+          })
+          next.forEach((x) => {
             if (x?.id != null) {
               const key = String(x.id)
               byKey.set(key, { ...(byKey.get(key) || {}), ...x })
@@ -617,61 +821,124 @@ const PrintCertificatePage: React.FC = () => {
         // Pemilik, Pejabat, Verifikator, and Standar Kalibrasi out of '-' when
         // the big paginated lists are slow or transiently fail.
         try {
-            const jobs: Promise<void>[] = []
-            if (c?.instrument != null) {
-              jobs.push((async () => {
-                const r = await fetchWithTimeout(`/api/instruments/${c.instrument}`, 8000, undefined)
+          const jobs: Promise<void>[] = []
+          if (c?.instrument != null) {
+            jobs.push(
+              (async () => {
+                const r = await fetchWithTimeout(
+                  `/api/instruments/${c.instrument}`,
+                  8000,
+                  undefined,
+                )
                 const row = r ? await safeJson(r) : null
                 if (row && (row as any).id != null) {
-                  setInstruments(prev => (prev.some(i => Number(i.id) === Number((row as any).id)) ? prev : [...prev, row]))
+                  setInstruments((prev) =>
+                    prev.some((i) => Number(i.id) === Number((row as any).id))
+                      ? prev
+                      : [...prev, row],
+                  )
                   console.log('[Print] Top-up instrument', (row as any).id)
                 }
-              })())
-            }
-            if (c?.station != null) {
-              jobs.push((async () => {
-                const r = await fetchWithTimeout(`/api/stations/${c.station}`, 8000)
+              })(),
+            )
+          }
+          if (c?.station != null) {
+            jobs.push(
+              (async () => {
+                const r = await fetchWithTimeout(
+                  `/api/stations/${c.station}`,
+                  8000,
+                )
                 const row = r ? await safeJson(r) : null
                 if (row && (row as any).id != null) {
-                  setStations(prev => (prev.some(s => Number(s.id) === Number((row as any).id)) ? prev : [...prev, row]))
+                  setStations((prev) =>
+                    prev.some((s) => Number(s.id) === Number((row as any).id))
+                      ? prev
+                      : [...prev, row],
+                  )
                   console.log('[Print] Top-up station', (row as any).id)
                 }
-              })())
-            }
-            ;[c?.authorized_by, (c as any)?.verifikator_1, (c as any)?.verifikator_2, (c as any)?.verifikator_3]
-              .filter(Boolean)
-              .forEach((pid: any) => {
-                jobs.push((async () => {
+              })(),
+            )
+          }
+          ;[
+            c?.authorized_by,
+            (c as any)?.verifikator_1,
+            (c as any)?.verifikator_2,
+            (c as any)?.verifikator_3,
+          ]
+            .filter(Boolean)
+            .forEach((pid: any) => {
+              jobs.push(
+                (async () => {
                   const r = await fetchWithTimeout(`/api/personel/${pid}`, 8000)
                   const row = r ? await safeJson(r) : null
-                  const person = Array.isArray(row) ? row[0] : (row?.id != null ? row : (row?.data?.id != null ? row.data : null))
+                  const person = Array.isArray(row)
+                    ? row[0]
+                    : row?.id != null
+                      ? row
+                      : row?.data?.id != null
+                        ? row.data
+                        : null
                   if (person?.id) {
-                    setPersonel(prev => (prev.some(p => String(p.id) === String(person.id)) ? prev : [...prev, person]))
-                    console.log('[Print] Top-up personel', String(person.id).slice(0, 8))
+                    setPersonel((prev) =>
+                      prev.some((p) => String(p.id) === String(person.id))
+                        ? prev
+                        : [...prev, person],
+                    )
+                    console.log(
+                      '[Print] Top-up personel',
+                      String(person.id).slice(0, 8),
+                    )
                   }
-                })())
-              })
-            const sensorRefIds = Array.from(new Set(
-              resultsToLegacyView(c.results || []).flatMap((r: any) => [
-                r?.sensorId, ...(Array.isArray(r?.notesForm?.standardInstruments) ? r.notesForm.standardInstruments : []),
-              ]).filter((v: any) => v != null).map((v: any) => Number(v))
-            )).filter(Number.isFinite)
-            sensorRefIds.forEach((sid: number) => {
-              jobs.push((async () => {
+                })(),
+              )
+            })
+          const sensorRefIds = Array.from(
+            new Set(
+              resultsToLegacyView(c.results || [])
+                .flatMap((r: any) => [
+                  r?.sensorId,
+                  ...(Array.isArray(r?.notesForm?.standardInstruments)
+                    ? r.notesForm.standardInstruments
+                    : []),
+                ])
+                .filter((v: any) => v != null)
+                .map((v: any) => Number(v)),
+            ),
+          ).filter(Number.isFinite)
+          sensorRefIds.forEach((sid: number) => {
+            jobs.push(
+              (async () => {
                 const r = await fetchWithTimeout(`/api/sensors/${sid}`, 8000)
                 const payload = r ? await safeJson(r) : null
-                const row = Array.isArray(payload) ? payload[0] : (payload?.data?.id != null ? payload.data : (payload?.id != null ? payload : null))
+                const row = Array.isArray(payload)
+                  ? payload[0]
+                  : payload?.data?.id != null
+                    ? payload.data
+                    : payload?.id != null
+                      ? payload
+                      : null
                 if (row?.id != null) {
-                  setSensors(prev => (prev.some(s => Number(s.id) === Number(row.id)) ? prev : [...prev, row]))
+                  setSensors((prev) =>
+                    prev.some((s) => Number(s.id) === Number(row.id))
+                      ? prev
+                      : [...prev, row],
+                  )
                   console.log('[Print] Top-up sensor', row.id)
                 }
-              })())
-            })
-            const settled = await Promise.allSettled(jobs)
-            const failedCount = settled.filter(result => result.status === 'rejected').length
-            if (failedCount > 0) {
-              console.warn(`[Print] ${failedCount} required top-up request(s) failed`)
-            }
+              })(),
+            )
+          })
+          const settled = await Promise.allSettled(jobs)
+          const failedCount = settled.filter(
+            (result) => result.status === 'rejected',
+          ).length
+          if (failedCount > 0) {
+            console.warn(
+              `[Print] ${failedCount} required top-up request(s) failed`,
+            )
+          }
         } catch (e) {
           console.warn('[Print] Top-up fetches failed:', e)
         } finally {
@@ -685,13 +952,23 @@ const PrintCertificatePage: React.FC = () => {
         if (c?.results) {
           try {
             const parsedResults = resultsToLegacyView(c.results)
-            const sessionIds = Array.from(new Set(parsedResults.map((r: any) => r.session_id).filter(Boolean)))
+            const sessionIds = Array.from(
+              new Set(
+                parsedResults.map((r: any) => r.session_id).filter(Boolean),
+              ),
+            )
             if (sessionIds.length > 0) {
               const responses = await Promise.all(
-                sessionIds.map((sid: any) => fetchWithRetry(`/api/raw-data?session_id=${sid}&mode=room`, 15000, undefined))
+                sessionIds.map((sid: any) =>
+                  fetchWithRetry(
+                    `/api/raw-data?session_id=${sid}&mode=room`,
+                    15000,
+                    undefined,
+                  ),
+                ),
               )
-              const jsons = await Promise.all(responses.map(r => safeJson(r)))
-              const merged = jsons.flatMap((j: any) => (j?.data ?? []))
+              const jsons = await Promise.all(responses.map((r) => safeJson(r)))
+              const merged = jsons.flatMap((j: any) => j?.data ?? [])
               setAllRawData(merged)
             }
           } catch (e) {
@@ -709,28 +986,42 @@ const PrintCertificatePage: React.FC = () => {
         ;(async () => {
           const r = await fetchWithRetry('/api/personel', 10000)
           const p = await safeJson(r)
-          if (Array.isArray(p)) setPersonel(prev => mergeById(p, prev))
+          if (Array.isArray(p)) setPersonel((prev) => mergeById(p, prev))
         })()
 
         // Sensors
         ;(async () => {
           try {
-            const first = await fetchWithRetry('/api/sensors?page=1&pageSize=100', 10000)
+            const first = await fetchWithRetry(
+              '/api/sensors?page=1&pageSize=100',
+              10000,
+            )
             const firstPayload = await safeJson(first)
             if (!firstPayload) return
             const firstData = unwrapListResponse(firstPayload)
-            const totalPages = Array.isArray(firstPayload) ? 1 : Number(firstPayload?.totalPages ?? 1)
+            const totalPages = Array.isArray(firstPayload)
+              ? 1
+              : Number(firstPayload?.totalPages ?? 1)
             let listData = firstData
             if (totalPages > 1) {
               const restRes = await Promise.all(
-                Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map((page) =>
-                  fetchWithRetry(`/api/sensors?page=${page}&pageSize=100`, 10000)
-                )
+                Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(
+                  (page) =>
+                    fetchWithRetry(
+                      `/api/sensors?page=${page}&pageSize=100`,
+                      10000,
+                    ),
+                ),
               )
-              const restPayloads = await Promise.all(restRes.map(r => safeJson(r)))
-              listData = [...firstData, ...restPayloads.flatMap(unwrapListResponse)]
+              const restPayloads = await Promise.all(
+                restRes.map((r) => safeJson(r)),
+              )
+              listData = [
+                ...firstData,
+                ...restPayloads.flatMap(unwrapListResponse),
+              ]
             }
-            setSensors(prev => mergeById(listData, prev))
+            setSensors((prev) => mergeById(listData, prev))
           } catch (e) {
             console.error('[Print] Failed to fetch sensors:', e)
           }
@@ -740,28 +1031,45 @@ const PrintCertificatePage: React.FC = () => {
         ;(async () => {
           const r = await fetchWithRetry('/api/instrument-names', 10000)
           const inData = await safeJson(r)
-          if (inData) setInstrumentNames(Array.isArray(inData) ? inData : (inData?.data ?? []))
+          if (inData)
+            setInstrumentNames(
+              Array.isArray(inData) ? inData : (inData?.data ?? []),
+            )
         })()
 
         // Instruments — paginated
         ;(async () => {
           try {
-            const first = await fetchWithRetry('/api/instruments?page=1&pageSize=100', 10000)
+            const first = await fetchWithRetry(
+              '/api/instruments?page=1&pageSize=100',
+              10000,
+            )
             const fj = await safeJson(first)
             if (!fj) return
             const firstData = Array.isArray(fj) ? fj : (fj?.data ?? [])
-            const totalPages = (Array.isArray(fj) ? 1 : (fj?.totalPages ?? 1)) as number
+            const totalPages = (
+              Array.isArray(fj) ? 1 : (fj?.totalPages ?? 1)
+            ) as number
             let listData = firstData
             if (totalPages > 1) {
               const restRes = await Promise.all(
-                Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-                  .map(p => fetchWithRetry(`/api/instruments?page=${p}&pageSize=100`, 10000))
+                Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(
+                  (p) =>
+                    fetchWithRetry(
+                      `/api/instruments?page=${p}&pageSize=100`,
+                      10000,
+                    ),
+                ),
               )
-              const restJsons = await Promise.all(restRes.map(r => safeJson(r)))
-              const restData = restJsons.flatMap((j: any) => Array.isArray(j) ? j : (j?.data ?? []))
+              const restJsons = await Promise.all(
+                restRes.map((r) => safeJson(r)),
+              )
+              const restData = restJsons.flatMap((j: any) =>
+                Array.isArray(j) ? j : (j?.data ?? []),
+              )
               listData = [...firstData, ...restData]
             }
-            setInstruments(prev => mergeById(listData, prev))
+            setInstruments((prev) => mergeById(listData, prev))
           } catch (e) {
             console.error('[Print] Failed to fetch instruments:', e)
           }
@@ -770,22 +1078,36 @@ const PrintCertificatePage: React.FC = () => {
         // Stations — paginated
         ;(async () => {
           try {
-            const first = await fetchWithRetry('/api/stations?page=1&pageSize=100', 10000)
+            const first = await fetchWithRetry(
+              '/api/stations?page=1&pageSize=100',
+              10000,
+            )
             const fj = await safeJson(first)
             if (!fj) return
             const firstData = Array.isArray(fj) ? fj : (fj?.data ?? [])
-            const totalPages = (Array.isArray(fj) ? 1 : (fj?.totalPages ?? 1)) as number
+            const totalPages = (
+              Array.isArray(fj) ? 1 : (fj?.totalPages ?? 1)
+            ) as number
             let listData = firstData
             if (totalPages > 1) {
               const restRes = await Promise.all(
-                Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-                  .map(p => fetchWithRetry(`/api/stations?page=${p}&pageSize=100`, 10000))
+                Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(
+                  (p) =>
+                    fetchWithRetry(
+                      `/api/stations?page=${p}&pageSize=100`,
+                      10000,
+                    ),
+                ),
               )
-              const restJsons = await Promise.all(restRes.map(r => safeJson(r)))
-              const restData = restJsons.flatMap((j: any) => Array.isArray(j) ? j : (j?.data ?? []))
+              const restJsons = await Promise.all(
+                restRes.map((r) => safeJson(r)),
+              )
+              const restData = restJsons.flatMap((j: any) =>
+                Array.isArray(j) ? j : (j?.data ?? []),
+              )
               listData = [...firstData, ...restData]
             }
-            setStations(prev => mergeById(listData, prev))
+            setStations((prev) => mergeById(listData, prev))
           } catch (e) {
             console.error('[Print] Failed to fetch stations:', e)
           }
@@ -802,7 +1124,9 @@ const PrintCertificatePage: React.FC = () => {
     // and let the PDF renderer report the failure instead of saving "Memuat…".
     const watchdog = setTimeout(() => {
       console.error('[Print] Required resources timeout (120s)')
-      setError('Data sertifikat belum lengkap setelah 120 detik. Periksa koneksi database lalu coba lagi.')
+      setError(
+        'Data sertifikat belum lengkap setelah 120 detik. Periksa koneksi database lalu coba lagi.',
+      )
       setLoading(false)
     }, 120000)
 
@@ -818,17 +1142,21 @@ const PrintCertificatePage: React.FC = () => {
       // This prevents the API result (which might still be pending) from overwriting our forced state
       const urlParams = new URLSearchParams(window.location.search)
       if (urlParams.get('signed') === 'true') {
-        console.log('📝 [Print] Skipping verification check due to signed=true parameter')
+        console.log(
+          '📝 [Print] Skipping verification check due to signed=true parameter',
+        )
         setVerificationLoaded(true)
         return
       }
 
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
       if (!session?.access_token) return
 
       // Use certificate ID for API call to ensure uniqueness
       const res = await fetch(`/api/verify-certificate?id=${cert.id}`, {
-        headers: { 'Authorization': `Bearer ${session.access_token}` },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       })
       if (res.ok) {
         const data = await res.json()
@@ -837,7 +1165,10 @@ const PrintCertificatePage: React.FC = () => {
         console.log('🔍 [Print] data.verification:', data?.verification)
         // QR hitam jika Level 3 approved (valid true) - tanpa pembatasan versi
         setIsSigned(!!data?.valid)
-        console.log('🎨 [Print] QR color will be:', !!data?.valid ? 'BLACK (#000000)' : 'RED (#B91C1C)')
+        console.log(
+          '🎨 [Print] QR color will be:',
+          !!data?.valid ? 'BLACK (#000000)' : 'RED (#B91C1C)',
+        )
       }
     } catch (err) {
       console.error('❌ [Print] verify-certificate error:', err)
@@ -857,7 +1188,9 @@ const PrintCertificatePage: React.FC = () => {
       if (e.key === 'certificate_signed' && e.newValue) {
         const signedData = JSON.parse(e.newValue)
         if (signedData.certificateId === cert?.id) {
-          console.log('🔔 [Print] Certificate was signed, refreshing QR status...')
+          console.log(
+            '🔔 [Print] Certificate was signed, refreshing QR status...',
+          )
           checkVerificationStatus()
           // Clear the flag
           localStorage.removeItem('certificate_signed')
@@ -889,7 +1222,9 @@ const PrintCertificatePage: React.FC = () => {
   // Callback ketika QR code selesai di-render
   const handleQRRendered = useCallback(() => {
     qrRenderedCountRef.current += 1
-    console.log(`[Print] QR code rendered: ${qrRenderedCountRef.current}/${expectedQRCodesRef.current}`)
+    console.log(
+      `[Print] QR code rendered: ${qrRenderedCountRef.current}/${expectedQRCodesRef.current}`,
+    )
   }, [])
 
   // Check if download or PDF parameter is present
@@ -903,7 +1238,9 @@ const PrintCertificatePage: React.FC = () => {
 
     // Check for signed simulation parameter
     if (urlParams.get('signed') === 'true') {
-      console.log('📝 [Print] Simulation mode: Forcing signed status (BLACK QR)')
+      console.log(
+        '📝 [Print] Simulation mode: Forcing signed status (BLACK QR)',
+      )
       setIsSigned(true)
       // Mark verification as loaded since we're forcing it
       setVerificationLoaded(true)
@@ -953,22 +1290,37 @@ const PrintCertificatePage: React.FC = () => {
     return () => clearTimeout(t)
   }, [loading, cert, verificationLoaded, handleQRRendered, isDownloadMode])
 
-  if (loading) return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-lg">
-        <div className="relative mx-auto mb-5 h-16 w-16">
-          <div className="absolute inset-0 rounded-full border-4 border-blue-100" />
-          <div className="absolute inset-0 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
-          <div className="absolute inset-3 animate-pulse rounded-full bg-blue-50" />
+  if (loading)
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-lg">
+          <div className="relative mx-auto mb-5 h-16 w-16">
+            <div className="absolute inset-0 rounded-full border-4 border-blue-100" />
+            <div className="absolute inset-0 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+            <div className="absolute inset-3 animate-pulse rounded-full bg-blue-50" />
+          </div>
+          <p className="text-lg font-semibold text-slate-900">
+            Menyiapkan sertifikat
+          </p>
+          <p className="mt-2 text-sm leading-5 text-slate-600">
+            Memuat identitas alat, pemilik, personel, standar kalibrasi, dan
+            kondisi lingkungan.
+          </p>
+          <p className="mt-4 text-xs font-medium text-amber-700">
+            Mohon tunggu. PDF hanya dibuat setelah seluruh data siap.
+          </p>
+          <span className="sr-only">
+            Memuat data sertifikat untuk dicetak...
+          </span>
         </div>
-        <p className="text-lg font-semibold text-slate-900">Menyiapkan sertifikat</p>
-        <p className="mt-2 text-sm leading-5 text-slate-600">Memuat identitas alat, pemilik, personel, standar kalibrasi, dan kondisi lingkungan.</p>
-        <p className="mt-4 text-xs font-medium text-amber-700">Mohon tunggu. PDF hanya dibuat setelah seluruh data siap.</p>
-        <span className="sr-only">Memuat data sertifikat untuk dicetak...</span>
       </div>
-    </div>
-  )
-  if (error || !cert) return <div className="p-8 text-red-600 text-center text-lg">Gagal memuat data: {error || 'Sertifikat tidak ditemukan'}</div>
+    )
+  if (error || !cert)
+    return (
+      <div className="p-8 text-red-600 text-center text-lg">
+        Gagal memuat data: {error || 'Sertifikat tidak ditemukan'}
+      </div>
+    )
 
   // --- STYLING UNTUK PRINT ---
   // Ini adalah bagian penting untuk membuat layout A4
@@ -1719,7 +2071,9 @@ const PrintCertificatePage: React.FC = () => {
           />
         </div>
       ) : undefined
-      return <ResultsPageFooter config={templateConfig} qrCodeElement={qrElement} />
+      return (
+        <ResultsPageFooter config={templateConfig} qrCodeElement={qrElement} />
+      )
     }
 
     // Fallback: hardcoded footer for backward compatibility
@@ -1729,6 +2083,7 @@ const PrintCertificatePage: React.FC = () => {
           <tbody>
             <tr>
               <td className="results-footer-qr-cell">
+                {' '}
                 <div className="results-footer-qr-wrap">
                   {qrCodeData ? (
                     <div className="results-footer-qr-box">
@@ -1746,13 +2101,14 @@ const PrintCertificatePage: React.FC = () => {
                 </div>
               </td>
               <td className="results-footer-note-cell">
+                {' '}
                 <div className="results-footer-note-copy">
-                  Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara (BSSN)
+                  Dokumen ini telah ditandatangani secara elektronik menggunakan
+                  sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi
+                  Elektronik (BSrE), Badan Siber dan Sandi Negara (BSSN)
                 </div>
               </td>
-              <td className="results-footer-meta-cell">
-                Edisi/Revisi : 11/1
-              </td>
+              <td className="results-footer-meta-cell"> Edisi/Revisi : 11/1</td>
             </tr>
           </tbody>
         </table>
@@ -1761,15 +2117,28 @@ const PrintCertificatePage: React.FC = () => {
   }
 
   return (
-    <div className="print-container bg-gray-100 print:bg-white text-black" suppressHydrationWarning>
+    <div
+      className="print-container bg-gray-100 print:bg-white text-black"
+      suppressHydrationWarning
+    >
       <style>{A4Style}</style>
 
       {/* Tombol Kontrol (Hilang saat print dan PDF mode) */}
       {!isPdfMode && (
         <div className="no-print p-4 bg-white shadow-lg sticky top-0 z-50 flex justify-center items-center gap-4">
           <p className="text-gray-700">Pratinjau Cetak Disiapkan.</p>
-          <button onClick={() => router.back()} className="px-4 py-2 border rounded-lg text-sm font-medium">Kembali</button>
-          <button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Cetak Ulang</button>
+          <button
+            onClick={() => router.back()}
+            className="px-4 py-2 border rounded-lg text-sm font-medium"
+          >
+            Kembali
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium"
+          >
+            Cetak Ulang
+          </button>
         </div>
       )}
 
@@ -1783,10 +2152,9 @@ const PrintCertificatePage: React.FC = () => {
             backgroundSize: '700px 700px',
             backgroundRepeat: 'no-repeat',
             backgroundPosition: 'center',
-            opacity: 0.3
+            opacity: 0.3,
           }}
-        >
-        </div>
+        ></div>
 
         {/* Konten halaman dengan z-index lebih tinggi */}
         <div className="cover-content">
@@ -1796,11 +2164,21 @@ const PrintCertificatePage: React.FC = () => {
           ) : (
             <header className="cover-header flex flex-row justify-between border-b-[3px] border-double border-black">
               <div className="cover-logo-slot">
-                <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
+                <Image
+                  src={bmkgLogo}
+                  alt="BMKG"
+                  width={100}
+                  height={100}
+                  priority
+                />
               </div>
               <div className="cover-agency-title text-center leading-tight">
-                <h1 className="text-base font-bold">BADAN METEOROLOGI KLIMATOLOGI DAN GEOFISIKA</h1>
-                <h2 className="text-base font-bold">LABORATORIUM KALIBRASI BMKG</h2>
+                <h1 className="text-base font-bold">
+                  BADAN METEOROLOGI KLIMATOLOGI DAN GEOFISIKA
+                </h1>
+                <h2 className="text-base font-bold">
+                  LABORATORIUM KALIBRASI BMKG
+                </h2>
               </div>
               <div className="cover-header-spacer"></div>
             </header>
@@ -1808,7 +2186,11 @@ const PrintCertificatePage: React.FC = () => {
 
           {/* Judul Sertifikat */}
           {templateConfig ? (
-            <CoverPageTitle config={templateConfig} certNumber={cert.no_certificate} orderNumber={cert.no_order} />
+            <CoverPageTitle
+              config={templateConfig}
+              certNumber={cert.no_certificate}
+              orderNumber={cert.no_order}
+            />
           ) : (
             <div className="cover-title-block text-center">
               <h1 className="cert-title-id">SERTIFIKAT KALIBRASI</h1>
@@ -1824,24 +2206,44 @@ const PrintCertificatePage: React.FC = () => {
             <table className="w-full cert-info-text">
               <tbody>
                 <tr>
-                  <td className="w-[30%] align-top"><PdfLabel indo="Nama Alat" eng="Instrument Name" /></td>
+                  <td className="w-[30%] align-top">
+                    <PdfLabel indo="Nama Alat" eng="Instrument Name" />
+                  </td>
                   <td className="w-[5%] align-top">:</td>
-                  <td className="w-[65%] align-top font-semibold">{instrument?.name || '-'}</td>
+                  <td className="w-[65%] align-top font-semibold">
+                    {instrument?.name || '-'}
+                  </td>
                 </tr>
                 <tr>
-                  <td className="align-top"><PdfLabel indo="Merek Pabrik" eng="Manufacturer" /></td>
+                  <td className="align-top">
+                    <PdfLabel indo="Merek Pabrik" eng="Manufacturer" />
+                  </td>
                   <td className="align-top">:</td>
-                  <td className="align-top font-semibold">{instrument?.manufacturer || '-'}</td>
+                  <td className="align-top font-semibold">
+                    {instrument?.manufacturer || '-'}
+                  </td>
                 </tr>
                 <tr>
-                  <td className="align-top"><PdfLabel indo="Tipe / Nomor Seri" eng="Type / Serial Number" /></td>
+                  <td className="align-top">
+                    <PdfLabel
+                      indo="Tipe / Nomor Seri"
+                      eng="Type / Serial Number"
+                    />
+                  </td>
                   <td className="align-top">:</td>
-                  <td className="align-top font-semibold">{instrument?.type || '-'} / {instrument?.serial_number || '-'}</td>
+                  <td className="align-top font-semibold">
+                    {instrument?.type || '-'} /{' '}
+                    {instrument?.serial_number || '-'}
+                  </td>
                 </tr>
                 <tr>
-                  <td className="align-top"><PdfLabel indo="Lain-lain" eng="Others" /></td>
+                  <td className="align-top">
+                    <PdfLabel indo="Lain-lain" eng="Others" />
+                  </td>
                   <td className="align-top">:</td>
-                  <td className="align-top font-semibold whitespace-pre-line">{sensorsSummary || instrument?.others || '-'}</td>
+                  <td className="align-top font-semibold whitespace-pre-line">
+                    {sensorsSummary || instrument?.others || '-'}
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -1849,19 +2251,31 @@ const PrintCertificatePage: React.FC = () => {
 
           {/* Identitas Pemilik */}
           <div className="mb-4">
-            <h3 className="cert-text-id underline leading-tight mb-0">IDENTITAS PEMILIK</h3>
-            <h4 className="cert-text-en leading-tight mb-1">Owner's Identification</h4>
+            <h3 className="cert-text-id underline leading-tight mb-0">
+              IDENTITAS PEMILIK
+            </h3>
+            <h4 className="cert-text-en leading-tight mb-1">
+              Owner's Identification
+            </h4>
             <table className="w-full cert-info-text">
               <tbody>
                 <tr>
-                  <td className="w-[30%] align-top"><PdfLabel indo="Nama" eng="Designation" /></td>
+                  <td className="w-[30%] align-top">
+                    <PdfLabel indo="Nama" eng="Designation" />
+                  </td>
                   <td className="w-[5%] align-top">:</td>
-                  <td className="w-[65%] align-top font-semibold whitespace-pre-line">{station?.name || '-'}</td>
+                  <td className="w-[65%] align-top font-semibold whitespace-pre-line">
+                    {station?.name || '-'}
+                  </td>
                 </tr>
                 <tr>
-                  <td className="align-top"><PdfLabel indo="Alamat" eng="Address" /></td>
+                  <td className="align-top">
+                    <PdfLabel indo="Alamat" eng="Address" />
+                  </td>
                   <td className="align-top">:</td>
-                  <td className="align-top font-semibold">{resolvedStationAddress || '-'}</td>
+                  <td className="align-top font-semibold">
+                    {resolvedStationAddress || '-'}
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -1869,29 +2283,54 @@ const PrintCertificatePage: React.FC = () => {
 
           {/* Pengesahan */}
           <div className="mb-8">
-            <h3 className="cert-text-id underline leading-tight mb-0">PENGESAHAN</h3>
+            <h3 className="cert-text-id underline leading-tight mb-0">
+              PENGESAHAN
+            </h3>
             <h4 className="cert-text-en mb-2 leading-tight">Authorization</h4>
             <table className="w-full cert-info-text">
               <tbody>
                 <tr>
-                  <td className="w-[30%] align-top"><PdfLabel indo="Pejabat Pengesahan" eng="Authorizing officer" /></td>
+                  <td className="w-[30%] align-top">
+                    <PdfLabel
+                      indo="Pejabat Pengesahan"
+                      eng="Authorizing officer"
+                    />
+                  </td>
                   <td className="w-[5%] align-top">:</td>
                   <td className="w-[65%] align-top font-bold">{signerTitle}</td>
                 </tr>
                 <tr>
-                  <td className="align-top"><PdfLabel indo="Nama" eng="Name" /></td>
-                  <td className="align-top">:</td>
-                  <td className="align-top font-bold">{authorized?.name || '-'}</td>
-                </tr>
-                <tr>
-                  <td className="align-top"><PdfLabel indo="Tanggal Pengesahan" eng="Date of issue" /></td>
+                  <td className="align-top">
+                    <PdfLabel indo="Nama" eng="Name" />
+                  </td>
                   <td className="align-top">:</td>
                   <td className="align-top font-bold">
-                    {cert.issue_date ? new Date(cert.issue_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
+                    {authorized?.name || '-'}
                   </td>
                 </tr>
                 <tr>
-                  <td className="align-top"><PdfLabel indo="Jumlah halaman" eng="Total number of pages" /></td>
+                  <td className="align-top">
+                    <PdfLabel indo="Tanggal Pengesahan" eng="Date of issue" />
+                  </td>
+                  <td className="align-top">:</td>
+                  <td className="align-top font-bold">
+                    {' '}
+                    {cert.issue_date
+                      ? new Date(cert.issue_date).toLocaleDateString('id-ID', {
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric',
+                        })
+                      : '-'}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="align-top">
+                    <PdfLabel
+                      indo="Jumlah halaman"
+                      eng="Total number of pages"
+                    />
+                  </td>
                   <td className="align-top">:</td>
                   <td className="align-top font-bold">{totalPrintedPages}</td>
                 </tr>
@@ -1901,13 +2340,34 @@ const PrintCertificatePage: React.FC = () => {
         </div>
 
         {/* Footer Halaman 1 */}
-        <footer className="page-1-footer" style={{ listStyle: 'none', listStyleType: 'none', listStylePosition: 'outside' }}>
-          <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none', marginBottom: '4px' }}>
+        <footer
+          className="page-1-footer"
+          style={{
+            listStyle: 'none',
+            listStyleType: 'none',
+            listStylePosition: 'outside',
+          }}
+        >
+          <table
+            className="w-full text-black"
+            style={{
+              borderCollapse: 'collapse',
+              border: 'none',
+              marginBottom: '4px',
+            }}
+          >
             <tbody>
               <tr>
-                <td className="align-middle text-right pr-4" style={{ width: '15%' }}>
+                <td
+                  className="align-middle text-right pr-4"
+                  style={{ width: '15%' }}
+                >
+                  {' '}
                   {qrCodeData ? (
-                    <div className="inline-block w-[100px] h-[100px] bg-white qr-code-container" style={{ listStyle: 'none', display: 'inline-block' }}>
+                    <div
+                      className="inline-block w-[100px] h-[100px] bg-white qr-code-container"
+                      style={{ listStyle: 'none', display: 'inline-block' }}
+                    >
                       <QRCodeWithBMKGLogo
                         key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
                         value={qrCodeData}
@@ -1918,31 +2378,79 @@ const PrintCertificatePage: React.FC = () => {
                       />
                     </div>
                   ) : (
-                    <div className="inline-block w-[100px] h-[100px] bg-transparent" style={{ display: 'inline-block' }}></div>
+                    <div
+                      className="inline-block w-[100px] h-[100px] bg-transparent"
+                      style={{ display: 'inline-block' }}
+                    ></div>
                   )}
                 </td>
-                <td className="align-middle" style={{ width: '85%', textAlign: 'justify', lineHeight: '1.3' }}>
-                  <div style={{ textJustify: 'inter-word', paddingBottom: '4px', display: 'block' }} className="text-xs font-bold leading-relaxed">
-                    Dokumen ini telah ditandatangani secara elektronik menggunakan Sertifikat Elektronik yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), BSSN dan tidak memerlukan tanda tangan atau cap. Dokumen asli dapat diperoleh dengan memindai kode QR di samping ini.
+                <td
+                  className="align-middle"
+                  style={{
+                    width: '85%',
+                    textAlign: 'justify',
+                    lineHeight: '1.3',
+                  }}
+                >
+                  {' '}
+                  <div
+                    style={{
+                      textJustify: 'inter-word',
+                      paddingBottom: '4px',
+                      display: 'block',
+                    }}
+                    className="text-xs font-bold leading-relaxed"
+                  >
+                    Dokumen ini telah ditandatangani secara elektronik
+                    menggunakan Sertifikat Elektronik yang diterbitkan oleh
+                    Balai Besar Sertifikasi Elektronik (BSrE), BSSN dan tidak
+                    memerlukan tanda tangan atau cap. Dokumen asli dapat
+                    diperoleh dengan memindai kode QR di samping ini.
                   </div>
-                  <div style={{ textJustify: 'inter-word', display: 'block' }} className="italic text-[10px] font-bold text-gray-800 leading-relaxed">
-                    This document is digitally signed. No signature or seal is required. The original document can be obtained by scanning the QR on the left.
+                  <div
+                    style={{ textJustify: 'inter-word', display: 'block' }}
+                    className="italic text-[10px] font-bold text-gray-800 leading-relaxed"
+                  >
+                    This document is digitally signed. No signature or seal is
+                    required. The original document can be obtained by scanning
+                    the QR on the left.
                   </div>
                 </td>
               </tr>
             </tbody>
           </table>
-          <hr className="my-1 border-t-[3px] border-double border-black" style={{ borderTop: '3px double black', borderColor: '#000' }} />
-          <table className="w-full text-black mt-1" style={{ borderCollapse: 'collapse', border: 'none' }}>
+          <hr
+            className="my-1 border-t-[3px] border-double border-black"
+            style={{ borderTop: '3px double black', borderColor: '#000' }}
+          />
+          <table
+            className="w-full text-black mt-1"
+            style={{ borderCollapse: 'collapse', border: 'none' }}
+          >
             <tbody>
               <tr>
-                <td className="align-top text-left text-[10px] font-bold" style={{ width: '25%' }}>F/IKK 7.8.1</td>
-                <td className="align-top text-center text-[10px] font-bold text-gray-800" style={{ width: '50%', lineHeight: '1.4' }}>
+                <td
+                  className="align-top text-left text-[10px] font-bold"
+                  style={{ width: '25%' }}
+                >
+                  F/IKK 7.8.1
+                </td>
+                <td
+                  className="align-top text-center text-[10px] font-bold text-gray-800"
+                  style={{ width: '50%', lineHeight: '1.4' }}
+                >
+                  {' '}
                   JL. Angkasa I No. 02 Kemayoran Jakarta Pusat
                   <br />
-                  Tlp. 021-4246321-ext 5125; P.O. Box 3540 Jkt; Website : http://www.bmkg.go.id
+                  Tlp. 021-4246321-ext 5125; P.O. Box 3540 Jkt; Website :
+                  http://www.bmkg.go.id
                 </td>
-                <td className="align-top text-right text-[10px] font-bold" style={{ width: '25%' }}>Edisi/Revisi : 11/1</td>
+                <td
+                  className="align-top text-right text-[10px] font-bold"
+                  style={{ width: '25%' }}
+                >
+                  Edisi/Revisi : 11/1
+                </td>
               </tr>
             </tbody>
           </table>
@@ -1952,7 +2460,10 @@ const PrintCertificatePage: React.FC = () => {
       {/* --- HALAMAN 2..N: satu halaman per sensor --- */}
       {results.length === 0 ? (
         <div className="page-container bg-white shadow-lg my-4 print:shadow-none print:my-0">
-          <table className="repeatable-page-table" style={{ borderCollapse: 'collapse', borderSpacing: 0 }}>
+          <table
+            className="repeatable-page-table"
+            style={{ borderCollapse: 'collapse', borderSpacing: 0 }}
+          >
             <thead className="print-repeat-header">
               <tr>
                 <td>
@@ -1960,35 +2471,54 @@ const PrintCertificatePage: React.FC = () => {
                     <tbody>
                       <tr>
                         <td className="w-[100px] align-top">
-                          <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
+                          {' '}
+                          <Image
+                            src={bmkgLogo}
+                            alt="BMKG"
+                            width={100}
+                            height={100}
+                            priority
+                          />
                         </td>
                         <td className="align-top"></td>
                         <td className="align-top">
+                          {' '}
                           <table className="w-[360px] text-xs table-fixed ml-auto mr-0">
                             <tbody>
                               <tr>
                                 <td className="w-[48%] text-left font-bold leading-tight align-top">
-                                  No. Sertifikat / <span className="italic">Certificate</span><br />
+                                  {' '}
+                                  No. Sertifikat /{' '}
+                                  <span className="italic">Certificate</span>
+                                  <br />
                                   <span className="italic">Number</span>
                                 </td>
                                 <td className="w-[4%] px-1 align-top">:</td>
-                                <td className="w-[48%] align-top font-bold">{cert.no_certificate}</td>
+                                <td className="w-[48%] align-top font-bold">
+                                  {cert.no_certificate}
+                                </td>
                               </tr>
                               <tr>
                                 <td className="text-left font-bold leading-tight align-top">
+                                  {' '}
                                   No. Order / <br />
                                   <span className="italic">Order Number</span>
                                 </td>
                                 <td className="px-1 align-top">:</td>
-                                <td className="align-top font-bold">{cert.no_order}</td>
+                                <td className="align-top font-bold">
+                                  {cert.no_order}
+                                </td>
                               </tr>
                               <tr>
                                 <td className="text-left font-bold leading-tight align-top">
+                                  {' '}
                                   Halaman / <br />
                                   <span className="italic">Page</span>
                                 </td>
                                 <td className="px-1 align-top">:</td>
-                                <td className="align-top font-bold">2 dari {totalPrintedPages}</td>
+                                <td className="align-top font-bold">
+                                  2 dari {totalPrintedPages}
+                                </td>
                               </tr>
                             </tbody>
                           </table>
@@ -2002,26 +2532,33 @@ const PrintCertificatePage: React.FC = () => {
             <tbody className="print-content">
               <tr>
                 <td>
-                  <div className="text-xs text-center text-gray-600">Tidak ada data hasil kalibrasi</div>
+                  <div className="text-xs text-center text-gray-600">
+                    Tidak ada data hasil kalibrasi
+                  </div>
                   <p className="text-center font-bold text-sm mt-8">
-                    --- Akhir dari Sertifikat / <span className="italic">End of Certificate</span> ---
+                    --- Akhir dari Sertifikat /{' '}
+                    <span className="italic">End of Certificate</span> ---
                   </p>
                 </td>
               </tr>
             </tbody>
             <tfoot className="print-repeat-footer">
               <tr>
-                <td>
-                  {renderResultsFooter()}
-                </td>
+                <td>{renderResultsFooter()}</td>
               </tr>
             </tfoot>
           </table>
         </div>
       ) : (
         results.map((res: any, idx: number) => (
-          <div key={idx} className={`page-container results-page bg-white shadow-lg my-4 print:shadow-none print:my-0 ${idx !== results.length - 1 ? 'break-after-page' : ''}`}>
-            <table className="repeatable-page-table" style={{ borderCollapse: 'collapse', borderSpacing: 0 }}>
+          <div
+            key={idx}
+            className={`page-container results-page bg-white shadow-lg my-4 print:shadow-none print:my-0 ${idx !== results.length - 1 ? 'break-after-page' : ''}`}
+          >
+            <table
+              className="repeatable-page-table"
+              style={{ borderCollapse: 'collapse', borderSpacing: 0 }}
+            >
               <thead className="print-repeat-header">
                 <tr>
                   <td>
@@ -2029,35 +2566,54 @@ const PrintCertificatePage: React.FC = () => {
                       <tbody>
                         <tr>
                           <td className="w-[100px] align-top">
-                            <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
+                            {' '}
+                            <Image
+                              src={bmkgLogo}
+                              alt="BMKG"
+                              width={100}
+                              height={100}
+                              priority
+                            />
                           </td>
                           <td className="align-top"></td>
                           <td className="align-top">
+                            {' '}
                             <table className="w-[360px] text-xs table-fixed ml-auto mr-0">
                               <tbody>
                                 <tr>
                                   <td className="w-[48%] text-left font-bold leading-tight align-top">
-                                    No. Sertifikat / <span className="italic">Certificate</span><br />
+                                    {' '}
+                                    No. Sertifikat /{' '}
+                                    <span className="italic">Certificate</span>
+                                    <br />
                                     <span className="italic">Number</span>
                                   </td>
                                   <td className="w-[4%] px-1 align-top">:</td>
-                                  <td className="w-[48%] align-top font-bold">{cert.no_certificate}</td>
+                                  <td className="w-[48%] align-top font-bold">
+                                    {cert.no_certificate}
+                                  </td>
                                 </tr>
                                 <tr>
                                   <td className="text-left font-bold leading-tight align-top">
+                                    {' '}
                                     No. Order / <br />
                                     <span className="italic">Order Number</span>
                                   </td>
                                   <td className="px-1 align-top">:</td>
-                                  <td className="align-top font-bold">{cert.no_order}</td>
+                                  <td className="align-top font-bold">
+                                    {cert.no_order}
+                                  </td>
                                 </tr>
                                 <tr>
                                   <td className="text-left font-bold leading-tight align-top">
+                                    {' '}
                                     Halaman / <br />
                                     <span className="italic">Page</span>
                                   </td>
                                   <td className="px-1 align-top">:</td>
-                                  <td className="align-top font-bold">{idx + 2} dari {totalPrintedPages}</td>
+                                  <td className="align-top font-bold">
+                                    {idx + 2} dari {totalPrintedPages}
+                                  </td>
                                 </tr>
                               </tbody>
                             </table>
@@ -2080,59 +2636,154 @@ const PrintCertificatePage: React.FC = () => {
                         <div className="grid grid-cols-1">
                           {(() => {
                             const name = resolveSensorName(res, idx) || '-'
-                            const manufacturer = res?.sensorDetails?.manufacturer || '-'
+                            const manufacturer =
+                              res?.sensorDetails?.manufacturer || '-'
                             const type = res?.sensorDetails?.type || '-'
-                            const serial = res?.sensorDetails?.serial_number || '-'
-                            const start = res?.startDate ? new Date(res.startDate).toISOString().slice(0, 10) : '-'
-                            const end = res?.endDate ? new Date(res.endDate).toISOString().slice(0, 10) : '-'
+                            const serial =
+                              res?.sensorDetails?.serial_number || '-'
+                            const start = res?.startDate
+                              ? new Date(res.startDate)
+                                  .toISOString()
+                                  .slice(0, 10)
+                              : '-'
+                            const end = res?.endDate
+                              ? new Date(res.endDate).toISOString().slice(0, 10)
+                              : '-'
                             const place = res?.place || '-'
-                            const sensorInfo: Array<{ label: string; labelEng: string; value: React.ReactNode; topGap?: boolean; bold?: boolean }> = [
-                              { label: 'Nama Sensor / ', labelEng: 'Sensor Name', value: name, bold: true },
-                              { label: 'Merek Sensor / ', labelEng: 'Manufacturer', value: manufacturer, bold: true },
-                              { label: 'Tipe & No. Seri / ', labelEng: 'Type & Serial Number', value: `${type} / ${serial}`, bold: true },
-                              { label: 'Tanggal Masuk / ', labelEng: 'Date of Entry', value: start, topGap: true },
-                              { label: 'Tanggal Kalibrasi / ', labelEng: 'Calibration Date', value: end },
-                              { label: 'Tempat Kalibrasi / ', labelEng: 'Calibration Place', value: place },
+                            const sensorInfo: Array<{
+                              label: string
+                              labelEng: string
+                              value: React.ReactNode
+                              topGap?: boolean
+                              bold?: boolean
+                            }> = [
+                              {
+                                label: 'Nama Sensor / ',
+                                labelEng: 'Sensor Name',
+                                value: name,
+                                bold: true,
+                              },
+                              {
+                                label: 'Merek Sensor / ',
+                                labelEng: 'Manufacturer',
+                                value: manufacturer,
+                                bold: true,
+                              },
+                              {
+                                label: 'Tipe & No. Seri / ',
+                                labelEng: 'Type & Serial Number',
+                                value: `${type} / ${serial}`,
+                                bold: true,
+                              },
+                              {
+                                label: 'Tanggal Masuk / ',
+                                labelEng: 'Date of Entry',
+                                value: start,
+                                topGap: true,
+                              },
+                              {
+                                label: 'Tanggal Kalibrasi / ',
+                                labelEng: 'Calibration Date',
+                                value: end,
+                              },
+                              {
+                                label: 'Tempat Kalibrasi / ',
+                                labelEng: 'Calibration Place',
+                                value: place,
+                              },
                             ]
-                            const sensorSessionId = res?.session_id;
-                            const sensorRawData = sensorSessionId ? allRawData.filter(rd => String(rd.session_id || '') === String(sensorSessionId)) : [];
-                            const rawSuhu = computeEnvCondition('suhu', sensorRawData);
-                            const rawHum = computeEnvCondition('kelembaban', sensorRawData);
-                            const suhuCondition = calculateRoomCondition('suhu', sensorRawData);
-                            const humCondition = calculateRoomCondition('kelembaban', sensorRawData);
+                            const sensorSessionId = res?.session_id
+                            const sensorRawData = sensorSessionId
+                              ? allRawData.filter(
+                                  (rd) =>
+                                    String(rd.session_id || '') ===
+                                    String(sensorSessionId),
+                                )
+                              : []
+                            const rawSuhu = computeEnvCondition(
+                              'suhu',
+                              sensorRawData,
+                            )
+                            const rawHum = computeEnvCondition(
+                              'kelembaban',
+                              sensorRawData,
+                            )
+                            const suhuCondition = calculateRoomCondition(
+                              'suhu',
+                              sensorRawData,
+                            )
+                            const humCondition = calculateRoomCondition(
+                              'kelembaban',
+                              sensorRawData,
+                            )
 
-                            let envList = Array.isArray(res?.environment) ? [...res.environment] : [];
+                            let envList = Array.isArray(res?.environment)
+                              ? [...res.environment]
+                              : []
 
                             // Ensure Suhu and Kelembaban exist in envList if they have raw values
                             if (envList.length === 0) {
-                              if (rawSuhu !== '-') envList.push({ key: 'Suhu', value: '-' });
-                              if (rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
+                              if (rawSuhu !== '-')
+                                envList.push({ key: 'Suhu', value: '-' })
+                              if (rawHum !== '-')
+                                envList.push({ key: 'Kelembaban', value: '-' })
                             } else {
-                              const hasSuhu = envList.some(e => e.key.toLowerCase().includes('suhu'));
-                              const hasHum = envList.some(e => e.key.toLowerCase().includes('kelembaban') || e.key.toLowerCase().includes('rh'));
-                              if (!hasSuhu && rawSuhu !== '-') envList.push({ key: 'Suhu', value: '-' });
-                              if (!hasHum && rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
+                              const hasSuhu = envList.some((e) =>
+                                e.key.toLowerCase().includes('suhu'),
+                              )
+                              const hasHum = envList.some(
+                                (e) =>
+                                  e.key.toLowerCase().includes('kelembaban') ||
+                                  e.key.toLowerCase().includes('rh'),
+                              )
+                              if (!hasSuhu && rawSuhu !== '-')
+                                envList.push({ key: 'Suhu', value: '-' })
+                              if (!hasHum && rawHum !== '-')
+                                envList.push({ key: 'Kelembaban', value: '-' })
                             }
 
-                            const envRows: Array<{ label: string; labelEng: string; initial: React.ReactNode; final: React.ReactNode }> = envList.map((env: any) => {
+                            const envRows: Array<{
+                              label: string
+                              labelEng: string
+                              initial: React.ReactNode
+                              final: React.ReactNode
+                            }> = envList.map((env: any) => {
                               const key = String(env?.key || '')
                               const lower = key.toLowerCase()
                               const isSuhu = lower.includes('suhu')
-                              const isHum = lower.includes('kelembaban') || lower.includes('rh')
+                              const isHum =
+                                lower.includes('kelembaban') ||
+                                lower.includes('rh')
 
                               const label = isSuhu
                                 ? 'Suhu / '
                                 : isHum
                                   ? 'Kelembaban / '
                                   : `${key} `
-                              const eng = isSuhu ? 'Temperature' : isHum ? 'Relative Humidity' : ''
+                              const eng = isSuhu
+                                ? 'Temperature'
+                                : isHum
+                                  ? 'Relative Humidity'
+                                  : ''
 
                               const fallbackValue = env?.value || '-'
                               return {
                                 label,
                                 labelEng: eng,
-                                initial: isSuhu ? suhuCondition?.initialDisplay ?? fallbackValue : isHum ? humCondition?.initialDisplay ?? fallbackValue : fallbackValue,
-                                final: isSuhu ? suhuCondition?.finalDisplay ?? fallbackValue : isHum ? humCondition?.finalDisplay ?? fallbackValue : fallbackValue,
+                                initial: isSuhu
+                                  ? (suhuCondition?.initialDisplay ??
+                                    fallbackValue)
+                                  : isHum
+                                    ? (humCondition?.initialDisplay ??
+                                      fallbackValue)
+                                    : fallbackValue,
+                                final: isSuhu
+                                  ? (suhuCondition?.finalDisplay ??
+                                    fallbackValue)
+                                  : isHum
+                                    ? (humCondition?.finalDisplay ??
+                                      fallbackValue)
+                                    : fallbackValue,
                               }
                             })
 
@@ -2141,28 +2792,73 @@ const PrintCertificatePage: React.FC = () => {
                                 <tbody>
                                   {sensorInfo.map((row, i) => (
                                     <tr key={`info-${i}`}>
-                                      <td className={`w-[45%] align-top font-semibold ${row.topGap ? 'pt-2' : ''}`}>
-                                        {row.label}<span className="italic">{row.labelEng}</span>
+                                      <td
+                                        className={`w-[45%] align-top font-semibold ${row.topGap ? 'pt-2' : ''}`}
+                                      >
+                                        {row.label}
+                                        <span className="italic">
+                                          {row.labelEng}
+                                        </span>
                                       </td>
-                                      <td className={`w-[5%] align-top ${row.topGap ? 'pt-2' : ''}`}>:</td>
-                                      <td className={`${row.topGap ? 'pt-2' : ''}`} colSpan={2}>
-                                        <span className={row.bold ? 'font-semibold' : undefined}>{row.value}</span>
+                                      <td
+                                        className={`w-[5%] align-top ${row.topGap ? 'pt-2' : ''}`}
+                                      >
+                                        :
+                                      </td>
+                                      <td
+                                        className={`${row.topGap ? 'pt-2' : ''}`}
+                                        colSpan={2}
+                                      >
+                                        <span
+                                          className={
+                                            row.bold
+                                              ? 'font-semibold'
+                                              : undefined
+                                          }
+                                        >
+                                          {row.value}
+                                        </span>
                                       </td>
                                     </tr>
                                   ))}
                                   {envRows.length > 0 && (
                                     <tr>
-                                      <td className="w-[45%]" />
-                                      <td className="w-[5%]" />
+                                      <td className="w-[45%]" />{' '}
+                                      <td className="w-[5%]" />{' '}
                                       <td className="align-top" colSpan={2}>
-                                        <div className="text-sm font-bold mb-1">Kondisi Lingkungan / <span className="italic">Environment condition</span></div>
+                                        {' '}
+                                        <div className="text-sm font-bold mb-1">
+                                          Kondisi Lingkungan /{' '}
+                                          <span className="italic">
+                                            Environment condition
+                                          </span>
+                                        </div>
                                         <table className="w-full text-[10px]">
-                                          <thead><tr><th className="text-left"></th><th className="text-left">Awal</th><th className="text-left">Akhir</th></tr></thead>
-                                          <tbody>{envRows.map((er, idx) => <tr key={idx}>
-                                            <td className="font-semibold">{er.label}<span className="italic">{er.labelEng}</span></td>
-                                            <td>{er.initial}</td>
-                                            <td>{er.final}</td>
-                                          </tr>)}</tbody>
+                                          <thead>
+                                            <tr>
+                                              <th className="text-left"></th>
+                                              <th className="text-left">
+                                                Awal
+                                              </th>
+                                              <th className="text-left">
+                                                Akhir
+                                              </th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {envRows.map((er, idx) => (
+                                              <tr key={idx}>
+                                                <td className="font-semibold">
+                                                  {er.label}
+                                                  <span className="italic">
+                                                    {er.labelEng}
+                                                  </span>
+                                                </td>
+                                                <td>{er.initial}</td>
+                                                <td>{er.final}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
                                         </table>
                                       </td>
                                     </tr>
@@ -2176,41 +2872,98 @@ const PrintCertificatePage: React.FC = () => {
                         {/* Hasil Kalibrasi per Sensor */}
                         {Array.isArray(res?.table) && res.table.length > 0 && (
                           <div className="mt-6 space-y-3 w-[85%] mx-auto">
-                            <div className="text-[12px] font-bold text-center mb-1 flex items-center justify-center gap-4">Hasil Kalibrasi / <span className="italic font-normal">Calibration Result</span>
-                              {!isPdfMode && <DecimalPrecisionControl value={decimalPrecision} onChange={setDecimalPrecision} />}
+                            <div className="text-[12px] font-bold text-center mb-1 flex items-center justify-center gap-4">
+                              Hasil Kalibrasi /{' '}
+                              <span className="italic font-normal">
+                                Calibration Result
+                              </span>
+                              {!isPdfMode && (
+                                <DecimalPrecisionControl
+                                  value={decimalPrecision}
+                                  onChange={setDecimalPrecision}
+                                />
+                              )}
                             </div>
                             {res.table.map((sec: any, sIdx: number) => {
-                              const rows = Array.isArray(sec?.rows) ? sec.rows : []
-                              
+                              const rows = Array.isArray(sec?.rows)
+                                ? sec.rows
+                                : []
+
                               // DETEKSI PYRANOMETER
-                              const pyrSensorData: PyranometerSensorData | null = res?.sensorDetails ? {
-                                name: res.sensorDetails.name,
-                                type: res.sensorDetails.type,
-                              } : null;
-                              const isPyrano = isPyranometer(pyrSensorData);
-                              
+                              const pyrSensorData: PyranometerSensorData | null =
+                                res?.sensorDetails
+                                  ? {
+                                      name: res.sensorDetails.name,
+                                      type: res.sensorDetails.type,
+                                    }
+                                  : null
+                              const isPyrano = isPyranometer(pyrSensorData)
+
                               // HEADER: Gunakan dari data, atau default berdasarkan tipe sensor
-                              let headers: string[];
-                              if (Array.isArray(sec?.headers) && sec.headers.length > 0) {
-                                headers = sec.headers;
+                              let headers: string[]
+                              if (
+                                Array.isArray(sec?.headers) &&
+                                sec.headers.length > 0
+                              ) {
+                                headers = sec.headers
                               } else if (isPyrano) {
-                                headers = ['Penunjukkan Alat / Instrument Reading', 'Faktor Kalibrasi / Calibration Factor', 'Ketidakpastian / Uncertainty'];
+                                headers = [
+                                  'Penunjukkan Alat / Instrument Reading',
+                                  'Faktor Kalibrasi / Calibration Factor',
+                                  'Ketidakpastian / Uncertainty',
+                                ]
                               } else {
-                                headers = ['Penunjukan Alat / Instrument Reading', 'Koreksi / Correction', 'Ketidakpastian / Uncertainty'];
+                                headers = [
+                                  'Penunjukan Alat / Instrument Reading',
+                                  'Koreksi / Correction',
+                                  'Ketidakpastian / Uncertainty',
+                                ]
                               }
-                              
-                              const resultUnit = formatUnit(res?.unitUut || res?.sensorDetails?.graduating_unit || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || '')
-                              const isDuplicateTitle = sec?.title?.toLowerCase().includes('hasil kalibrasi') || sec?.title?.toLowerCase().includes('calibration result');
+
+                              const resultUnit = formatUnit(
+                                res?.unitUut ||
+                                  res?.sensorDetails?.graduating_unit ||
+                                  res?.sensorDetails?.range_capacity_unit ||
+                                  res?.sensorDetails?.unit ||
+                                  '',
+                              )
+                              const isDuplicateTitle =
+                                sec?.title
+                                  ?.toLowerCase()
+                                  .includes('hasil kalibrasi') ||
+                                sec?.title
+                                  ?.toLowerCase()
+                                  .includes('calibration result')
                               return (
                                 <div key={sIdx} className="mt-3 avoid-break">
-                                  {sec?.title && sec.title.trim() !== '' && !isDuplicateTitle && <div className="text-xs font-bold mb-1 text-center">{sec.title}</div>}
-                                  {(!sec?.title || sec.title.trim() === '') && <div className="text-xs font-bold mb-1 text-center">{`Tabel ${sIdx + 1}`}</div>}
+                                  {sec?.title &&
+                                    sec.title.trim() !== '' &&
+                                    !isDuplicateTitle && (
+                                      <div className="text-xs font-bold mb-1 text-center">
+                                        {sec.title}
+                                      </div>
+                                    )}
+                                  {(!sec?.title || sec.title.trim() === '') && (
+                                    <div className="text-xs font-bold mb-1 text-center">{`Tabel ${sIdx + 1}`}</div>
+                                  )}
                                   <table className="w-full text-xs border-[2px] border-black text-center border-collapse">
                                     <thead>
                                       <tr className="font-bold">
                                         {headers.map((h: string, i: number) => (
-                                          <td key={i} className="p-1 border border-black text-center">
-                                            {h}<br />{isPyrano && i === 0 ? `(${resultUnit})` : (isPyrano && i === 2 ? '(%)' : (resultUnit ? `(${resultUnit})` : ''))}
+                                          <td
+                                            key={i}
+                                            className="p-1 border border-black text-center"
+                                          >
+                                            {' '}
+                                            {h}
+                                            <br />
+                                            {isPyrano && i === 0
+                                              ? `(${resultUnit})`
+                                              : isPyrano && i === 2
+                                                ? '(%)'
+                                                : resultUnit
+                                                  ? `(${resultUnit})`
+                                                  : ''}
                                           </td>
                                         ))}
                                       </tr>
@@ -2222,19 +2975,61 @@ const PrintCertificatePage: React.FC = () => {
                                           {/* If headers exist, map based on standard + extra values */}
                                           {headers.length > 0 ? (
                                             <>
-                                              <td className="p-1 border border-black text-center">{row.key || '-'}</td>
-                                              <td className="p-1 border border-black text-center">{isPyrano ? formatCalibrationCorrection(row.unit, true, decimalPrecision) : formatCalibrationCorrection(row.unit, false, decimalPrecision)}</td>
-                                              <td className="p-1 border border-black text-center">{formatCalibrationUncertainty(row.value, isPyrano, decimalPrecision)}</td>
-                                              {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
-                                                <td key={`extra-${vi}`} className="p-1 border border-black text-center">{v || '-'}</td>
-                                              ))}
+                                              <td className="p-1 border border-black text-center">
+                                                {row.key || '-'}
+                                              </td>
+                                              <td className="p-1 border border-black text-center">
+                                                {isPyrano
+                                                  ? formatCalibrationCorrection(
+                                                      row.unit,
+                                                      true,
+                                                      decimalPrecision,
+                                                    )
+                                                  : formatCalibrationCorrection(
+                                                      row.unit,
+                                                      false,
+                                                      decimalPrecision,
+                                                    )}
+                                              </td>
+                                              <td className="p-1 border border-black text-center">
+                                                {formatCalibrationUncertainty(
+                                                  row.value,
+                                                  isPyrano,
+                                                  decimalPrecision,
+                                                )}
+                                              </td>{' '}
+                                              {Array.isArray(row.extraValues) &&
+                                                row.extraValues.map(
+                                                  (v: string, vi: number) => (
+                                                    <td
+                                                      key={`extra-${vi}`}
+                                                      className="p-1 border border-black text-center"
+                                                    >
+                                                      {v || '-'}
+                                                    </td>
+                                                  ),
+                                                )}
                                             </>
                                           ) : (
                                             // Fallback
                                             <>
-                                              <td className="p-1 border border-black text-center">{row.key || '-'}</td>
-                                              <td className="p-1 border border-black text-center">{formatCalibrationCorrection(row.unit, isPyrano, decimalPrecision)}</td>
-                                              <td className="p-1 border border-black text-center">{formatCalibrationUncertainty(row.value, isPyrano, decimalPrecision)}</td>
+                                              <td className="p-1 border border-black text-center">
+                                                {row.key || '-'}
+                                              </td>
+                                              <td className="p-1 border border-black text-center">
+                                                {formatCalibrationCorrection(
+                                                  row.unit,
+                                                  isPyrano,
+                                                  decimalPrecision,
+                                                )}
+                                              </td>
+                                              <td className="p-1 border border-black text-center">
+                                                {formatCalibrationUncertainty(
+                                                  row.value,
+                                                  isPyrano,
+                                                  decimalPrecision,
+                                                )}
+                                              </td>
                                             </>
                                           )}
                                         </tr>
@@ -2244,114 +3039,220 @@ const PrintCertificatePage: React.FC = () => {
                                 </div>
                               )
                             })}
-                            {res?.unitStd && res?.unitUut && needsConversion(res.unitStd, res.unitUut) && (
-                              <div className="mt-1 text-[10px] text-gray-500 italic text-right">
-                                * Nilai Pembacaan Standar telah dikonversi dari <strong>{formatUnit(res.unitStd)}</strong> ke <strong>{formatUnit(res.unitUut)}</strong> sebelum penghitungan koreksi.
-                              </div>
-                            )}
+                            {res?.unitStd &&
+                              res?.unitUut &&
+                              needsConversion(res.unitStd, res.unitUut) && (
+                                <div className="mt-1 text-[10px] text-gray-500 italic text-right">
+                                  * Nilai Pembacaan Standar telah dikonversi
+                                  dari{' '}
+                                  <strong>{formatUnit(res.unitStd)}</strong> ke{' '}
+                                  <strong>{formatUnit(res.unitUut)}</strong>{' '}
+                                  sebelum penghitungan koreksi.
+                                </div>
+                              )}
                           </div>
                         )}
 
                         {/* Images per sensor only for Geofisika - placed right after calibration table */}
-                        {(station as any)?.station_type?.name?.toString().trim().toLowerCase() === 'geofisika' && Array.isArray(res?.images) && (res.images as any[]).length > 0 && (
-                          <div className="mt-4 avoid-break break-after-page">
-                            <h4 className="text-xs font-semibold mb-2 text-center">Gambar</h4>
-                            <div className="flex flex-wrap gap-3 justify-center">
-                              {(res.images as any[]).map((img: any, i: number) => {
-                                const src = typeof img === 'string' ? img : (img?.url || '')
-                                if (!src) return null
-                                return (
-                                  <figure key={i} className="m-0 p-0 text-center">
-                                    <img src={src} alt={`Gambar Sensor ${i + 1}`} className="block m-0 p-0 h-auto w-auto max-w-[400px] max-h-[400px]" />
-                                    {img?.caption ? (
-                                      <figcaption className="text-[10px] mt-0 text-center text-gray-700 leading-tight m-0 p-0">{img.caption}</figcaption>
-                                    ) : null}
-                                  </figure>
-                                )
-                              })}
+                        {(station as any)?.station_type?.name
+                          ?.toString()
+                          .trim()
+                          .toLowerCase() === 'geofisika' &&
+                          Array.isArray(res?.images) &&
+                          (res.images as any[]).length > 0 && (
+                            <div className="mt-4 avoid-break break-after-page">
+                              <h4 className="text-xs font-semibold mb-2 text-center">
+                                Gambar
+                              </h4>
+                              <div className="flex flex-wrap gap-3 justify-center">
+                                {(res.images as any[]).map(
+                                  (img: any, i: number) => {
+                                    const src =
+                                      typeof img === 'string'
+                                        ? img
+                                        : img?.url || ''
+                                    if (!src) return null
+                                    return (
+                                      <figure
+                                        key={i}
+                                        className="m-0 p-0 text-center"
+                                      >
+                                        <img
+                                          src={src}
+                                          alt={`Gambar Sensor ${i + 1}`}
+                                          className="block m-0 p-0 h-auto w-auto max-w-[400px] max-h-[400px]"
+                                        />
+                                        {img?.caption ? (
+                                          <figcaption className="text-[10px] mt-0 text-center text-gray-700 leading-tight m-0 p-0">
+                                            {img.caption}
+                                          </figcaption>
+                                        ) : null}
+                                      </figure>
+                                    )
+                                  },
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )}
 
                         {/* Catatan per Sensor */}
                         {(() => {
                           const nf = res?.notesForm || null
                           if (!nf) return null
                           const othersEnabled = isOthersEnabled(nf)
-                          const shouldAlwaysShowDefaultOthers = isDefaultNotesOthersValue(nf.others)
-                          const showOthers = Boolean(nf.others) && (shouldAlwaysShowDefaultOthers || othersEnabled)
-                          const hasAny = nf.traceable_to_si_through || nf.reference_document || nf.calibration_methode || showOthers || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)
+                          const shouldAlwaysShowDefaultOthers =
+                            isDefaultNotesOthersValue(nf.others)
+                          const showOthers =
+                            Boolean(nf.others) &&
+                            (shouldAlwaysShowDefaultOthers || othersEnabled)
+                          const hasAny =
+                            nf.traceable_to_si_through ||
+                            nf.reference_document ||
+                            nf.calibration_methode ||
+                            showOthers ||
+                            (Array.isArray(nf.standardInstruments) &&
+                              nf.standardInstruments.length > 0)
                           if (!hasAny) return null
                           return (
                             <div className="mt-6 avoid-break">
-                              <div className="text-sm font-bold underline leading-tight mb-0">Catatan / <span className="italic">Notes :</span></div>
+                              <div className="text-sm font-bold underline leading-tight mb-0">
+                                Catatan /{' '}
+                                <span className="italic">Notes :</span>
+                              </div>
                               <table className="w-full text-xs mt-1">
                                 <tbody>
-                                  {Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0 && (
-                                    <tr>
-                                      <td className="w-[40%] align-top text-left pr-2 py-0">
-                                        <div className="font-bold leading-tight">Standar Kalibrasi <span className="italic text-[10px] text-gray-900">/ Calibration Standard</span></div>
-                                      </td>
-                                      <td className="w-[5%] align-top py-0">:</td>
-                                      <td className="w-[55%] align-top whitespace-pre-line py-0">
-                                        {(() => {
-                                          const parts = []
-                                          // Removed nf.others from Standar Kalibrasi
+                                  {Array.isArray(nf.standardInstruments) &&
+                                    nf.standardInstruments.length > 0 && (
+                                      <tr>
+                                        <td className="w-[40%] align-top text-left pr-2 py-0">
+                                          {' '}
+                                          <div className="font-bold leading-tight">
+                                            Standar Kalibrasi{' '}
+                                            <span className="italic text-[10px] text-gray-900">
+                                              / Calibration Standard
+                                            </span>
+                                          </div>
+                                        </td>
+                                        <td className="w-[5%] align-top py-0">
+                                          :
+                                        </td>
+                                        <td className="w-[55%] align-top whitespace-pre-line py-0">
+                                          {' '}
+                                          {(() => {
+                                            const parts = []
+                                            // Removed nf.others from Standar Kalibrasi
 
-                                          if (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0) {
-                                            const standards = nf.standardInstruments.map((sid: number) => {
-                                              const targetId = sid != null ? Number(sid) : null
-                                              const s = targetId != null
-                                                ? sensors.find((sensor: any) => sensor.id != null && Number(sensor.id) === targetId)
-                                                : undefined
-                                              if (!s) return null
-                                              // Format: Name - SN (if available)
-                                              const name = s.name || s.type || 'Sensor'
-                                              const sn = s.serial_number ? `SN ${s.serial_number}` : ''
-                                              return sn ? `${name} — ${sn}` : name
-                                            }).filter(Boolean)
+                                            if (
+                                              Array.isArray(
+                                                nf.standardInstruments,
+                                              ) &&
+                                              nf.standardInstruments.length > 0
+                                            ) {
+                                              const standards =
+                                                nf.standardInstruments
+                                                  .map((sid: number) => {
+                                                    const targetId =
+                                                      sid != null
+                                                        ? Number(sid)
+                                                        : null
+                                                    const s =
+                                                      targetId != null
+                                                        ? sensors.find(
+                                                            (sensor: any) =>
+                                                              sensor.id !=
+                                                                null &&
+                                                              Number(
+                                                                sensor.id,
+                                                              ) === targetId,
+                                                          )
+                                                        : undefined
+                                                    if (!s) return null
+                                                    // Format: Name - SN (if available)
+                                                    const name =
+                                                      s.name ||
+                                                      s.type ||
+                                                      'Sensor'
+                                                    const sn = s.serial_number
+                                                      ? `SN ${s.serial_number}`
+                                                      : ''
+                                                    return sn
+                                                      ? `${name} — ${sn}`
+                                                      : name
+                                                  })
+                                                  .filter(Boolean)
 
-                                            if (standards.length > 0) {
-                                              parts.push(standards.join('\n'))
+                                              if (standards.length > 0) {
+                                                parts.push(standards.join('\n'))
+                                              }
                                             }
-                                          }
 
-                                          return parts.join('\n') || '-'
-                                        })()}
-                                      </td>
-                                    </tr>
-                                  )}
+                                            return parts.join('\n') || '-'
+                                          })()}
+                                        </td>
+                                      </tr>
+                                    )}
                                   {nf.traceable_to_si_through && (
                                     <tr>
                                       <td className="align-top text-left pr-2 py-0">
-                                        <div className="font-bold leading-tight">Tertelusur Ke SI melalui <span className="italic text-[10px] text-gray-900">/ Traceable to SI through</span></div>
+                                        {' '}
+                                        <div className="font-bold leading-tight">
+                                          Tertelusur Ke SI melalui{' '}
+                                          <span className="italic text-[10px] text-gray-900">
+                                            / Traceable to SI through
+                                          </span>
+                                        </div>
                                       </td>
                                       <td className="align-top py-0">:</td>
-                                      <td className="align-top whitespace-pre-line py-0">{nf.traceable_to_si_through}</td>
+                                      <td className="align-top whitespace-pre-line py-0">
+                                        {nf.traceable_to_si_through}
+                                      </td>
                                     </tr>
                                   )}
                                   {nf.calibration_methode && (
                                     <tr>
                                       <td className="align-top text-left pr-2 py-0">
-                                        <div className="font-bold leading-tight">Metode Kalibrasi <span className="italic text-[10px] text-gray-900">/ Calibration Methode</span></div>
+                                        {' '}
+                                        <div className="font-bold leading-tight">
+                                          Metode Kalibrasi{' '}
+                                          <span className="italic text-[10px] text-gray-900">
+                                            / Calibration Methode
+                                          </span>
+                                        </div>
                                       </td>
                                       <td className="align-top py-0">:</td>
-                                      <td className="align-top whitespace-pre-line py-0">{nf.calibration_methode}</td>
+                                      <td className="align-top whitespace-pre-line py-0">
+                                        {nf.calibration_methode}
+                                      </td>
                                     </tr>
                                   )}
                                   {nf.reference_document && (
                                     <tr>
                                       <td className="align-top text-left pr-2 py-0">
-                                        <div className="font-bold leading-tight">Dokumen Acuan <span className="italic text-[10px] text-gray-900">/ Reference Document</span></div>
+                                        {' '}
+                                        <div className="font-bold leading-tight">
+                                          Dokumen Acuan{' '}
+                                          <span className="italic text-[10px] text-gray-900">
+                                            / Reference Document
+                                          </span>
+                                        </div>
                                       </td>
                                       <td className="align-top py-0">:</td>
-                                      <td className="align-top whitespace-pre-line py-0">{nf.reference_document}</td>
+                                      <td className="align-top whitespace-pre-line py-0">
+                                        {nf.reference_document}
+                                      </td>
                                     </tr>
                                   )}
                                   {showOthers && (
                                     <tr>
-                                      <td colSpan={3} className="align-top py-1">
-                                        <RichTextCell value={nf.others} className="leading-tight text-[11px] [&_p]:m-0 [&_p+*]:mt-0.5 [&_ul]:mt-0 [&_ol]:mt-0 [&_li]:my-0" />
+                                      <td
+                                        colSpan={3}
+                                        className="align-top py-1"
+                                      >
+                                        {' '}
+                                        <RichTextCell
+                                          value={nf.others}
+                                          className="leading-tight text-[11px] [&_p]:m-0 [&_p+*]:mt-0.5 [&_ul]:mt-0 [&_ol]:mt-0 [&_li]:my-0"
+                                        />
                                       </td>
                                     </tr>
                                   )}
@@ -2363,17 +3264,39 @@ const PrintCertificatePage: React.FC = () => {
                                   <tbody>
                                     <tr>
                                       <td className="w-[35%] align-top text-left pr-2 py-0">
-                                        <span className="font-bold leading-tight">Diverifikasi Oleh</span>
-                                        <span className="italic text-[10px] text-gray-700 leading-tight"> / Verified by</span>
+                                        {' '}
+                                        <span className="font-bold leading-tight">
+                                          Diverifikasi Oleh
+                                        </span>
+                                        <span className="italic text-[10px] text-gray-700 leading-tight">
+                                          {' '}
+                                          / Verified by
+                                        </span>
                                       </td>
-                                      <td className="w-[5%] align-top py-0">:</td>
+                                      <td className="w-[5%] align-top py-0">
+                                        :
+                                      </td>
                                       <td className="w-[60%] align-top py-0">
-                                        {[verifikator1?.name, verifikator2?.name, verifikator3?.name].filter(Boolean).length > 0
-                                          ? [verifikator1?.name, verifikator2?.name, verifikator3?.name].filter(Boolean).map((name, idx2) => (
-                                            <div key={idx2}>{idx2 + 1}. {name}</div>
-                                          ))
-                                          : <div>-</div>
-                                        }
+                                        {' '}
+                                        {[
+                                          verifikator1?.name,
+                                          verifikator2?.name,
+                                          verifikator3?.name,
+                                        ].filter(Boolean).length > 0 ? (
+                                          [
+                                            verifikator1?.name,
+                                            verifikator2?.name,
+                                            verifikator3?.name,
+                                          ]
+                                            .filter(Boolean)
+                                            .map((name, idx2) => (
+                                              <div key={idx2}>
+                                                {idx2 + 1}. {name}
+                                              </div>
+                                            ))
+                                        ) : (
+                                          <div>-</div>
+                                        )}
                                       </td>
                                     </tr>
                                   </tbody>
@@ -2388,11 +3311,12 @@ const PrintCertificatePage: React.FC = () => {
                         {idx === results.length - 1 && (
                           <div className="mt-2 mb-4">
                             <p className="text-center font-bold text-sm m-0">
-                              --- Akhir dari Sertifikat / <span className="italic">End of Certificate</span> ---
+                              --- Akhir dari Sertifikat /{' '}
+                              <span className="italic">End of Certificate</span>{' '}
+                              ---
                             </p>
                           </div>
                         )}
-
                       </section>
                     </div>
                   </td>
@@ -2400,17 +3324,13 @@ const PrintCertificatePage: React.FC = () => {
               </tbody>
               <tfoot className="print-repeat-footer">
                 <tr>
-                  <td>
-                    {renderResultsFooter()}
-                  </td>
+                  <td>{renderResultsFooter()}</td>
                 </tr>
               </tfoot>
             </table>
           </div>
         ))
       )}
-
-
     </div>
   )
 }

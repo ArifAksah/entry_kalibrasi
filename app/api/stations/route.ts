@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../lib/supabase'
+import { requireRoles } from '../../../lib/api-auth'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 // Using shared supabaseAdmin (with env fallbacks) for admin operations
 
@@ -57,7 +59,7 @@ export async function GET(request: NextRequest) {
         console.warn('[stations] Supabase unreachable, returning empty list fallback.')
         return NextResponse.json({ data: [], total: 0, page, pageSize, totalPages: 1 })
       }
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     }
     const total = count || 0
     console.log(`Fetched ${data?.length || 0} stations (page ${page}, pageSize ${pageSize}, total ${total})`)
@@ -73,20 +75,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // Get the authorization header
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader) {
-      return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
-    }
-
-    // Extract token from "Bearer <token>"
-    const token = authHeader.replace('Bearer ', '')
-
-    // Verify the token and get user
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-    }
+    // Master data CRUD: admin & calibrator (menu "Master Data" di UI).
+    const caller = await requireRoles(request, ['admin', 'calibrator'])
+    if (caller instanceof NextResponse) return caller
+    const user = caller.user
 
     const body = await request.json()
     const {
@@ -150,7 +142,7 @@ export async function POST(request: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     return NextResponse.json(data, { status: 201 })
   } catch (e) {
     return NextResponse.json({ error: 'Failed to create station' }, { status: 500 })

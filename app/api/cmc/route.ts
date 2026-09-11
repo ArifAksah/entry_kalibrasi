@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../lib/supabase'
 import { canConvertUnit, convertDeltaUnit } from '../../../lib/unitConversion'
 import { authenticateRequest, getUserRole } from '../../../lib/certificate-access'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 async function requireAdmin(request: NextRequest) {
   const { user, error } = await authenticateRequest(request)
@@ -95,7 +96,7 @@ export async function GET(request: NextRequest) {
     })
   } catch (error: any) {
     const missingTable = error?.code === '42P01' || /cmc_profiles|cmc_values/i.test(error?.message || '')
-    return NextResponse.json({ error: error?.message || 'Gagal mengambil CMC' }, { status: missingTable ? 503 : 500 })
+    return NextResponse.json({ error: clientSafeMessage(error) || 'Gagal mengambil CMC' }, { status: missingTable ? 503 : 500 })
   }
 }
 
@@ -139,6 +140,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: profile }, { status: 201 })
   } catch (error: any) {
-    return NextResponse.json({ error: error?.message || 'Gagal menyimpan CMC' }, { status: 500 })
+    return NextResponse.json({ error: clientSafeMessage(error) || 'Gagal menyimpan CMC' }, { status: 500 })
   }
 }

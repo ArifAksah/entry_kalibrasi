@@ -26,7 +26,10 @@ const formatRoleLabel = (role?: string | null) => {
   const foundRole = roleOptions.find((option) => option.id === role)
   if (foundRole) return foundRole.name
 
-  return role.split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+  return role
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
 }
 
 const getRoleBadgeClass = (role?: string | null) => {
@@ -75,7 +78,17 @@ const PersonelPage: React.FC = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editing, setEditing] = useState<Person | null>(null)
-  const [form, setForm] = useState<PersonelForm>({ id: '', name: '', email: '', phone: '', nip: '', nik: '', role: '', station_id: '', password: '' })
+  const [form, setForm] = useState<PersonelForm>({
+    id: '',
+    name: '',
+    email: '',
+    phone: '',
+    nip: '',
+    nik: '',
+    role: '',
+    station_id: '',
+    password: '',
+  })
   const [savingRole, setSavingRole] = useState<string | null>(null)
 
   // Registration modal state
@@ -93,8 +106,14 @@ const PersonelPage: React.FC = () => {
   const [regLoading, setRegLoading] = useState(false)
   const [showPass, setShowPass] = useState(false)
   const [showEditPass, setShowEditPass] = useState(false)
-  const [pwStrength, setPwStrength] = useState<{ score: number; label: string; color: string }>({ score: 0, label: 'Very weak', color: 'bg-red-500' })
-  const [stations, setStations] = useState<Array<{ id: number; name: string; station_id: string }>>([])
+  const [pwStrength, setPwStrength] = useState<{
+    score: number
+    label: string
+    color: string
+  }>({ score: 0, label: 'Very weak', color: 'bg-red-500' })
+  const [stations, setStations] = useState<
+    Array<{ id: number; name: string; station_id: string }>
+  >([])
   const [regError, setRegError] = useState<string | null>(null)
   const [regSuccess, setRegSuccess] = useState<string | null>(null)
 
@@ -114,7 +133,17 @@ const PersonelPage: React.FC = () => {
       })
     } else {
       setEditing(null)
-      setForm({ id: '', name: '', email: '', phone: '', nip: '', nik: '', role: '', station_id: '', password: '' })
+      setForm({
+        id: '',
+        name: '',
+        email: '',
+        phone: '',
+        nip: '',
+        nik: '',
+        role: '',
+        station_id: '',
+        password: '',
+      })
     }
     setShowEditPass(false)
     setIsModalOpen(true)
@@ -162,14 +191,16 @@ const PersonelPage: React.FC = () => {
     setRegError(null)
     setRegSuccess(null)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
       if (!session) throw new Error('Sesi admin tidak ditemukan')
 
       const res = await fetch('/api/personel/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           name: regForm.name,
@@ -187,11 +218,21 @@ const PersonelPage: React.FC = () => {
 
       setRegSuccess('Registrasi berhasil dibuat.')
       showSuccess('Personel baru berhasil dibuat tanpa mengubah sesi admin.')
-      setRegForm({ name: '', nip: '', nik: '', phone: '', email: '', password: '', role: '' as any, station_id: '' as any })
+      setRegForm({
+        name: '',
+        nip: '',
+        nik: '',
+        phone: '',
+        email: '',
+        password: '',
+        role: '' as any,
+        station_id: '' as any,
+      })
       await refresh()
       setTimeout(() => setIsRegisterOpen(false), 800)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Registration failed'
+      const errorMessage =
+        err instanceof Error ? err.message : 'Registration failed'
       setRegError(errorMessage)
       showError(errorMessage)
     } finally {
@@ -239,7 +280,12 @@ const PersonelPage: React.FC = () => {
   }
 
   const removePerson = async (id: string) => {
-    if (!confirm('Personel akan dinonaktifkan dan akun tidak dapat login. Riwayat sertifikat tetap aman. Lanjutkan?')) return
+    if (
+      !confirm(
+        'Personel akan dinonaktifkan dan akun tidak dapat login. Riwayat sertifikat tetap aman. Lanjutkan?',
+      )
+    )
+      return
     try {
       const response = await fetch(`/api/personel/${id}`, { method: 'DELETE' })
       if (!response.ok) {
@@ -249,15 +295,19 @@ const PersonelPage: React.FC = () => {
       showSuccess('Personel berhasil dinonaktifkan!')
       refresh() // Refresh data after disabling
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to disable'
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to disable'
       showError(errorMessage)
     }
   }
 
   const reactivatePerson = async (id: string) => {
-    if (!confirm('Aktifkan kembali personel ini dan izinkan akun untuk login?')) return
+    if (!confirm('Aktifkan kembali personel ini dan izinkan akun untuk login?'))
+      return
     try {
-      const response = await fetch(`/api/personel/${id}/reactivate`, { method: 'POST' })
+      const response = await fetch(`/api/personel/${id}/reactivate`, {
+        method: 'POST',
+      })
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Failed to reactivate personel')
@@ -265,7 +315,8 @@ const PersonelPage: React.FC = () => {
       showSuccess('Personel berhasil diaktifkan kembali!')
       refresh()
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to reactivate'
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to reactivate'
       showError(errorMessage)
     }
   }
@@ -285,7 +336,8 @@ const PersonelPage: React.FC = () => {
       setRoleLocal(user_id, (role || undefined) as Person['role'] | undefined)
       showSuccess(`Role berhasil diperbarui menjadi: ${formatRoleLabel(role)}`)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to save role'
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to save role'
       showError(errorMessage)
     } finally {
       setSavingRole(null)
@@ -308,10 +360,17 @@ const PersonelPage: React.FC = () => {
         <div className="bg-gray-50/50">
           <Header />
           <main className="p-4 sm:p-6 lg:p-8">
-            <div className="max-w-7xl mx-auto">
+            <div className="p-4 sm:p-6 mx-auto max-w-[1600px]">
               <div className="flex items-center justify-between mb-6">
-                <h1 className="text-2xl font-bold text-gray-800">Manajemen Personel</h1>
-                <button onClick={() => setIsRegisterOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-colors">Registrasi Baru</button>
+                <h1 className="text-2xl font-bold text-gray-800">
+                  Manajemen Personel
+                </h1>
+                <button
+                  onClick={() => setIsRegisterOpen(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-colors"
+                >
+                  Registrasi Baru
+                </button>
               </div>
 
               <div className="bg-white p-6 rounded-xl shadow-md">
@@ -326,85 +385,153 @@ const PersonelPage: React.FC = () => {
                     className="w-full max-w-sm px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                   />
                   <label className="inline-flex items-center gap-2 text-sm text-gray-600 select-none cursor-pointer">
-                    <input type="checkbox" checked={includeInactive} onChange={toggleIncludeInactive} className="accent-blue-600 h-4 w-4" />
+                    <input
+                      type="checkbox"
+                      checked={includeInactive}
+                      onChange={toggleIncludeInactive}
+                      className="accent-blue-600 h-4 w-4"
+                    />
                     Tampilkan personel nonaktif
                   </label>
                 </div>
 
-                {error && <div className="mb-4 text-red-600 bg-red-100 p-3 rounded-lg">Error: {error}</div>}
+                {error && (
+                  <div className="mb-4 text-red-600 bg-red-100 p-3 rounded-lg">
+                    Error: {error}
+                  </div>
+                )}
 
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm text-left text-gray-700">
                     <thead className="bg-gray-100 text-gray-600 uppercase text-xs font-medium">
                       <tr>
-                        <th className="px-6 py-3">Nama</th>
-                        <th className="px-6 py-3">Kontak</th>
-                        <th className="px-6 py-3">Posisi</th>
-                        <th className="px-6 py-3">Role</th>
-                        <th className="px-6 py-3 text-center">Status</th>
-                        <th className="px-6 py-3 text-center">Actions</th>
+                        <th className="px-4 py-2.5">Nama</th>
+                        <th className="px-4 py-2.5">Kontak</th>
+                        <th className="px-4 py-2.5">Posisi</th>
+                        <th className="px-4 py-2.5">Role</th>
+                        <th className="px-4 py-2.5 text-center">Status</th>
+                        <th className="px-4 py-2.5 text-center">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {loading ? (
-                        [...Array(10)].map((_, i) => (
-                          <tr key={i} className="border-b border-gray-200 animate-pulse">
-                            <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-3/4"></div></td>
-                            <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-full"></div></td>
-                            <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-1/2"></div></td>
-                            <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-1/4"></div></td>
-                            <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-1/4"></div></td>
-                            <td className="px-6 py-4"><div className="h-8 bg-gray-200 rounded w-full"></div></td>
-                          </tr>
-                        ))
-                      ) : (
-                        items.map((p: Person) => (
-                          <tr key={p.id} className="border-b border-gray-200 hover:bg-gray-50">
-                            <td className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">
-                              {p.name}
-                              {p.nip && <div className="text-xs text-gray-500">NIP: {p.nip}</div>}
-                              {(p as any).nik && <div className="text-xs text-gray-500">NIK: {(p as any).nik}</div>}
-                            </td>
-                            <td className="px-6 py-4">
-                              <div>{p.email}</div>
-                              <div className="text-xs text-gray-500">{p.phone}</div>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${getRoleBadgeClass(p.role)}`}>
-                                {formatRoleLabel(p.role)}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4">
-                              <SearchableDropdown
-                                value={p.role || ''}
-                                onChange={(value) => saveRole(p.id, (value || '') as Person['role'] | '')}
-                                options={roleOptions}
-                                placeholder="Pilih role"
-                                searchPlaceholder="Cari role..."
-                                emptyLabel="Role tidak ditemukan"
-                                className="min-w-[220px]"
-                              />
-                              {savingRole === p.id && <span className="ml-2 text-xs text-gray-500">Menyimpan...</span>}
-                            </td>
-                            <td className="px-6 py-4 text-center">
-                              {p.is_active === false
-                                ? <span className="inline-flex rounded-full border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">Nonaktif</span>
-                                : <span className="inline-flex rounded-full border border-green-300 bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">Aktif</span>}
-                            </td>
-                            <td className="px-6 py-4 text-center space-x-2">
-                              {p.is_active === false && (
-                                <button onClick={() => reactivatePerson(p.id)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition-colors" title="Aktifkan kembali">
-                                  Aktifkan
-                                </button>
-                              )}
-                              <EditButton onClick={() => openModal(p)} title="Edit Personel" />
-                              {p.is_active !== false && (
-                                <DeleteButton onClick={() => removePerson(p.id)} title="Nonaktifkan Personel" />
-                              )}
-                            </td>
-                          </tr>
-                        ))
-                      )}
+                      {loading
+                        ? [...Array(10)].map((_, i) => (
+                            <tr
+                              key={i}
+                              className="border-b border-gray-200 animate-pulse"
+                            >
+                              <td className="px-4 py-3">
+                                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="h-4 bg-gray-200 rounded w-full"></div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="h-8 bg-gray-200 rounded w-full"></div>
+                              </td>
+                            </tr>
+                          ))
+                        : items.map((p: Person) => (
+                            <tr
+                              key={p.id}
+                              className="border-b border-gray-200 hover:bg-gray-50"
+                            >
+                              <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
+                                {' '}
+                                {p.name}
+                                {p.nip && (
+                                  <div className="text-xs text-gray-500">
+                                    NIP: {p.nip}
+                                  </div>
+                                )}
+                                {(p as any).nik && (
+                                  <div className="text-xs text-gray-500">
+                                    NIK: {(p as any).nik}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                {' '}
+                                <div>{p.email}</div>
+                                <div className="text-xs text-gray-500">
+                                  {p.phone}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                {' '}
+                                <span
+                                  className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${getRoleBadgeClass(p.role)}`}
+                                >
+                                  {formatRoleLabel(p.role)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                {' '}
+                                <SearchableDropdown
+                                  value={p.role || ''}
+                                  onChange={(value) =>
+                                    saveRole(
+                                      p.id,
+                                      (value || '') as Person['role'] | '',
+                                    )
+                                  }
+                                  options={roleOptions}
+                                  placeholder="Pilih role"
+                                  searchPlaceholder="Cari role..."
+                                  emptyLabel="Role tidak ditemukan"
+                                  className="min-w-[220px]"
+                                />
+                                {savingRole === p.id && (
+                                  <span className="ml-2 text-xs text-gray-500">
+                                    Menyimpan...
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                {' '}
+                                {p.is_active === false ? (
+                                  <span className="inline-flex rounded-full border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
+                                    Nonaktif
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex rounded-full border border-green-300 bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
+                                    Aktif
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-center space-x-2">
+                                {' '}
+                                {p.is_active === false && (
+                                  <button
+                                    onClick={() => reactivatePerson(p.id)}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition-colors"
+                                    title="Aktifkan kembali"
+                                  >
+                                    Aktifkan
+                                  </button>
+                                )}
+                                <EditButton
+                                  onClick={() => openModal(p)}
+                                  title="Edit Personel"
+                                />
+                                {p.is_active !== false && (
+                                  <DeleteButton
+                                    onClick={() => removePerson(p.id)}
+                                    title="Nonaktifkan Personel"
+                                  />
+                                )}
+                              </td>
+                            </tr>
+                          ))}
                     </tbody>
                   </table>
                 </div>
@@ -415,11 +542,21 @@ const PersonelPage: React.FC = () => {
                       Menampilkan {items.length} dari {totalItems} personel
                     </span>
                     <div className="flex items-center space-x-2">
-                      <button onClick={prevPage} disabled={currentPage === 1} className="px-3 py-1 border rounded-md bg-white hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">
+                      <button
+                        onClick={prevPage}
+                        disabled={currentPage === 1}
+                        className="px-3 py-1 border rounded-md bg-white hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
                         Sebelumnya
                       </button>
-                      <span className="text-sm font-medium">Halaman {currentPage} dari {totalPages}</span>
-                      <button onClick={nextPage} disabled={currentPage === totalPages} className="px-3 py-1 border rounded-md bg-white hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">
+                      <span className="text-sm font-medium">
+                        Halaman {currentPage} dari {totalPages}
+                      </span>
+                      <button
+                        onClick={nextPage}
+                        disabled={currentPage === totalPages}
+                        className="px-3 py-1 border rounded-md bg-white hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
                         Berikutnya
                       </button>
                     </div>
@@ -434,49 +571,138 @@ const PersonelPage: React.FC = () => {
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
           <div className="bg-white w-full max-w-3xl rounded-xl shadow-2xl p-6 m-4">
-            <h3 className="text-xl font-semibold mb-6 text-gray-800">Edit Personel</h3>
-            <form onSubmit={savePerson} autoComplete="off" className="space-y-8">
+            <h3 className="text-xl font-semibold mb-6 text-gray-800">
+              Edit Personel
+            </h3>
+            <form
+              onSubmit={savePerson}
+              autoComplete="off"
+              className="space-y-8"
+            >
               <div>
-                <h4 className="text-base font-semibold text-gray-900 mb-3">Informasi Personel</h4>
+                <h4 className="text-base font-semibold text-gray-900 mb-3">
+                  Informasi Personel
+                </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                    <input required autoComplete="off" name="edit-personel-name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Name
+                    </label>
+                    <input
+                      required
+                      autoComplete="off"
+                      name="edit-personel-name"
+                      value={form.name}
+                      onChange={(e) =>
+                        setForm({ ...form, name: e.target.value })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">NIP</label>
-                    <input autoComplete="off" name="edit-personel-nip" value={form.nip || ''} onChange={e => setForm({ ...form, nip: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      NIP
+                    </label>
+                    <input
+                      autoComplete="off"
+                      name="edit-personel-nip"
+                      value={form.nip || ''}
+                      onChange={(e) =>
+                        setForm({ ...form, nip: e.target.value })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">NIK</label>
-                    <input autoComplete="off" name="edit-personel-nik" value={form.nik || ''} onChange={e => setForm({ ...form, nik: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nomor Induk Kependudukan" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      NIK
+                    </label>
+                    <input
+                      autoComplete="off"
+                      name="edit-personel-nik"
+                      value={form.nik || ''}
+                      onChange={(e) =>
+                        setForm({ ...form, nik: e.target.value })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Nomor Induk Kependudukan"
+                    />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                    <input autoComplete="off" name="edit-personel-phone" value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Phone
+                    </label>
+                    <input
+                      autoComplete="off"
+                      name="edit-personel-phone"
+                      value={form.phone || ''}
+                      onChange={(e) =>
+                        setForm({ ...form, phone: e.target.value })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                 </div>
               </div>
 
               <div>
-                <h4 className="text-base font-semibold text-gray-900 mb-3">Akun & Akses</h4>
+                <h4 className="text-base font-semibold text-gray-900 mb-3">
+                  Akun & Akses
+                </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                    <input required autoComplete="off" name="edit-personel-email" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Email
+                    </label>
+                    <input
+                      required
+                      autoComplete="off"
+                      name="edit-personel-email"
+                      type="email"
+                      value={form.email}
+                      onChange={(e) =>
+                        setForm({ ...form, email: e.target.value })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Password Baru</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Password Baru
+                    </label>
                     <div className="relative">
-                      <input autoComplete="new-password" name="edit-personel-password" type={showEditPass ? 'text' : 'password'} value={form.password || ''} onChange={e => setForm({ ...form, password: e.target.value })} className="w-full px-3 py-2 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Kosongkan jika tidak diubah" />
-                      <button type="button" onClick={() => setShowEditPass(s => !s)} className="absolute inset-y-0 right-0 px-3 text-sm text-gray-600 hover:text-gray-800">{showEditPass ? 'Hide' : 'Show'}</button>
+                      <input
+                        autoComplete="new-password"
+                        name="edit-personel-password"
+                        type={showEditPass ? 'text' : 'password'}
+                        value={form.password || ''}
+                        onChange={(e) =>
+                          setForm({ ...form, password: e.target.value })
+                        }
+                        className="w-full px-3 py-2 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Kosongkan jika tidak diubah"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowEditPass((s) => !s)}
+                        className="absolute inset-y-0 right-0 px-3 text-sm text-gray-600 hover:text-gray-800"
+                      >
+                        {showEditPass ? 'Hide' : 'Show'}
+                      </button>
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Role
+                    </label>
                     <SearchableDropdown
                       value={form.role || ''}
-                      onChange={(value) => setForm({ ...form, role: (value || '') as Person['role'] })}
+                      onChange={(value) =>
+                        setForm({
+                          ...form,
+                          role: (value || '') as Person['role'],
+                        })
+                      }
                       options={roleOptions}
                       placeholder="Pilih role"
                       searchPlaceholder="Cari role..."
@@ -484,62 +710,116 @@ const PersonelPage: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Station (opsional)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Station (opsional)
+                    </label>
                     <SearchableDropdown
                       value={form.station_id ? String(form.station_id) : ''}
-                      onChange={(value) => setForm({ ...form, station_id: value ? String(value) : '' })}
+                      onChange={(value) =>
+                        setForm({
+                          ...form,
+                          station_id: value ? String(value) : '',
+                        })
+                      }
                       options={[
                         { id: '', name: 'Tidak ada' },
                         ...stations.map((station) => ({
                           id: String(station.id),
                           name: station.name,
-                          description: station.station_id ? `ID Stasiun: ${station.station_id}` : undefined,
-                        }))
+                          description: station.station_id
+                            ? `ID Stasiun: ${station.station_id}`
+                            : undefined,
+                        })),
                       ]}
                       placeholder="Pilih stasiun"
                       searchPlaceholder="Cari nama atau ID stasiun..."
                       emptyLabel="Stasiun tidak ditemukan"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Khusus role user_station, pilih stasiun yang terkait.</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Khusus role user_station, pilih stasiun yang terkait.
+                    </p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Balai / Kantor</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Balai / Kantor
+                    </label>
                     <select
                       value={(form as any).balai_id ?? ''}
-                      onChange={e => setForm({ ...form, balai_id: e.target.value ? Number(e.target.value) : null } as any)}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          balai_id: e.target.value
+                            ? Number(e.target.value)
+                            : null,
+                        } as any)
+                      }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">BMKG Pusat (Default)</option>
-                      <option value="1">Balai Besar MKG Wilayah I (Medan)</option>
-                      <option value="2">Balai Besar MKG Wilayah II (Tangerang Selatan)</option>
-                      <option value="3">Balai Besar MKG Wilayah III (Denpasar)</option>
-                      <option value="4">Balai Besar MKG Wilayah IV (Makassar)</option>
-                      <option value="5">Balai Besar MKG Wilayah V (Jayapura)</option>
+                      <option value="1">
+                        Balai Besar MKG Wilayah I (Medan)
+                      </option>
+                      <option value="2">
+                        Balai Besar MKG Wilayah II (Tangerang Selatan)
+                      </option>
+                      <option value="3">
+                        Balai Besar MKG Wilayah III (Denpasar)
+                      </option>
+                      <option value="4">
+                        Balai Besar MKG Wilayah IV (Makassar)
+                      </option>
+                      <option value="5">
+                        Balai Besar MKG Wilayah V (Jayapura)
+                      </option>
                     </select>
-                    <p className="text-xs text-gray-500 mt-1">Pilih Balai jika personel ini adalah penandatangan dari Balai tertentu.</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Pilih Balai jika personel ini adalah penandatangan dari
+                      Balai tertentu.
+                    </p>
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Jabatan Penandatangan (Signer Title)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Jabatan Penandatangan (Signer Title)
+                    </label>
                     <input
                       autoComplete="off"
                       name="edit-personel-signer-title"
                       value={(form as any).signer_title || ''}
-                      onChange={e => setForm({ ...form, signer_title: e.target.value } as any)}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          signer_title: e.target.value,
+                        } as any)
+                      }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder={
                         (form as any).balai_id
-                          ? `Contoh: Kepala Balai Besar MKG Wilayah ${['I','II','III','IV','V'][((form as any).balai_id || 1) - 1]}`
+                          ? `Contoh: Kepala Balai Besar MKG Wilayah ${['I', 'II', 'III', 'IV', 'V'][((form as any).balai_id || 1) - 1]}`
                           : 'Contoh: Direktur Instrumentasi dan Kalibrasi'
                       }
                     />
-                    <p className="text-xs text-gray-500 mt-1">Jabatan resmi yang ditampilkan di sertifikat sebagai Pejabat Pengesahan.</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Jabatan resmi yang ditampilkan di sertifikat sebagai
+                      Pejabat Pengesahan.
+                    </p>
                   </div>
                 </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={closeModal} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors">Batal</button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-colors">Simpan Perubahan</button>
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-colors"
+                >
+                  Simpan Perubahan
+                </button>
               </div>
             </form>
           </div>
@@ -549,57 +829,156 @@ const PersonelPage: React.FC = () => {
       {isRegisterOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
           <div className="bg-white w-full max-w-3xl rounded-xl shadow-2xl p-6 m-4">
-            <h3 className="text-xl font-semibold mb-6 text-gray-800">Registrasi Personel Baru</h3>
-            {regError && <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{regError}</div>}
-            {regSuccess && <div className="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">{regSuccess}</div>}
-            <form onSubmit={submitRegistration} autoComplete="off" className="space-y-8">
+            <h3 className="text-xl font-semibold mb-6 text-gray-800">
+              Registrasi Personel Baru
+            </h3>
+            {regError && (
+              <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                {regError}
+              </div>
+            )}
+            {regSuccess && (
+              <div className="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
+                {regSuccess}
+              </div>
+            )}
+            <form
+              onSubmit={submitRegistration}
+              autoComplete="off"
+              className="space-y-8"
+            >
               <div>
-                <h4 className="text-base font-semibold text-gray-900 mb-3">Informasi Personel</h4>
+                <h4 className="text-base font-semibold text-gray-900 mb-3">
+                  Informasi Personel
+                </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                    <input required autoComplete="off" name="register-personel-name" value={regForm.name} onChange={e => setRegForm({ ...regForm, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Name
+                    </label>
+                    <input
+                      required
+                      autoComplete="off"
+                      name="register-personel-name"
+                      value={regForm.name}
+                      onChange={(e) =>
+                        setRegForm({ ...regForm, name: e.target.value })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">NIP</label>
-                    <input autoComplete="off" name="register-personel-nip" value={regForm.nip} onChange={e => setRegForm({ ...regForm, nip: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      NIP
+                    </label>
+                    <input
+                      autoComplete="off"
+                      name="register-personel-nip"
+                      value={regForm.nip}
+                      onChange={(e) =>
+                        setRegForm({ ...regForm, nip: e.target.value })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">NIK</label>
-                    <input autoComplete="off" name="register-personel-nik" value={regForm.nik} onChange={e => setRegForm({ ...regForm, nik: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nomor Induk Kependudukan" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      NIK
+                    </label>
+                    <input
+                      autoComplete="off"
+                      name="register-personel-nik"
+                      value={regForm.nik}
+                      onChange={(e) =>
+                        setRegForm({ ...regForm, nik: e.target.value })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Nomor Induk Kependudukan"
+                    />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                    <input autoComplete="off" name="register-personel-phone" value={regForm.phone} onChange={e => setRegForm({ ...regForm, phone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Phone
+                    </label>
+                    <input
+                      autoComplete="off"
+                      name="register-personel-phone"
+                      value={regForm.phone}
+                      onChange={(e) =>
+                        setRegForm({ ...regForm, phone: e.target.value })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                 </div>
               </div>
 
               <div>
-                <h4 className="text-base font-semibold text-gray-900 mb-3">Akun & Akses</h4>
+                <h4 className="text-base font-semibold text-gray-900 mb-3">
+                  Akun & Akses
+                </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                    <input required autoComplete="off" name="register-personel-email" type="email" value={regForm.email} onChange={e => setRegForm({ ...regForm, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Email
+                    </label>
+                    <input
+                      required
+                      autoComplete="off"
+                      name="register-personel-email"
+                      type="email"
+                      value={regForm.email}
+                      onChange={(e) =>
+                        setRegForm({ ...regForm, email: e.target.value })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Password
+                    </label>
                     <div className="relative">
-                      <input required autoComplete="new-password" name="register-personel-password" type={showPass ? 'text' : 'password'} value={regForm.password} onChange={e => setRegForm({ ...regForm, password: e.target.value })} className="w-full px-3 py-2 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      <button type="button" onClick={() => setShowPass(s => !s)} className="absolute inset-y-0 right-0 px-3 text-sm text-gray-600 hover:text-gray-800">{showPass ? 'Hide' : 'Show'}</button>
+                      <input
+                        required
+                        autoComplete="new-password"
+                        name="register-personel-password"
+                        type={showPass ? 'text' : 'password'}
+                        value={regForm.password}
+                        onChange={(e) =>
+                          setRegForm({ ...regForm, password: e.target.value })
+                        }
+                        className="w-full px-3 py-2 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPass((s) => !s)}
+                        className="absolute inset-y-0 right-0 px-3 text-sm text-gray-600 hover:text-gray-800"
+                      >
+                        {showPass ? 'Hide' : 'Show'}
+                      </button>
                     </div>
                     <div className="mt-2">
                       <div className="w-full h-2 bg-gray-200 rounded">
-                        <div className={`h-2 ${pwStrength.color} rounded`} style={{ width: `${(pwStrength.score + 1) * 20}%` }} />
+                        <div
+                          className={`h-2 ${pwStrength.color} rounded`}
+                          style={{ width: `${(pwStrength.score + 1) * 20}%` }}
+                        />
                       </div>
-                      <div className="text-xs text-gray-600 mt-1">Strength: {pwStrength.label}.</div>
+                      <div className="text-xs text-gray-600 mt-1">
+                        Strength: {pwStrength.label}.
+                      </div>
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Role
+                    </label>
                     <SearchableDropdown
                       value={(regForm as any).role || ''}
-                      onChange={(value) => setRegForm({ ...regForm, role: (value || '') as any })}
+                      onChange={(value) =>
+                        setRegForm({ ...regForm, role: (value || '') as any })
+                      }
                       options={roleOptions.filter((option) => option.id !== '')}
                       placeholder="Pilih role"
                       searchPlaceholder="Cari role..."
@@ -607,30 +986,53 @@ const PersonelPage: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Station (opsional)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Station (opsional)
+                    </label>
                     <SearchableDropdown
                       value={(regForm as any).station_id || ''}
-                      onChange={(value) => setRegForm({ ...regForm, station_id: value ? String(value) : '' })}
+                      onChange={(value) =>
+                        setRegForm({
+                          ...regForm,
+                          station_id: value ? String(value) : '',
+                        })
+                      }
                       options={[
                         { id: '', name: 'Tidak ada' },
                         ...stations.map((station) => ({
                           id: String(station.id),
                           name: station.name,
-                          description: station.station_id ? `ID Stasiun: ${station.station_id}` : undefined,
-                        }))
+                          description: station.station_id
+                            ? `ID Stasiun: ${station.station_id}`
+                            : undefined,
+                        })),
                       ]}
                       placeholder="Pilih stasiun"
                       searchPlaceholder="Cari nama atau ID stasiun..."
                       emptyLabel="Stasiun tidak ditemukan"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Khusus role user_station, pilih stasiun yang terkait.</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Khusus role user_station, pilih stasiun yang terkait.
+                    </p>
                   </div>
                 </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setIsRegisterOpen(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors">Batal</button>
-                <button type="submit" disabled={regLoading} className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-colors disabled:opacity-50">{regLoading ? 'Registering...' : 'Register'}</button>
+                <button
+                  type="button"
+                  onClick={() => setIsRegisterOpen(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={regLoading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  {regLoading ? 'Registering...' : 'Register'}
+                </button>
               </div>
             </form>
           </div>

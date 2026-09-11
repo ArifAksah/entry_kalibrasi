@@ -7,21 +7,40 @@ import QRCodeStyling from 'qr-code-styling'
 import QRCode from 'react-qr-code'
 import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
 import { formatUnit, needsConversion } from '../../../../lib/unitConversion'
-import { isDefaultNotesOthersValue, normalizeRichTextValue, richTextContentClassName } from '../../../../lib/rich-text'
+import {
+  isDefaultNotesOthersValue,
+  normalizeRichTextValue,
+  richTextContentClassName,
+} from '../../../../lib/rich-text'
 import { resultsToLegacyView } from '../../../../lib/validators/certificate-results-render-adapter'
 import { calculateRoomCondition } from '../../../../lib/room-condition'
-import { formatCalibrationReading, formatCalibrationCorrection, formatCalibrationUncertainty } from '../../../../lib/result-display-format'
+import {
+  formatCalibrationReading,
+  formatCalibrationCorrection,
+  formatCalibrationUncertainty,
+} from '../../../../lib/result-display-format'
 import { DecimalPrecisionControl } from '../../../../components/ui/DecimalPrecisionControl'
 import { supabase } from '../../../../lib/supabase'
-import { BALAI_DATA, DEFAULT_SIGNER_TITLE } from '../../../../lib/pdf-service/templates/shared/balai-data'
-import { isPyranometer, PyranometerSensorData } from '../../../../lib/uncertainty-utils'
+import {
+  BALAI_DATA,
+  DEFAULT_SIGNER_TITLE,
+} from '../../../../lib/pdf-service/templates/shared/balai-data'
+import {
+  isPyranometer,
+  PyranometerSensorData,
+} from '../../../../lib/uncertainty-utils'
 
 // --- TIPE DATA KOMPREHENSIF ---
 // Saya gabungkan tipe dari ViewCertificatePage.tsx Anda ke sini
 // agar kita memiliki akses ke cert.results, verifikator, dll.
 
 type KV = { key: string; value: string }
-type TableRow = { key: string; unit: string; value: string; extraValues?: string[] }
+type TableRow = {
+  key: string
+  unit: string
+  value: string
+  extraValues?: string[]
+}
 type TableSection = { title: string; headers?: string[]; rows: TableRow[] }
 type ResultItem = {
   sensorId: number | null
@@ -31,11 +50,11 @@ type ResultItem = {
   environment: KV[]
   table: TableSection[] // Catatan: Tipe ini mungkin perlu disesuaikan untuk Tabel 1
   notesForm: {
-    traceable_to_si_through: string;
-    reference_document: string;
-    calibration_methode: string;
-    others: string;
-    others_enabled?: boolean;
+    traceable_to_si_through: string
+    reference_document: string
+    calibration_methode: string
+    others: string
+    others_enabled?: boolean
     standardInstruments: number[]
   }
   sensorDetails?: any
@@ -83,42 +102,64 @@ type Instrument = {
 }
 type Personel = { id: string; name: string | null }
 
-const findPersonelById = (personel: Personel[], id: string | number | null | undefined) => {
+const findPersonelById = (
+  personel: Personel[],
+  id: string | number | null | undefined,
+) => {
   if (id == null || id === '') return null
   const targetId = String(id)
-  return personel.find(p => p.id != null && String(p.id) === targetId) || null
+  return personel.find((p) => p.id != null && String(p.id) === targetId) || null
 }
 
 // --- Komponen Label Helper ---
 // Untuk meniru format label di PDF (Indo bold + English italic)
-const PdfLabel: React.FC<{ indo: string; eng: string; className?: string }> = ({ indo, eng, className = '' }) => (
+const PdfLabel: React.FC<{ indo: string; eng: string; className?: string }> = ({
+  indo,
+  eng,
+  className = '',
+}) => (
   <div className={`leading-tight ${className}`}>
     <div className="cert-text-id">{indo}</div>
     <div className="cert-text-en">{eng}</div>
   </div>
 )
 
-const RichTextCell: React.FC<{ value: string; className?: string }> = ({ value, className = '' }) => (
+const RichTextCell: React.FC<{ value: string; className?: string }> = ({
+  value,
+  className = '',
+}) => (
   <div
     className={`${richTextContentClassName} whitespace-normal ${className}`}
     dangerouslySetInnerHTML={{ __html: normalizeRichTextValue(value) }}
   />
 )
 
-const isOthersEnabled = (notesForm: { others?: string | null; others_enabled?: boolean | null } | null | undefined) =>
+const isOthersEnabled = (
+  notesForm:
+    | { others?: string | null; others_enabled?: boolean | null }
+    | null
+    | undefined,
+) =>
   typeof notesForm?.others_enabled === 'boolean'
     ? notesForm.others_enabled
     : Boolean(notesForm?.others)
 
 // --- Komponen QR Code dengan styling (modules/finder) dan logo BMKG di tengah ---
 const QRCodeWithBMKGLogo: React.FC<{
-  value: string;
-  size: number;
-  logoSize?: number;
-  className?: string;
-  fgColor?: string; // warna modul (merah/hitam)
-  onRendered?: () => void; // Callback ketika QR code selesai di-render
-}> = ({ value, size, logoSize = 16, className = '', fgColor = '#000000', onRendered }) => {
+  value: string
+  size: number
+  logoSize?: number
+  className?: string
+  fgColor?: string // warna modul (merah/hitam)
+  onRendered?: () => void // Callback ketika QR code selesai di-render
+}> = ({
+  value,
+  size,
+  logoSize = 16,
+  className = '',
+  fgColor = '#000000',
+  onRendered,
+}) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const qrRef = useRef<QRCodeStyling | null>(null)
   const renderedRef = useRef<boolean>(false)
@@ -143,7 +184,11 @@ const QRCodeWithBMKGLogo: React.FC<{
           cornersSquareOptions: { color: '#000000', type: 'square' },
           cornersDotOptions: { color: '#000000' },
           image: bmkgLogo.src,
-          imageOptions: { crossOrigin: 'anonymous', margin: 4, imageSize: logoSize / size },
+          imageOptions: {
+            crossOrigin: 'anonymous',
+            margin: 4,
+            imageSize: logoSize / size,
+          },
           margin: 6,
         })
         qrRef.current.append(containerRef.current)
@@ -157,7 +202,11 @@ const QRCodeWithBMKGLogo: React.FC<{
           cornersSquareOptions: { color: '#000000', type: 'square' },
           cornersDotOptions: { color: '#000000' },
           image: bmkgLogo.src,
-          imageOptions: { crossOrigin: 'anonymous', margin: 4, imageSize: logoSize / size },
+          imageOptions: {
+            crossOrigin: 'anonymous',
+            margin: 4,
+            imageSize: logoSize / size,
+          },
           margin: 6,
         })
       }
@@ -214,10 +263,10 @@ const QRCodeWithBMKGLogo: React.FC<{
 }
 
 const FooterQRCode: React.FC<{
-  value: string;
-  size?: number;
-  fgColor?: string;
-  onRendered?: () => void;
+  value: string
+  size?: number
+  fgColor?: string
+  onRendered?: () => void
 }> = ({ value, size = 52, fgColor = '#000000', onRendered }) => {
   useEffect(() => {
     const timer = window.setTimeout(() => onRendered?.(), 0)
@@ -225,8 +274,22 @@ const FooterQRCode: React.FC<{
   }, [value, fgColor, onRendered])
 
   return (
-    <div className="footer-qr-rendered" style={{ width: size, height: size, position: 'relative', background: '#fff' }}>
-      <QRCode value={value || ' '} size={size} bgColor="#FFFFFF" fgColor={fgColor} level="H" />
+    <div
+      className="footer-qr-rendered"
+      style={{
+        width: size,
+        height: size,
+        position: 'relative',
+        background: '#fff',
+      }}
+    >
+      <QRCode
+        value={value || ' '}
+        size={size}
+        bgColor="#FFFFFF"
+        fgColor={fgColor}
+        level="H"
+      />
       <img
         src={bmkgLogo.src}
         alt=""
@@ -246,7 +309,11 @@ const FooterQRCode: React.FC<{
 }
 
 const unwrapListResponse = (payload: any): any[] =>
-  Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : [])
+  Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.data)
+      ? payload.data
+      : []
 
 const fetchAllSensors = async (): Promise<any[]> => {
   const first = await fetch('/api/sensors?page=1&pageSize=100')
@@ -254,14 +321,18 @@ const fetchAllSensors = async (): Promise<any[]> => {
 
   const firstPayload = await first.json()
   const firstData = unwrapListResponse(firstPayload)
-  const totalPages = Array.isArray(firstPayload) ? 1 : Number(firstPayload?.totalPages ?? 1)
+  const totalPages = Array.isArray(firstPayload)
+    ? 1
+    : Number(firstPayload?.totalPages ?? 1)
 
   if (totalPages <= 1) return firstData
 
   const restPayloads = await Promise.all(
     Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map((page) =>
-      fetch(`/api/sensors?page=${page}&pageSize=100`).then((res) => res.ok ? res.json() : { data: [] })
-    )
+      fetch(`/api/sensors?page=${page}&pageSize=100`).then((res) =>
+        res.ok ? res.json() : { data: [] },
+      ),
+    ),
   )
 
   return [...firstData, ...restPayloads.flatMap(unwrapListResponse)]
@@ -287,31 +358,54 @@ const ViewCertificatePage: React.FC = () => {
   const [allRawData, setAllRawData] = useState<any[]>([])
   const [decimalPrecision, setDecimalPrecision] = useState(4)
 
-  const computeEnvCondition = useCallback((type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
-    return calculateRoomCondition(type, sensorRawData)?.display ?? '-';
-  }, []);
+  const computeEnvCondition = useCallback(
+    (type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
+      return calculateRoomCondition(type, sensorRawData)?.display ?? '-'
+    },
+    [],
+  )
 
   // Helper to resolve canonical sensor name
-  const resolveSensorName = useCallback((res: any, fallbackIndex: number) => {
-    const sd = res?.sensorDetails || {}
-    const targetId = res?.sensorId != null ? Number(res.sensorId) : null
-    const sensorRecord = targetId != null
-      ? sensors.find((s: any) => s.id != null && Number(s.id) === targetId)
-      : undefined
-    let canonicalName = undefined
-    if (sensorRecord?.sensor_name_id != null) {
-      canonicalName = instrumentNames.find((n: any) => n.id != null && Number(n.id) === Number(sensorRecord.sensor_name_id))?.name
-    }
-    // Priority: canonical name from instrument_names table > sensorDetails.name > sensorDetails.id fallback
-    return canonicalName || sensorRecord?.name || sd.name || (targetId ? `Sensor ID ${targetId}` : null) || sd.type || `Sensor ${fallbackIndex + 1}`
-  }, [sensors, instrumentNames])
+  const resolveSensorName = useCallback(
+    (res: any, fallbackIndex: number) => {
+      const sd = res?.sensorDetails || {}
+      const targetId = res?.sensorId != null ? Number(res.sensorId) : null
+      const sensorRecord =
+        targetId != null
+          ? sensors.find((s: any) => s.id != null && Number(s.id) === targetId)
+          : undefined
+      let canonicalName = undefined
+      if (sensorRecord?.sensor_name_id != null) {
+        canonicalName = instrumentNames.find(
+          (n: any) =>
+            n.id != null &&
+            Number(n.id) === Number(sensorRecord.sensor_name_id),
+        )?.name
+      }
+      // Priority: canonical name from instrument_names table > sensorDetails.name > sensorDetails.id fallback
+      return (
+        canonicalName ||
+        sensorRecord?.name ||
+        sd.name ||
+        (targetId ? `Sensor ID ${targetId}` : null) ||
+        sd.type ||
+        `Sensor ${fallbackIndex + 1}`
+      )
+    },
+    [sensors, instrumentNames],
+  )
 
   // Menggunakan useMemo untuk data turunan
   const station = useMemo(() => {
     const targetId = cert?.station != null ? Number(cert.station) : null
-    return targetId != null ? stations.find(s => s.id != null && Number(s.id) === targetId) || null : null
+    return targetId != null
+      ? stations.find((s) => s.id != null && Number(s.id) === targetId) || null
+      : null
   }, [stations, cert])
-  const resolvedStationAddress = useMemo(() => (cert?.station_address ?? null) || (station?.address ?? null), [cert, station])
+  const resolvedStationAddress = useMemo(
+    () => (cert?.station_address ?? null) || (station?.address ?? null),
+    [cert, station],
+  )
   const instrument = useMemo(() => {
     // Priority 1: Use instrument_data from certificate API (already joined)
     const instrumentData = (cert as any)?.instrument_data
@@ -319,12 +413,15 @@ const ViewCertificatePage: React.FC = () => {
       // Resolve instrument name from instrumentNames array using 'names' column (FK to instrument_names)
       let instrumentName = instrumentData.name_alias || null
       if (instrumentData.names) {
-        const nameRecord = instrumentNames.find((n: any) => n.id != null && Number(n.id) === Number(instrumentData.names))
+        const nameRecord = instrumentNames.find(
+          (n: any) =>
+            n.id != null && Number(n.id) === Number(instrumentData.names),
+        )
         if (nameRecord) {
           instrumentName = nameRecord.name
         }
       }
-      
+
       return {
         id: instrumentData.id,
         name: instrumentName,
@@ -332,32 +429,40 @@ const ViewCertificatePage: React.FC = () => {
         type: instrumentData.type || null,
         serial_number: instrumentData.serial_number || null,
         others: instrumentData.others || null,
-        memiliki_lebih_satu: instrumentData.memiliki_lebih_satu || false
+        memiliki_lebih_satu: instrumentData.memiliki_lebih_satu || false,
       }
     }
-    
+
     // Priority 2: Fallback to finding in instruments array
     const targetId = cert?.instrument != null ? Number(cert.instrument) : null
-    const foundInstrument = targetId != null ? instruments.find(i => i.id != null && Number(i.id) === targetId) || null : null
-    
+    const foundInstrument =
+      targetId != null
+        ? instruments.find((i) => i.id != null && Number(i.id) === targetId) ||
+          null
+        : null
+
     if (!foundInstrument) return null
-    
+
     // Resolve name from 'names' column (FK to instrument_names)
     let instrumentName = (foundInstrument as any).name_alias || null
     if ((foundInstrument as any).names) {
-      const nameRecord = instrumentNames.find((n: any) => n.id != null && Number(n.id) === Number((foundInstrument as any).names))
+      const nameRecord = instrumentNames.find(
+        (n: any) =>
+          n.id != null &&
+          Number(n.id) === Number((foundInstrument as any).names),
+      )
       if (nameRecord) {
         instrumentName = nameRecord.name
       }
     }
-    
+
     return {
       ...foundInstrument,
       name: instrumentName,
       manufacturer: foundInstrument.manufacturer || null,
       type: foundInstrument.type || null,
       serial_number: foundInstrument.serial_number || null,
-      others: foundInstrument.others || null
+      others: foundInstrument.others || null,
     }
   }, [instruments, cert, instrumentNames])
   const authorized = useMemo(() => {
@@ -391,7 +496,10 @@ const ViewCertificatePage: React.FC = () => {
   const results = useMemo(() => {
     return resultsToLegacyView((cert as any)?.results)
   }, [cert])
-  const resultData = useMemo(() => (results && results.length > 0 ? results[0] : null), [results])
+  const resultData = useMemo(
+    () => (results && results.length > 0 ? results[0] : null),
+    [results],
+  )
 
   // Ringkasan sensor untuk field "Lain-lain / Others" di halaman 1
   const sensorsSummary = useMemo(() => {
@@ -421,7 +529,10 @@ const ViewCertificatePage: React.FC = () => {
   }, [cert])
 
   // Total pages: 1 (cover) + max(1, N per sensor). No separate closing page.
-  const totalPrintedPages = useMemo(() => 1 + Math.max(1, results?.length ?? 0), [results])
+  const totalPrintedPages = useMemo(
+    () => 1 + Math.max(1, results?.length ?? 0),
+    [results],
+  )
 
   useEffect(() => {
     const id = Number(params.id)
@@ -433,9 +544,11 @@ const ViewCertificatePage: React.FC = () => {
     const load = async () => {
       try {
         // Fetch certificate dan personel
-        const { data: { session } } = await supabase.auth.getSession()
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
         if (!session?.access_token) throw new Error('Not authenticated')
-        const authHeaders = { 'Authorization': `Bearer ${session.access_token}` }
+        const authHeaders = { Authorization: `Bearer ${session.access_token}` }
         const [cRes, pRes, sensorsData, inRes] = await Promise.all([
           fetch(`/api/certificates/${id}`, { headers: authHeaders }),
           fetch('/api/personel'),
@@ -449,7 +562,9 @@ const ViewCertificatePage: React.FC = () => {
 
         if (inRes.ok) {
           const inData = await inRes.json()
-          setInstrumentNames(Array.isArray(inData) ? inData : (inData?.data ?? []))
+          setInstrumentNames(
+            Array.isArray(inData) ? inData : (inData?.data ?? []),
+          )
         }
 
         if (!cRes.ok) throw new Error(c?.error || 'Failed to load certificate')
@@ -458,17 +573,25 @@ const ViewCertificatePage: React.FC = () => {
         if (c?.results) {
           try {
             const parsedResults = resultsToLegacyView(c.results)
-            const sessionIds = Array.from(new Set(parsedResults.map((r: any) => r.session_id).filter(Boolean)));
+            const sessionIds = Array.from(
+              new Set(
+                parsedResults.map((r: any) => r.session_id).filter(Boolean),
+              ),
+            )
             if (sessionIds.length > 0) {
               const rawDataPromises = sessionIds.map((sid: string) =>
-                fetch(`/api/raw-data?session_id=${sid}`).then(res => res.ok ? res.json() : { data: [] })
-              );
-              const allRawDataResp = await Promise.all(rawDataPromises);
-              const mergedRawData = allRawDataResp.flatMap(resp => resp.data || []);
-              setAllRawData(mergedRawData);
+                fetch(`/api/raw-data?session_id=${sid}`).then((res) =>
+                  res.ok ? res.json() : { data: [] },
+                ),
+              )
+              const allRawDataResp = await Promise.all(rawDataPromises)
+              const mergedRawData = allRawDataResp.flatMap(
+                (resp) => resp.data || [],
+              )
+              setAllRawData(mergedRawData)
             }
           } catch (e) {
-            console.error("Failed to fetch raw data for view", e);
+            console.error('Failed to fetch raw data for view', e)
           }
         }
 
@@ -481,16 +604,27 @@ const ViewCertificatePage: React.FC = () => {
           if (first.ok) {
             const fj = await first.json()
             const firstData = Array.isArray(fj) ? fj : (fj?.data ?? [])
-            const totalPages = (Array.isArray(fj) ? 1 : (fj?.totalPages ?? 1)) as number
+            const totalPages = (
+              Array.isArray(fj) ? 1 : (fj?.totalPages ?? 1)
+            ) as number
             if (totalPages <= 1) {
               setInstruments(firstData)
             } else {
-              const rest = await Promise.all(Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(p => fetch(`/api/instruments?page=${p}&pageSize=100`).then(r => r.ok ? r.json() : { data: [] })))
-              const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
+              const rest = await Promise.all(
+                Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(
+                  (p) =>
+                    fetch(`/api/instruments?page=${p}&pageSize=100`).then(
+                      (r) => (r.ok ? r.json() : { data: [] }),
+                    ),
+                ),
+              )
+              const restData = rest.flatMap((j) =>
+                Array.isArray(j) ? j : (j?.data ?? []),
+              )
               setInstruments([...firstData, ...restData])
             }
           }
-        } catch { }
+        } catch {}
 
         // Fetch stations (logika Anda sudah benar)
         try {
@@ -498,17 +632,27 @@ const ViewCertificatePage: React.FC = () => {
           if (first.ok) {
             const fj = await first.json()
             const firstData = Array.isArray(fj) ? fj : (fj?.data ?? [])
-            const totalPages = (Array.isArray(fj) ? 1 : (fj?.totalPages ?? 1)) as number
+            const totalPages = (
+              Array.isArray(fj) ? 1 : (fj?.totalPages ?? 1)
+            ) as number
             if (totalPages <= 1) {
               setStations(firstData)
             } else {
-              const rest = await Promise.all(Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(p => fetch(`/api/stations?page=${p}&pageSize=100`).then(r => r.ok ? r.json() : { data: [] })))
-              const restData = rest.flatMap(j => Array.isArray(j) ? j : (j?.data ?? []))
+              const rest = await Promise.all(
+                Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(
+                  (p) =>
+                    fetch(`/api/stations?page=${p}&pageSize=100`).then((r) =>
+                      r.ok ? r.json() : { data: [] },
+                    ),
+                ),
+              )
+              const restData = rest.flatMap((j) =>
+                Array.isArray(j) ? j : (j?.data ?? []),
+              )
               setStations([...firstData, ...restData])
             }
           }
-        } catch { }
-
+        } catch {}
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load data')
       } finally {
@@ -527,17 +671,21 @@ const ViewCertificatePage: React.FC = () => {
       // This prevents the API result (which might still be pending) from overwriting our forced state
       const urlParams = new URLSearchParams(window.location.search)
       if (urlParams.get('signed') === 'true') {
-        console.log('📝 [Print] Skipping verification check due to signed=true parameter')
+        console.log(
+          '📝 [Print] Skipping verification check due to signed=true parameter',
+        )
         setVerificationLoaded(true)
         return
       }
 
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
       if (!session?.access_token) return
 
       // Use certificate ID for API call to ensure uniqueness
       const res = await fetch(`/api/verify-certificate?id=${cert.id}`, {
-        headers: { 'Authorization': `Bearer ${session.access_token}` },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       })
       if (res.ok) {
         const data = await res.json()
@@ -546,7 +694,10 @@ const ViewCertificatePage: React.FC = () => {
         console.log('🔍 [Print] data.verification:', data?.verification)
         // QR hitam jika Level 3 approved (valid true) - tanpa pembatasan versi
         setIsSigned(!!data?.valid)
-        console.log('🎨 [Print] QR color will be:', !!data?.valid ? 'BLACK (#000000)' : 'RED (#B91C1C)')
+        console.log(
+          '🎨 [Print] QR color will be:',
+          !!data?.valid ? 'BLACK (#000000)' : 'RED (#B91C1C)',
+        )
       }
     } catch (err) {
       console.error('❌ [Print] verify-certificate error:', err)
@@ -566,7 +717,9 @@ const ViewCertificatePage: React.FC = () => {
       if (e.key === 'certificate_signed' && e.newValue) {
         const signedData = JSON.parse(e.newValue)
         if (signedData.certificateId === cert?.id) {
-          console.log('🔔 [Print] Certificate was signed, refreshing QR status...')
+          console.log(
+            '🔔 [Print] Certificate was signed, refreshing QR status...',
+          )
           checkVerificationStatus()
           // Clear the flag
           localStorage.removeItem('certificate_signed')
@@ -598,9 +751,10 @@ const ViewCertificatePage: React.FC = () => {
   // Callback ketika QR code selesai di-render
   const handleQRRendered = useCallback(() => {
     qrRenderedCountRef.current += 1
-    console.log(`[Print] QR code rendered: ${qrRenderedCountRef.current}/${expectedQRCodesRef.current}`)
+    console.log(
+      `[Print] QR code rendered: ${qrRenderedCountRef.current}/${expectedQRCodesRef.current}`,
+    )
   }, [])
-
 
   // State for Timeline
   const [timelineLogs, setTimelineLogs] = useState<any[]>([])
@@ -608,19 +762,19 @@ const ViewCertificatePage: React.FC = () => {
   useEffect(() => {
     if (!cert?.id) return
     fetch(`/api/certificate-logs?certificate_id=${cert.id}`)
-      .then(res => res.json())
-      .then(data => {
-        const rawLogs = data.data || [];
+      .then((res) => res.json())
+      .then((data) => {
+        const rawLogs = data.data || []
         // Hilangkan log 'updated' (Koreksi Data) dari linimasa sesuai permintaan
         const filteredLogs = rawLogs.filter((log: any) => {
           if (log.action === 'updated') {
-            return false;
+            return false
           }
-          return true;
-        });
-        setTimelineLogs(filteredLogs);
+          return true
+        })
+        setTimelineLogs(filteredLogs)
       })
-      .catch(err => console.error("Failed to load timeline logs", err))
+      .catch((err) => console.error('Failed to load timeline logs', err))
   }, [cert?.id])
 
   const formatAction = (action: string) => {
@@ -652,7 +806,9 @@ const ViewCertificatePage: React.FC = () => {
 
     // Check for signed simulation parameter
     if (urlParams.get('signed') === 'true') {
-      console.log('📝 [Print] Simulation mode: Forcing signed status (BLACK QR)')
+      console.log(
+        '📝 [Print] Simulation mode: Forcing signed status (BLACK QR)',
+      )
       setIsSigned(true)
       // Mark verification as loaded since we're forcing it
       setVerificationLoaded(true)
@@ -661,8 +817,18 @@ const ViewCertificatePage: React.FC = () => {
 
   // Auto-print logic removed for View mode
 
-  if (loading) return <div className="p-8 text-gray-600 text-center text-lg">Memuat data sertifikat untuk dicetak...</div>
-  if (error || !cert) return <div className="p-8 text-red-600 text-center text-lg">Gagal memuat data: {error || 'Sertifikat tidak ditemukan'}</div>
+  if (loading)
+    return (
+      <div className="p-8 text-gray-600 text-center text-lg">
+        Memuat data sertifikat untuk dicetak...
+      </div>
+    )
+  if (error || !cert)
+    return (
+      <div className="p-8 text-red-600 text-center text-lg">
+        Gagal memuat data: {error || 'Sertifikat tidak ditemukan'}
+      </div>
+    )
 
   // --- STYLING UNTUK PRINT ---
   // Ini adalah bagian penting untuk membuat layout A4
@@ -1406,17 +1572,30 @@ const ViewCertificatePage: React.FC = () => {
   `
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center pb-12 pt-16 print:bg-white print:pb-0 print:pt-0 print:m-0 print:block" suppressHydrationWarning>
+    <div
+      className="min-h-screen bg-gray-50 flex flex-col items-center pb-12 pt-16 print:bg-white print:pb-0 print:pt-0 print:m-0 print:block"
+      suppressHydrationWarning
+    >
       {/* Header */}
       <div className="w-full bg-white shadow-sm border-b absolute top-0 left-0 right-0 z-50 print:hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
-              <Image src={bmkgLogo} alt="BMKG" width={40} height={40} className="mr-3" />
+              <Image
+                src={bmkgLogo}
+                alt="BMKG"
+                width={40}
+                height={40}
+                className="mr-3"
+              />
               <div>
-                <h1 className="text-xl font-semibold text-gray-900">Certificate View</h1>
+                <h1 className="text-xl font-semibold text-gray-900">
+                  Certificate View
+                </h1>
                 <div className="flex items-center gap-2">
-                  <p className="text-sm text-gray-500">Sertifikat Kalibrasi - {cert.no_certificate}</p>
+                  <p className="text-sm text-gray-500">
+                    Sertifikat Kalibrasi - {cert.no_certificate}
+                  </p>
                   {/* Template type badge */}
                   {(() => {
                     const c = cert as any
@@ -1436,7 +1615,9 @@ const ViewCertificatePage: React.FC = () => {
                       badgeColor = 'bg-indigo-100 text-indigo-700'
                     }
                     return (
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${badgeColor}`}>
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${badgeColor}`}
+                      >
                         {templateLabel}
                       </span>
                     )
@@ -1476,54 +1657,140 @@ const ViewCertificatePage: React.FC = () => {
           {/* Card Verifikator & Penandatangan */}
           <div className="mb-5 pb-5 border-b border-gray-200">
             <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2 mb-3">
-              <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+              <svg
+                className="w-4 h-4 text-indigo-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
+                />
+              </svg>
               Personel Sertifikat
             </h3>
             <div className="space-y-2">
               {[
-                { label: 'Verifikator 1', person: verifikator1, color: 'bg-blue-50 border-blue-200 text-blue-700' },
-                { label: 'Verifikator 2', person: verifikator2, color: 'bg-green-50 border-green-200 text-green-700' },
-                { label: 'Verifikator 3', person: verifikator3, color: 'bg-purple-50 border-purple-200 text-purple-700' },
-                { label: 'Penandatangan', person: authorized, color: 'bg-orange-50 border-orange-200 text-orange-700' },
+                {
+                  label: 'Verifikator 1',
+                  person: verifikator1,
+                  color: 'bg-blue-50 border-blue-200 text-blue-700',
+                },
+                {
+                  label: 'Verifikator 2',
+                  person: verifikator2,
+                  color: 'bg-green-50 border-green-200 text-green-700',
+                },
+                {
+                  label: 'Verifikator 3',
+                  person: verifikator3,
+                  color: 'bg-purple-50 border-purple-200 text-purple-700',
+                },
+                {
+                  label: 'Penandatangan',
+                  person: authorized,
+                  color: 'bg-orange-50 border-orange-200 text-orange-700',
+                },
               ].map(({ label, person, color }) => (
-                <div key={label} className={`flex items-start gap-2 rounded-lg border px-3 py-2 ${color}`}>
+                <div
+                  key={label}
+                  className={`flex items-start gap-2 rounded-lg border px-3 py-2 ${color}`}
+                >
                   <div className="flex-1 min-w-0">
-                    <div className="text-[10px] font-semibold uppercase tracking-wide opacity-70">{label}</div>
-                    <div className="text-xs font-bold truncate">{person?.name || <span className="italic font-normal opacity-50">Belum ditentukan</span>}</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wide opacity-70">
+                      {label}
+                    </div>
+                    <div className="text-xs font-bold truncate">
+                      {person?.name || (
+                        <span className="italic font-normal opacity-50">
+                          Belum ditentukan
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
           </div>
           <h3 className="text-sm font-bold text-gray-900 flex flex-row items-center gap-2 mb-6 border-b pb-3">
-            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <svg
+              className="w-4 h-4 text-blue-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
             Linimasa Sertifikat
           </h3>
           {timelineLogs.length === 0 ? (
             <div className="text-sm text-gray-500 text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-              <svg className="w-8 h-8 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-              <p className="font-semibold text-gray-700">Belum Ada History / Linimasa</p>
-              <p className="text-xs mt-1">Sertifikat ini belum memiliki catatan aktivitas pengiriman atau persetujuan.</p>
+              <svg
+                className="w-8 h-8 text-gray-400 mx-auto mb-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <p className="font-semibold text-gray-700">
+                Belum Ada History / Linimasa
+              </p>
+              <p className="text-xs mt-1">
+                Sertifikat ini belum memiliki catatan aktivitas pengiriman atau
+                persetujuan.
+              </p>
             </div>
           ) : (
             <div className="relative border-l-2 border-gray-200 ml-3 space-y-6">
               {timelineLogs.map((log) => {
-                const isRejected = log.action.includes('reject');
-                const color = isRejected ? 'bg-red-500' : 'bg-green-500';
-                const dateObj = new Date(log.created_at);
-                const time = dateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
-                const date = dateObj.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+                const isRejected = log.action.includes('reject')
+                const color = isRejected ? 'bg-red-500' : 'bg-green-500'
+                const dateObj = new Date(log.created_at)
+                const time =
+                  dateObj.toLocaleTimeString('id-ID', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }) + ' WIB'
+                const date = dateObj.toLocaleDateString('id-ID', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                })
                 return (
                   <div key={log.id} className="relative mb-6 last:mb-0 ml-4">
-                    <div className={`absolute -left-[23px] top-1 h-3 w-3 rounded-full border-2 border-white ${color} shadow-sm z-10`}></div>
-                    <div className="text-[10px] font-bold text-gray-500 mb-0.5">{date}</div>
-                    <div className="text-xs font-bold text-gray-900 mb-1">{formatAction(log.action)}</div>
-                    <div className="text-[10px] bg-gray-100/50 text-gray-500 px-2 py-0.5 rounded inline-block mb-1">{time}</div>
+                    <div
+                      className={`absolute -left-[23px] top-1 h-3 w-3 rounded-full border-2 border-white ${color} shadow-sm z-10`}
+                    ></div>
+                    <div className="text-[10px] font-bold text-gray-500 mb-0.5">
+                      {date}
+                    </div>
+                    <div className="text-xs font-bold text-gray-900 mb-1">
+                      {formatAction(log.action)}
+                    </div>
+                    <div className="text-[10px] bg-gray-100/50 text-gray-500 px-2 py-0.5 rounded inline-block mb-1">
+                      {time}
+                    </div>
                     <div className="text-[10px] text-gray-600 mt-1 leading-relaxed capitalize">
                       {log.performed_by_name || log.performed_by}
                     </div>
                     {log.notes && (
-                      <div className="text-[10px] italic text-gray-500 mt-1 border-l-2 border-gray-200 pl-2">"{log.notes}"</div>
+                      <div className="text-[10px] italic text-gray-500 mt-1 border-l-2 border-gray-200 pl-2">
+                        "{log.notes}"
+                      </div>
                     )}
                   </div>
                 )
@@ -1534,22 +1801,64 @@ const ViewCertificatePage: React.FC = () => {
           {/* Catatan Verifikator & Penandatangan */}
           {(() => {
             const roles = [
-              { label: 'Verifikator 1', person: verifikator1, approveAction: 'approved_v1', rejectAction: 'rejected_v1' },
-              { label: 'Verifikator 2', person: verifikator2, approveAction: 'approved_v2', rejectAction: 'rejected_v2' },
-              { label: 'Verifikator 3', person: verifikator3, approveAction: 'approved_v3', rejectAction: 'rejected_v3' },
-              { label: 'Penandatangan', person: authorized, approveAction: 'approved_assignor', rejectAction: 'rejected_assignor' },
+              {
+                label: 'Verifikator 1',
+                person: verifikator1,
+                approveAction: 'approved_v1',
+                rejectAction: 'rejected_v1',
+              },
+              {
+                label: 'Verifikator 2',
+                person: verifikator2,
+                approveAction: 'approved_v2',
+                rejectAction: 'rejected_v2',
+              },
+              {
+                label: 'Verifikator 3',
+                person: verifikator3,
+                approveAction: 'approved_v3',
+                rejectAction: 'rejected_v3',
+              },
+              {
+                label: 'Penandatangan',
+                person: authorized,
+                approveAction: 'approved_assignor',
+                rejectAction: 'rejected_assignor',
+              },
             ]
-            const notesData = roles.map(({ label, person, approveAction, rejectAction }) => {
-              const approveLog = [...timelineLogs].reverse().find((l: any) => l.action === approveAction)
-              const rejectLog = [...timelineLogs].reverse().find((l: any) => l.action === rejectAction)
-              const latestLog = approveLog || rejectLog
-              const isRejected = !!rejectLog && (!approveLog || new Date(rejectLog.created_at) > new Date(approveLog.created_at))
-              return { label, person, latestLog, isRejected }
-            })
+            const notesData = roles.map(
+              ({ label, person, approveAction, rejectAction }) => {
+                const approveLog = [...timelineLogs]
+                  .reverse()
+                  .find((l: any) => l.action === approveAction)
+                const rejectLog = [...timelineLogs]
+                  .reverse()
+                  .find((l: any) => l.action === rejectAction)
+                const latestLog = approveLog || rejectLog
+                const isRejected =
+                  !!rejectLog &&
+                  (!approveLog ||
+                    new Date(rejectLog.created_at) >
+                      new Date(approveLog.created_at))
+                return { label, person, latestLog, isRejected }
+              },
+            )
             return (
               <div className="mt-5 pt-5 border-t border-gray-200">
                 <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2 mb-3">
-                  <svg className="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+                  <svg
+                    className="w-4 h-4 text-yellow-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
+                    />
+                  </svg>
                   Catatan Verifikasi
                 </h3>
                 <div className="space-y-2">
@@ -1561,21 +1870,41 @@ const ViewCertificatePage: React.FC = () => {
                         : 'bg-green-50 border-green-200'
                       : 'bg-gray-50 border-gray-200'
                     const labelClass = latestLog
-                      ? isRejected ? 'text-red-700' : 'text-green-700'
-                      : 'text-gray-500'
-                    const statusBadge = latestLog
                       ? isRejected
-                        ? <span className="text-[9px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded ml-1">Ditolak</span>
-                        : <span className="text-[9px] font-bold bg-green-100 text-green-600 px-1.5 py-0.5 rounded ml-1">Disetujui</span>
-                      : null
+                        ? 'text-red-700'
+                        : 'text-green-700'
+                      : 'text-gray-500'
+                    const statusBadge = latestLog ? (
+                      isRejected ? (
+                        <span className="text-[9px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded ml-1">
+                          Ditolak
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-bold bg-green-100 text-green-600 px-1.5 py-0.5 rounded ml-1">
+                          Disetujui
+                        </span>
+                      )
+                    ) : null
                     return (
-                      <div key={label} className={`rounded-lg border px-3 py-2 ${bgClass}`}>
-                        <div className={`text-[10px] font-semibold uppercase tracking-wide flex items-center ${labelClass}`}>
-                          {label}{statusBadge}
+                      <div
+                        key={label}
+                        className={`rounded-lg border px-3 py-2 ${bgClass}`}
+                      >
+                        <div
+                          className={`text-[10px] font-semibold uppercase tracking-wide flex items-center ${labelClass}`}
+                        >
+                          {label}
+                          {statusBadge}
                         </div>
-                        <div className="text-[10px] text-gray-600 font-medium mb-0.5">{person?.name || '-'}</div>
-                        <div className={`text-[10px] italic mt-1 ${hasNotes ? 'text-gray-700' : 'text-gray-400'}`}>
-                          {hasNotes ? `"${latestLog.notes}"` : 'Belum ada catatan'}
+                        <div className="text-[10px] text-gray-600 font-medium mb-0.5">
+                          {person?.name || '-'}
+                        </div>
+                        <div
+                          className={`text-[10px] italic mt-1 ${hasNotes ? 'text-gray-700' : 'text-gray-400'}`}
+                        >
+                          {hasNotes
+                            ? `"${latestLog.notes}"`
+                            : 'Belum ada catatan'}
                         </div>
                       </div>
                     )
@@ -1588,7 +1917,10 @@ const ViewCertificatePage: React.FC = () => {
 
         {/* Certificate A4 Container */}
         <div className="flex-1 overflow-auto bg-gray-200/50 p-6 flex justify-center items-start border rounded-lg shadow-inner print:block print:p-0 print:border-none print:shadow-none print:bg-white print:overflow-visible">
-          <div className="print-container bg-white text-black shadow-xl print:shadow-none" suppressHydrationWarning>
+          <div
+            className="print-container bg-white text-black shadow-xl print:shadow-none"
+            suppressHydrationWarning
+          >
             <style dangerouslySetInnerHTML={{ __html: A4Style }} />
 
             {/* --- HALAMAN 1 (COVER) - TIDAK ADA QR CODE KECIL --- */}
@@ -1601,30 +1933,42 @@ const ViewCertificatePage: React.FC = () => {
                   backgroundSize: '700px 700px',
                   backgroundRepeat: 'no-repeat',
                   backgroundPosition: 'center',
-                  opacity: 0.3
+                  opacity: 0.3,
                 }}
-              >
-              </div>
+              ></div>
 
               {/* Konten halaman dengan z-index lebih tinggi */}
               <div className="cover-content">
                 {/* Header Halaman 1 */}
                 <header className="cover-header flex flex-row justify-between border-b-[3px] border-double border-black">
                   <div className="cover-logo-slot">
-                    <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
+                    <Image
+                      src={bmkgLogo}
+                      alt="BMKG"
+                      width={100}
+                      height={100}
+                      priority
+                    />
                   </div>
                   <div className="cover-agency-title text-center leading-tight">
-                    <h1 className="text-base font-bold">BADAN METEOROLOGI KLIMATOLOGI DAN GEOFISIKA</h1>
-                    <h2 className="text-base font-bold">LABORATORIUM KALIBRASI BMKG</h2>
+                    <h1 className="text-base font-bold">
+                      BADAN METEOROLOGI KLIMATOLOGI DAN GEOFISIKA
+                    </h1>
+                    <h2 className="text-base font-bold">
+                      LABORATORIUM KALIBRASI BMKG
+                    </h2>
                   </div>
-                  <div className="cover-header-spacer"></div> {/* Spacer agar center */}
+                  <div className="cover-header-spacer"></div>{' '}
+                  {/* Spacer agar center */}
                 </header>
 
                 {/* Judul Sertifikat */}
                 <div className="cover-title-block text-center">
                   <h1 className="cert-title-id">SERTIFIKAT KALIBRASI</h1>
                   <h2 className="cert-title-en">CALIBRATION CERTIFICATE</h2>
-                  <div className="cert-info-text mt-2">{cert.no_certificate}</div>
+                  <div className="cert-info-text mt-2">
+                    {cert.no_certificate}
+                  </div>
                 </div>
 
                 {/* Identitas Alat */}
@@ -1634,24 +1978,44 @@ const ViewCertificatePage: React.FC = () => {
                   <table className="w-full cert-info-text">
                     <tbody>
                       <tr>
-                        <td className="w-[30%] align-top"><PdfLabel indo="Nama Alat" eng="Instrument Name" /></td>
+                        <td className="w-[30%] align-top">
+                          <PdfLabel indo="Nama Alat" eng="Instrument Name" />
+                        </td>
                         <td className="w-[5%] align-top">:</td>
-                        <td className="w-[65%] align-top font-semibold">{instrument?.name || '-'}</td>
+                        <td className="w-[65%] align-top font-semibold">
+                          {instrument?.name || '-'}
+                        </td>
                       </tr>
                       <tr>
-                        <td className="align-top"><PdfLabel indo="Merek Pabrik" eng="Manufacturer" /></td>
+                        <td className="align-top">
+                          <PdfLabel indo="Merek Pabrik" eng="Manufacturer" />
+                        </td>
                         <td className="align-top">:</td>
-                        <td className="align-top font-semibold">{instrument?.manufacturer || '-'}</td>
+                        <td className="align-top font-semibold">
+                          {instrument?.manufacturer || '-'}
+                        </td>
                       </tr>
                       <tr>
-                        <td className="align-top"><PdfLabel indo="Tipe / Nomor Seri" eng="Type / Serial Number" /></td>
+                        <td className="align-top">
+                          <PdfLabel
+                            indo="Tipe / Nomor Seri"
+                            eng="Type / Serial Number"
+                          />
+                        </td>
                         <td className="align-top">:</td>
-                        <td className="align-top font-semibold">{instrument?.type || '-'} / {instrument?.serial_number || '-'}</td>
+                        <td className="align-top font-semibold">
+                          {instrument?.type || '-'} /{' '}
+                          {instrument?.serial_number || '-'}
+                        </td>
                       </tr>
                       <tr>
-                        <td className="align-top"><PdfLabel indo="Lain-lain" eng="Others" /></td>
+                        <td className="align-top">
+                          <PdfLabel indo="Lain-lain" eng="Others" />
+                        </td>
                         <td className="align-top">:</td>
-                        <td className="align-top font-semibold whitespace-pre-line">{sensorsSummary || instrument?.others || '-'}</td>
+                        <td className="align-top font-semibold whitespace-pre-line">
+                          {sensorsSummary || instrument?.others || '-'}
+                        </td>
                       </tr>
                     </tbody>
                   </table>
@@ -1659,19 +2023,31 @@ const ViewCertificatePage: React.FC = () => {
 
                 {/* Identitas Pemilik */}
                 <div className="mb-4">
-                  <h3 className="cert-text-id underline leading-tight mb-0">IDENTITAS PEMILIK</h3>
-                  <h4 className="cert-text-en leading-tight mb-1">Owner's Identification</h4>
+                  <h3 className="cert-text-id underline leading-tight mb-0">
+                    IDENTITAS PEMILIK
+                  </h3>
+                  <h4 className="cert-text-en leading-tight mb-1">
+                    Owner's Identification
+                  </h4>
                   <table className="w-full cert-info-text">
                     <tbody>
                       <tr>
-                        <td className="w-[30%] align-top"><PdfLabel indo="Nama" eng="Designation" /></td>
+                        <td className="w-[30%] align-top">
+                          <PdfLabel indo="Nama" eng="Designation" />
+                        </td>
                         <td className="w-[5%] align-top">:</td>
-                        <td className="w-[65%] align-top font-semibold whitespace-pre-line">{station?.name || '-'}</td>
+                        <td className="w-[65%] align-top font-semibold whitespace-pre-line">
+                          {station?.name || '-'}
+                        </td>
                       </tr>
                       <tr>
-                        <td className="align-top"><PdfLabel indo="Alamat" eng="Address" /></td>
+                        <td className="align-top">
+                          <PdfLabel indo="Alamat" eng="Address" />
+                        </td>
                         <td className="align-top">:</td>
-                        <td className="align-top font-semibold">{resolvedStationAddress || '-'}</td>
+                        <td className="align-top font-semibold">
+                          {resolvedStationAddress || '-'}
+                        </td>
                       </tr>
                     </tbody>
                   </table>
@@ -1679,44 +2055,105 @@ const ViewCertificatePage: React.FC = () => {
 
                 {/* Pengesahan */}
                 <div className="mb-8">
-                  <h3 className="cert-text-id underline leading-tight mb-0">PENGESAHAN</h3>
-                  <h4 className="cert-text-en mb-2 leading-tight">Authorization</h4>
+                  <h3 className="cert-text-id underline leading-tight mb-0">
+                    PENGESAHAN
+                  </h3>
+                  <h4 className="cert-text-en mb-2 leading-tight">
+                    Authorization
+                  </h4>
                   <table className="w-full cert-info-text">
                     <tbody>
                       <tr>
-                        <td className="w-[30%] align-top"><PdfLabel indo="Pejabat Pengesahan" eng="Authorizing officer" /></td>
+                        <td className="w-[30%] align-top">
+                          <PdfLabel
+                            indo="Pejabat Pengesahan"
+                            eng="Authorizing officer"
+                          />
+                        </td>
                         <td className="w-[5%] align-top">:</td>
-                        <td className="w-[65%] align-top font-bold">{signerTitle}</td>
-                      </tr>
-                      <tr>
-                        <td className="align-top"><PdfLabel indo="Nama" eng="Name" /></td>
-                        <td className="align-top">:</td>
-                        <td className="align-top font-bold">{authorized?.name || '-'}</td>
-                      </tr>
-                      <tr>
-                        <td className="align-top"><PdfLabel indo="Tanggal Pengesahan" eng="Date of issue" /></td>
-                        <td className="align-top">:</td>
-                        <td className="align-top font-bold">
-                          {cert.issue_date ? new Date(cert.issue_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
+                        <td className="w-[65%] align-top font-bold">
+                          {signerTitle}
                         </td>
                       </tr>
                       <tr>
-                        <td className="align-top"><PdfLabel indo="Jumlah halaman" eng="Total number of pages" /></td>
+                        <td className="align-top">
+                          <PdfLabel indo="Nama" eng="Name" />
+                        </td>
                         <td className="align-top">:</td>
-                        <td className="align-top font-bold">{totalPrintedPages}</td>
+                        <td className="align-top font-bold">
+                          {authorized?.name || '-'}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="align-top">
+                          <PdfLabel
+                            indo="Tanggal Pengesahan"
+                            eng="Date of issue"
+                          />
+                        </td>
+                        <td className="align-top">:</td>
+                        <td className="align-top font-bold">
+                          {' '}
+                          {cert.issue_date
+                            ? new Date(cert.issue_date).toLocaleDateString(
+                                'id-ID',
+                                {
+                                  day: 'numeric',
+                                  month: 'long',
+                                  year: 'numeric',
+                                },
+                              )
+                            : '-'}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="align-top">
+                          <PdfLabel
+                            indo="Jumlah halaman"
+                            eng="Total number of pages"
+                          />
+                        </td>
+                        <td className="align-top">:</td>
+                        <td className="align-top font-bold">
+                          {totalPrintedPages}
+                        </td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
 
-              <footer className="page-1-footer" style={{ listStyle: 'none', listStyleType: 'none', listStylePosition: 'outside' }}>
-                <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none', marginBottom: '4px' }}>
+              <footer
+                className="page-1-footer"
+                style={{
+                  listStyle: 'none',
+                  listStyleType: 'none',
+                  listStylePosition: 'outside',
+                }}
+              >
+                <table
+                  className="w-full text-black"
+                  style={{
+                    borderCollapse: 'collapse',
+                    border: 'none',
+                    marginBottom: '4px',
+                  }}
+                >
                   <tbody>
                     <tr>
-                      <td className="align-middle text-right pr-4" style={{ width: '15%' }}>
+                      <td
+                        className="align-middle text-right pr-4"
+                        style={{ width: '15%' }}
+                      >
+                        {' '}
                         {qrCodeData ? (
-                          <div className="inline-block w-[100px] h-[100px] bg-white qr-code-container" style={{ listStyle: 'none', display: 'inline-block' }}>
+                          <div
+                            className="inline-block w-[100px] h-[100px] bg-white qr-code-container"
+                            style={{
+                              listStyle: 'none',
+                              display: 'inline-block',
+                            }}
+                          >
                             <QRCodeWithBMKGLogo
                               key={`qr-${isSigned ? 'signed' : 'unsigned'}`}
                               value={qrCodeData}
@@ -1727,31 +2164,83 @@ const ViewCertificatePage: React.FC = () => {
                             />
                           </div>
                         ) : (
-                          <div className="inline-block w-[100px] h-[100px] bg-transparent" style={{ display: 'inline-block' }}></div>
+                          <div
+                            className="inline-block w-[100px] h-[100px] bg-transparent"
+                            style={{ display: 'inline-block' }}
+                          ></div>
                         )}
                       </td>
-                      <td className="align-middle" style={{ width: '85%', textAlign: 'justify', lineHeight: '1.3' }}>
-                        <div style={{ textJustify: 'inter-word', paddingBottom: '4px', display: 'block' }} className="text-xs font-bold leading-relaxed">
-                          Dokumen ini telah ditandatangani secara elektronik menggunakan Sertifikat Elektronik yang diterbitkan oleh Balai Besar Sertifikasi Elektronik (BSrE), BSSN dan tidak memerlukan tanda tangan atau cap. Dokumen asli dapat diperoleh dengan memindai kode QR di samping ini.
+                      <td
+                        className="align-middle"
+                        style={{
+                          width: '85%',
+                          textAlign: 'justify',
+                          lineHeight: '1.3',
+                        }}
+                      >
+                        {' '}
+                        <div
+                          style={{
+                            textJustify: 'inter-word',
+                            paddingBottom: '4px',
+                            display: 'block',
+                          }}
+                          className="text-xs font-bold leading-relaxed"
+                        >
+                          Dokumen ini telah ditandatangani secara elektronik
+                          menggunakan Sertifikat Elektronik yang diterbitkan
+                          oleh Balai Besar Sertifikasi Elektronik (BSrE), BSSN
+                          dan tidak memerlukan tanda tangan atau cap. Dokumen
+                          asli dapat diperoleh dengan memindai kode QR di
+                          samping ini.
                         </div>
-                        <div style={{ textJustify: 'inter-word', display: 'block' }} className="italic text-[10px] font-bold text-gray-800 leading-relaxed">
-                          This document is digitally signed. No signature or seal is required. The original document can be obtained by scanning the QR on the left.
+                        <div
+                          style={{
+                            textJustify: 'inter-word',
+                            display: 'block',
+                          }}
+                          className="italic text-[10px] font-bold text-gray-800 leading-relaxed"
+                        >
+                          This document is digitally signed. No signature or
+                          seal is required. The original document can be
+                          obtained by scanning the QR on the left.
                         </div>
                       </td>
                     </tr>
                   </tbody>
                 </table>
-                <hr className="my-1 border-t-[3px] border-double border-black" style={{ borderTop: '3px double black', borderColor: '#000' }} />
-                <table className="w-full text-black mt-1" style={{ borderCollapse: 'collapse', border: 'none' }}>
+                <hr
+                  className="my-1 border-t-[3px] border-double border-black"
+                  style={{ borderTop: '3px double black', borderColor: '#000' }}
+                />
+                <table
+                  className="w-full text-black mt-1"
+                  style={{ borderCollapse: 'collapse', border: 'none' }}
+                >
                   <tbody>
                     <tr>
-                      <td className="align-top text-left text-[10px] font-bold" style={{ width: '25%' }}>F/IKK 7.8.1</td>
-                      <td className="align-top text-center text-[10px] font-bold text-gray-800" style={{ width: '50%', lineHeight: '1.4' }}>
+                      <td
+                        className="align-top text-left text-[10px] font-bold"
+                        style={{ width: '25%' }}
+                      >
+                        F/IKK 7.8.1
+                      </td>
+                      <td
+                        className="align-top text-center text-[10px] font-bold text-gray-800"
+                        style={{ width: '50%', lineHeight: '1.4' }}
+                      >
+                        {' '}
                         JL. Angkasa I No. 02 Kemayoran Jakarta Pusat
                         <br />
-                        Tlp. 021-4246321-ext 5125; P.O. Box 3540 Jkt; Website : http://www.bmkg.go.id
+                        Tlp. 021-4246321-ext 5125; P.O. Box 3540 Jkt; Website :
+                        http://www.bmkg.go.id
                       </td>
-                      <td className="align-top text-right text-[10px] font-bold" style={{ width: '25%' }}>Edisi/Revisi : 11/1</td>
+                      <td
+                        className="align-top text-right text-[10px] font-bold"
+                        style={{ width: '25%' }}
+                      >
+                        Edisi/Revisi : 11/1
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -1769,35 +2258,60 @@ const ViewCertificatePage: React.FC = () => {
                           <tbody>
                             <tr>
                               <td className="w-[100px] align-top">
-                                <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
+                                {' '}
+                                <Image
+                                  src={bmkgLogo}
+                                  alt="BMKG"
+                                  width={100}
+                                  height={100}
+                                  priority
+                                />
                               </td>
                               <td className="align-top"></td>
                               <td className="align-top">
+                                {' '}
                                 <table className="w-[360px] text-xs table-fixed ml-auto mr-0">
                                   <tbody>
                                     <tr>
                                       <td className="w-[48%] text-left font-bold leading-tight align-top">
-                                        No. Sertifikat / <span className="italic">Certificate</span><br />
+                                        {' '}
+                                        No. Sertifikat /{' '}
+                                        <span className="italic">
+                                          Certificate
+                                        </span>
+                                        <br />
                                         <span className="italic">Number</span>
                                       </td>
-                                      <td className="w-[4%] px-1 align-top">:</td>
-                                      <td className="w-[48%] align-top font-bold">{cert.no_certificate}</td>
+                                      <td className="w-[4%] px-1 align-top">
+                                        :
+                                      </td>
+                                      <td className="w-[48%] align-top font-bold">
+                                        {cert.no_certificate}
+                                      </td>
                                     </tr>
                                     <tr>
                                       <td className="text-left font-bold leading-tight align-top">
+                                        {' '}
                                         No. Order / <br />
-                                        <span className="italic">Order Number</span>
+                                        <span className="italic">
+                                          Order Number
+                                        </span>
                                       </td>
                                       <td className="px-1 align-top">:</td>
-                                      <td className="align-top font-bold">{cert.no_order}</td>
+                                      <td className="align-top font-bold">
+                                        {cert.no_order}
+                                      </td>
                                     </tr>
                                     <tr>
                                       <td className="text-left font-bold leading-tight align-top">
+                                        {' '}
                                         Halaman / <br />
                                         <span className="italic">Page</span>
                                       </td>
                                       <td className="px-1 align-top">:</td>
-                                      <td className="align-top font-bold">2 dari {totalPrintedPages}</td>
+                                      <td className="align-top font-bold">
+                                        2 dari {totalPrintedPages}
+                                      </td>
                                     </tr>
                                   </tbody>
                                 </table>
@@ -1811,9 +2325,12 @@ const ViewCertificatePage: React.FC = () => {
                   <tbody className="print-content">
                     <tr>
                       <td>
-                        <div className="text-xs text-center text-gray-600">Tidak ada data hasil kalibrasi</div>
+                        <div className="text-xs text-center text-gray-600">
+                          Tidak ada data hasil kalibrasi
+                        </div>
                         <p className="text-center font-bold text-sm mt-8">
-                          --- Akhir dari Sertifikat / <span className="italic">End of Certificate</span> ---
+                          --- Akhir dari Sertifikat /{' '}
+                          <span className="italic">End of Certificate</span> ---
                         </p>
                       </td>
                     </tr>
@@ -1822,16 +2339,28 @@ const ViewCertificatePage: React.FC = () => {
                     <tr>
                       <td>
                         <div className="w-full pb-2 px-1">
-                          <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none' }}>
+                          <table
+                            className="w-full text-black"
+                            style={{
+                              borderCollapse: 'collapse',
+                              border: 'none',
+                            }}
+                          >
                             <tbody>
                               <tr>
-                                <td className="align-bottom text-left" style={{ width: '25%' }}>
+                                <td
+                                  className="align-bottom text-left"
+                                  style={{ width: '25%' }}
+                                >
+                                  {' '}
                                   <div className="flex flex-col items-start gap-1">
                                     {qrCodeData ? (
                                       <div className="w-[40px] h-[40px]">
                                         <FooterQRCode
                                           value={qrCodeData}
-                                          fgColor={isSigned ? '#000000' : '#B91C1C'}
+                                          fgColor={
+                                            isSigned ? '#000000' : '#B91C1C'
+                                          }
                                           onRendered={handleQRRendered}
                                           size={40}
                                         />
@@ -1839,13 +2368,27 @@ const ViewCertificatePage: React.FC = () => {
                                     ) : (
                                       <div className="w-[40px] h-[40px]"></div>
                                     )}
-                                    <div className="text-[10px] font-bold mt-1">F/IKK 7.8.2</div>
+                                    <div className="text-[10px] font-bold mt-1">
+                                      F/IKK 7.8.2
+                                    </div>
                                   </div>
                                 </td>
-                                <td className="align-bottom text-center text-[10px] font-medium pb-[1px]" style={{ width: '50%', lineHeight: '1.4' }}>
-                                  Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara
+                                <td
+                                  className="align-bottom text-center text-[10px] font-medium pb-[1px]"
+                                  style={{ width: '50%', lineHeight: '1.4' }}
+                                >
+                                  {' '}
+                                  Dokumen ini telah ditandatangani secara
+                                  elektronik menggunakan sertifikat elektronik
+                                  yang diterbitkan oleh Balai Sertifikasi
+                                  Elektronik (BSrE), Badan Siber dan Sandi
+                                  Negara
                                 </td>
-                                <td className="align-bottom text-right text-[10px] font-bold pb-[1px]" style={{ width: '25%' }}>
+                                <td
+                                  className="align-bottom text-right text-[10px] font-bold pb-[1px]"
+                                  style={{ width: '25%' }}
+                                >
+                                  {' '}
                                   Edisi/Revisi : 11/1
                                 </td>
                               </tr>
@@ -1859,7 +2402,10 @@ const ViewCertificatePage: React.FC = () => {
               </div>
             ) : (
               results.map((res: any, idx: number) => (
-                <div key={idx} className={`page-container results-page bg-white shadow-lg my-4 print:shadow-none print:my-0 ${idx !== results.length - 1 ? 'break-after-page' : ''}`}>
+                <div
+                  key={idx}
+                  className={`page-container results-page bg-white shadow-lg my-4 print:shadow-none print:my-0 ${idx !== results.length - 1 ? 'break-after-page' : ''}`}
+                >
                   <table className="repeatable-page-table">
                     <thead className="print-repeat-header">
                       <tr>
@@ -1868,35 +2414,60 @@ const ViewCertificatePage: React.FC = () => {
                             <tbody>
                               <tr>
                                 <td className="w-[100px] align-top">
-                                  <Image src={bmkgLogo} alt="BMKG" width={100} height={100} priority />
+                                  {' '}
+                                  <Image
+                                    src={bmkgLogo}
+                                    alt="BMKG"
+                                    width={100}
+                                    height={100}
+                                    priority
+                                  />
                                 </td>
                                 <td className="align-top"></td>
                                 <td className="align-top">
+                                  {' '}
                                   <table className="w-[360px] text-xs table-fixed ml-auto mr-0">
                                     <tbody>
                                       <tr>
                                         <td className="w-[48%] text-left font-bold leading-tight align-top">
-                                          No. Sertifikat / <span className="italic">Certificate</span><br />
+                                          {' '}
+                                          No. Sertifikat /{' '}
+                                          <span className="italic">
+                                            Certificate
+                                          </span>
+                                          <br />
                                           <span className="italic">Number</span>
                                         </td>
-                                        <td className="w-[4%] px-1 align-top">:</td>
-                                        <td className="w-[48%] align-top font-bold">{cert.no_certificate}</td>
+                                        <td className="w-[4%] px-1 align-top">
+                                          :
+                                        </td>
+                                        <td className="w-[48%] align-top font-bold">
+                                          {cert.no_certificate}
+                                        </td>
                                       </tr>
                                       <tr>
                                         <td className="text-left font-bold leading-tight align-top">
+                                          {' '}
                                           No. Order / <br />
-                                          <span className="italic">Order Number</span>
+                                          <span className="italic">
+                                            Order Number
+                                          </span>
                                         </td>
                                         <td className="px-1 align-top">:</td>
-                                        <td className="align-top font-bold">{cert.no_order}</td>
+                                        <td className="align-top font-bold">
+                                          {cert.no_order}
+                                        </td>
                                       </tr>
                                       <tr>
                                         <td className="text-left font-bold leading-tight align-top">
+                                          {' '}
                                           Halaman / <br />
                                           <span className="italic">Page</span>
                                         </td>
                                         <td className="px-1 align-top">:</td>
-                                        <td className="align-top font-bold">{idx + 2} dari {totalPrintedPages}</td>
+                                        <td className="align-top font-bold">
+                                          {idx + 2} dari {totalPrintedPages}
+                                        </td>
                                       </tr>
                                     </tbody>
                                   </table>
@@ -1917,60 +2488,166 @@ const ViewCertificatePage: React.FC = () => {
                               {/* Header per Sensor: Detail Sensor & Environment */}
                               <div className="grid grid-cols-1">
                                 {(() => {
-                                  const name = resolveSensorName(res, idx) || '-'
-                                  const manufacturer = res?.sensorDetails?.manufacturer || '-'
+                                  const name =
+                                    resolveSensorName(res, idx) || '-'
+                                  const manufacturer =
+                                    res?.sensorDetails?.manufacturer || '-'
                                   const type = res?.sensorDetails?.type || '-'
-                                  const serial = res?.sensorDetails?.serial_number || '-'
-                                  const start = res?.startDate ? new Date(res.startDate).toISOString().slice(0, 10) : '-'
-                                  const end = res?.endDate ? new Date(res.endDate).toISOString().slice(0, 10) : '-'
+                                  const serial =
+                                    res?.sensorDetails?.serial_number || '-'
+                                  const start = res?.startDate
+                                    ? new Date(res.startDate)
+                                        .toISOString()
+                                        .slice(0, 10)
+                                    : '-'
+                                  const end = res?.endDate
+                                    ? new Date(res.endDate)
+                                        .toISOString()
+                                        .slice(0, 10)
+                                    : '-'
                                   const place = res?.place || '-'
-                                  const sensorInfo: Array<{ label: string; labelEng: string; value: React.ReactNode; topGap?: boolean; bold?: boolean }> = [
-                                    { label: 'Nama Sensor / ', labelEng: 'Sensor Name', value: name, bold: true },
-                                    { label: 'Merek Sensor / ', labelEng: 'Manufacturer', value: manufacturer, bold: true },
-                                    { label: 'Tipe & No. Seri / ', labelEng: 'Type & Serial Number', value: `${type} / ${serial}`, bold: true },
-                                    { label: 'Tanggal Masuk / ', labelEng: 'Date of Entry', value: start, topGap: true },
-                                    { label: 'Tanggal Kalibrasi / ', labelEng: 'Calibration Date', value: end },
-                                    { label: 'Tempat Kalibrasi / ', labelEng: 'Calibration Place', value: place },
+                                  const sensorInfo: Array<{
+                                    label: string
+                                    labelEng: string
+                                    value: React.ReactNode
+                                    topGap?: boolean
+                                    bold?: boolean
+                                  }> = [
+                                    {
+                                      label: 'Nama Sensor / ',
+                                      labelEng: 'Sensor Name',
+                                      value: name,
+                                      bold: true,
+                                    },
+                                    {
+                                      label: 'Merek Sensor / ',
+                                      labelEng: 'Manufacturer',
+                                      value: manufacturer,
+                                      bold: true,
+                                    },
+                                    {
+                                      label: 'Tipe & No. Seri / ',
+                                      labelEng: 'Type & Serial Number',
+                                      value: `${type} / ${serial}`,
+                                      bold: true,
+                                    },
+                                    {
+                                      label: 'Tanggal Masuk / ',
+                                      labelEng: 'Date of Entry',
+                                      value: start,
+                                      topGap: true,
+                                    },
+                                    {
+                                      label: 'Tanggal Kalibrasi / ',
+                                      labelEng: 'Calibration Date',
+                                      value: end,
+                                    },
+                                    {
+                                      label: 'Tempat Kalibrasi / ',
+                                      labelEng: 'Calibration Place',
+                                      value: place,
+                                    },
                                   ]
-                                  const sensorSessionId = res?.session_id;
-                                  const sensorRawData = sensorSessionId ? allRawData.filter(rd => String(rd.session_id || '') === String(sensorSessionId)) : [];
-                                  const rawSuhu = computeEnvCondition('suhu', sensorRawData);
-                                  const rawHum = computeEnvCondition('kelembaban', sensorRawData);
-                                  const suhuCondition = calculateRoomCondition('suhu', sensorRawData);
-                                  const humCondition = calculateRoomCondition('kelembaban', sensorRawData);
+                                  const sensorSessionId = res?.session_id
+                                  const sensorRawData = sensorSessionId
+                                    ? allRawData.filter(
+                                        (rd) =>
+                                          String(rd.session_id || '') ===
+                                          String(sensorSessionId),
+                                      )
+                                    : []
+                                  const rawSuhu = computeEnvCondition(
+                                    'suhu',
+                                    sensorRawData,
+                                  )
+                                  const rawHum = computeEnvCondition(
+                                    'kelembaban',
+                                    sensorRawData,
+                                  )
+                                  const suhuCondition = calculateRoomCondition(
+                                    'suhu',
+                                    sensorRawData,
+                                  )
+                                  const humCondition = calculateRoomCondition(
+                                    'kelembaban',
+                                    sensorRawData,
+                                  )
 
-                                  let envList = Array.isArray(res?.environment) ? [...res.environment] : [];
+                                  let envList = Array.isArray(res?.environment)
+                                    ? [...res.environment]
+                                    : []
 
                                   // Ensure Suhu and Kelembaban exist in envList if they have raw values
                                   if (envList.length === 0) {
-                                    if (rawSuhu !== '-') envList.push({ key: 'Suhu', value: '-' });
-                                    if (rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
+                                    if (rawSuhu !== '-')
+                                      envList.push({ key: 'Suhu', value: '-' })
+                                    if (rawHum !== '-')
+                                      envList.push({
+                                        key: 'Kelembaban',
+                                        value: '-',
+                                      })
                                   } else {
-                                    const hasSuhu = envList.some(e => e.key.toLowerCase().includes('suhu'));
-                                    const hasHum = envList.some(e => e.key.toLowerCase().includes('kelembaban') || e.key.toLowerCase().includes('rh'));
-                                    if (!hasSuhu && rawSuhu !== '-') envList.push({ key: 'Suhu', value: '-' });
-                                    if (!hasHum && rawHum !== '-') envList.push({ key: 'Kelembaban', value: '-' });
+                                    const hasSuhu = envList.some((e) =>
+                                      e.key.toLowerCase().includes('suhu'),
+                                    )
+                                    const hasHum = envList.some(
+                                      (e) =>
+                                        e.key
+                                          .toLowerCase()
+                                          .includes('kelembaban') ||
+                                        e.key.toLowerCase().includes('rh'),
+                                    )
+                                    if (!hasSuhu && rawSuhu !== '-')
+                                      envList.push({ key: 'Suhu', value: '-' })
+                                    if (!hasHum && rawHum !== '-')
+                                      envList.push({
+                                        key: 'Kelembaban',
+                                        value: '-',
+                                      })
                                   }
 
-                                  const envRows: Array<{ label: string; labelEng: string; initial: React.ReactNode; final: React.ReactNode }> = envList.map((env: any) => {
+                                  const envRows: Array<{
+                                    label: string
+                                    labelEng: string
+                                    initial: React.ReactNode
+                                    final: React.ReactNode
+                                  }> = envList.map((env: any) => {
                                     const key = String(env?.key || '')
                                     const lower = key.toLowerCase()
                                     const isSuhu = lower.includes('suhu')
-                                    const isHum = lower.includes('kelembaban') || lower.includes('rh')
+                                    const isHum =
+                                      lower.includes('kelembaban') ||
+                                      lower.includes('rh')
 
                                     const label = isSuhu
                                       ? 'Suhu / '
                                       : isHum
                                         ? 'Kelembaban / '
                                         : `${key} `
-                                    const eng = isSuhu ? 'Temperature' : isHum ? 'Relative Humidity' : ''
+                                    const eng = isSuhu
+                                      ? 'Temperature'
+                                      : isHum
+                                        ? 'Relative Humidity'
+                                        : ''
 
                                     const fallbackValue = env?.value || '-'
                                     return {
                                       label,
                                       labelEng: eng,
-                                      initial: isSuhu ? suhuCondition?.initialDisplay ?? fallbackValue : isHum ? humCondition?.initialDisplay ?? fallbackValue : fallbackValue,
-                                      final: isSuhu ? suhuCondition?.finalDisplay ?? fallbackValue : isHum ? humCondition?.finalDisplay ?? fallbackValue : fallbackValue,
+                                      initial: isSuhu
+                                        ? (suhuCondition?.initialDisplay ??
+                                          fallbackValue)
+                                        : isHum
+                                          ? (humCondition?.initialDisplay ??
+                                            fallbackValue)
+                                          : fallbackValue,
+                                      final: isSuhu
+                                        ? (suhuCondition?.finalDisplay ??
+                                          fallbackValue)
+                                        : isHum
+                                          ? (humCondition?.finalDisplay ??
+                                            fallbackValue)
+                                          : fallbackValue,
                                     }
                                   })
 
@@ -1979,28 +2656,76 @@ const ViewCertificatePage: React.FC = () => {
                                       <tbody>
                                         {sensorInfo.map((row, i) => (
                                           <tr key={`info-${i}`}>
-                                            <td className={`w-[45%] align-top font-semibold ${row.topGap ? 'pt-2' : ''}`}>
-                                              {row.label}<span className="italic">{row.labelEng}</span>
+                                            <td
+                                              className={`w-[45%] align-top font-semibold ${row.topGap ? 'pt-2' : ''}`}
+                                            >
+                                              {row.label}
+                                              <span className="italic">
+                                                {row.labelEng}
+                                              </span>
                                             </td>
-                                            <td className={`w-[5%] align-top ${row.topGap ? 'pt-2' : ''}`}>:</td>
-                                            <td className={`${row.topGap ? 'pt-2' : ''}`} colSpan={2}>
-                                              <span className={row.bold ? 'font-semibold' : undefined}>{row.value}</span>
+                                            <td
+                                              className={`w-[5%] align-top ${row.topGap ? 'pt-2' : ''}`}
+                                            >
+                                              :
+                                            </td>
+                                            <td
+                                              className={`${row.topGap ? 'pt-2' : ''}`}
+                                              colSpan={2}
+                                            >
+                                              <span
+                                                className={
+                                                  row.bold
+                                                    ? 'font-semibold'
+                                                    : undefined
+                                                }
+                                              >
+                                                {row.value}
+                                              </span>
                                             </td>
                                           </tr>
                                         ))}
                                         {envRows.length > 0 && (
                                           <tr>
-                                            <td className="w-[45%]" />
-                                            <td className="w-[5%]" />
-                                            <td className="align-top" colSpan={2}>
-                                              <div className="text-sm font-bold mb-1">Kondisi Lingkungan / <span className="italic">Environment condition</span></div>
+                                            <td className="w-[45%]" />{' '}
+                                            <td className="w-[5%]" />{' '}
+                                            <td
+                                              className="align-top"
+                                              colSpan={2}
+                                            >
+                                              {' '}
+                                              <div className="text-sm font-bold mb-1">
+                                                Kondisi Lingkungan /{' '}
+                                                <span className="italic">
+                                                  Environment condition
+                                                </span>
+                                              </div>
                                               <table className="w-full text-[10px]">
-                                                <thead><tr><th className="text-left"></th><th className="text-left">Awal</th><th className="text-left">Akhir</th></tr></thead>
-                                                <tbody>{envRows.map((er, idx) => <tr key={idx}>
-                                                  <td className="font-semibold">{er.label}<span className="italic">{er.labelEng}</span></td>
-                                                  <td>{er.initial}</td>
-                                                  <td>{er.final}</td>
-                                                </tr>)}</tbody>
+                                                <thead>
+                                                  <tr>
+                                                    <th className="text-left"></th>
+                                                    <th className="text-left">
+                                                      Awal
+                                                    </th>
+                                                    <th className="text-left">
+                                                      Akhir
+                                                    </th>
+                                                  </tr>
+                                                </thead>
+                                                <tbody>
+                                                  {envRows.map((er, idx) => (
+                                                    <tr key={idx}>
+                                                      <td className="font-semibold">
+                                                        {er.label}
+                                                        <span className="italic">
+                                                          {er.labelEng}
+                                                        </span>
+                                                      </td>
+                                                      <td>{er.initial}</td>
+                                                      <td>{er.final}</td>
+                                                    </tr>
+                                                  ))}
+                                                </tbody>
                                               </table>
                                             </td>
                                           </tr>
@@ -2012,180 +2737,472 @@ const ViewCertificatePage: React.FC = () => {
                               </div>
 
                               {/* Hasil Kalibrasi per Sensor */}
-                              {Array.isArray(res?.table) && res.table.length > 0 && (
-                                <div className="mt-6 space-y-3 w-[85%] mx-auto">
-                                  <div className="text-[12px] font-bold text-center mb-1 flex items-center justify-center gap-4">
-                                    Hasil Kalibrasi / <span className="italic font-normal">Calibration Result</span>
-                                    <DecimalPrecisionControl value={decimalPrecision} onChange={setDecimalPrecision} />
-                                  </div>
-                                  {res.table.map((sec: any, sIdx: number) => {
-                                  const rows = Array.isArray(sec?.rows) ? sec.rows : []
-                                  
-                                  // DETEKSI PYRANOMETER
-                                  const pyrSensorData: PyranometerSensorData | null = res?.sensorDetails ? {
-                                    name: res.sensorDetails.name,
-                                    type: res.sensorDetails.type,
-                                  } : null;
-                                  const isPyrano = isPyranometer(pyrSensorData);
-                                  
-                                  // HEADER: Gunakan dari data, atau default berdasarkan tipe sensor
-                                  let headers: string[];
-                                  if (Array.isArray(sec?.headers) && sec.headers.length > 0) {
-                                    headers = sec.headers;
-                                  } else if (isPyrano) {
-                                    headers = ['Penunjukkan Alat / Instrument Reading', 'Faktor Kalibrasi / Calibration Factor', 'Ketidakpastian / Uncertainty'];
-                                  } else {
-                                    headers = ['Penunjukan Alat / Instrument Reading', 'Koreksi / Correction', 'Ketidakpastian / Uncertainty'];
-                                  }
-                                  
-                                  const resultUnit = formatUnit(res?.unitUut || res?.sensorDetails?.graduating_unit || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || '')
-                                  const isDuplicateTitle = sec?.title?.toLowerCase().includes('hasil Kalibrasi') || sec?.title?.toLowerCase().includes('calibration result') || sec?.title?.toLowerCase().includes('hasil kalibrasi');
-                                  return (
-                                      <div key={sIdx} className="mt-3 avoid-break">
-                                        {sec?.title && sec.title.trim() !== '' && !isDuplicateTitle && <div className="text-xs font-bold mb-1 text-center">{sec.title}</div>}
-                                        {(!sec?.title || sec.title.trim() === '') && <div className="text-xs font-bold mb-1 text-center">{`Tabel ${sIdx + 1}`}</div>}
-                                        <table className="w-full text-xs border-[2px] border-black text-center border-collapse">
-                                          <thead>
-                                            <tr className="font-bold">
-                                              {headers.map((h: string, i: number) => (
-                                                <td key={i} className="p-1 border border-black text-center">
-                                                  {h}<br />{isPyrano && i === 0 ? `(${resultUnit})` : (isPyrano && i === 2 ? '(%)' : (resultUnit ? `(${resultUnit})` : ''))}
-                                                </td>
-                                              ))}
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {rows.map((row: any, rIdx: number) => {
-                                              const isBlank = (val: any) => !val || String(val).trim() === '' || String(val).trim() === '-';
-                                              const isFirstEmptyRow = rIdx === 0 && isBlank(row.key) && isBlank(row.unit) && isBlank(row.value);
-                                              let unitDisplay = formatUnit(res?.unitUut || res?.sensorDetails?.graduating_unit || res?.sensorDetails?.range_capacity_unit || res?.sensorDetails?.unit || '-');
-                                              return (
-                                                <tr key={rIdx}>
-                                                  {/* If headers exist, map based on standard + extra values */}
-                                                  {headers.length > 0 ? (
-                                                    <>
-                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
-                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? (isPyrano ? '-' : unitDisplay) : (isPyrano ? formatCalibrationCorrection(row.unit, true, decimalPrecision) : formatCalibrationCorrection(row.unit, false, decimalPrecision))}</td>
-                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? (isPyrano ? '%' : unitDisplay) : formatCalibrationUncertainty(row.value, isPyrano, decimalPrecision)}{!isPyrano && row.uncertaintyMeta ? <span title={`U95 hitung: ${row.uncertaintyMeta.raw_u95}\nCMC: ${row.uncertaintyMeta.cmc_value_output ?? '-'} ${row.uncertaintyMeta.cmc_unit_native ?? ''}\nRule: ${row.uncertaintyMeta.reporting_rule}`} className="ml-1 inline-block h-3.5 w-3.5 align-middle cursor-help rounded-full bg-blue-100 text-[8px] leading-none text-center text-blue-700">i</span> : null}</td>
-                                                      {Array.isArray(row.extraValues) && row.extraValues.map((v: string, vi: number) => (
-                                                        <td key={`extra-${vi}`} className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (v || '-')}</td>
-                                                      ))}
-                                                    </>
-                                                  ) : (
-                                                    // Fallback
-                                                    <>
-                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : (row.key || '-')}</td>
-                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : formatCalibrationCorrection(row.unit, isPyrano, decimalPrecision)}</td>
-                                                      <td className="p-1 border border-black text-center">{isFirstEmptyRow ? unitDisplay : formatCalibrationUncertainty(row.value, isPyrano, decimalPrecision)}</td>
-                                                    </>
-                                                  )}
-                                                </tr>
-                                              );
-                                            })}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    )
-                                  })}
-                                  {res?.unitStd && res?.unitUut && needsConversion(res.unitStd, res.unitUut) && (
-                                    <div className="mt-1 text-[10px] text-gray-500 italic text-right">
-                                      * Nilai Pembacaan Standar telah dikonversi dari <strong>{formatUnit(res.unitStd)}</strong> ke <strong>{formatUnit(res.unitUut)}</strong> sebelum penghitungan koreksi.
+                              {Array.isArray(res?.table) &&
+                                res.table.length > 0 && (
+                                  <div className="mt-6 space-y-3 w-[85%] mx-auto">
+                                    <div className="text-[12px] font-bold text-center mb-1 flex items-center justify-center gap-4">
+                                      Hasil Kalibrasi /{' '}
+                                      <span className="italic font-normal">
+                                        Calibration Result
+                                      </span>
+                                      <DecimalPrecisionControl
+                                        value={decimalPrecision}
+                                        onChange={setDecimalPrecision}
+                                      />
                                     </div>
-                                  )}
-                                </div>
-                              )}
+                                    {res.table.map((sec: any, sIdx: number) => {
+                                      const rows = Array.isArray(sec?.rows)
+                                        ? sec.rows
+                                        : []
 
-                              {/* Images per sensor only for Geofisika - placed right after calibration table */}
-                              {(station as any)?.station_type?.name?.toString().trim().toLowerCase() === 'geofisika' && Array.isArray(res?.images) && (res.images as any[]).length > 0 && (
-                                <div className="mt-4 avoid-break break-after-page">
-                                  <h4 className="text-xs font-semibold mb-2 text-center">Gambar</h4>
-                                  <div className="flex flex-wrap gap-3 justify-center">
-                                    {(res.images as any[]).map((img: any, i: number) => {
-                                      const src = typeof img === 'string' ? img : (img?.url || '')
-                                      if (!src) return null
+                                      // DETEKSI PYRANOMETER
+                                      const pyrSensorData: PyranometerSensorData | null =
+                                        res?.sensorDetails
+                                          ? {
+                                              name: res.sensorDetails.name,
+                                              type: res.sensorDetails.type,
+                                            }
+                                          : null
+                                      const isPyrano =
+                                        isPyranometer(pyrSensorData)
+
+                                      // HEADER: Gunakan dari data, atau default berdasarkan tipe sensor
+                                      let headers: string[]
+                                      if (
+                                        Array.isArray(sec?.headers) &&
+                                        sec.headers.length > 0
+                                      ) {
+                                        headers = sec.headers
+                                      } else if (isPyrano) {
+                                        headers = [
+                                          'Penunjukkan Alat / Instrument Reading',
+                                          'Faktor Kalibrasi / Calibration Factor',
+                                          'Ketidakpastian / Uncertainty',
+                                        ]
+                                      } else {
+                                        headers = [
+                                          'Penunjukan Alat / Instrument Reading',
+                                          'Koreksi / Correction',
+                                          'Ketidakpastian / Uncertainty',
+                                        ]
+                                      }
+
+                                      const resultUnit = formatUnit(
+                                        res?.unitUut ||
+                                          res?.sensorDetails?.graduating_unit ||
+                                          res?.sensorDetails
+                                            ?.range_capacity_unit ||
+                                          res?.sensorDetails?.unit ||
+                                          '',
+                                      )
+                                      const isDuplicateTitle =
+                                        sec?.title
+                                          ?.toLowerCase()
+                                          .includes('hasil Kalibrasi') ||
+                                        sec?.title
+                                          ?.toLowerCase()
+                                          .includes('calibration result') ||
+                                        sec?.title
+                                          ?.toLowerCase()
+                                          .includes('hasil kalibrasi')
                                       return (
-                                        <figure key={i} className="m-0 p-0 text-center">
-                                          <img src={src} alt={`Gambar Sensor ${i + 1}`} className="block m-0 p-0 h-auto w-auto max-w-[400px] max-h-[400px]" />
-                                          {img?.caption ? (
-                                            <figcaption className="text-[10px] mt-0 text-center text-gray-700 leading-tight m-0 p-0">{img.caption}</figcaption>
-                                          ) : null}
-                                        </figure>
+                                        <div
+                                          key={sIdx}
+                                          className="mt-3 avoid-break"
+                                        >
+                                          {sec?.title &&
+                                            sec.title.trim() !== '' &&
+                                            !isDuplicateTitle && (
+                                              <div className="text-xs font-bold mb-1 text-center">
+                                                {sec.title}
+                                              </div>
+                                            )}
+                                          {(!sec?.title ||
+                                            sec.title.trim() === '') && (
+                                            <div className="text-xs font-bold mb-1 text-center">{`Tabel ${sIdx + 1}`}</div>
+                                          )}
+                                          <table className="w-full text-xs border-[2px] border-black text-center border-collapse">
+                                            <thead>
+                                              <tr className="font-bold">
+                                                {headers.map(
+                                                  (h: string, i: number) => (
+                                                    <td
+                                                      key={i}
+                                                      className="p-1 border border-black text-center"
+                                                    >
+                                                      {' '}
+                                                      {h}
+                                                      <br />
+                                                      {isPyrano && i === 0
+                                                        ? `(${resultUnit})`
+                                                        : isPyrano && i === 2
+                                                          ? '(%)'
+                                                          : resultUnit
+                                                            ? `(${resultUnit})`
+                                                            : ''}
+                                                    </td>
+                                                  ),
+                                                )}
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {rows.map(
+                                                (row: any, rIdx: number) => {
+                                                  const isBlank = (val: any) =>
+                                                    !val ||
+                                                    String(val).trim() === '' ||
+                                                    String(val).trim() === '-'
+                                                  const isFirstEmptyRow =
+                                                    rIdx === 0 &&
+                                                    isBlank(row.key) &&
+                                                    isBlank(row.unit) &&
+                                                    isBlank(row.value)
+                                                  let unitDisplay = formatUnit(
+                                                    res?.unitUut ||
+                                                      res?.sensorDetails
+                                                        ?.graduating_unit ||
+                                                      res?.sensorDetails
+                                                        ?.range_capacity_unit ||
+                                                      res?.sensorDetails
+                                                        ?.unit ||
+                                                      '-',
+                                                  )
+                                                  return (
+                                                    <tr key={rIdx}>
+                                                      {/* If headers exist, map based on standard + extra values */}
+                                                      {headers.length > 0 ? (
+                                                        <>
+                                                          <td className="p-1 border border-black text-center">
+                                                            {isFirstEmptyRow
+                                                              ? unitDisplay
+                                                              : row.key || '-'}
+                                                          </td>
+                                                          <td className="p-1 border border-black text-center">
+                                                            {isFirstEmptyRow
+                                                              ? isPyrano
+                                                                ? '-'
+                                                                : unitDisplay
+                                                              : isPyrano
+                                                                ? formatCalibrationCorrection(
+                                                                    row.unit,
+                                                                    true,
+                                                                    decimalPrecision,
+                                                                  )
+                                                                : formatCalibrationCorrection(
+                                                                    row.unit,
+                                                                    false,
+                                                                    decimalPrecision,
+                                                                  )}
+                                                          </td>
+                                                          <td className="p-1 border border-black text-center">
+                                                            {isFirstEmptyRow
+                                                              ? isPyrano
+                                                                ? '%'
+                                                                : unitDisplay
+                                                              : formatCalibrationUncertainty(
+                                                                  row.value,
+                                                                  isPyrano,
+                                                                  decimalPrecision,
+                                                                )}
+                                                            {!isPyrano &&
+                                                            row.uncertaintyMeta ? (
+                                                              <span
+                                                                title={`U95 hitung: ${row.uncertaintyMeta.raw_u95}\nCMC: ${row.uncertaintyMeta.cmc_value_output ?? '-'} ${row.uncertaintyMeta.cmc_unit_native ?? ''}\nRule: ${row.uncertaintyMeta.reporting_rule}`}
+                                                                className="ml-1 inline-block h-3.5 w-3.5 align-middle cursor-help rounded-full bg-blue-100 text-[8px] leading-none text-center text-blue-700"
+                                                              >
+                                                                i
+                                                              </span>
+                                                            ) : null}
+                                                          </td>{' '}
+                                                          {Array.isArray(
+                                                            row.extraValues,
+                                                          ) &&
+                                                            row.extraValues.map(
+                                                              (
+                                                                v: string,
+                                                                vi: number,
+                                                              ) => (
+                                                                <td
+                                                                  key={`extra-${vi}`}
+                                                                  className="p-1 border border-black text-center"
+                                                                >
+                                                                  {isFirstEmptyRow
+                                                                    ? unitDisplay
+                                                                    : v || '-'}
+                                                                </td>
+                                                              ),
+                                                            )}
+                                                        </>
+                                                      ) : (
+                                                        // Fallback
+                                                        <>
+                                                          <td className="p-1 border border-black text-center">
+                                                            {isFirstEmptyRow
+                                                              ? unitDisplay
+                                                              : row.key || '-'}
+                                                          </td>
+                                                          <td className="p-1 border border-black text-center">
+                                                            {isFirstEmptyRow
+                                                              ? unitDisplay
+                                                              : formatCalibrationCorrection(
+                                                                  row.unit,
+                                                                  isPyrano,
+                                                                  decimalPrecision,
+                                                                )}
+                                                          </td>
+                                                          <td className="p-1 border border-black text-center">
+                                                            {isFirstEmptyRow
+                                                              ? unitDisplay
+                                                              : formatCalibrationUncertainty(
+                                                                  row.value,
+                                                                  isPyrano,
+                                                                  decimalPrecision,
+                                                                )}
+                                                          </td>
+                                                        </>
+                                                      )}
+                                                    </tr>
+                                                  )
+                                                },
+                                              )}
+                                            </tbody>
+                                          </table>
+                                        </div>
                                       )
                                     })}
+                                    {res?.unitStd &&
+                                      res?.unitUut &&
+                                      needsConversion(
+                                        res.unitStd,
+                                        res.unitUut,
+                                      ) && (
+                                        <div className="mt-1 text-[10px] text-gray-500 italic text-right">
+                                          * Nilai Pembacaan Standar telah
+                                          dikonversi dari{' '}
+                                          <strong>
+                                            {formatUnit(res.unitStd)}
+                                          </strong>{' '}
+                                          ke{' '}
+                                          <strong>
+                                            {formatUnit(res.unitUut)}
+                                          </strong>{' '}
+                                          sebelum penghitungan koreksi.
+                                        </div>
+                                      )}
                                   </div>
-                                </div>
-                              )}
+                                )}
+
+                              {/* Images per sensor only for Geofisika - placed right after calibration table */}
+                              {(station as any)?.station_type?.name
+                                ?.toString()
+                                .trim()
+                                .toLowerCase() === 'geofisika' &&
+                                Array.isArray(res?.images) &&
+                                (res.images as any[]).length > 0 && (
+                                  <div className="mt-4 avoid-break break-after-page">
+                                    <h4 className="text-xs font-semibold mb-2 text-center">
+                                      Gambar
+                                    </h4>
+                                    <div className="flex flex-wrap gap-3 justify-center">
+                                      {(res.images as any[]).map(
+                                        (img: any, i: number) => {
+                                          const src =
+                                            typeof img === 'string'
+                                              ? img
+                                              : img?.url || ''
+                                          if (!src) return null
+                                          return (
+                                            <figure
+                                              key={i}
+                                              className="m-0 p-0 text-center"
+                                            >
+                                              <img
+                                                src={src}
+                                                alt={`Gambar Sensor ${i + 1}`}
+                                                className="block m-0 p-0 h-auto w-auto max-w-[400px] max-h-[400px]"
+                                              />
+                                              {img?.caption ? (
+                                                <figcaption className="text-[10px] mt-0 text-center text-gray-700 leading-tight m-0 p-0">
+                                                  {img.caption}
+                                                </figcaption>
+                                              ) : null}
+                                            </figure>
+                                          )
+                                        },
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
 
                               {/* Catatan per Sensor */}
                               {(() => {
                                 const nf = res?.notesForm || null
                                 if (!nf) return null
                                 const othersEnabled = isOthersEnabled(nf)
-                                const shouldAlwaysShowDefaultOthers = isDefaultNotesOthersValue(nf.others)
-                                const showOthers = Boolean(nf.others) && (shouldAlwaysShowDefaultOthers || othersEnabled)
-                                const hasAny = nf.traceable_to_si_through || nf.reference_document || nf.calibration_methode || showOthers || (Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0)
+                                const shouldAlwaysShowDefaultOthers =
+                                  isDefaultNotesOthersValue(nf.others)
+                                const showOthers =
+                                  Boolean(nf.others) &&
+                                  (shouldAlwaysShowDefaultOthers ||
+                                    othersEnabled)
+                                const hasAny =
+                                  nf.traceable_to_si_through ||
+                                  nf.reference_document ||
+                                  nf.calibration_methode ||
+                                  showOthers ||
+                                  (Array.isArray(nf.standardInstruments) &&
+                                    nf.standardInstruments.length > 0)
                                 if (!hasAny) return null
                                 return (
                                   <div className="mt-6 avoid-break">
-                                    <div className="text-sm font-bold underline leading-tight mb-0">Catatan / <span className="italic">Notes :</span></div>
+                                    <div className="text-sm font-bold underline leading-tight mb-0">
+                                      Catatan /{' '}
+                                      <span className="italic">Notes :</span>
+                                    </div>
                                     <table className="w-full text-xs mt-1">
                                       <tbody>
-                                        {Array.isArray(nf.standardInstruments) && nf.standardInstruments.length > 0 && (
-                                          <tr>
-                                            <td className="w-[40%] align-top text-left pr-2 py-0">
-                                              <div className="font-bold leading-tight">Standar Kalibrasi <span className="italic text-[10px] text-gray-900">/ Calibration Standard</span></div>
-                                            </td>
-                                            <td className="w-[5%] align-top py-0">:</td>
-                                            <td className="w-[55%] align-top whitespace-pre-line py-0">
-                                              {nf.standardInstruments.map((sid: number) => {
-                                                const targetId = sid != null ? Number(sid) : null
-                                                const s = targetId != null
-                                                  ? sensors.find((sensor: any) => sensor.id != null && Number(sensor.id) === targetId)
-                                                  : undefined
-                                                if (!s) return null
-                                                const sensorNameId = s.sensor_name_id != null ? Number(s.sensor_name_id) : null
-                                                const name = sensorNameId != null
-                                                  ? instrumentNames.find((n: any) => n.id != null && Number(n.id) === sensorNameId)?.name || s.name || s.type || '-'
-                                                  : s.name || s.type || '-'
-                                                const manufacturer = s.manufacturer || '-'
-                                                const type = s.type || '-'
-                                                const sn = s.serial_number ? `SN ${s.serial_number}` : '-'
-                                                return <div key={sid}>{name} / {manufacturer} / {type} / {sn}</div>
-                                              })}
-                                            </td>
-                                          </tr>
-                                        )}
+                                        {Array.isArray(
+                                          nf.standardInstruments,
+                                        ) &&
+                                          nf.standardInstruments.length > 0 && (
+                                            <tr>
+                                              <td className="w-[40%] align-top text-left pr-2 py-0">
+                                                {' '}
+                                                <div className="font-bold leading-tight">
+                                                  Standar Kalibrasi{' '}
+                                                  <span className="italic text-[10px] text-gray-900">
+                                                    / Calibration Standard
+                                                  </span>
+                                                </div>
+                                              </td>
+                                              <td className="w-[5%] align-top py-0">
+                                                :
+                                              </td>
+                                              <td className="w-[55%] align-top whitespace-pre-line py-0">
+                                                {' '}
+                                                {nf.standardInstruments.map(
+                                                  (sid: number) => {
+                                                    const targetId =
+                                                      sid != null
+                                                        ? Number(sid)
+                                                        : null
+                                                    const s =
+                                                      targetId != null
+                                                        ? sensors.find(
+                                                            (sensor: any) =>
+                                                              sensor.id !=
+                                                                null &&
+                                                              Number(
+                                                                sensor.id,
+                                                              ) === targetId,
+                                                          )
+                                                        : undefined
+                                                    if (!s) return null
+                                                    const sensorNameId =
+                                                      s.sensor_name_id != null
+                                                        ? Number(
+                                                            s.sensor_name_id,
+                                                          )
+                                                        : null
+                                                    const name =
+                                                      sensorNameId != null
+                                                        ? instrumentNames.find(
+                                                            (n: any) =>
+                                                              n.id != null &&
+                                                              Number(n.id) ===
+                                                                sensorNameId,
+                                                          )?.name ||
+                                                          s.name ||
+                                                          s.type ||
+                                                          '-'
+                                                        : s.name ||
+                                                          s.type ||
+                                                          '-'
+                                                    const manufacturer =
+                                                      s.manufacturer || '-'
+                                                    const type = s.type || '-'
+                                                    const sn = s.serial_number
+                                                      ? `SN ${s.serial_number}`
+                                                      : '-'
+                                                    return (
+                                                      <div key={sid}>
+                                                        {name} / {manufacturer}{' '}
+                                                        / {type} / {sn}
+                                                      </div>
+                                                    )
+                                                  },
+                                                )}
+                                              </td>
+                                            </tr>
+                                          )}
                                         {nf.traceable_to_si_through && (
                                           <tr>
                                             <td className="align-top text-left pr-2 py-0">
-                                              <div className="font-bold leading-tight">Tertelusur Ke SI melalui <span className="italic text-[10px] text-gray-900">/ Traceable to SI through</span></div>
+                                              {' '}
+                                              <div className="font-bold leading-tight">
+                                                Tertelusur Ke SI melalui{' '}
+                                                <span className="italic text-[10px] text-gray-900">
+                                                  / Traceable to SI through
+                                                </span>
+                                              </div>
                                             </td>
-                                            <td className="align-top py-0">:</td>
-                                            <td className="align-top whitespace-pre-line py-0">{nf.traceable_to_si_through}</td>
+                                            <td className="align-top py-0">
+                                              :
+                                            </td>
+                                            <td className="align-top whitespace-pre-line py-0">
+                                              {nf.traceable_to_si_through}
+                                            </td>
                                           </tr>
                                         )}
                                         {nf.calibration_methode && (
                                           <tr>
                                             <td className="align-top text-left pr-2 py-0">
-                                              <div className="font-bold leading-tight">Metode Kalibrasi <span className="italic text-[10px] text-gray-900">/ Calibration Methode</span></div>
+                                              {' '}
+                                              <div className="font-bold leading-tight">
+                                                Metode Kalibrasi{' '}
+                                                <span className="italic text-[10px] text-gray-900">
+                                                  / Calibration Methode
+                                                </span>
+                                              </div>
                                             </td>
-                                            <td className="align-top py-0">:</td>
-                                            <td className="align-top whitespace-pre-line py-0">{nf.calibration_methode}</td>
+                                            <td className="align-top py-0">
+                                              :
+                                            </td>
+                                            <td className="align-top whitespace-pre-line py-0">
+                                              {nf.calibration_methode}
+                                            </td>
                                           </tr>
                                         )}
                                         {nf.reference_document && (
                                           <tr>
                                             <td className="align-top text-left pr-2 py-0">
-                                              <div className="font-bold leading-tight">Dokumen Acuan <span className="italic text-[10px] text-gray-900">/ Reference Document</span></div>
+                                              {' '}
+                                              <div className="font-bold leading-tight">
+                                                Dokumen Acuan{' '}
+                                                <span className="italic text-[10px] text-gray-900">
+                                                  / Reference Document
+                                                </span>
+                                              </div>
                                             </td>
-                                            <td className="align-top py-0">:</td>
-                                            <td className="align-top whitespace-pre-line py-0">{nf.reference_document}</td>
+                                            <td className="align-top py-0">
+                                              :
+                                            </td>
+                                            <td className="align-top whitespace-pre-line py-0">
+                                              {nf.reference_document}
+                                            </td>
                                           </tr>
                                         )}
                                         {showOthers && (
                                           <tr>
-                                            <td colSpan={3} className="align-top py-1">
-                                              <RichTextCell value={nf.others} className="leading-tight text-[11px] [&_p]:m-0 [&_p+*]:mt-0.5 [&_ul]:mt-0 [&_ol]:mt-0 [&_li]:my-0" />
+                                            <td
+                                              colSpan={3}
+                                              className="align-top py-1"
+                                            >
+                                              {' '}
+                                              <RichTextCell
+                                                value={nf.others}
+                                                className="leading-tight text-[11px] [&_p]:m-0 [&_p+*]:mt-0.5 [&_ul]:mt-0 [&_ol]:mt-0 [&_li]:my-0"
+                                              />
                                             </td>
                                           </tr>
                                         )}
@@ -2197,17 +3214,39 @@ const ViewCertificatePage: React.FC = () => {
                                         <tbody>
                                           <tr>
                                             <td className="w-[35%] align-top text-left pr-2 py-0">
-                                              <span className="font-bold leading-tight">Diverifikasi Oleh</span>
-                                              <span className="italic text-[10px] text-gray-700 leading-tight"> / Verified by</span>
+                                              {' '}
+                                              <span className="font-bold leading-tight">
+                                                Diverifikasi Oleh
+                                              </span>
+                                              <span className="italic text-[10px] text-gray-700 leading-tight">
+                                                {' '}
+                                                / Verified by
+                                              </span>
                                             </td>
-                                            <td className="w-[5%] align-top py-0">:</td>
+                                            <td className="w-[5%] align-top py-0">
+                                              :
+                                            </td>
                                             <td className="w-[60%] align-top py-0">
-                                              {[verifikator1?.name, verifikator2?.name, verifikator3?.name].filter(Boolean).length > 0
-                                                ? [verifikator1?.name, verifikator2?.name, verifikator3?.name].filter(Boolean).map((name, idx2) => (
-                                                  <div key={idx2}>{idx2 + 1}. {name}</div>
-                                                ))
-                                                : <div>-</div>
-                                              }
+                                              {' '}
+                                              {[
+                                                verifikator1?.name,
+                                                verifikator2?.name,
+                                                verifikator3?.name,
+                                              ].filter(Boolean).length > 0 ? (
+                                                [
+                                                  verifikator1?.name,
+                                                  verifikator2?.name,
+                                                  verifikator3?.name,
+                                                ]
+                                                  .filter(Boolean)
+                                                  .map((name, idx2) => (
+                                                    <div key={idx2}>
+                                                      {idx2 + 1}. {name}
+                                                    </div>
+                                                  ))
+                                              ) : (
+                                                <div>-</div>
+                                              )}
                                             </td>
                                           </tr>
                                         </tbody>
@@ -2222,11 +3261,14 @@ const ViewCertificatePage: React.FC = () => {
                               {idx === results.length - 1 && (
                                 <div className="mt-2 mb-4">
                                   <p className="text-center font-bold text-sm m-0">
-                                    --- Akhir dari Sertifikat / <span className="italic">End of Certificate</span> ---
+                                    --- Akhir dari Sertifikat /{' '}
+                                    <span className="italic">
+                                      End of Certificate
+                                    </span>{' '}
+                                    ---
                                   </p>
                                 </div>
                               )}
-
                             </section>
                           </div>
                         </td>
@@ -2236,16 +3278,28 @@ const ViewCertificatePage: React.FC = () => {
                       <tr>
                         <td>
                           <div className="w-full pb-2 px-1">
-                            <table className="w-full text-black" style={{ borderCollapse: 'collapse', border: 'none' }}>
+                            <table
+                              className="w-full text-black"
+                              style={{
+                                borderCollapse: 'collapse',
+                                border: 'none',
+                              }}
+                            >
                               <tbody>
                                 <tr>
-                                  <td className="align-bottom text-left" style={{ width: '25%' }}>
+                                  <td
+                                    className="align-bottom text-left"
+                                    style={{ width: '25%' }}
+                                  >
+                                    {' '}
                                     <div className="flex flex-col items-start gap-1">
                                       {qrCodeData ? (
                                         <div className="w-[40px] h-[40px]">
                                           <FooterQRCode
                                             value={qrCodeData}
-                                            fgColor={isSigned ? '#000000' : '#B91C1C'}
+                                            fgColor={
+                                              isSigned ? '#000000' : '#B91C1C'
+                                            }
                                             onRendered={handleQRRendered}
                                             size={40}
                                           />
@@ -2253,13 +3307,27 @@ const ViewCertificatePage: React.FC = () => {
                                       ) : (
                                         <div className="w-[40px] h-[40px]"></div>
                                       )}
-                                      <div className="text-[10px] font-bold mt-1">F/IKK 7.8.2</div>
+                                      <div className="text-[10px] font-bold mt-1">
+                                        F/IKK 7.8.2
+                                      </div>
                                     </div>
                                   </td>
-                                  <td className="align-bottom text-center text-[10px] font-medium pb-[1px]" style={{ width: '50%', lineHeight: '1.4' }}>
-                                    Dokumen ini telah ditandatangani secara elektronik menggunakan sertifikat elektronik yang diterbitkan oleh Balai Sertifikasi Elektronik (BSrE), Badan Siber dan Sandi Negara (BSSN)
+                                  <td
+                                    className="align-bottom text-center text-[10px] font-medium pb-[1px]"
+                                    style={{ width: '50%', lineHeight: '1.4' }}
+                                  >
+                                    {' '}
+                                    Dokumen ini telah ditandatangani secara
+                                    elektronik menggunakan sertifikat elektronik
+                                    yang diterbitkan oleh Balai Sertifikasi
+                                    Elektronik (BSrE), Badan Siber dan Sandi
+                                    Negara (BSSN)
                                   </td>
-                                  <td className="align-bottom text-right text-[10px] font-bold pb-[1px]" style={{ width: '25%' }}>
+                                  <td
+                                    className="align-bottom text-right text-[10px] font-bold pb-[1px]"
+                                    style={{ width: '25%' }}
+                                  >
+                                    {' '}
                                     Edisi/Revisi : 11/1
                                   </td>
                                 </tr>
@@ -2273,8 +3341,6 @@ const ViewCertificatePage: React.FC = () => {
                 </div>
               ))
             )}
-
-
           </div>
         </div>
       </div>

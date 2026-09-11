@@ -1,45 +1,37 @@
-'use client';
+'use client'
 
-import React, { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '../contexts/AuthContext';
+import React, { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '../contexts/AuthContext'
+import { Spinner } from './ui/Loading'
 
 interface ProtectedRouteProps {
-  children: React.ReactNode;
+  children: React.ReactNode
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  const { user, loading } = useAuth();
-  const router = useRouter();
+  const { user, loading } = useAuth()
+  const router = useRouter()
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push('/login');
+      router.push('/login')
     }
-  }, [user, loading, router]);
+  }, [user, loading, router])
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <Spinner size="lg" tone="blue" className="border-blue-600" />
       </div>
-    );
+    )
   }
 
   if (!user) {
-    return null;
+    return null
   }
 
-  return <>{children}</>;
-};
+  return <>{children}</>
+}
 
-export default ProtectedRoute;
-
-
-
-
-
-
-
-
-
+export default ProtectedRoute

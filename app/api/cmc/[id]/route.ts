@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../../lib/supabase'
 import { authenticateRequest, getUserRole } from '../../../../lib/certificate-access'
+import { clientSafeMessage } from '../../../../lib/api-error'
 
 async function requireAdmin(request: NextRequest) {
   const { user, error } = await authenticateRequest(request)
@@ -52,7 +53,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
     return NextResponse.json({ data })
   } catch (error: any) {
-    return NextResponse.json({ error: error?.message || 'Gagal memperbarui CMC' }, { status: 500 })
+    return NextResponse.json({ error: clientSafeMessage(error) || 'Gagal memperbarui CMC' }, { status: 500 })
   }
 }
 
@@ -68,6 +69,6 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (error) throw error
     return NextResponse.json({ message: 'Profil CMC dinonaktifkan' })
   } catch (error: any) {
-    return NextResponse.json({ error: error?.message || 'Gagal menonaktifkan CMC' }, { status: 500 })
+    return NextResponse.json({ error: clientSafeMessage(error) || 'Gagal menonaktifkan CMC' }, { status: 500 })
   }
 }

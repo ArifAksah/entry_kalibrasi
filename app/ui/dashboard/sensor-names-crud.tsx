@@ -10,7 +10,8 @@ import Breadcrumb from '../../../components/ui/Breadcrumb'
 import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
 
 const SensorsCRUD: React.FC = () => {
-  const { sensors, loading, error, addSensor, updateSensor, deleteSensor } = useSensors()
+  const { sensors, loading, error, addSensor, updateSensor, deleteSensor } =
+    useSensors()
   const { can, canEndpoint } = usePermissions()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingSensor, setEditingSensor] = useState<Sensor | null>(null)
@@ -29,10 +30,10 @@ const SensorsCRUD: React.FC = () => {
     funnel_area: 0,
     funnel_area_unit: '',
     name: '',
-    is_standard: false as any
+    is_standard: false as any,
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
-  
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage] = useState(10)
@@ -55,7 +56,7 @@ const SensorsCRUD: React.FC = () => {
         funnel_area: sensor.funnel_area,
         funnel_area_unit: sensor.funnel_area_unit,
         name: sensor.name,
-        is_standard: (sensor as any).is_standard || false
+        is_standard: (sensor as any).is_standard || false,
       })
     } else {
       setEditingSensor(null)
@@ -74,7 +75,7 @@ const SensorsCRUD: React.FC = () => {
         funnel_area: 0,
         funnel_area_unit: '',
         name: '',
-        is_standard: false
+        is_standard: false,
       })
     }
     setIsModalOpen(true)
@@ -98,7 +99,7 @@ const SensorsCRUD: React.FC = () => {
       funnel_area: 0,
       funnel_area_unit: '',
       name: '',
-      is_standard: false
+      is_standard: false,
     })
   }
 
@@ -130,12 +131,19 @@ const SensorsCRUD: React.FC = () => {
     }
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+  ) => {
     const { name, value, type, checked } = e.target as any
     const numericFields = new Set(['funnel_diameter', 'funnel_area'])
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : (numericFields.has(name) ? (parseFloat(value) || 0) : value)
+      [name]:
+        type === 'checkbox'
+          ? checked
+          : numericFields.has(name)
+            ? parseFloat(value) || 0
+            : value,
     }))
   }
 
@@ -158,10 +166,12 @@ const SensorsCRUD: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <Breadcrumb items={[{ label: 'Sensors', href: '#' }, { label: 'Manager' }]} />
-        {can('sensor','create') && (
-          <button 
-            onClick={() => handleOpenModal()} 
+        <Breadcrumb
+          items={[{ label: 'Sensors', href: '#' }, { label: 'Manager' }]}
+        />
+        {can('sensor', 'create') && (
+          <button
+            onClick={() => handleOpenModal()}
             className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl"
           >
             Add New Sensor
@@ -177,40 +187,70 @@ const SensorsCRUD: React.FC = () => {
 
       <Card>
         <div className="overflow-hidden rounded-lg border border-gray-200">
-          <Table headers={['Name', 'Manufacturer', 'Type', 'Serial Number', 'Range Capacity', 'Standard?', 'Actions']}>
+          <Table
+            headers={[
+              'Name',
+              'Manufacturer',
+              'Type',
+              'Serial Number',
+              'Range Capacity',
+              'Standard?',
+              'Actions',
+            ]}
+          >
             {currentSensors.map((sensor) => (
-              <tr key={sensor.id} className="hover:bg-gray-50 transition-colors duration-150">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+              <tr
+                key={sensor.id}
+                className="hover:bg-gray-50 transition-colors duration-150"
+              >
+                <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                  {' '}
                   {sensor.name || 'N/A'}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                  {' '}
                   {sensor.manufacturer}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                  {' '}
                   {sensor.type}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                  {' '}
                   {sensor.serial_number}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                  {' '}
                   {sensor.range_capacity} {sensor.range_capacity_unit}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    (sensor as any).is_standard 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-gray-100 text-gray-800'
-                  }`}>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {' '}
+                  <span
+                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      (sensor as any).is_standard
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}
+                  >
                     {(sensor as any).is_standard ? 'Yes' : 'No'}
                   </span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                  {can('sensor','update') && canEndpoint('PUT', `/api/sensors/${sensor.id}`) && (
-                    <EditButton onClick={() => handleOpenModal(sensor)} title="Edit Sensor" />
-                  )}
-                  {can('sensor','delete') && canEndpoint('DELETE', `/api/sensors/${sensor.id}`) && (
-                    <DeleteButton onClick={() => handleDelete(sensor.id)} title="Delete Sensor" />
-                  )}
+                <td className="px-4 py-3 whitespace-nowrap text-sm font-medium space-x-2">
+                  {' '}
+                  {can('sensor', 'update') &&
+                    canEndpoint('PUT', `/api/sensors/${sensor.id}`) && (
+                      <EditButton
+                        onClick={() => handleOpenModal(sensor)}
+                        title="Edit Sensor"
+                      />
+                    )}
+                  {can('sensor', 'delete') &&
+                    canEndpoint('DELETE', `/api/sensors/${sensor.id}`) && (
+                      <DeleteButton
+                        onClick={() => handleDelete(sensor.id)}
+                        title="Delete Sensor"
+                      />
+                    )}
                 </td>
               </tr>
             ))}
@@ -222,7 +262,8 @@ const SensorsCRUD: React.FC = () => {
           <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
             <div className="flex items-center justify-between">
               <div className="text-sm text-gray-700">
-                Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to{' '}
+                Showing{' '}
+                <span className="font-medium">{indexOfFirstItem + 1}</span> to{' '}
                 <span className="font-medium">
                   {Math.min(indexOfLastItem, sensors.length)}
                 </span>{' '}
@@ -236,19 +277,21 @@ const SensorsCRUD: React.FC = () => {
                 >
                   Previous
                 </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <button
-                    key={page}
-                    onClick={() => paginate(page)}
-                    className={`px-3 py-1 text-sm border rounded-md transition-colors ${
-                      currentPage === page
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    {page}
-                  </button>
-                ))}
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                  (page) => (
+                    <button
+                      key={page}
+                      onClick={() => paginate(page)}
+                      className={`px-3 py-1 text-sm border rounded-md transition-colors ${
+                        currentPage === page
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ),
+                )}
                 <button
                   onClick={() => paginate(currentPage + 1)}
                   disabled={currentPage === totalPages}
@@ -268,15 +311,17 @@ const SensorsCRUD: React.FC = () => {
           <div className="w-full max-w-6xl mx-4 max-h-[90vh] overflow-y-auto">
             {/* Ambient Light Effect */}
             <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-cyan-600/10 rounded-2xl blur-xl -z-10"></div>
-            
-            <Card 
+
+            <Card
               title={
                 <div className="bg-gradient-to-r from-slate-800 to-blue-900 -mx-6 -mt-6 px-6 py-4 rounded-t-lg">
                   <h3 className="text-xl font-semibold text-white">
                     {editingSensor ? 'Edit Sensor' : 'Add New Sensor'}
                   </h3>
                   <p className="text-blue-200 text-sm mt-1">
-                    {editingSensor ? 'Update existing sensor information' : 'Create a new sensor entry'}
+                    {editingSensor
+                      ? 'Update existing sensor information'
+                      : 'Create a new sensor entry'}
                   </p>
                 </div>
               }
@@ -284,13 +329,12 @@ const SensorsCRUD: React.FC = () => {
             >
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  
                   {/* Kolom 1: Basic Information */}
                   <div className="space-y-4">
                     <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">
                       Basic Information
                     </h4>
-                    
+
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Sensor Name *
@@ -357,7 +401,7 @@ const SensorsCRUD: React.FC = () => {
                     <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">
                       Range & Capacity
                     </h4>
-                    
+
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Range Capacity
@@ -434,7 +478,7 @@ const SensorsCRUD: React.FC = () => {
                     <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">
                       Funnel & Volume
                     </h4>
-                    
+
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -539,15 +583,18 @@ const SensorsCRUD: React.FC = () => {
                     {/* Flags */}
                     <div className="pt-4">
                       <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                        <input 
-                          id="is_standard" 
-                          type="checkbox" 
-                          name="is_standard" 
-                          checked={(formData as any).is_standard} 
-                          onChange={handleInputChange} 
-                          className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" 
+                        <input
+                          id="is_standard"
+                          type="checkbox"
+                          name="is_standard"
+                          checked={(formData as any).is_standard}
+                          onChange={handleInputChange}
+                          className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                         />
-                        <label htmlFor="is_standard" className="text-sm font-medium text-gray-700">
+                        <label
+                          htmlFor="is_standard"
+                          className="text-sm font-medium text-gray-700"
+                        >
                           Standard Instrument?
                         </label>
                       </div>
@@ -569,7 +616,11 @@ const SensorsCRUD: React.FC = () => {
                     disabled={isSubmitting}
                     className="px-6 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl"
                   >
-                    {isSubmitting ? 'Saving...' : editingSensor ? 'Update Sensor' : 'Add Sensor'}
+                    {isSubmitting
+                      ? 'Saving...'
+                      : editingSensor
+                        ? 'Update Sensor'
+                        : 'Add Sensor'}
                   </button>
                 </div>
               </form>

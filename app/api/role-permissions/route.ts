@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireAdmin } from '../../../lib/api-auth'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,7 +17,7 @@ export async function GET() {
       .order('role', { ascending: true })
       .order('resource', { ascending: true })
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     return NextResponse.json(Array.isArray(data) ? data : [])
   } catch (e) {
     return NextResponse.json({ error: 'Failed to fetch role permissions' }, { status: 500 })
@@ -24,15 +26,9 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader) return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user } } = await supabaseAdmin.auth.getUser(token)
-    if (!user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-
-    // Optional admin check: if you create user_roles table, enforce admin-only here
-    // const { data: ur } = await supabaseAdmin.from('user_roles').select('role').eq('user_id', user.id).single()
-    // if (!ur || ur.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    // Only admins may modify the RBAC permission matrix.
+    const adminGate = await requireAdmin(request)
+    if (adminGate instanceof NextResponse) return adminGate
 
     const body = await request.json()
     const rows = Array.isArray(body) ? body : []
@@ -54,7 +50,7 @@ export async function PUT(request: NextRequest) {
       .upsert(normalized, { onConflict: 'role,resource' })
       .select()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     return NextResponse.json(data)
   } catch (e) {
     return NextResponse.json({ error: 'Failed to update role permissions' }, { status: 500 })

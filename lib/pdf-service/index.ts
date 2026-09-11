@@ -127,7 +127,8 @@ async function signPdfWithBsre(
   // Send signing request
   const signEndpoint = `${bsreBaseURL}/api/sign/pdf`
   console.log(`[PDF Service] Calling BSrE sign endpoint: ${signEndpoint}`)
-  console.log(`[PDF Service] Parameters: nik=${nik}, passphrase=***, tampilan=invisible, page=1, image=false`)
+  // Never log raw PII (NIK) or secrets — boolean flags are enough for debugging.
+  console.log(`[PDF Service] Params: has_nik=${!!nik}, has_passphrase=${!!passphrase}, tampilan=invisible, page=1, image=false`)
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), BSRE_SIGN_TIMEOUT_MS)
@@ -658,8 +659,18 @@ export async function generateAndSaveCertificatePDF(
         console.error(`[PDF Service] BSrE signing failed:`, signError.message)
         return { success: false, error: signError.message }
       }
+    } else if (passphrase && (process.env.BSRE_MOCK || '').toLowerCase() === 'true') {
+      // The API route validates the configured mock passphrase before calling
+      // this service. The rendered PDF already carries the simulated visual
+      // signature because simulateSigned=true was supplied by that route.
+      signed = true
+      console.warn('[PDF Service] BSrE mock active; using simulated signed PDF')
     } else if (passphrase && (!bsreUsername || !bsrePassword)) {
-      console.warn('[PDF Service] BSrE credentials not configured, skipping signature')
+      // Fail closed. Previously this branch silently skipped BSrE, uploaded an
+      // unsigned PDF, and returned success. The client then refreshed as if a
+      // wrong passphrase had been accepted.
+      console.error('[PDF Service] BSrE credentials are not configured')
+      return { success: false, error: 'BSRE_NOT_CONFIGURED' }
     }
 
     // ─── Step 9: Upload to Supabase Storage ──────────────────────────────

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { isStoragePdfPath, tryDownloadPdfByFileNameFromStorage, tryReadLocalPdf } from '../../../../../lib/certificate-pdf-storage'
 import { authorizeCertificateAccess } from '../../../../../lib/certificate-access'
+import { clientSafeMessage } from '../../../../../lib/api-error'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -128,8 +129,7 @@ export async function GET(
     console.error('[PDF View] Error:', error)
     return NextResponse.json({ 
       error: 'Failed to retrieve PDF',
-      details: error.message 
+      details: clientSafeMessage(error, 'PDF tidak dapat diambil.')
     }, { status: 500 })
   }
 }
-

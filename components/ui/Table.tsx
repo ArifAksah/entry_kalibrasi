@@ -9,26 +9,35 @@ type TableProps = {
   tableClassName?: string
 }
 
-const Table: React.FC<TableProps> = ({ headers, children, columnClasses = [], tableClassName }) => {
+const Table: React.FC<TableProps> = ({
+  headers,
+  children,
+  columnClasses = [],
+  tableClassName,
+}) => {
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden border border-gray-200">
+    <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-slate-200">
       <div className="overflow-x-auto">
-        <table className={tableClassName ? tableClassName : 'min-w-full table-fixed divide-y divide-gray-200'}>
-          <thead className="bg-gray-50">
+        <table
+          className={
+            tableClassName
+              ? tableClassName
+              : 'min-w-full table-fixed divide-y divide-slate-200 text-sm'
+          }
+        >
+          <thead className="bg-slate-50">
             <tr>
-              {headers.map((h, idx)=> (
+              {headers.map((h, idx) => (
                 <th
                   key={idx}
-                  className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${columnClasses[idx] || ''}`}
+                  className={`px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 whitespace-nowrap ${columnClasses[idx] || ''}`}
                 >
                   {h}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {children}
-          </tbody>
+          <tbody className="bg-white divide-y divide-slate-100">{children}</tbody>
         </table>
       </div>
     </div>
@@ -36,14 +45,3 @@ const Table: React.FC<TableProps> = ({ headers, children, columnClasses = [], ta
 }
 
 export default Table
-
-
-
-
-
-
-
-
-
-
-

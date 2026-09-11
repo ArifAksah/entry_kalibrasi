@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "../../../lib/supabase";
 import { InstrumentNameInsert } from "../../../lib/supabase";
+import { clientSafeMessage } from '../../../lib/api-error'
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
     }
 
     // Fetch instrument_code data separately to avoid JOIN issues
@@ -64,7 +65,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("Error in GET /api/instrument-names:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to fetch instrument names" },
+      { error: clientSafeMessage(error, "Failed to fetch instrument names") },
       { status: 500 },
     );
   }
@@ -92,7 +93,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
     }
 
     // Map 'names' to 'name' for frontend compatibility

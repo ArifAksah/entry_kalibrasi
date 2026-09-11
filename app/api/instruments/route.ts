@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../lib/supabase";
+import { clientSafeMessage } from "../../../lib/api-error";
 
 // Menggunakan shared supabaseAdmin dari lib/supabase agar memiliki fallback env dan konfigurasi konsisten
 
@@ -186,7 +187,7 @@ export async function GET(request: NextRequest) {
       ) {
         return NextResponse.json(
           {
-            error: "Database relation error: Station data could not be joined.",
+            error: "Data instrumen tidak dapat dimuat.",
           },
           { status: 500 },
         );
@@ -206,7 +207,7 @@ export async function GET(request: NextRequest) {
       }
       // Handle error RLS atau lainnya
       return NextResponse.json(
-        { error: `Failed to fetch instruments: ${error.message}` },
+        { error: clientSafeMessage(error, "Failed to fetch instruments") },
         { status: 500 },
       );
     }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateRequest, getUserRole } from '@/lib/certificate-access'
+import { clientSafeMessage } from '@/lib/api-error'
 
 /**
  * GET /api/admin/templates/preview-from-service?template_id={id}&section={section}
@@ -114,7 +115,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: error.message || 'Gagal mengambil preview' },
+      { error: clientSafeMessage(error, 'Gagal mengambil preview') },
       { status: 500 }
     )
   }

@@ -232,6 +232,7 @@ export async function POST(request: NextRequest) {
       const mockPassphrase = process.env.BSRE_MOCK_PASSPHRASE || 'demo123'
       if ((userPassphrase || '') !== mockPassphrase) {
         await logAction(request, user.id, 'bsre_sign', 'error', { documentId, reason: 'invalid_passphrase_mock' })
+        signingLocks.delete(lockKey)
         return NextResponse.json({ error: 'Passphrase anda salah' }, { status: 400 })
       }
       bsreData = {
@@ -264,11 +265,44 @@ export async function POST(request: NextRequest) {
       // AWAIT PDF generation and signing
       const pdfResult = await generateAndSaveCertificatePDF(cert.id, user.id, userPassphrase, true)
 
-      if (!pdfResult.success) {
+      if (!pdfResult.success || pdfResult.signed !== true) {
         // Revert issue_date on failure
         await supabaseAdmin.from('certificate').update({ issue_date: null }).eq('id', cert.id)
         signingLocks.delete(lockKey) // Release lock on error
-        console.error(`[sign-level-3] ❌ PDF signing failed for certificate ${cert.id}:`, pdfResult.error)
+        console.error(
+          `[sign-level-3] ❌ PDF signing failed for certificate ${cert.id}:`,
+          pdfResult.error || 'service returned an unsigned PDF',
+        )
+
+        if (pdfResult.error === 'BSRE_NOT_CONFIGURED') {
+          await logAction(request, user.id, 'bsre_sign', 'error', {
+            documentId,
+            attemptId,
+            reason: 'bsre_not_configured',
+          })
+          return NextResponse.json(
+            {
+              error: 'Layanan TTE belum dikonfigurasi pada server. Hubungi administrator.',
+              code: 'BSRE_NOT_CONFIGURED',
+            },
+            { status: 503 },
+          )
+        }
+
+        if (pdfResult.success && pdfResult.signed !== true) {
+          await logAction(request, user.id, 'bsre_sign', 'error', {
+            documentId,
+            attemptId,
+            reason: 'unsigned_pdf_rejected',
+          })
+          return NextResponse.json(
+            {
+              error: 'BSrE tidak mengembalikan PDF bertanda tangan. Silakan coba lagi.',
+              code: 'BSRE_UNSIGNED_PDF',
+            },
+            { status: 502 },
+          )
+        }
 
         // ── Cek NIK TERLEBIH DAHULU (sebelum cek passphrase) ──────────────────
         // Karena BSrE juga mengembalikan 401/400 saat NIK tidak valid,
@@ -374,7 +408,10 @@ export async function POST(request: NextRequest) {
           reason: 'pdf_signing_failed',
           error: pdfResult.error
         })
-        return NextResponse.json({ error: pdfResult.error || 'Gagal menandatangani PDF' }, { status: 500 })
+        return NextResponse.json(
+          { error: 'Dokumen gagal ditandatangani. Silakan coba lagi atau hubungi administrator.' },
+          { status: 500 },
+        )
       }
 
       console.log(`[sign-level-3] ✅ PDF generated and signed successfully`)
@@ -480,6 +517,7 @@ export async function POST(request: NextRequest) {
     // Return respon lengkap
     return NextResponse.json({
       success: true,
+      signed: true,
       message: 'Dokumen berhasil ditandatangani',
       documentId: documentId,
       waktu: durationStr

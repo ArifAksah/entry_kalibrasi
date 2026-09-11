@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { buildUutTrendSeries, type UutTrendCertificate, type UutTrendSeries } from '../../../../lib/dashboard/uut-trend'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -114,17 +115,12 @@ type ExpiringInstrumentItem = {
   certificate_id?: number | null
 }
 
-type TrendPoint = {
-  year: number
-  correction: number | null
-  uncertainty: number | null
-}
-
-type TrendSeries = {
-  instrument_id: number
-  instrument_name: string
-  instrument_code: string
-  points: TrendPoint[]
+type ActivityItem = {
+  id: number
+  type: 'certificate' | 'calibration' | 'verification'
+  description: string
+  timestamp: string
+  link: string
 }
 
 type UserStationDashboard = {
@@ -135,7 +131,11 @@ type UserStationDashboard = {
   pendingCalibration: number
   activeInstruments: number
   expiringInstruments: ExpiringInstrumentItem[]
-  trendSeries: TrendSeries[]
+  trendSeries: UutTrendSeries[]
+  recentActivities: ActivityItem[]
+  stationAddress?: string
+  stationRegion?: string
+  stationWmoId?: string
 }
 
 type VerificationRow = {
@@ -263,6 +263,16 @@ async function getCertificates() {
   return (data || []) as CertificateRow[]
 }
 
+async function getCertificateTrendRows(certificateIds: number[]) {
+  if (certificateIds.length === 0) return [] as UutTrendCertificate[]
+  const { data, error } = await supabaseAdmin
+    .from('certificate')
+    .select('id, no_certificate, instrument, issue_date, pdf_generated_at, created_at, results')
+    .in('id', certificateIds)
+  if (error) throw new Error(error.message)
+  return (data || []) as UutTrendCertificate[]
+}
+
 async function getInstruments() {
   const { data, error } = await supabaseAdmin
     .from('instrument')
@@ -275,13 +285,13 @@ async function getInstruments() {
 async function getStationDashboardInstruments(stationIds: number[]) {
   if (stationIds.length === 0) return [] as StationDashboardInstrument[]
 
-  // Try with instrument_names_id first, fallback without it if column doesn't exist
+  // Schema aktif memakai kolom `names` sebagai FK ke instrument_names.
   let instrumentData: any[] = []
   let hasInstrumentNamesId = true
   
   const { data: dataWithNamesId, error: errorWithNamesId } = await supabaseAdmin
     .from('instrument')
-    .select('id, manufacturer, type, serial_number, station_id, instrument_names_id')
+    .select('id, manufacturer, type, serial_number, station_id, names')
     .in('station_id', stationIds)
     .order('manufacturer', { ascending: true })
 
@@ -307,8 +317,8 @@ async function getStationDashboardInstruments(stationIds: number[]) {
   const instrumentIds = instruments.map((instrument: any) => Number(instrument.id)).filter((id: number) => Number.isFinite(id))
   const instrumentNameIds = Array.from(new Set(
     instruments
-      .filter((instrument: any) => hasInstrumentNamesId && instrument.instrument_names_id != null)
-      .map((instrument: any) => Number(instrument.instrument_names_id))
+      .filter((instrument: any) => hasInstrumentNamesId && instrument.names != null)
+      .map((instrument: any) => Number(instrument.names))
       .filter((id: number) => Number.isFinite(id))
   ))
 
@@ -352,7 +362,7 @@ async function getStationDashboardInstruments(stationIds: number[]) {
   })
 
     return instruments.map((instrument: any) => {
-    const instrumentName = hasInstrumentNamesId && instrument.instrument_names_id ? namesById.get(Number(instrument.instrument_names_id)) : null
+    const instrumentName = hasInstrumentNamesId && instrument.names ? namesById.get(Number(instrument.names)) : null
     // Create a meaningful name from available fields
     const instrumentNameFromFields = [
       instrument.manufacturer,
@@ -449,77 +459,6 @@ const buildStationSummaries = (
   })
 }
 
-const coerceNumber = (item: any): number | null => {
-  if (typeof item === 'number') return Number.isFinite(item) ? item : null
-  if (typeof item === 'string' && item.trim() !== '' && !Number.isNaN(Number(item))) return Number(item)
-  return null
-}
-
-// Extract numeric values from the many formats correction_std / u95_std can be stored in:
-// - primitive array: [0.01, 0.02]
-// - array of objects: [{ correction|koreksi|u95|u95_std|value: ... }]
-// - plain object: { koreksi: [...], u95: [...], setpoint: [...] }
-// - JSON string of any of the above, or a comma-separated / single numeric string
-// `metric` decides which keys to read when the data is keyed by field.
-const parseNumericArray = (value: any, metric: 'correction' | 'uncertainty' = 'correction'): number[] => {
-  if (value === null || value === undefined) return []
-
-  const keys = metric === 'uncertainty'
-    ? ['u95', 'u95_std', 'uncertainty', 'value']
-    : ['correction', 'koreksi', 'value']
-
-  // Strings: try single number, then JSON, then comma-separated values
-  if (typeof value === 'string') {
-    const trimmed = value.trim()
-    if (trimmed === '') return []
-    const single = coerceNumber(trimmed)
-    if (single !== null) return [single]
-    try {
-      return parseNumericArray(JSON.parse(trimmed), metric)
-    } catch {
-      return trimmed
-        .split(',')
-        .map((part) => coerceNumber(part))
-        .filter((n): n is number => n !== null)
-    }
-  }
-
-  // Single number
-  const single = coerceNumber(value)
-  if (single !== null) return [single]
-
-  // Array (primitives or objects)
-  if (Array.isArray(value)) {
-    return value.flatMap((item) => {
-      const n = coerceNumber(item)
-      if (n !== null) return [n]
-      if (item && typeof item === 'object') {
-        for (const key of keys) {
-          const c = coerceNumber(item[key])
-          if (c !== null) return [c]
-        }
-      }
-      return []
-    })
-  }
-
-  // Plain object keyed by field: { koreksi: [...], u95: [...] }
-  if (typeof value === 'object') {
-    for (const key of keys) {
-      if (Array.isArray(value[key])) return parseNumericArray(value[key], metric)
-      const c = coerceNumber(value[key])
-      if (c !== null) return [c]
-    }
-  }
-
-  return []
-}
-
-const average = (values: number[]) => {
-  if (values.length === 0) return null
-  return values.reduce((sum, value) => sum + value, 0) / values.length
-}
-
 const addOneYear = (dateString: string) => {
   const date = new Date(dateString)
   if (Number.isNaN(date.getTime())) return null
@@ -564,7 +503,8 @@ const buildUserStationDashboard = (
   instruments: StationDashboardInstrument[],
   standards: CertificateStandardRow[],
   certificates: CertificateRow[],
-  verifications: VerificationRow[]
+  verifications: VerificationRow[],
+  trendCertificates: UutTrendCertificate[]
 ): UserStationDashboard => {
   const now = new Date()
   const warningDays = 30
@@ -645,7 +585,6 @@ const buildUserStationDashboard = (
       if (statusDiff !== 0) return statusDiff
       return (a.daysRemaining ?? Number.MAX_SAFE_INTEGER) - (b.daysRemaining ?? Number.MAX_SAFE_INTEGER)
     })
-    .slice(0, 5)
     .map((item) => ({
       id: item.instrument.id,
       instrument_name: item.instrument.name,
@@ -661,52 +600,25 @@ const buildUserStationDashboard = (
             days_remaining: item.daysRemaining
           }))
 
-        const trendSeries = latestForInstrument
-          .filter((item) => item.relatedStandards.length > 0)
-          .slice(0, 8)
-          .map((item) => {
-            const byYear = new Map<number, CertificateStandardRow[]>()
-            item.relatedStandards.forEach((standard) => {
-              if (!standard.calibration_date) return
-              const year = new Date(standard.calibration_date).getFullYear()
-              if (!Number.isFinite(year)) return
-              const list = byYear.get(year) || []
-              list.push(standard)
-              byYear.set(year, list)
-            })
+  const trendSeries = buildUutTrendSeries(trendCertificates, instruments)
 
-            const points = Array.from(byYear.entries())
-              .sort(([a], [b]) => a - b)
-              .map(([year, rows]) => {
-                const corrections = rows.flatMap((row) => {
-                  const parsed = parseNumericArray(row.correction_std, 'correction')
-                  if (parsed.length > 0) return parsed
-                  // correction values may live inside setpoint-keyed objects
-                  return parseNumericArray(row.setpoint, 'correction')
-                })
-                const uncertainties = rows.flatMap((row) => {
-                  const parsed = parseNumericArray(row.u95_std, 'uncertainty')
-                  if (parsed.length > 0) return parsed
-                  // uncertainty may be nested inside the correction_std object format
-                  const fromCorrection = parseNumericArray(row.correction_std, 'uncertainty')
-                  if (fromCorrection.length > 0) return fromCorrection
-                  return typeof row.u95_general === 'number' ? [row.u95_general] : []
-                })
-                return {
-                  year,
-                  correction: average(corrections),
-                  uncertainty: average(uncertainties)
-                }
-              })
-
-            return {
-              instrument_id: item.instrument.id,
-              instrument_name: item.instrument.name,
-              instrument_code: item.instrument.code,
-              points
-            }
-          })
-          .filter((series) => series.points.length > 0)
+  const recentActivities: ActivityItem[] = certificates
+    .filter(certificate => certificate.status === 'completed' || certificate.status === 'verified' || certificate.status === 'sent')
+    .map(certificate => {
+      const completed = certificate.status === 'completed' || certificate.status === 'verified'
+      const timestamp = certificate.pdf_generated_at || certificate.issue_date || certificate.created_at
+      return {
+        id: certificate.id,
+        type: completed ? 'calibration' as const : 'verification' as const,
+        description: completed
+          ? `${certificate.no_certificate || `Sertifikat #${certificate.id}`} selesai dikalibrasi`
+          : `${certificate.no_certificate || `Sertifikat #${certificate.id}`} sedang diverifikasi`,
+        timestamp,
+        link: `/certificates/${certificate.id}/view`,
+      }
+    })
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 6)
 
   return {
     stationName: assignedStations.length === 1
@@ -720,7 +632,11 @@ const buildUserStationDashboard = (
     pendingCalibration: latestForInstrument.filter((item) => item.status === 'missing' || item.status === 'expired' || item.status === 'warning').length,
     activeInstruments: instruments.length,
     expiringInstruments,
-    trendSeries
+    trendSeries,
+    recentActivities,
+    stationAddress: assignedStations.length === 1 ? assignedStations[0]?.address || undefined : undefined,
+    stationRegion: assignedStations.length === 1 ? assignedStations[0]?.region || undefined : undefined,
+    stationWmoId: assignedStations.length === 1 ? String(assignedStations[0]?.station_wmo_id || '') || undefined : undefined,
   }
 }
 
@@ -978,8 +894,16 @@ export async function GET(request: NextRequest) {
       const stationSummaries = role === 'user_station'
         ? buildStationSummaries(assignedStations, instruments, relevantCertificates)
         : []
+      const stationCertificateIds = role === 'user_station'
+        ? relevantCertificates
+            .filter(certificate => certificate.status === 'completed' || certificate.status === 'verified')
+            .map(certificate => certificate.id)
+        : []
+      const trendCertificates = role === 'user_station'
+        ? await getCertificateTrendRows(stationCertificateIds)
+        : []
       const userStationDashboard = role === 'user_station'
-        ? buildUserStationDashboard(assignedStations, stationDashboardInstruments, stationDashboardStandards, certificates, verifications)
+        ? buildUserStationDashboard(assignedStations, stationDashboardInstruments, stationDashboardStandards, relevantCertificates, verifications, trendCertificates)
         : null
       const assignedInstrumentCount = userStationDashboard?.totalInstruments || 0
 

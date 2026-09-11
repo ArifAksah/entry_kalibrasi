@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { parseCalculationSnapshots } from '../../../lib/calculation-snapshot'
+import { clientSafeMessage } from '../../../lib/api-error'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -119,7 +120,7 @@ export async function PATCH(req: NextRequest) {
         return NextResponse.json({ message: 'Calculation snapshots saved', updatedCount })
     } catch (error: any) {
         console.error('[raw-data] Error saving calculation snapshots:', error)
-        return NextResponse.json({ error: error?.message || 'Failed to save calculation snapshots' }, { status: 500 })
+        return NextResponse.json({ error: clientSafeMessage(error) || 'Failed to save calculation snapshots' }, { status: 500 })
     }
 }
 
@@ -357,6 +358,6 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ data: allRows })
     } catch (error: any) {
         console.error('Error fetching raw data:', error)
-        return NextResponse.json({ error: error.message }, { status: 500 })
+        return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     }
 }

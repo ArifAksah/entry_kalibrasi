@@ -8,6 +8,7 @@ import {
 } from '../../../../lib/validators/certificate-results-normalize'
 import { authorizeCertificateAccess, canUserAccessCertificate, getUserRole } from '../../../../lib/certificate-access'
 import { verifyPdfRenderToken } from '../../../../lib/pdf-render-token'
+import { clientSafeMessage } from '../../../../lib/api-error'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -295,7 +296,7 @@ export async function PUT(
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
 
     const hasRejectionHistory = Array.isArray((currentCertificate as any)?.rejection_history) && (currentCertificate as any).rejection_history.length > 0
     const shouldDeferVerificationReset = (currentCertificate as any)?.status === 'draft' && hasRejectionHistory
@@ -471,7 +472,7 @@ export async function DELETE(
       .delete()
       .eq('id', id)
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
 
     // Create log entry for certificate deletion
     try {

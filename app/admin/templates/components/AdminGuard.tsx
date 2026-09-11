@@ -4,8 +4,13 @@ import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePermissions } from '@/hooks/usePermissions'
+import { Spinner } from '../../../../components/ui/Loading'
 
-export default function AdminGuard({ children }: { children: React.ReactNode }) {
+export default function AdminGuard({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   const { user, loading: authLoading } = useAuth()
   const { role, loading: roleLoading } = usePermissions()
   const router = useRouter()
@@ -30,7 +35,7 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
   if (authLoading || roleLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <Spinner size="lg" tone="blue" className="border-blue-600" />
       </div>
     )
   }

@@ -35,6 +35,53 @@ export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey || sup
   }
 })
 
+// ─── Browser: auto-attach Bearer token to same-origin /api/* requests ──────
+// middleware.ts requires a valid session token on every protected /api route
+// (pentest fixes C1/C2/C3/H4). Instead of touching hundreds of call sites we
+// patch window.fetch once, here, so any code that reaches the app bundle
+// (AuthContext/layout) always gets the header automatically. supabase-js keeps
+// talking to the Supabase URL (different origin) and is unaffected.
+if (typeof window !== 'undefined') {
+  const w = window as any
+  const origFetch: typeof window.fetch | undefined =
+    w.fetch ? (w.fetch as any).__simkalOriginal ?? w.fetch.bind(w) : undefined
+
+  if (origFetch && !(w.fetch as any).__simkalPatched) {
+    const patched = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      try {
+        const url =
+          typeof input === 'string' ? input
+          : input instanceof URL ? input.href
+          : (input as Request)?.url
+
+        if (typeof url === 'string') {
+          const sameOriginApi =
+            url.startsWith('/api/') ||
+            (url.startsWith(window.location.origin) && new URL(url).pathname.startsWith('/api'))
+          if (sameOriginApi) {
+            const { data } = await supabase.auth.getSession()
+            const token = data?.session?.access_token
+            if (token) {
+              const headers = new Headers(
+                init?.headers
+                ?? (!(typeof input === 'string' || input instanceof URL) ? (input as Request).headers : undefined)
+              )
+              if (!headers.has('authorization')) headers.set('authorization', `Bearer ${token}`)
+              init = { ...(init || {}), headers }
+            }
+          }
+        }
+      } catch {
+        // non-fatal: fall through to the original fetch
+      }
+      return origFetch(input as any, init)
+    }
+    ;(patched as any).__simkalPatched = true
+    ;(patched as any).__simkalOriginal = origFetch
+    w.fetch = patched
+  }
+}
+
 // Database types
 export interface SensorName {
   id: string

@@ -4,416 +4,546 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useAlert } from '../../../hooks/useAlert'
 import Alert from '../../../components/ui/Alert'
+import { Spinner } from '../../../components/ui/Loading'
 
 interface NameItem {
-    id: number
-    name: string
-    code_alat?: string
-    created_at: string
+  id: number
+  name: string
+  code_alat?: string
+  created_at: string
 }
 
 type ActiveTab = 'instrument_names' | 'sensor_names'
 
 const MasterNamesCRUD: React.FC = () => {
-    usePermissions()
-    const { alert, showSuccess, showError, hideAlert } = useAlert()
+  usePermissions()
+  const { alert, showSuccess, showError, hideAlert } = useAlert()
 
-    const [activeTab, setActiveTab] = useState<ActiveTab>('instrument_names')
-    const [items, setItems] = useState<NameItem[]>([])
-    const [loading, setLoading] = useState(false)
-    const [isModalOpen, setIsModalOpen] = useState(false)
-    const [editingItem, setEditingItem] = useState<NameItem | null>(null)
-    const [nameInput, setNameInput] = useState('')
-    const [codeInput, setCodeInput] = useState('')
-    const [isSubmitting, setIsSubmitting] = useState(false)
-    const [search, setSearch] = useState('')
-    const [confirmDelete, setConfirmDelete] = useState<NameItem | null>(null)
-    const pageSize = 10
-    const [currentPage, setCurrentPage] = useState(1)
+  const [activeTab, setActiveTab] = useState<ActiveTab>('instrument_names')
+  const [items, setItems] = useState<NameItem[]>([])
+  const [loading, setLoading] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState<NameItem | null>(null)
+  const [nameInput, setNameInput] = useState('')
+  const [codeInput, setCodeInput] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [search, setSearch] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState<NameItem | null>(null)
+  const pageSize = 10
+  const [currentPage, setCurrentPage] = useState(1)
 
-    const apiPath = activeTab === 'instrument_names' ? '/api/instrument-names' : '/api/sensor-names'
-    const label = activeTab === 'instrument_names' ? 'Nama Instrumen' : 'Nama Sensor'
+  const apiPath =
+    activeTab === 'instrument_names'
+      ? '/api/instrument-names'
+      : '/api/sensor-names'
+  const label =
+    activeTab === 'instrument_names' ? 'Nama Instrumen' : 'Nama Sensor'
 
-    const fetchItems = async () => {
-        setLoading(true)
-        try {
-            const res = await fetch(apiPath)
-            if (!res.ok) throw new Error('Gagal mengambil data')
-            const json = await res.json()
-            // instrument-names returns array directly, sensor-names returns { data: [...] }
-            const data = Array.isArray(json) ? json : (json?.data ?? [])
-            setItems(data)
-        } catch (e: any) {
-            showError(e.message || 'Gagal memuat data')
-        } finally {
-            setLoading(false)
+  const fetchItems = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(apiPath)
+      if (!res.ok) throw new Error('Gagal mengambil data')
+      const json = await res.json()
+      // instrument-names returns array directly, sensor-names returns { data: [...] }
+      const data = Array.isArray(json) ? json : (json?.data ?? [])
+      setItems(data)
+    } catch (e: any) {
+      showError(e.message || 'Gagal memuat data')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchItems()
+  }, [activeTab])
+
+  const openModal = (item?: NameItem) => {
+    setEditingItem(item || null)
+    setNameInput(item?.name || '')
+    setCodeInput(item?.code_alat || '')
+    setIsModalOpen(true)
+  }
+
+  const closeModal = () => {
+    setIsModalOpen(false)
+    setEditingItem(null)
+    setNameInput('')
+    setCodeInput('')
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!nameInput.trim()) return
+    setIsSubmitting(true)
+    try {
+      const payload: any = { name: nameInput.trim() }
+      if (activeTab === 'instrument_names') {
+        payload.code_alat = codeInput.trim() || null
+      }
+
+      if (editingItem) {
+        // Update - use [id] endpoint
+        const idPath =
+          activeTab === 'instrument_names'
+            ? `/api/instrument-names/${editingItem.id}`
+            : `/api/sensor-names/${editingItem.id}`
+        const res = await fetch(idPath, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.error || 'Gagal mengupdate data')
         }
-    }
-
-    useEffect(() => {
-        fetchItems()
-    }, [activeTab])
-
-    const openModal = (item?: NameItem) => {
-        setEditingItem(item || null)
-        setNameInput(item?.name || '')
-        setCodeInput(item?.code_alat || '')
-        setIsModalOpen(true)
-    }
-
-    const closeModal = () => {
-        setIsModalOpen(false)
-        setEditingItem(null)
-        setNameInput('')
-        setCodeInput('')
-    }
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault()
-        if (!nameInput.trim()) return
-        setIsSubmitting(true)
-        try {
-            const payload: any = { name: nameInput.trim() }
-            if (activeTab === 'instrument_names') {
-                payload.code_alat = codeInput.trim() || null
-            }
-
-            if (editingItem) {
-                // Update - use [id] endpoint
-                const idPath = activeTab === 'instrument_names'
-                    ? `/api/instrument-names/${editingItem.id}`
-                    : `/api/sensor-names/${editingItem.id}`
-                const res = await fetch(idPath, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                })
-                if (!res.ok) {
-                    const err = await res.json()
-                    throw new Error(err.error || 'Gagal mengupdate data')
-                }
-                showSuccess(`${label} berhasil diupdate`)
-            } else {
-                // Create
-                const res = await fetch(apiPath, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                })
-                if (!res.ok) {
-                    const err = await res.json()
-                    throw new Error(err.error || 'Gagal menyimpan data')
-                }
-                showSuccess(`${label} berhasil ditambahkan`)
-            }
-            closeModal()
-            fetchItems()
-        } catch (e: any) {
-            showError(e.message || 'Terjadi kesalahan')
-        } finally {
-            setIsSubmitting(false)
+        showSuccess(`${label} berhasil diupdate`)
+      } else {
+        // Create
+        const res = await fetch(apiPath, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.error || 'Gagal menyimpan data')
         }
+        showSuccess(`${label} berhasil ditambahkan`)
+      }
+      closeModal()
+      fetchItems()
+    } catch (e: any) {
+      showError(e.message || 'Terjadi kesalahan')
+    } finally {
+      setIsSubmitting(false)
     }
+  }
 
-    const handleDelete = (item: NameItem) => {
-        setConfirmDelete(item)
+  const handleDelete = (item: NameItem) => {
+    setConfirmDelete(item)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!confirmDelete) return
+    const item = confirmDelete
+    try {
+      const idPath =
+        activeTab === 'instrument_names'
+          ? `/api/instrument-names/${item.id}`
+          : `/api/sensor-names/${item.id}`
+      const res = await fetch(idPath, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Gagal menghapus data')
+      }
+      showSuccess(`${label} berhasil dihapus`)
+      setConfirmDelete(null)
+      fetchItems()
+    } catch (e: any) {
+      showError(e.message || 'Gagal menghapus data')
     }
+  }
 
-    const handleConfirmDelete = async () => {
-        if (!confirmDelete) return
-        const item = confirmDelete
-        try {
-            const idPath = activeTab === 'instrument_names'
-                ? `/api/instrument-names/${item.id}`
-                : `/api/sensor-names/${item.id}`
-            const res = await fetch(idPath, { method: 'DELETE' })
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}))
-                throw new Error(err.error || 'Gagal menghapus data')
-            }
-            showSuccess(`${label} berhasil dihapus`)
-            setConfirmDelete(null)
-            fetchItems()
-        } catch (e: any) {
-            showError(e.message || 'Gagal menghapus data')
-        }
-    }
+  const filtered = useMemo(
+    () =>
+      items.filter((i) => i.name.toLowerCase().includes(search.toLowerCase())),
+    [items, search],
+  )
 
-    const filtered = useMemo(() => items.filter(i =>
-        i.name.toLowerCase().includes(search.toLowerCase())
-    ), [items, search])
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filtered.length / pageSize)),
+    [filtered.length],
+  )
 
-    const totalPages = useMemo(
-        () => Math.max(1, Math.ceil(filtered.length / pageSize)),
-        [filtered.length]
-    )
+  const pagedItems = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return filtered.slice(start, start + pageSize)
+  }, [filtered, currentPage])
 
-    const pagedItems = useMemo(() => {
-        const start = (currentPage - 1) * pageSize
-        return filtered.slice(start, start + pageSize)
-    }, [filtered, currentPage])
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [activeTab, search])
 
-    useEffect(() => {
-        setCurrentPage(1)
-    }, [activeTab, search])
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages)
+  }, [currentPage, totalPages])
 
-    useEffect(() => {
-        if (currentPage > totalPages) setCurrentPage(totalPages)
-    }, [currentPage, totalPages])
+  return (
+    <div className="space-y-6">
+      {alert.show && (
+        <Alert
+          type={alert.type}
+          message={alert.message}
+          onClose={hideAlert}
+          autoHide={alert.autoHide}
+          duration={alert.duration}
+        />
+      )}
 
-    return (
-        <div className="space-y-6">
-            {alert.show && (
-                <Alert type={alert.type} message={alert.message} onClose={hideAlert} autoHide={alert.autoHide} duration={alert.duration} />
-            )}
+      {/* Tabs */}
+      {/* Tab navigation dihilangkan sesuai permintaan */}
 
-            {/* Tabs */}
-            {/* Tab navigation dihilangkan sesuai permintaan */}
-
-            {/* Toolbar */}
-            <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm">
-                <h2 className="text-xl font-bold text-gray-800">
-                    Master {label}
-                </h2>
-                <div className="flex items-center gap-3">
-                    <input
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        placeholder={`Cari ${label.toLowerCase()}...`}
-                        className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"
-                    />
-                    <button
-                        onClick={() => openModal()}
-                        className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-4 py-2 rounded-lg transition-all duration-200 shadow hover:shadow-md font-medium text-sm flex items-center gap-2"
-                    >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Tambah Baru
-                    </button>
-                </div>
-            </div>
-
-            {/* Table */}
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-                {loading ? (
-                    <div className="flex items-center justify-center py-16">
-                        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
-                        <span className="ml-3 text-gray-500">Memuat data...</span>
-                    </div>
-                ) : filtered.length === 0 ? (
-                    <div className="text-center py-16 text-gray-400">
-                        <svg className="w-12 h-12 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        <p className="font-medium">Belum ada data {label}</p>
-                        <p className="text-sm mt-1">Klik "Tambah Baru" untuk menambahkan data pertama.</p>
-                    </div>
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
-                                <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">No</th>
-                                    {activeTab === 'instrument_names' && (
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kode Alat</th>
-                                    )}
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tanggal Dibuat</th>
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                                {pagedItems.map((item, idx) => (
-                                    <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{((currentPage - 1) * pageSize) + idx + 1}</td>
-                                        {activeTab === 'instrument_names' && (
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <span className="text-sm text-gray-700">{item.code_alat || '-'}</span>
-                                            </td>
-                                        )}
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className="text-sm font-medium text-gray-900">{item.name}</span>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            {new Date(item.created_at).toLocaleDateString('id-ID', {
-                                                day: '2-digit', month: 'long', year: 'numeric'
-                                            })}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm space-x-2">
-                                            <button
-                                                onClick={() => openModal(item)}
-                                                className="inline-flex items-center px-3 py-1.5 border border-blue-300 text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors text-xs font-medium"
-                                            >
-                                                <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                                </svg>
-                                                Edit
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(item)}
-                                                className="inline-flex items-center px-3 py-1.5 border border-red-300 text-red-600 bg-red-50 rounded-md hover:bg-red-100 transition-colors text-xs font-medium"
-                                            >
-                                                <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                </svg>
-                                                Hapus
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-                {!loading && filtered.length > 0 && (
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-t border-gray-200 bg-white">
-                        <div className="text-sm text-gray-600">
-                            Showing <span className="font-medium">{((currentPage - 1) * pageSize) + 1}</span>
-                            {' '}to <span className="font-medium">{Math.min(currentPage * pageSize, filtered.length)}</span>
-                            {' '}of <span className="font-medium">{filtered.length}</span> entries
-                        </div>
-                        <div className="inline-flex items-center gap-2">
-                            <button
-                                className={`px-3 py-1 rounded border text-sm ${currentPage === 1 ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-                                disabled={currentPage === 1}
-                                onClick={() => setCurrentPage(1)}
-                            >
-                                First
-                            </button>
-                            <button
-                                className={`px-3 py-1 rounded border text-sm ${currentPage === 1 ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-                                disabled={currentPage === 1}
-                                onClick={() => setCurrentPage(page => Math.max(1, page - 1))}
-                            >
-                                Prev
-                            </button>
-                            <div className="text-sm text-gray-600 px-2">
-                                Page <span className="font-medium">{currentPage}</span> of <span className="font-medium">{totalPages}</span>
-                            </div>
-                            <button
-                                className={`px-3 py-1 rounded border text-sm ${currentPage === totalPages ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-                                disabled={currentPage === totalPages}
-                                onClick={() => setCurrentPage(page => Math.min(totalPages, page + 1))}
-                            >
-                                Next
-                            </button>
-                            <button
-                                className={`px-3 py-1 rounded border text-sm ${currentPage === totalPages ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-                                disabled={currentPage === totalPages}
-                                onClick={() => setCurrentPage(totalPages)}
-                            >
-                                Last
-                            </button>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Modal */}
-            {isModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-                        <div className="bg-gradient-to-r from-slate-800 to-blue-900 px-6 py-4 rounded-t-xl flex items-center justify-between">
-                            <h3 className="text-lg font-semibold text-white">
-                                {editingItem ? `Edit ${label}` : `Tambah ${label}`}
-                            </h3>
-                            <button onClick={closeModal} className="text-white hover:text-gray-300 transition-colors">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
-                        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Nama {label} <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={nameInput}
-                                    onChange={e => setNameInput(e.target.value)}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                    placeholder={`Masukkan ${label.toLowerCase()}...`}
-                                    required
-                                    autoFocus
-                                />
-                            </div>
-                            {activeTab === 'instrument_names' && (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Kode Alat
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={codeInput}
-                                        onChange={e => setCodeInput(e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        placeholder="Masukkan kode alat (opsional)..."
-                                    />
-                                </div>
-                            )}
-                            <div className="flex justify-end gap-3 pt-2">
-                                <button
-                                    type="button"
-                                    onClick={closeModal}
-                                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium"
-                                >
-                                    Batal
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={isSubmitting}
-                                    className="px-6 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-lg hover:from-blue-700 hover:to-cyan-700 text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-                                >
-                                    {isSubmitting && (
-                                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                                        </svg>
-                                    )}
-                                    {isSubmitting ? 'Menyimpan...' : 'Simpan'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {/* Confirm Delete Modal */}
-            {confirmDelete && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6">
-                        <div className="flex items-center space-x-3 mb-4">
-                            <div className="p-2 bg-yellow-50 rounded-full">
-                                <svg className="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                </svg>
-                            </div>
-                            <h3 className="text-lg font-semibold text-gray-900">Konfirmasi Hapus</h3>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-6">
-                            Hapus &quot;{confirmDelete.name}&quot;? Data yang sudah dihapus tidak bisa dipulihkan.
-                        </p>
-                        <div className="flex justify-end space-x-2">
-                            <button
-                                onClick={() => setConfirmDelete(null)}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
-                            >
-                                Batal
-                            </button>
-                            <button
-                                onClick={handleConfirmDelete}
-                                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg"
-                            >
-                                Hapus
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+      {/* Toolbar */}
+      <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm">
+        <h2 className="text-xl font-bold text-gray-800">Master {label}</h2>
+        <div className="flex items-center gap-3">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={`Cari ${label.toLowerCase()}...`}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"
+          />
+          <button
+            onClick={() => openModal()}
+            className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-4 py-2 rounded-lg transition-all duration-200 shadow hover:shadow-md font-medium text-sm flex items-center gap-2"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+            Tambah Baru
+          </button>
         </div>
-    )
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <Spinner size="lg" tone="blue" className="border-blue-600" />
+            <span className="ml-3 text-gray-500">Memuat data...</span>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-16 text-gray-400">
+            <svg
+              className="w-12 h-12 mx-auto mb-3"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+            <p className="font-medium">Belum ada data {label}</p>
+            <p className="text-sm mt-1">
+              Klik "Tambah Baru" untuk menambahkan data pertama.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
+                    No
+                  </th>{' '}
+                  {activeTab === 'instrument_names' && (
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Kode Alat
+                    </th>
+                  )}
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Nama
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Tanggal Dibuat
+                  </th>
+                  <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Aksi
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {pagedItems.map((item, idx) => (
+                  <tr
+                    key={item.id}
+                    className="hover:bg-gray-50 transition-colors"
+                  >
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                      {(currentPage - 1) * pageSize + idx + 1}
+                    </td>{' '}
+                    {activeTab === 'instrument_names' && (
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {' '}
+                        <span className="text-sm text-gray-700">
+                          {item.code_alat || '-'}
+                        </span>
+                      </td>
+                    )}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {' '}
+                      <span className="text-sm font-medium text-gray-900">
+                        {item.name}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                      {' '}
+                      {new Date(item.created_at).toLocaleDateString('id-ID', {
+                        day: '2-digit',
+                        month: 'long',
+                        year: 'numeric',
+                      })}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-right text-sm space-x-2">
+                      {' '}
+                      <button
+                        onClick={() => openModal(item)}
+                        className="inline-flex items-center px-3 py-1.5 border border-blue-300 text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors text-xs font-medium"
+                      >
+                        <svg
+                          className="w-3.5 h-3.5 mr-1"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                          />
+                        </svg>
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(item)}
+                        className="inline-flex items-center px-3 py-1.5 border border-red-300 text-red-600 bg-red-50 rounded-md hover:bg-red-100 transition-colors text-xs font-medium"
+                      >
+                        <svg
+                          className="w-3.5 h-3.5 mr-1"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          />
+                        </svg>
+                        Hapus
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {!loading && filtered.length > 0 && (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-t border-gray-200 bg-white">
+            <div className="text-sm text-gray-600">
+              Showing{' '}
+              <span className="font-medium">
+                {(currentPage - 1) * pageSize + 1}
+              </span>{' '}
+              to{' '}
+              <span className="font-medium">
+                {Math.min(currentPage * pageSize, filtered.length)}
+              </span>{' '}
+              of <span className="font-medium">{filtered.length}</span> entries
+            </div>
+            <div className="inline-flex items-center gap-2">
+              <button
+                className={`px-3 py-1 rounded border text-sm ${currentPage === 1 ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(1)}
+              >
+                First
+              </button>
+              <button
+                className={`px-3 py-1 rounded border text-sm ${currentPage === 1 ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+              >
+                Prev
+              </button>
+              <div className="text-sm text-gray-600 px-2">
+                Page <span className="font-medium">{currentPage}</span> of{' '}
+                <span className="font-medium">{totalPages}</span>
+              </div>
+              <button
+                className={`px-3 py-1 rounded border text-sm ${currentPage === totalPages ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                disabled={currentPage === totalPages}
+                onClick={() =>
+                  setCurrentPage((page) => Math.min(totalPages, page + 1))
+                }
+              >
+                Next
+              </button>
+              <button
+                className={`px-3 py-1 rounded border text-sm ${currentPage === totalPages ? 'text-gray-400 border-gray-200 cursor-not-allowed' : 'text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(totalPages)}
+              >
+                Last
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="bg-gradient-to-r from-slate-800 to-blue-900 px-6 py-4 rounded-t-xl flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white">
+                {editingItem ? `Edit ${label}` : `Tambah ${label}`}
+              </h3>
+              <button
+                onClick={closeModal}
+                className="text-white hover:text-gray-300 transition-colors"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Nama {label} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder={`Masukkan ${label.toLowerCase()}...`}
+                  required
+                  autoFocus
+                />
+              </div>
+              {activeTab === 'instrument_names' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Kode Alat
+                  </label>
+                  <input
+                    type="text"
+                    value={codeInput}
+                    onChange={(e) => setCodeInput(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Masukkan kode alat (opsional)..."
+                  />
+                </div>
+              )}
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-6 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-lg hover:from-blue-700 hover:to-cyan-700 text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isSubmitting && (
+                    <svg
+                      className="animate-spin h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                  )}
+                  {isSubmitting ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Delete Modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="p-2 bg-yellow-50 rounded-full">
+                <svg
+                  className="w-6 h-6 text-yellow-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Konfirmasi Hapus
+              </h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-6">
+              Hapus &quot;{confirmDelete.name}&quot;? Data yang sudah dihapus
+              tidak bisa dipulihkan.
+            </p>
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg"
+              >
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default MasterNamesCRUD

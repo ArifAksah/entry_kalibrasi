@@ -5,6 +5,7 @@ import { useInstrumentNames } from '../../../hooks/useInstrumentNames'
 import { InstrumentName, InstrumentNameInsert } from '../../../lib/supabase'
 import { useInstruments } from '../../../hooks/useInstruments'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
+import { Spinner } from '../../../components/ui/Loading'
 
 const InstrumentNamesCRUD: React.FC = () => {
   const {
@@ -18,8 +19,12 @@ const InstrumentNamesCRUD: React.FC = () => {
 
   const { instruments, refetch } = useInstruments()
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [editingInstrumentName, setEditingInstrumentName] = useState<InstrumentName | null>(null)
-  const [formData, setFormData] = useState<{ name: string; selectedInstrumentId: string | '' }>({ name: '', selectedInstrumentId: '' })
+  const [editingInstrumentName, setEditingInstrumentName] =
+    useState<InstrumentName | null>(null)
+  const [formData, setFormData] = useState<{
+    name: string
+    selectedInstrumentId: string | ''
+  }>({ name: '', selectedInstrumentId: '' })
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleOpenModal = (instrumentName?: InstrumentName) => {
@@ -46,7 +51,9 @@ const InstrumentNamesCRUD: React.FC = () => {
     setIsSubmitting(true)
     try {
       if (editingInstrumentName) {
-        await updateInstrumentName(editingInstrumentName.id, { name: formData.name })
+        await updateInstrumentName(editingInstrumentName.id, {
+          name: formData.name,
+        })
       } else {
         await addInstrumentName({ name: formData.name })
       }
@@ -59,7 +66,9 @@ const InstrumentNamesCRUD: React.FC = () => {
   }
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this instrument name?')) {
+    if (
+      window.confirm('Are you sure you want to delete this instrument name?')
+    ) {
       try {
         await deleteInstrumentName(id)
       } catch (error) {
@@ -68,12 +77,14 @@ const InstrumentNamesCRUD: React.FC = () => {
     }
   }
 
-  useEffect(() => { refetch() }, [refetch])
+  useEffect(() => {
+    refetch()
+  }, [refetch])
 
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <Spinner size="lg" tone="blue" className="border-blue-600" />
       </div>
     )
   }
@@ -81,7 +92,9 @@ const InstrumentNamesCRUD: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <Breadcrumb items={[{ label: 'Instruments', href: '#' }, { label: 'Names' }]} />
+        <Breadcrumb
+          items={[{ label: 'Instruments', href: '#' }, { label: 'Names' }]}
+        />
       </div>
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Instrument Names</h2>
@@ -104,13 +117,16 @@ const InstrumentNamesCRUD: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {' '}
                   Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {' '}
                   Created At
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {' '}
                   Actions
                 </th>
               </tr>
@@ -118,13 +134,16 @@ const InstrumentNamesCRUD: React.FC = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {instrumentNames.map((instrumentName) => (
                 <tr key={instrumentName.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {' '}
                     {instrumentName.name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                    {' '}
                     {new Date(instrumentName.created_at).toLocaleDateString()}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                  <td className="px-4 py-3 whitespace-nowrap text-sm font-medium space-x-2">
+                    {' '}
                     <button
                       onClick={() => handleOpenModal(instrumentName)}
                       className="text-blue-600 hover:text-blue-900 transition-colors duration-200 font-medium"
@@ -151,19 +170,23 @@ const InstrumentNamesCRUD: React.FC = () => {
           <div className="relative w-full max-w-2xl mx-auto">
             {/* Ambient Light Effect yang lebih kecil */}
             <div className="absolute -inset-2 bg-gradient-to-r from-blue-600/20 to-cyan-600/20 rounded-xl blur-lg -z-10"></div>
-            
+
             {/* Modal Container */}
             <div className="bg-white rounded-xl shadow-2xl relative overflow-hidden">
               {/* Header dengan gradient */}
               <div className="bg-gradient-to-r from-slate-800 to-blue-900 px-6 py-4">
                 <h3 className="text-xl font-semibold text-white">
-                  {editingInstrumentName ? 'Edit Instrument Name' : 'Add New Instrument Name'}
+                  {editingInstrumentName
+                    ? 'Edit Instrument Name'
+                    : 'Add New Instrument Name'}
                 </h3>
                 <p className="text-blue-200 text-sm mt-1">
-                  {editingInstrumentName ? 'Update existing instrument name' : 'Create new instrument name'}
+                  {editingInstrumentName
+                    ? 'Update existing instrument name'
+                    : 'Create new instrument name'}
                 </p>
               </div>
-              
+
               <form onSubmit={handleSubmit} className="p-6 space-y-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -172,18 +195,21 @@ const InstrumentNamesCRUD: React.FC = () => {
                   <select
                     value={formData.selectedInstrumentId}
                     onChange={(e) => {
-                      const selected = instruments.find(i => String(i.id) === e.target.value)
+                      const selected = instruments.find(
+                        (i) => String(i.id) === e.target.value,
+                      )
                       setFormData({
                         selectedInstrumentId: e.target.value,
-                        name: selected ? (selected.name || '') : formData.name
+                        name: selected ? selected.name || '' : formData.name,
                       })
                     }}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   >
                     <option value="">-- Pilih Instrument --</option>
-                    {instruments.map(i => (
+                    {instruments.map((i) => (
                       <option key={i.id} value={String(i.id)}>
-                        {i.name} — {i.manufacturer} / {i.type} / SN {i.serial_number}
+                        {i.name} — {i.manufacturer} / {i.type} / SN{' '}
+                        {i.serial_number}
                       </option>
                     ))}
                   </select>
@@ -193,14 +219,19 @@ const InstrumentNamesCRUD: React.FC = () => {
                 </div>
 
                 <div>
-                  <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label
+                    htmlFor="name"
+                    className="block text-sm font-medium text-gray-700 mb-2"
+                  >
                     Nama yang disimpan ke instrument_names
                   </label>
                   <input
                     type="text"
                     id="name"
                     value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     placeholder="Masukkan nama instrument untuk disimpan"
                     required
@@ -222,13 +253,32 @@ const InstrumentNamesCRUD: React.FC = () => {
                   >
                     {isSubmitting ? (
                       <span className="flex items-center">
-                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        <svg
+                          className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          ></circle>
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          ></path>
                         </svg>
                         Saving...
                       </span>
-                    ) : editingInstrumentName ? 'Update' : 'Create'}
+                    ) : editingInstrumentName ? (
+                      'Update'
+                    ) : (
+                      'Create'
+                    )}
                   </button>
                 </div>
               </form>
