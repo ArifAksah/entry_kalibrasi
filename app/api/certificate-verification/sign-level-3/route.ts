@@ -4,6 +4,7 @@ import { sendEmail } from '../../../../lib/brevo'
 import { buildSignerNotificationHtml } from '../../../../lib/email-templates'
 import { sendWhatsApp } from '../../../../lib/wa'
 import { buildCertificateCompletionMessage } from '../../../../lib/wa-messages'
+import { validateCertificateSigningReadiness } from '../../../../lib/certificate-signing-readiness'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -134,7 +135,7 @@ export async function POST(request: NextRequest) {
     // Load certificate and verify user is Authorized By (level 3)
     const { data: cert, error: certErr } = await supabaseAdmin
       .from('certificate')
-      .select('id, no_certificate, authorized_by, version, status')
+      .select('id, no_certificate, authorized_by, version, status, public_id, results')
       .eq('id', documentId)
       .single()
 
@@ -161,6 +162,18 @@ export async function POST(request: NextRequest) {
         actual: user.id
       })
       return NextResponse.json({ error: 'Anda bukan penandatangan yang berwenang' }, { status: 403 })
+    }
+
+    const readiness = validateCertificateSigningReadiness(cert)
+    if (!readiness.ready) {
+      await logAction(request, user.id, 'bsre_sign', 'error', {
+        documentId,
+        reason: readiness.code,
+      })
+      return NextResponse.json(
+        { error: readiness.message, code: readiness.code },
+        { status: 400 },
+      )
     }
 
     const effectiveVersion = (cert as any).version ?? 1

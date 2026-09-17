@@ -23,12 +23,7 @@ import {
   resultsToLegacyView,
 } from '../../lib/validators/certificate-results-render-adapter'
 import { calculateRoomCondition } from '../../lib/room-condition'
-import {
-  formatCalibrationReading,
-  formatCalibrationCorrection,
-  formatCalibrationUncertainty,
-} from '../../lib/result-display-format'
-import { DecimalPrecisionControl } from '../../components/ui/DecimalPrecisionControl'
+import { formatCalibrationResultValue } from '../../lib/result-display-format'
 import qcCacheService from '../../lib/qc-cache-service'
 import {
   isPyranometer,
@@ -441,7 +436,6 @@ const CertificatePreview: React.FC<{
 
   // Raw data for computing environmental conditions from imported Excel
   const [allRawData, setAllRawData] = useState<any[]>([])
-  const [decimalPrecision, setDecimalPrecision] = useState(4)
 
   const computeEnvCondition = useCallback(
     (type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
@@ -893,7 +887,7 @@ const CertificatePreview: React.FC<{
         {/* Station Address section removed to match print layout */}
 
         {/* Calibration Results: per-page like print - Halaman 2+ */}
-        {results && results.length > 0 && qrUrl && (
+        {results && results.length > 0 && (
           <>
             <div className="mb-8">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
@@ -907,15 +901,17 @@ const CertificatePreview: React.FC<{
                   >
                     {/* QR Code kecil di setiap halaman hasil kalibrasi - SELALU muncul di semua status */}
                     {/* Warna: Merah (#B91C1C) jika belum approved level 3, Hitam (#000000) jika sudah approved level 3 */}
-                    <div className="absolute bottom-0 left-1 z-50 bg-white border-2 border-gray-300 rounded-lg p-1 shadow-lg">
-                      <QRCodeBox
-                        key={`qr-footer-${isSigned ? 'signed' : 'unsigned'}-${index}`}
-                        value={qrUrl}
-                        size={70}
-                        logoSize={21}
-                        fgColor={isSigned ? '#000000' : '#B91C1C'}
-                      />
-                    </div>
+                    {qrUrl && (
+                      <div className="absolute bottom-0 left-1 z-50 bg-white border-2 border-gray-300 rounded-lg p-1 shadow-lg">
+                        <QRCodeBox
+                          key={`qr-footer-${isSigned ? 'signed' : 'unsigned'}-${index}`}
+                          value={qrUrl}
+                          size={70}
+                          logoSize={21}
+                          fgColor={isSigned ? '#000000' : '#B91C1C'}
+                        />
+                      </div>
+                    )}
                     {/* Header per halaman sensor */}
                     <header className="flex justify-between items-start text-xs mb-4">
                       <div className="w-[100px]">
@@ -1204,10 +1200,6 @@ const CertificatePreview: React.FC<{
                           <span className="italic font-normal">
                             Calibration Result
                           </span>
-                          <DecimalPrecisionControl
-                            value={decimalPrecision}
-                            onChange={setDecimalPrecision}
-                          />
                         </div>
                         {res.table.map((sec: any, sIdx: number) => {
                           const rows = Array.isArray(sec?.rows) ? sec.rows : []
@@ -1299,36 +1291,28 @@ const CertificatePreview: React.FC<{
                                         <td className="p-1 border border-black text-center">
                                           {isFirstEmptyRow
                                             ? unitDisplay
-                                            : row.key || '-'}
+                                            : formatCalibrationResultValue(
+                                                row.key,
+                                              )}
                                         </td>
                                         <td className="p-1 border border-black text-center">
                                           {isFirstEmptyRow
                                             ? isPyrano
                                               ? '-'
                                               : unitDisplay
-                                            : isPyrano
-                                              ? formatCalibrationCorrection(
-                                                  row.unit,
-                                                  true,
-                                                  decimalPrecision,
-                                                )
-                                              : formatCalibrationCorrection(
-                                                  row.unit,
-                                                  false,
-                                                  decimalPrecision,
-                                                )}
+                                            : formatCalibrationResultValue(
+                                                row.unit,
+                                              )}
                                         </td>
                                         <td className="p-1 border border-black text-center">
                                           {isFirstEmptyRow
                                             ? isPyrano
                                               ? '%'
                                               : unitDisplay
-                                            : formatCalibrationUncertainty(
+                                            : formatCalibrationResultValue(
                                                 row.value,
-                                                isPyrano,
-                                                decimalPrecision,
                                               )}
-                                        </td>{' '}
+                                        </td>
                                         {Array.isArray(row.extraValues) &&
                                           row.extraValues.map(
                                             (v: string, vi: number) => (
@@ -1338,7 +1322,9 @@ const CertificatePreview: React.FC<{
                                               >
                                                 {isFirstEmptyRow
                                                   ? unitDisplay
-                                                  : v || '-'}
+                                                  : formatCalibrationResultValue(
+                                                      v,
+                                                    )}
                                               </td>
                                             ),
                                           )}
@@ -1350,6 +1336,13 @@ const CertificatePreview: React.FC<{
                             </div>
                           )
                         })}
+                      </div>
+                    )}
+                    {(!Array.isArray(res?.table) ||
+                      res.table.length === 0) && (
+                      <div className="mt-6 w-[85%] mx-auto border border-dashed border-gray-300 px-4 py-3 text-center text-xs text-gray-500">
+                        Data tabel hasil kalibrasi belum tersedia untuk sensor
+                        ini.
                       </div>
                     )}
 

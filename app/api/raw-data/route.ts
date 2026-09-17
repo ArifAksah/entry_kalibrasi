@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { parseCalculationSnapshots } from '../../../lib/calculation-snapshot'
 import { clientSafeMessage } from '../../../lib/api-error'
+import { findInvalidStandardSelection } from '../../../lib/standard-certificate-filter'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -135,6 +136,33 @@ async function saveRawData(req: NextRequest, replaceExisting: boolean) {
                 error: 'Missing session_id or data',
                 details: { session_id, hasData: !!data }
             }, { status: 400 })
+        }
+
+        if (!Array.isArray(data)) {
+            return NextResponse.json({ error: 'Data must be an array' }, { status: 400 })
+        }
+
+        const certificateIds = Array.from(new Set(
+            data
+                .map((sheet: any) => Number(sheet?.standard_certificate_id))
+                .filter((id: number) => Number.isFinite(id) && id > 0)
+        ))
+
+        if (certificateIds.length > 0) {
+            const { data: certificateRows, error: certificateError } = await supabase
+                .from('certificate_standard')
+                .select('id, sensor_id')
+                .in('id', certificateIds)
+
+            if (certificateError) throw certificateError
+
+            const invalidSheet = findInvalidStandardSelection(data, certificateRows || [])
+
+            if (invalidSheet) {
+                return NextResponse.json({
+                    error: `Sertifikat standar tidak sesuai dengan sensor standar pada sheet ${invalidSheet.name || '-'}`,
+                }, { status: 400 })
+            }
         }
 
         const rowsToInsert: any[] = []

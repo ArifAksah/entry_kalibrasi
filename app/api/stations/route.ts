@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
         type_id: type_id || null,
         created_by: user.id
       })
-      .select()
+      .select('*, station_type(name)')
       .single()
 
     if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })

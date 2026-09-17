@@ -196,10 +196,11 @@ export interface Station {
   province: string
   regency: string
   type_id?: number | null // Foreign key to station_type table
+  station_type?: { name: string } | null
   created_by: string
 }
 
-export type StationInsert = Omit<Station, 'id' | 'created_at'>
+export type StationInsert = Omit<Station, 'id' | 'created_at' | 'station_type'>
 export type StationUpdate = Partial<StationInsert>
 
 export interface RefStation {

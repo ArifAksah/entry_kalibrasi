@@ -10,6 +10,9 @@
  * @see Requirements 8.2, 8.3
  */
 
+import { formatCalibrationResultValue } from '../result-display-format'
+import { resultsToLegacyView } from '../validators/certificate-results-render-adapter'
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 /**
@@ -86,6 +89,11 @@ function safeString(value: any): string {
   return String(value)
 }
 
+function formatResultValue(value: any): string {
+  if (value == null || String(value).trim() === '') return ''
+  return formatCalibrationResultValue(value)
+}
+
 // ─── Mapper ──────────────────────────────────────────────────────────────────
 
 /**
@@ -109,12 +117,26 @@ function safeString(value: any): string {
 export function mapCertificateToTemplateData(certificate: any): TemplateData {
   const instrument = certificate?.instrument || {}
   const station = certificate?.station || {}
-  const sensors = certificate?.sensors || []
+  const legacyResults = resultsToLegacyView(certificate?.results)
+  const relationSensors = certificate?.sensors || []
+  const sensors = legacyResults.length > 0
+    ? legacyResults.map((result, index) => ({
+        name: result.sensorDetails?.name || `Sensor ${index + 1}`,
+        results: result.table.flatMap((section) =>
+          section.rows.map((row) => ({
+            measurement_point: row.key,
+            reading: row.key,
+            correction: row.unit,
+            uncertainty: row.value,
+          })),
+        ),
+      }))
+    : relationSensors
 
   return {
     // Instrument data
-    nama_alat: safeString(instrument.instrument_names?.name || instrument.name_alias || instrument.names),
-    merk: safeString(instrument.brand),
+    nama_alat: safeString(instrument.instrument_names?.name || instrument.name_alias || instrument.name || instrument.names),
+    merk: safeString(instrument.manufacturer || instrument.brand),
     tipe: safeString(instrument.type),
     no_seri: safeString(instrument.serial_number),
     kapasitas: safeString(instrument.capacity),
@@ -122,9 +144,9 @@ export function mapCertificateToTemplateData(certificate: any): TemplateData {
     unit: safeString(instrument.unit),
 
     // Certificate data
-    nomor_sertifikat: safeString(certificate?.certificate_number),
-    no_order: safeString(certificate?.order_number),
-    tanggal_kalibrasi: safeString(certificate?.calibration_date),
+    nomor_sertifikat: safeString(certificate?.no_certificate || certificate?.certificate_number),
+    no_order: safeString(certificate?.no_order || certificate?.order_number),
+    tanggal_kalibrasi: safeString(certificate?.calibration_date || certificate?.calibration_start_date),
     tanggal_terbit: safeString(certificate?.issue_date),
     tanggal_masuk: safeString(certificate?.received_date),
     metode_kalibrasi: safeString(certificate?.calibration_method),
@@ -155,10 +177,10 @@ export function mapCertificateToTemplateData(certificate: any): TemplateData {
           sensor_nama: safeString(sensor?.name),
           hasil_kalibrasi: Array.isArray(sensor?.results)
             ? sensor.results.map((result: any) => ({
-                titik_ukur: safeString(result?.measurement_point),
-                pembacaan: safeString(result?.reading),
-                koreksi: safeString(result?.correction),
-                ketidakpastian: safeString(result?.uncertainty),
+                titik_ukur: formatResultValue(result?.measurement_point),
+                pembacaan: formatResultValue(result?.reading),
+                koreksi: formatResultValue(result?.correction),
+                ketidakpastian: formatResultValue(result?.uncertainty),
               }))
             : [],
         }))

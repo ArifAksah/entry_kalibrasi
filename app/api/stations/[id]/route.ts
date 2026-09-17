@@ -11,7 +11,7 @@ export async function GET(
     const { id } = await params
     const { data, error } = await supabase
       .from('station')
-      .select('*')
+      .select('*, station_type(name)')
       .eq('id', id)
       .single()
 
@@ -93,7 +93,7 @@ export async function PUT(
         created_by
       })
       .eq('id', id)
-      .select()
+      .select('*, station_type(name)')
       .single()
 
     if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })

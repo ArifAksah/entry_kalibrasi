@@ -131,6 +131,11 @@ interface WilayahRegency {
   name: string
 }
 
+interface StationTypeOption {
+  id: number
+  name: string
+}
+
 export default function StationsCRUD() {
   const {
     stations,
@@ -157,6 +162,7 @@ export default function StationsCRUD() {
   const [personelMap, setPersonelMap] = useState<Record<string, string>>({})
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [refStations, setRefStations] = useState<RefStation[]>([])
+  const [stationTypes, setStationTypes] = useState<StationTypeOption[]>([])
   const [refSearch, setRefSearch] = useState('')
   const [showRefDropdown, setShowRefDropdown] = useState(false)
   const [isLoadingRef, setIsLoadingRef] = useState(false)
@@ -312,9 +318,22 @@ export default function StationsCRUD() {
       }
     }
 
+    const fetchStationTypes = async () => {
+      try {
+        const res = await fetch('/api/station-types')
+        const payload = await res.json()
+        if (!res.ok) throw new Error(payload.error || 'Failed to fetch station types')
+        setStationTypes(Array.isArray(payload.data) ? payload.data : [])
+      } catch (e) {
+        console.error('Failed to fetch station types:', e)
+        setStationTypes([])
+      }
+    }
+
     getCurrentUser()
     // Fetch data for dropdowns
     fetchPersonel()
+    fetchStationTypes()
   }, [])
 
   // Fetch stations once role and user are known
@@ -701,7 +720,7 @@ export default function StationsCRUD() {
                 {item.name}
               </td>
               <td className="px-4 py-3 text-sm text-gray-900 truncate">
-                {(item as any).station_type?.name || '-'}
+                {item.station_type?.name || '-'}
               </td>
               <td className="px-4 py-3 text-sm text-gray-900 truncate">
                 {item.region}
@@ -895,15 +914,10 @@ export default function StationsCRUD() {
                         required: false,
                         options: [
                           { value: '', label: 'Pilih Type' },
-                          { value: '1', label: 'Meteorologi' },
-                          { value: '2', label: 'Klimatologi' },
-                          { value: '3', label: 'Geofisika' },
-                          { value: '4', label: 'BMKG Pusat' },
-                          { value: '5', label: 'Balai Besar Wilayah I' },
-                          { value: '6', label: 'Balai Besar Wilayah II' },
-                          { value: '7', label: 'Balai Besar Wilayah III' },
-                          { value: '8', label: 'Balai Besar Wilayah IV' },
-                          { value: '9', label: 'Balai Besar Wilayah V' },
+                          ...stationTypes.map((stationType) => ({
+                            value: String(stationType.id),
+                            label: stationType.name,
+                          })),
                         ],
                       },
                       {

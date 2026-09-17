@@ -31,6 +31,7 @@ import { createTemplateRenderer } from './template-renderer'
 import { shouldUsePdfTemplateService, renderPdfViaTemplateService } from './pdf-template-client'
 import { mapCertificateToTemplateData } from './certificate-data-mapper'
 import { getActiveRichTextTemplate, getRichTextTemplateByVersion } from '../rich-text-editor/storage-service'
+import { validateCertificateSigningReadiness } from '../certificate-signing-readiness'
 import type { PdfServiceResult } from './types'
 
 // ─── Supabase Admin Client ───────────────────────────────────────────────────
@@ -461,13 +462,21 @@ export async function generateAndSaveCertificatePDF(
     // ─── Step 1: Fetch certificate data ──────────────────────────────────
     const { data: certData, error: certError } = await supabaseAdmin
       .from('certificate')
-      .select('pdf_path, no_certificate, authorized_by, public_id, calibration_place, calibration_kind, certificate_type')
+      .select('pdf_path, no_certificate, authorized_by, public_id, results, calibration_place, calibration_kind, certificate_type')
       .eq('id', certificateId)
       .single()
 
     if (certError || !certData) {
       console.error(`[PDF Service] Failed to fetch certificate ${certificateId}:`, certError)
       return { success: false, error: `Certificate not found: ${certError?.message || 'No data'}` }
+    }
+
+    if (passphrase) {
+      const readiness = validateCertificateSigningReadiness(certData)
+      if (!readiness.ready) {
+        console.error(`[PDF Service] Certificate ${certificateId} is not ready for signing: ${readiness.code}`)
+        return { success: false, error: readiness.code }
+      }
     }
 
     // Get userId from certificate if not provided

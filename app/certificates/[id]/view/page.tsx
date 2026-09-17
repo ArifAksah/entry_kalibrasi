@@ -14,12 +14,7 @@ import {
 } from '../../../../lib/rich-text'
 import { resultsToLegacyView } from '../../../../lib/validators/certificate-results-render-adapter'
 import { calculateRoomCondition } from '../../../../lib/room-condition'
-import {
-  formatCalibrationReading,
-  formatCalibrationCorrection,
-  formatCalibrationUncertainty,
-} from '../../../../lib/result-display-format'
-import { DecimalPrecisionControl } from '../../../../components/ui/DecimalPrecisionControl'
+import { formatCalibrationResultValue } from '../../../../lib/result-display-format'
 import { supabase } from '../../../../lib/supabase'
 import {
   BALAI_DATA,
@@ -356,7 +351,6 @@ const ViewCertificatePage: React.FC = () => {
   const qrRenderedCountRef = useRef<number>(0)
   const expectedQRCodesRef = useRef<number>(0)
   const [allRawData, setAllRawData] = useState<any[]>([])
-  const [decimalPrecision, setDecimalPrecision] = useState(4)
 
   const computeEnvCondition = useCallback(
     (type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
@@ -2687,13 +2681,12 @@ const ViewCertificatePage: React.FC = () => {
                                         ))}
                                         {envRows.length > 0 && (
                                           <tr>
-                                            <td className="w-[45%]" />{' '}
-                                            <td className="w-[5%]" />{' '}
+                                            <td className="w-[45%]" />
+                                            <td className="w-[5%]" />
                                             <td
                                               className="align-top"
                                               colSpan={2}
                                             >
-                                              {' '}
                                               <div className="text-sm font-bold mb-1">
                                                 Kondisi Lingkungan /{' '}
                                                 <span className="italic">
@@ -2745,10 +2738,6 @@ const ViewCertificatePage: React.FC = () => {
                                       <span className="italic font-normal">
                                         Calibration Result
                                       </span>
-                                      <DecimalPrecisionControl
-                                        value={decimalPrecision}
-                                        onChange={setDecimalPrecision}
-                                      />
                                     </div>
                                     {res.table.map((sec: any, sIdx: number) => {
                                       const rows = Array.isArray(sec?.rows)
@@ -2875,34 +2864,26 @@ const ViewCertificatePage: React.FC = () => {
                                                           <td className="p-1 border border-black text-center">
                                                             {isFirstEmptyRow
                                                               ? unitDisplay
-                                                              : row.key || '-'}
+                                                              : formatCalibrationResultValue(
+                                                                  row.key,
+                                                                )}
                                                           </td>
                                                           <td className="p-1 border border-black text-center">
                                                             {isFirstEmptyRow
                                                               ? isPyrano
                                                                 ? '-'
                                                                 : unitDisplay
-                                                              : isPyrano
-                                                                ? formatCalibrationCorrection(
-                                                                    row.unit,
-                                                                    true,
-                                                                    decimalPrecision,
-                                                                  )
-                                                                : formatCalibrationCorrection(
-                                                                    row.unit,
-                                                                    false,
-                                                                    decimalPrecision,
-                                                                  )}
+                                                              : formatCalibrationResultValue(
+                                                                  row.unit,
+                                                                )}
                                                           </td>
                                                           <td className="p-1 border border-black text-center">
                                                             {isFirstEmptyRow
                                                               ? isPyrano
                                                                 ? '%'
                                                                 : unitDisplay
-                                                              : formatCalibrationUncertainty(
+                                                              : formatCalibrationResultValue(
                                                                   row.value,
-                                                                  isPyrano,
-                                                                  decimalPrecision,
                                                                 )}
                                                             {!isPyrano &&
                                                             row.uncertaintyMeta ? (
@@ -2913,7 +2894,7 @@ const ViewCertificatePage: React.FC = () => {
                                                                 i
                                                               </span>
                                                             ) : null}
-                                                          </td>{' '}
+                                                          </td>
                                                           {Array.isArray(
                                                             row.extraValues,
                                                           ) &&
@@ -2928,7 +2909,9 @@ const ViewCertificatePage: React.FC = () => {
                                                                 >
                                                                   {isFirstEmptyRow
                                                                     ? unitDisplay
-                                                                    : v || '-'}
+                                                                    : formatCalibrationResultValue(
+                                                                        v,
+                                                                      )}
                                                                 </td>
                                                               ),
                                                             )}
@@ -2939,24 +2922,22 @@ const ViewCertificatePage: React.FC = () => {
                                                           <td className="p-1 border border-black text-center">
                                                             {isFirstEmptyRow
                                                               ? unitDisplay
-                                                              : row.key || '-'}
-                                                          </td>
-                                                          <td className="p-1 border border-black text-center">
-                                                            {isFirstEmptyRow
-                                                              ? unitDisplay
-                                                              : formatCalibrationCorrection(
-                                                                  row.unit,
-                                                                  isPyrano,
-                                                                  decimalPrecision,
+                                                              : formatCalibrationResultValue(
+                                                                  row.key,
                                                                 )}
                                                           </td>
                                                           <td className="p-1 border border-black text-center">
                                                             {isFirstEmptyRow
                                                               ? unitDisplay
-                                                              : formatCalibrationUncertainty(
+                                                              : formatCalibrationResultValue(
+                                                                  row.unit,
+                                                                )}
+                                                          </td>
+                                                          <td className="p-1 border border-black text-center">
+                                                            {isFirstEmptyRow
+                                                              ? unitDisplay
+                                                              : formatCalibrationResultValue(
                                                                   row.value,
-                                                                  isPyrano,
-                                                                  decimalPrecision,
                                                                 )}
                                                           </td>
                                                         </>
@@ -2991,6 +2972,13 @@ const ViewCertificatePage: React.FC = () => {
                                       )}
                                   </div>
                                 )}
+                              {(!Array.isArray(res?.table) ||
+                                res.table.length === 0) && (
+                                <div className="mt-6 w-[85%] mx-auto border border-dashed border-gray-300 px-4 py-3 text-center text-xs text-gray-500">
+                                  Data tabel hasil kalibrasi belum tersedia untuk
+                                  sensor ini.
+                                </div>
+                              )}
 
                               {/* Images per sensor only for Geofisika - placed right after calibration table */}
                               {(station as any)?.station_type?.name

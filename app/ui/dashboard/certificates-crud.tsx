@@ -48,6 +48,10 @@ import {
   FinalCertificateUncertainty,
 } from '../../../lib/cmc-config'
 import { Spinner } from '../../../components/ui/Loading'
+import {
+  filterStandardCertificates,
+  isStandardCertificateSelectionValid,
+} from '../../../lib/standard-certificate-filter'
 
 // Keep TrashIcon for backward compatibility in this file
 
@@ -2363,18 +2367,27 @@ const CertificatesCRUD: React.FC = () => {
           Array.isArray(certStandardsData) ? certStandardsData : [],
         )
 
-        // Fetch standard instruments using the type=standard filter (single request instead of fetching ALL instruments again)
+        // Fetch every page so certificates cannot refer to a standard instrument
+        // that is missing from the selector merely because it is past page 1.
         try {
-          const stdRes = await fetchWithRetry(
-            '/api/instruments?type=standard&pageSize=100&page=1',
-          )
-          if (stdRes?.ok) {
+          const stdData: Instrument[] = []
+          let page = 1
+          let totalPages = 1
+          do {
+            const stdRes = await fetchWithRetry(
+              `/api/instruments?type=standard&pageSize=100&page=${page}`,
+            )
+            if (!stdRes?.ok) break
+
             const stdJson = await stdRes.json()
-            const stdData = Array.isArray(stdJson)
-              ? stdJson
-              : (stdJson?.data ?? [])
-            setStandardInstruments(stdData)
-          }
+            stdData.push(
+              ...(Array.isArray(stdJson) ? stdJson : (stdJson?.data ?? [])),
+            )
+            totalPages = Number(stdJson?.totalPages) || 1
+            page += 1
+          } while (page <= totalPages)
+
+          setStandardInstruments(stdData)
         } catch (e) {
           console.error('Failed to fetch standard instruments:', e)
         }
@@ -3211,6 +3224,35 @@ const CertificatesCRUD: React.FC = () => {
       return
     }
 
+    const hasStandardSelection =
+      globalStandardInstrumentId != null ||
+      globalStandardCertificateNumber != null ||
+      results.some(
+        (result) =>
+          result.standardInstrumentId != null ||
+          result.standardCertificateNumber != null ||
+          result.standardCertificateId != null,
+      )
+
+    if (hasStandardSelection) {
+      const invalidStandardIndex = results.findIndex((result) => {
+        return !isStandardCertificateSelectionValid(
+          standardCerts,
+          standardInstruments.length > 0 ? standardInstruments : instruments,
+          result?.standardInstrumentId ?? globalStandardInstrumentId,
+          result?.standardCertificateNumber ?? globalStandardCertificateNumber,
+          result?.standardCertificateId,
+        )
+      })
+
+      if (invalidStandardIndex !== -1) {
+        showError(
+          `Pilihan alat standar pada sheet ${invalidStandardIndex + 1} tidak sesuai dengan instrumen dan sertifikat yang dipilih. Pilih ulang sensor standar.`,
+        )
+        return
+      }
+    }
+
     setIsSubmitting(true)
     setSubmitDisabled(true)
 
@@ -3310,10 +3352,6 @@ const CertificatesCRUD: React.FC = () => {
                   // PRIMARY: Use cert.sensor_id — this is explicitly chosen by user and guaranteed correct.
                   // FALLBACK: is_standard sensor from the instrument.
 
-                  let targetInstrumentId =
-                    results[idx]?.standardInstrumentId ??
-                    globalStandardInstrumentId ??
-                    null
                   let stdSensorId: number | null = null
 
                   // This is the EXACT ID selected by the user from the "Pilih Sensor Standar" dropdown on this sheet
@@ -3325,35 +3363,6 @@ const CertificatesCRUD: React.FC = () => {
                     )
                     if (selectedCert?.sensor_id) {
                       stdSensorId = selectedCert.sensor_id
-                    }
-                  }
-
-                  if (targetInstrumentId && !stdSensorId) {
-                    // Fallback 1: Use first cert from the global certificate number if no specific selection was made
-                    if (
-                      globalStandardInstrumentId &&
-                      targetInstrumentId === globalStandardInstrumentId &&
-                      globalStandardCertificateNumber
-                    ) {
-                      const cert = standardCerts.find(
-                        (c) =>
-                          c.no_certificate === globalStandardCertificateNumber,
-                      )
-                      if (cert) stdSensorId = cert.sensor_id
-                    }
-
-                    // Fallback 2: is_standard sensor from the instrument
-                    if (!stdSensorId) {
-                      const inst = instruments.find(
-                        (i: any) => i.id === targetInstrumentId,
-                      )
-                      const instSensors: any[] = inst?.sensor ?? []
-                      const stdSensor = instSensors.find(
-                        (s: any) => s.is_standard,
-                      )
-                      if (stdSensor) stdSensorId = stdSensor.id
-                      else if (instSensors.length === 1)
-                        stdSensorId = instSensors[0].id
                     }
                   }
 
@@ -5183,13 +5192,20 @@ const CertificatesCRUD: React.FC = () => {
                           <SearchableDropdown
                             value={globalStandardInstrumentId}
                             onChange={(val) => {
-                              setGlobalStandardInstrumentId(val as number)
+                              const instrumentId = Number(val)
+                              setGlobalStandardInstrumentId(instrumentId)
                               setGlobalStandardCertificateNumber(null)
-                              // Reset sensor selections in rows that depended on the old standard
                               setResults((prev) =>
                                 prev.map((r) => ({
                                   ...r,
-                                  standardCertificateId: null, // Reset selected sensor
+                                  standardInstrumentId: null,
+                                  standardCertificateNumber: null,
+                                  standardCertificateId: null,
+                                  notesForm: {
+                                    ...r.notesForm,
+                                    standardInstruments: [],
+                                    traceable_to_si_through: '',
+                                  },
                                 })),
                               )
                             }}
@@ -5231,12 +5247,19 @@ const CertificatesCRUD: React.FC = () => {
                           <SearchableDropdown
                             value={globalStandardCertificateNumber}
                             onChange={(val) => {
-                              setGlobalStandardCertificateNumber(val as string)
-                              // Reset sensor selections
+                              const certificateNumber = String(val).trim()
+                              setGlobalStandardCertificateNumber(certificateNumber)
                               setResults((prev) =>
                                 prev.map((r) => ({
                                   ...r,
+                                  standardInstrumentId: null,
+                                  standardCertificateNumber: null,
                                   standardCertificateId: null,
+                                  notesForm: {
+                                    ...r.notesForm,
+                                    standardInstruments: [],
+                                    traceable_to_si_through: '',
+                                  },
                                 })),
                               )
                             }}
@@ -5244,21 +5267,12 @@ const CertificatesCRUD: React.FC = () => {
                               if (!globalStandardInstrumentId) return []
                               // Get sensor IDs that belong to the selected standard instrument
                               // Look in standardInstruments first (unfiltered), fallback to instruments
-                              const selectedInstrument =
-                                standardInstruments.find(
-                                  (i) => i.id === globalStandardInstrumentId,
-                                ) ||
-                                instruments.find(
-                                  (i) => i.id === globalStandardInstrumentId,
-                                )
-                              const sensorIdsForInstrument = new Set(
-                                (selectedInstrument?.sensor ?? []).map(
-                                  (s: any) => s.id,
-                                ),
-                              )
-                              // Filter certs whose sensor_id belongs to the selected instrument
-                              const certsForInst = standardCerts.filter((c) =>
-                                sensorIdsForInstrument.has(c.sensor_id),
+                              const certsForInst = filterStandardCertificates(
+                                standardCerts,
+                                standardInstruments.length > 0
+                                  ? standardInstruments
+                                  : instruments,
+                                globalStandardInstrumentId,
                               )
                               // Group by certificate number (normalize by trimming)
                               const uniqueNos = Array.from(
@@ -5273,20 +5287,6 @@ const CertificatesCRUD: React.FC = () => {
                                 name: no,
                                 station_id: `${certsForInst.find((c) => c.no_certificate.trim() === no)?.calibration_date || ''}`,
                               }))
-                              // Ensure currently selected certificate number is always in the list
-                              if (
-                                globalStandardCertificateNumber &&
-                                !computedOptions.some(
-                                  (o) =>
-                                    o.id === globalStandardCertificateNumber,
-                                )
-                              ) {
-                                computedOptions.unshift({
-                                  id: globalStandardCertificateNumber,
-                                  name: globalStandardCertificateNumber,
-                                  station_id: '',
-                                })
-                              }
                               return computedOptions
                             })()}
                             placeholder={
@@ -5764,14 +5764,16 @@ const CertificatesCRUD: React.FC = () => {
                                 <SearchableDropdown
                                   value={result.standardCertificateId || null}
                                   onChange={(val) => {
-                                    const certId = val as number
+                                    const certId = Number(val)
                                     const selectedCert = standardCerts.find(
-                                      (c) => c.id === certId,
+                                      (c) => Number(c.id) === certId,
                                     )
                                     const sensorId = selectedCert?.sensor_id
+                                      ? Number(selectedCert.sensor_id)
+                                      : null
 
                                     const standardSensor = sensors.find(
-                                      (s: any) => s.id === sensorId,
+                                      (s: any) => Number(s.id) === sensorId,
                                     )
                                     const traceValue =
                                       (standardSensor as any)?.tracebility ||
@@ -5807,12 +5809,14 @@ const CertificatesCRUD: React.FC = () => {
                                     )
                                       return []
 
-                                    // Filter to only certs matching the selected certificate number
                                     const certsForThisCert =
-                                      standardCerts.filter(
-                                        (c) =>
-                                          c.no_certificate.trim() ===
-                                          globalStandardCertificateNumber,
+                                      filterStandardCertificates(
+                                        standardCerts,
+                                        standardInstruments.length > 0
+                                          ? standardInstruments
+                                          : instruments,
+                                        globalStandardInstrumentId,
+                                        globalStandardCertificateNumber,
                                       )
 
                                     // Helper: does a cert row have real (non-empty) calibration data?
@@ -5838,10 +5842,11 @@ const CertificatesCRUD: React.FC = () => {
                                     // point to the same physical sensor (same name/type/SN, one empty record)
                                     const seenFingerprints = new Set<string>()
                                     const uniqueCerts = sorted.filter((c) => {
-                                      if (!c.sensor_id) return false // skip rows without a sensor
-                                      const s = sensors.find(
-                                        (sen) => sen.id === c.sensor_id,
-                                      )
+                                       if (!c.sensor_id) return false // skip rows without a sensor
+                                       const s = sensors.find(
+                                         (sen) =>
+                                           Number(sen.id) === Number(c.sensor_id),
+                                       )
                                       const fingerprint = `${s?.name || ''}|${s?.type || ''}|${s?.serial_number || ''}`
                                       if (seenFingerprints.has(fingerprint))
                                         return false
@@ -5850,9 +5855,10 @@ const CertificatesCRUD: React.FC = () => {
                                     })
 
                                     return uniqueCerts.map((c) => {
-                                      const s = sensors.find(
-                                        (sen) => sen.id === c.sensor_id,
-                                      )
+                                       const s = sensors.find(
+                                         (sen) =>
+                                           Number(sen.id) === Number(c.sensor_id),
+                                       )
                                       // Prioritas nama: instrument_names via sensor_name_id → alias → 'Sensor Unknown'
                                       const resolvedName = s?.sensor_name_id
                                         ? instrumentNames.find(

@@ -112,9 +112,9 @@ describe('mapCertificateToTemplateData', () => {
     expect(result.sensors[0].hasil_kalibrasi).toHaveLength(2)
     expect(result.sensors[0].hasil_kalibrasi[0]).toEqual({
       titik_ukur: '900',
-      pembacaan: '900.1',
-      koreksi: '0.1',
-      ketidakpastian: '0.05',
+      pembacaan: '900',
+      koreksi: '0.10',
+      ketidakpastian: '0.050',
     })
     expect(result.sensors[1].sensor_nama).toBe('Sensor Suhu')
     expect(result.sensors[1].hasil_kalibrasi).toHaveLength(1)
@@ -304,5 +304,64 @@ describe('mapCertificateToTemplateData', () => {
     expect(result.suhu).toBe('23.5')
     expect(result.kelembaban).toBe('55')
     expect(result.kapasitas).toBe('1100')
+  })
+
+  it('formats template result values to two significant figures', () => {
+    const result = mapCertificateToTemplateData({
+      sensors: [
+        {
+          name: 'Sensor',
+          results: [
+            {
+              measurement_point: 27.78,
+              reading: 0.00166,
+              correction: 2,
+              uncertainty: 0.5,
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(result.sensors[0].hasil_kalibrasi[0]).toEqual({
+      titik_ukur: '28',
+      pembacaan: '0.0017',
+      koreksi: '2.0',
+      ketidakpastian: '0.50',
+    })
+  })
+
+  it('maps canonical certificate fields and stored display tables', () => {
+    const result = mapCertificateToTemplateData({
+      no_certificate: 'Sert-001',
+      no_order: 'Order-001',
+      instrument: {
+        name_alias: 'AWS Utama',
+        manufacturer: 'Vaisala',
+      },
+      results: [
+        {
+          sensorId: 10,
+          sensorDetails: { name: 'Sensor Suhu' },
+          table: [
+            {
+              title: 'Hasil Kalibrasi',
+              rows: [{ key: '27.78', unit: '0.00166', value: '0.5' }],
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(result.nomor_sertifikat).toBe('Sert-001')
+    expect(result.no_order).toBe('Order-001')
+    expect(result.nama_alat).toBe('AWS Utama')
+    expect(result.merk).toBe('Vaisala')
+    expect(result.sensors[0].hasil_kalibrasi[0]).toEqual({
+      titik_ukur: '28',
+      pembacaan: '28',
+      koreksi: '0.0017',
+      ketidakpastian: '0.50',
+    })
   })
 })

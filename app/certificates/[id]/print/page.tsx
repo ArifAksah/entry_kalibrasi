@@ -14,11 +14,7 @@ import {
 } from '../../../../lib/rich-text'
 import { resultsToLegacyView } from '../../../../lib/validators/certificate-results-render-adapter'
 import { calculateRoomCondition } from '../../../../lib/room-condition'
-import {
-  formatCalibrationCorrection,
-  formatCalibrationUncertainty,
-} from '../../../../lib/result-display-format'
-import { DecimalPrecisionControl } from '../../../../components/ui/DecimalPrecisionControl'
+import { formatCalibrationResultValue } from '../../../../lib/result-display-format'
 import { supabase } from '../../../../lib/supabase'
 import type {
   TemplateConfig,
@@ -348,7 +344,6 @@ const PrintCertificatePage: React.FC = () => {
   const [allRawData, setAllRawData] = useState<any[]>([])
   const [rawDataSettled, setRawDataSettled] = useState(false)
   const [lookupsSettled, setLookupsSettled] = useState(false)
-  const [decimalPrecision, setDecimalPrecision] = useState(4)
   const [templateConfig, setTemplateConfig] = useState<TemplateConfig | null>(
     null,
   )
@@ -603,7 +598,13 @@ const PrintCertificatePage: React.FC = () => {
   const qrCodeData = useMemo(() => {
     if (!cert) return ''
 
-    const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+    const configuredPublicUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(
+      /\/$/,
+      '',
+    )
+    const baseUrl =
+      configuredPublicUrl ||
+      (typeof window !== 'undefined' ? window.location.origin : '')
 
     if (cert.public_id) {
       return `${baseUrl}/verify/${cert.public_id}`
@@ -2823,10 +2824,9 @@ const PrintCertificatePage: React.FC = () => {
                                   ))}
                                   {envRows.length > 0 && (
                                     <tr>
-                                      <td className="w-[45%]" />{' '}
-                                      <td className="w-[5%]" />{' '}
+                                      <td className="w-[45%]" />
+                                      <td className="w-[5%]" />
                                       <td className="align-top" colSpan={2}>
-                                        {' '}
                                         <div className="text-sm font-bold mb-1">
                                           Kondisi Lingkungan /{' '}
                                           <span className="italic">
@@ -2877,12 +2877,6 @@ const PrintCertificatePage: React.FC = () => {
                               <span className="italic font-normal">
                                 Calibration Result
                               </span>
-                              {!isPdfMode && (
-                                <DecimalPrecisionControl
-                                  value={decimalPrecision}
-                                  onChange={setDecimalPrecision}
-                                />
-                              )}
                             </div>
                             {res.table.map((sec: any, sIdx: number) => {
                               const rows = Array.isArray(sec?.rows)
@@ -2976,28 +2970,20 @@ const PrintCertificatePage: React.FC = () => {
                                           {headers.length > 0 ? (
                                             <>
                                               <td className="p-1 border border-black text-center">
-                                                {row.key || '-'}
-                                              </td>
-                                              <td className="p-1 border border-black text-center">
-                                                {isPyrano
-                                                  ? formatCalibrationCorrection(
-                                                      row.unit,
-                                                      true,
-                                                      decimalPrecision,
-                                                    )
-                                                  : formatCalibrationCorrection(
-                                                      row.unit,
-                                                      false,
-                                                      decimalPrecision,
-                                                    )}
-                                              </td>
-                                              <td className="p-1 border border-black text-center">
-                                                {formatCalibrationUncertainty(
-                                                  row.value,
-                                                  isPyrano,
-                                                  decimalPrecision,
+                                                {formatCalibrationResultValue(
+                                                  row.key,
                                                 )}
-                                              </td>{' '}
+                                              </td>
+                                              <td className="p-1 border border-black text-center">
+                                                {formatCalibrationResultValue(
+                                                  row.unit,
+                                                )}
+                                              </td>
+                                              <td className="p-1 border border-black text-center">
+                                                {formatCalibrationResultValue(
+                                                  row.value,
+                                                )}
+                                              </td>
                                               {Array.isArray(row.extraValues) &&
                                                 row.extraValues.map(
                                                   (v: string, vi: number) => (
@@ -3005,7 +2991,9 @@ const PrintCertificatePage: React.FC = () => {
                                                       key={`extra-${vi}`}
                                                       className="p-1 border border-black text-center"
                                                     >
-                                                      {v || '-'}
+                                                      {formatCalibrationResultValue(
+                                                        v,
+                                                      )}
                                                     </td>
                                                   ),
                                                 )}
@@ -3014,20 +3002,18 @@ const PrintCertificatePage: React.FC = () => {
                                             // Fallback
                                             <>
                                               <td className="p-1 border border-black text-center">
-                                                {row.key || '-'}
-                                              </td>
-                                              <td className="p-1 border border-black text-center">
-                                                {formatCalibrationCorrection(
-                                                  row.unit,
-                                                  isPyrano,
-                                                  decimalPrecision,
+                                                {formatCalibrationResultValue(
+                                                  row.key,
                                                 )}
                                               </td>
                                               <td className="p-1 border border-black text-center">
-                                                {formatCalibrationUncertainty(
+                                                {formatCalibrationResultValue(
+                                                  row.unit,
+                                                )}
+                                              </td>
+                                              <td className="p-1 border border-black text-center">
+                                                {formatCalibrationResultValue(
                                                   row.value,
-                                                  isPyrano,
-                                                  decimalPrecision,
                                                 )}
                                               </td>
                                             </>
@@ -3050,6 +3036,13 @@ const PrintCertificatePage: React.FC = () => {
                                   sebelum penghitungan koreksi.
                                 </div>
                               )}
+                          </div>
+                        )}
+                        {(!Array.isArray(res?.table) ||
+                          res.table.length === 0) && (
+                          <div className="mt-6 w-[85%] mx-auto border border-dashed border-gray-300 px-4 py-3 text-center text-xs text-gray-500">
+                            Data tabel hasil kalibrasi belum tersedia untuk sensor
+                            ini.
                           </div>
                         )}
 
