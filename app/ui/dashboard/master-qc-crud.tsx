@@ -1,15 +1,22 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useAlert } from '../../../hooks/useAlert'
 import Alert from '../../../components/ui/Alert'
 import { formatLatexUnit } from '../../../lib/qc-utils'
 import { Spinner } from '../../../components/ui/Loading'
+import {
+  filterMasterQcItemsByCode,
+  filterInstrumentNamesByCode,
+  getInstrumentNameCodeId,
+  paginateMasterQcItems,
+} from '../../../lib/master-qc-options'
 
 interface InstrumentCode {
   id: number
   code_alat: string | null
+  name?: string | null
 }
 
 interface InstrumentName {
@@ -55,12 +62,14 @@ const SearchableDropdown = ({
   options,
   placeholder = 'Pilih...',
   searchPlaceholder = 'Cari...',
+  disabled = false,
 }: {
   value: string | number | null
   onChange: (value: string | number | null) => void
   options: Array<{ id: string | number; name: string }>
   placeholder?: string
   searchPlaceholder?: string
+  disabled?: boolean
 }) => {
   const [isOpen, setIsOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -75,8 +84,9 @@ const SearchableDropdown = ({
     <div className="relative">
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm text-left"
+        disabled={disabled}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm text-left disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
       >
         <span className={selectedOption ? 'text-gray-900' : 'text-gray-500'}>
           {selectedOption?.name || placeholder}
@@ -137,7 +147,11 @@ const MasterQCCRUD: React.FC = () => {
   const { alert, showSuccess, showError, hideAlert } = useAlert()
 
   const [items, setItems] = useState<MasterQCItem[]>([])
+  const [instrumentCodes, setInstrumentCodes] = useState<InstrumentCode[]>([])
   const [instrumentNames, setInstrumentNames] = useState<InstrumentName[]>([])
+  const [selectedInstrumentCodeId, setSelectedInstrumentCodeId] = useState<
+    number | null
+  >(null)
   const [units, setUnits] = useState<RefUnit[]>([])
   const [loading, setLoading] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -145,6 +159,11 @@ const MasterQCCRUD: React.FC = () => {
   const [form, setForm] = useState<FormState>(defaultForm)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [search, setSearch] = useState('')
+  const [filterInstrumentCodeId, setFilterInstrumentCodeId] = useState<
+    number | null
+  >(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 10
   const [confirmDelete, setConfirmDelete] = useState<MasterQCItem | null>(null)
 
   const fetchItems = async () => {
@@ -172,6 +191,17 @@ const MasterQCCRUD: React.FC = () => {
     }
   }
 
+  const fetchInstrumentCodes = async () => {
+    try {
+      const res = await fetch('/api/instrument-code')
+      if (!res.ok) return
+      const json = await res.json()
+      setInstrumentCodes(Array.isArray(json) ? json : [])
+    } catch {
+      /* silent */
+    }
+  }
+
   const fetchUnits = async () => {
     try {
       const res = await fetch('/api/units')
@@ -185,6 +215,7 @@ const MasterQCCRUD: React.FC = () => {
 
   useEffect(() => {
     fetchItems()
+    fetchInstrumentCodes()
     fetchInstrumentNames()
     fetchUnits()
   }, [])
@@ -192,6 +223,9 @@ const MasterQCCRUD: React.FC = () => {
   const openModal = (item?: MasterQCItem) => {
     if (item) {
       setEditingItem(item)
+      setSelectedInstrumentCodeId(
+        getInstrumentNameCodeId(item.instrument_name),
+      )
       setForm({
         instrument_name_id: String(item.instrument_name?.id ?? ''),
         unit_id: String(item.ref_unit?.id ?? ''),
@@ -200,6 +234,7 @@ const MasterQCCRUD: React.FC = () => {
       })
     } else {
       setEditingItem(null)
+      setSelectedInstrumentCodeId(null)
       setForm(defaultForm)
     }
     setIsModalOpen(true)
@@ -208,7 +243,25 @@ const MasterQCCRUD: React.FC = () => {
   const closeModal = () => {
     setIsModalOpen(false)
     setEditingItem(null)
+    setSelectedInstrumentCodeId(null)
     setForm(defaultForm)
+  }
+
+  const filteredInstrumentNames = useMemo(
+    () =>
+      filterInstrumentNamesByCode(
+        instrumentNames,
+        selectedInstrumentCodeId,
+      ),
+    [instrumentNames, selectedInstrumentCodeId],
+  )
+
+  const handleInstrumentCodeChange = (value: string | number | null) => {
+    const codeId = value == null || value === '' ? null : Number(value)
+    setSelectedInstrumentCodeId(
+      codeId !== null && Number.isFinite(codeId) ? codeId : null,
+    )
+    setForm((prev) => ({ ...prev, instrument_name_id: '' }))
   }
 
   const handleChange = (
@@ -222,11 +275,20 @@ const MasterQCCRUD: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (
+      !selectedInstrumentCodeId ||
       !form.instrument_name_id ||
       !form.unit_id ||
       !form.nilai_batas_koreksi.trim()
     )
       return
+
+    const selectedName = instrumentNames.find(
+      (name) => String(name.id) === form.instrument_name_id,
+    )
+    if (getInstrumentNameCodeId(selectedName) !== selectedInstrumentCodeId) {
+      showError('Nama instrumen tidak sesuai dengan kode instrumen yang dipilih.')
+      return
+    }
     setIsSubmitting(true)
     try {
       const payload = {
@@ -285,18 +347,38 @@ const MasterQCCRUD: React.FC = () => {
     }
   }
 
-  const filtered = items.filter((item) => {
-    const q = search.toLowerCase()
-    return (
-      item.instrument_name?.name?.toLowerCase().includes(q) ||
-      item.instrument_name?.instrument_code?.code_alat
-        ?.toLowerCase()
-        .includes(q) ||
-      item.nilai_batas_koreksi?.toLowerCase().includes(q) ||
-      item.ref_unit?.unit?.toLowerCase().includes(q) ||
-      (item.catatan ?? '').toLowerCase().includes(q)
+  const filtered = useMemo(() => {
+    const byCode = filterMasterQcItemsByCode(items, filterInstrumentCodeId)
+    const q = search.trim().toLowerCase()
+    if (!q) return byCode
+
+    return byCode.filter(
+      (item) =>
+        item.instrument_name?.name?.toLowerCase().includes(q) ||
+        item.instrument_name?.instrument_code?.code_alat
+          ?.toLowerCase()
+          .includes(q) ||
+        item.nilai_batas_koreksi?.toLowerCase().includes(q) ||
+        item.ref_unit?.unit?.toLowerCase().includes(q) ||
+        (item.catatan ?? '').toLowerCase().includes(q),
     )
-  })
+  }, [items, filterInstrumentCodeId, search])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const pagedItems = useMemo(
+    () => paginateMasterQcItems(filtered, currentPage, pageSize),
+    [filtered, currentPage],
+  )
+  const pageStart = filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1
+  const pageEnd = Math.min(currentPage * pageSize, filtered.length)
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search, filterInstrumentCodeId])
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages)
+  }, [currentPage, totalPages])
 
   return (
     <div className="space-y-6">
@@ -311,16 +393,33 @@ const MasterQCCRUD: React.FC = () => {
       )}
 
       {/* Toolbar */}
-      <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm">
+      <div className="flex flex-col gap-4 bg-white p-4 rounded-lg shadow-sm lg:flex-row lg:items-center lg:justify-between">
         <h2 className="text-xl font-bold text-gray-800">
           Master QC — Nilai Batas Koreksi
         </h2>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <select
+            value={filterInstrumentCodeId ?? ''}
+            onChange={(event) => {
+              const value = event.target.value
+              setFilterInstrumentCodeId(value ? Number(value) : null)
+            }}
+            className="min-w-48 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label="Filter kode instrumen"
+          >
+            <option value="">Semua Kode Instrumen</option>
+            {instrumentCodes.map((code) => (
+              <option key={code.id} value={code.id}>
+                {code.code_alat || `Kode #${code.id}`}
+                {code.name ? ` — ${code.name}` : ''}
+              </option>
+            ))}
+          </select>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cari nama, nilai, satuan..."
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 sm:w-64"
           />
           <button
             onClick={() => openModal()}
@@ -400,13 +499,13 @@ const MasterQCCRUD: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filtered.map((item, idx) => (
+                {pagedItems.map((item, idx) => (
                   <tr
                     key={item.id}
                     className="hover:bg-gray-50 transition-colors"
                   >
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                      {idx + 1}
+                      {(currentPage - 1) * pageSize + idx + 1}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       {' '}
@@ -484,6 +583,55 @@ const MasterQCCRUD: React.FC = () => {
                 ))}
               </tbody>
             </table>
+            <div className="flex flex-col gap-3 border-t border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-gray-500">
+                Menampilkan <span className="font-medium">{pageStart}</span>-
+                <span className="font-medium">{pageEnd}</span> dari{' '}
+                <span className="font-medium">{filtered.length}</span> data
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Awal
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCurrentPage((page) => Math.max(1, page - 1))
+                  }
+                  disabled={currentPage === 1}
+                  className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Sebelumnya
+                </button>
+                <span className="min-w-24 text-center text-sm text-gray-600">
+                  Halaman <span className="font-medium">{currentPage}</span> /{' '}
+                  <span className="font-medium">{totalPages}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCurrentPage((page) => Math.min(totalPages, page + 1))
+                  }
+                  disabled={currentPage === totalPages}
+                  className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Berikutnya
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Akhir
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -517,29 +665,27 @@ const MasterQCCRUD: React.FC = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              {/* Kode Instrumen (Read-only info) */}
-              {form.instrument_name_id &&
-                (() => {
-                  const selectedInstrument = instrumentNames.find(
-                    (n) => String(n.id) === String(form.instrument_name_id),
-                  )
-                  const codeAlat =
-                    selectedInstrument?.instrument_code?.code_alat ||
-                    selectedInstrument?.code_alat
-                  if (codeAlat) {
-                    return (
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                        <label className="block text-xs font-medium text-blue-700 mb-1">
-                          Kode Instrumen
-                        </label>
-                        <div className="text-sm font-semibold text-blue-900">
-                          {codeAlat}
-                        </div>
-                      </div>
-                    )
-                  }
-                  return null
-                })()}
+              {/* Kode Instrumen */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Kode Instrumen <span className="text-red-500">*</span>
+                </label>
+                <SearchableDropdown
+                  value={selectedInstrumentCodeId}
+                  onChange={handleInstrumentCodeChange}
+                  options={instrumentCodes.map((code) => ({
+                    id: code.id,
+                    name: code.name
+                      ? `${code.code_alat || '-'} — ${code.name}`
+                      : code.code_alat || `Kode #${code.id}`,
+                  }))}
+                  placeholder="Pilih Kode Instrumen"
+                  searchPlaceholder="Cari kode instrumen..."
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Pilihan kode menentukan daftar nama instrumen di bawah.
+                </p>
+              </div>
 
               {/* Nama Instrumen */}
               <div>
@@ -554,13 +700,25 @@ const MasterQCCRUD: React.FC = () => {
                       instrument_name_id: val ? String(val) : '',
                     }))
                   }
-                  options={instrumentNames.map((n) => ({
+                  options={filteredInstrumentNames.map((n) => ({
                     id: n.id,
                     name: n.name,
                   }))}
-                  placeholder="Pilih Nama Instrumen"
+                  disabled={!selectedInstrumentCodeId}
+                  placeholder={
+                    selectedInstrumentCodeId
+                      ? 'Pilih Nama Instrumen'
+                      : 'Pilih kode instrumen terlebih dahulu'
+                  }
                   searchPlaceholder="Cari nama instrumen..."
                 />
+                {selectedInstrumentCodeId &&
+                  filteredInstrumentNames.length === 0 && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      Belum ada nama instrumen untuk kode ini. Tambahkan melalui
+                      menu Master Instrumen.
+                    </p>
+                  )}
               </div>
 
               {/* Satuan */}

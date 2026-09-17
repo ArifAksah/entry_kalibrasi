@@ -638,6 +638,7 @@ const CertificatesCRUD: React.FC = () => {
   const { can, canEndpoint, role } = usePermissions()
   const { alert, showSuccess, showError, showWarning, hideAlert } = useAlert()
   const router = useRouter()
+  const handledDashboardLinkRef = useRef(false)
 
   const fetchSignedPdf = async (item: Certificate, download = false) => {
     const {
@@ -2115,17 +2116,24 @@ const CertificatesCRUD: React.FC = () => {
 
   // Fetch data
 
-  // Deep-link support: open edit modal when visiting /certificates?edit=<id>
+  // Deep-link support for dashboard actions.
   useEffect(() => {
     if (typeof window === 'undefined') return
+    if (handledDashboardLinkRef.current) return
     try {
       const params = new URLSearchParams(window.location.search)
+      if (params.get('create') === 'true') {
+        handledDashboardLinkRef.current = true
+        openModal()
+        return
+      }
       const editId = params.get('edit')
       if (editId) {
         const idNum = parseInt(editId)
         if (!isNaN(idNum)) {
           const cert = certificates.find((c) => c.id === idNum)
           if (cert) {
+            handledDashboardLinkRef.current = true
             openModal(cert)
           }
         }

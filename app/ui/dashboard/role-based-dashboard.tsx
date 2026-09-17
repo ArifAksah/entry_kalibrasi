@@ -25,6 +25,8 @@ type ActionItem = {
   status: string
   href: string
   priority?: 'high' | 'medium' | 'low'
+  actionLabel?: string
+  ageDays?: number
 }
 
 type RejectItem = {
@@ -120,6 +122,14 @@ type DashboardData = {
   recentRejects?: RejectItem[]
   stations?: StationSummary[]
   stationDashboard?: UserStationDashboardData | null
+  calibratorDashboard?: {
+    actionCount: number
+    activeCertificates: number
+    relatedInstruments: number
+    relatedStations: number
+    staleItems: number
+    verificationStages: QueueItem[]
+  }
 }
 
 const toneClasses: Record<Tone, string> = {
@@ -1165,8 +1175,15 @@ const RoleBasedDashboard: React.FC = () => {
   const [dashboardData, setDashboardData] = useState<DashboardData>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [calibratorActionPage, setCalibratorActionPage] = useState(1)
   const greeting = getGreetingByHour(new Date())
   const displayName = getDisplayName(user?.email)
+  const calibratorActionCount = dashboardData.actionItems?.length || 0
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(calibratorActionCount / 5))
+    setCalibratorActionPage((current) => Math.min(current, totalPages))
+  }, [calibratorActionCount])
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -1249,6 +1266,245 @@ const RoleBasedDashboard: React.FC = () => {
         greeting={greeting}
         displayName={displayName}
       />
+    )
+  }
+
+  if (dashboardData.role === 'calibrator') {
+    const calibrator = dashboardData.calibratorDashboard
+    const actionItems = dashboardData.actionItems || []
+    const recentRejects = dashboardData.recentRejects || []
+    const actionPageSize = 5
+    const actionTotalPages = Math.max(
+      1,
+      Math.ceil(actionItems.length / actionPageSize),
+    )
+    const actionStartIndex = (calibratorActionPage - 1) * actionPageSize
+    const pagedActionItems = actionItems.slice(
+      actionStartIndex,
+      actionStartIndex + actionPageSize,
+    )
+
+    return (
+      <div className="space-y-6">
+        <section className="overflow-hidden rounded-3xl bg-[#10245b] text-white shadow-sm">
+          <div className="grid gap-8 p-7 md:grid-cols-[1fr_auto] md:items-end md:p-9">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">
+                Ruang Kerja Saya
+              </p>
+              <h2 className="mt-3 text-2xl font-semibold md:text-3xl">
+                {greeting}, {displayName}
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-blue-100">
+                {dashboardData.subtitle}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <a
+                href="/certificates?create=true"
+                className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#10245b] transition hover:bg-blue-50"
+              >
+                Buat Sertifikat
+              </a>
+              <a
+                href="/certificates"
+                className="rounded-xl border border-white/30 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                Semua Pekerjaan
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {(dashboardData.cards || []).map((card) => (
+            <a
+              key={card.label}
+              href="/certificates"
+              className={`rounded-2xl border p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${toneClasses[card.tone]}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-semibold">{card.label}</p>
+                <span className="rounded-full bg-white/70 px-2 py-1 text-xs font-bold">
+                  {card.value}
+                </span>
+              </div>
+              <p className="mt-5 text-3xl font-bold">{card.value}</p>
+              <p className="mt-2 text-xs leading-relaxed opacity-75">{card.hint}</p>
+            </a>
+          ))}
+        </section>
+
+        <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.45fr_0.55fr]">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Prioritas
+                </p>
+                <h3 className="mt-2 text-xl font-semibold text-slate-950">
+                  Antrean Kerja Saya
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Diurutkan dari revisi, draft, siap kirim, lalu pekerjaan yang sedang diverifikasi.
+                </p>
+              </div>
+              <a href="/certificates" className="text-sm font-semibold text-blue-700 hover:text-blue-900">
+                Lihat semua
+              </a>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              {actionItems.length === 0 ? (
+                <EmptyState
+                  title="Semua pekerjaan tertangani"
+                  description="Belum ada draft, revisi, atau sertifikat aktif yang membutuhkan perhatian Anda."
+                />
+              ) : (
+                pagedActionItems.map((item) => (
+                  <a
+                    key={`${item.id}-${item.no_certificate}`}
+                    href={item.href}
+                    className="group block rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-blue-200 hover:bg-blue-50/40"
+                  >
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate text-sm font-semibold text-slate-950">
+                            {item.no_certificate}
+                          </p>
+                          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${priorityClasses[item.priority || 'low']}`}>
+                            {item.status}
+                          </span>
+                        </div>
+                        <p className="mt-1.5 text-sm text-slate-600">{item.subtitle}</p>
+                        <p className="mt-2 text-xs text-slate-400">
+                          {item.ageDays === 0
+                            ? 'Diperbarui hari ini'
+                            : `${item.ageDays} hari dalam antrean`}
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-blue-700 shadow-sm ring-1 ring-slate-200 transition group-hover:ring-blue-200">
+                        {item.actionLabel || 'Buka'}
+                      </span>
+                    </div>
+                  </a>
+                ))
+              )}
+            </div>
+
+            {actionItems.length > 0 && (
+              <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-slate-500">
+                  Menampilkan {actionStartIndex + 1}-
+                  {Math.min(actionStartIndex + actionPageSize, actionItems.length)} dari{' '}
+                  {actionItems.length} pekerjaan
+                </p>
+                {actionTotalPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCalibratorActionPage((current) =>
+                          Math.max(1, current - 1),
+                        )
+                      }
+                      disabled={calibratorActionPage === 1}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Sebelumnya
+                    </button>
+                    <span className="min-w-16 text-center text-xs font-medium text-slate-500">
+                      {calibratorActionPage} / {actionTotalPages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCalibratorActionPage((current) =>
+                          Math.min(actionTotalPages, current + 1),
+                        )
+                      }
+                      disabled={calibratorActionPage === actionTotalPages}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Berikutnya
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-950">Progress Verifikasi</h3>
+              <p className="mt-1 text-sm text-slate-500">Posisi sertifikat aktif pada rantai persetujuan.</p>
+              <div className="mt-5 space-y-3">
+                {(calibrator?.verificationStages || []).map((item, index) => (
+                  <div key={item.label} className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">
+                      {index < 3 ? `V${index + 1}` : 'TTE'}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-slate-700">{item.label}</p>
+                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-blue-600"
+                          style={{ width: `${Math.min(100, item.value * 20)}%` }}
+                        />
+                      </div>
+                    </div>
+                    <span className="text-lg font-semibold text-slate-950">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-950 p-6 text-white shadow-sm">
+              <h3 className="text-lg font-semibold">Konteks Pekerjaan</h3>
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                {[
+                  ['Sertifikat aktif', calibrator?.activeCertificates || 0],
+                  ['Instrumen terkait', calibrator?.relatedInstruments || 0],
+                  ['Stasiun terkait', calibrator?.relatedStations || 0],
+                  ['Lebih dari 3 hari', calibrator?.staleItems || 0],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-xl bg-white/10 p-3">
+                    <p className="text-2xl font-semibold">{value}</p>
+                    <p className="mt-1 text-xs text-slate-300">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {recentRejects.length > 0 && (
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Feedback</p>
+              <h3 className="mt-2 text-lg font-semibold text-slate-950">Catatan Verifikator Terbaru</h3>
+            </div>
+            <div className="mt-5 grid gap-4 lg:grid-cols-3">
+              {recentRejects.map((item, index) => (
+                <a
+                  key={`${item.id}-${index}`}
+                  href={`/certificates?edit=${item.id}`}
+                  className="rounded-2xl border border-red-100 bg-red-50/60 p-4 transition hover:border-red-200"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-red-700">{item.category}</span>
+                    <span className="text-[11px] text-slate-400">{formatDateTime(item.timestamp)}</span>
+                  </div>
+                  <p className="mt-3 text-sm font-semibold text-slate-900">{item.no_certificate}</p>
+                  <p className="mt-1 text-xs text-slate-500">{item.level}</p>
+                  <p className="mt-3 line-clamp-3 text-sm text-slate-600">{item.reason}</p>
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
     )
   }
 

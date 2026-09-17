@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../../lib/supabase'
 import { clientSafeMessage } from '../../../../lib/api-error'
+import { parseMasterQcPayload } from '../../../../lib/master-qc-validation'
 
 function getMasterQcErrorMessage(error: any) {
     if (error?.code === '23505') {
@@ -27,17 +28,16 @@ export async function PUT(
         }
 
         const body = await request.json()
-        const { instrument_name_id, unit_id, nilai_batas_koreksi, catatan } = body
-
-        if (!instrument_name_id || !unit_id || !nilai_batas_koreksi) {
-            return NextResponse.json(
-                { error: 'instrument_name_id, unit_id, dan nilai_batas_koreksi wajib diisi' },
-                { status: 400 }
-            )
+        const parsed = parseMasterQcPayload(body)
+        if (!parsed.success) {
+            return NextResponse.json({ error: parsed.error }, { status: 400 })
         }
-
-        const normalizedInstrumentNameId = Number(instrument_name_id)
-        const normalizedUnitId = Number(unit_id)
+        const {
+            instrumentNameId: normalizedInstrumentNameId,
+            unitId: normalizedUnitId,
+            correctionLimit,
+            notes,
+        } = parsed.data
 
         const { data: duplicateRows, error: duplicateError } = await supabaseAdmin
             .from('master_qc')
@@ -64,8 +64,8 @@ export async function PUT(
             .update({
                 instrument_name_id: normalizedInstrumentNameId,
                 unit_id: normalizedUnitId,
-                nilai_batas_koreksi: nilai_batas_koreksi.trim(),
-                catatan: catatan?.trim() || null,
+                nilai_batas_koreksi: correctionLimit,
+                catatan: notes,
             })
             .eq('id', id)
             .select('id, nilai_batas_koreksi, catatan, created_at, updated_at, instrument_name_id, unit_id')
