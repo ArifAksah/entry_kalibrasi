@@ -670,9 +670,24 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
 
             const formDataBody = Buffer.concat(formDataParts)
             const pdfSha256 = createHash('sha256').update(pdfFile).digest('hex')
+            const fingerprint = (value: string) =>
+              createHash('sha256').update(value).digest('hex').slice(0, 12)
+            let bsreHost = 'invalid-url'
+            try {
+              bsreHost = new URL(signEndpoint).host
+            } catch { /* logged as invalid-url */ }
             console.log(
               `[PDF Helper] Signing payload: pdf_bytes=${pdfFile.length}, multipart_bytes=${formDataBody.length}, pdf_sha256=${pdfSha256}`
             )
+            console.log('[PDF Helper] BSrE input fingerprints:', {
+              bsreHost,
+              username: fingerprint(bsreUsername),
+              nik: fingerprint(nik),
+              linkQR: linkQR ? fingerprint(linkQR) : null,
+              linkQRConfigured: Boolean(process.env.BSRE_QR_LINK),
+              publicSiteConfigured: Boolean(process.env.NEXT_PUBLIC_SITE_URL),
+              node: process.version,
+            })
             // Note: `nik` is PII → never log its raw value. Same for passphrase/token.
             console.log(`[PDF Helper] Sending to BSrE: has_nik=${!!nik}, has_passphrase=${!!passphrase}, tampilan=invisible, page=1, image=false, linkQR=${linkQR ? 'yes' : '(empty — QR already in document)'}`)
             console.log(`[PDF Helper] Note: QR code already exists in document, using invisible mode to avoid duplicate QR code`)
