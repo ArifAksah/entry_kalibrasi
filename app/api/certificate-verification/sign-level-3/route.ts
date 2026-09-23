@@ -273,7 +273,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const { generateAndSaveCertificatePDF } = await import('../../../../lib/pdf-service')
+      const { generateAndSaveCertificatePDF } = await import('../../../../lib/certificate-pdf-helper')
 
       // AWAIT PDF generation and signing
       const pdfResult = await generateAndSaveCertificatePDF(cert.id, user.id, userPassphrase, true)
