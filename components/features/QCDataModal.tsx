@@ -8,6 +8,7 @@ import {
   hitungKoreksiBatch,
   clearHitungKoreksiCache,
   buildCorrectionMapFromCertificates,
+  formatLatexUnit,
 } from '../../lib/qc-utils'
 import { convertUnit, needsConversion } from '../../lib/unitConversion'
 import {
@@ -221,6 +222,25 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
     return groups
   }, [normalizedData])
 
+  const uutUnitsBySensor = React.useMemo(() => {
+    const units: Record<string, string> = {}
+    Object.entries(groupedData).forEach(([key, rows]) => {
+      if (key === 'unknown') return
+      const sensorId = Number(key)
+      const resultUnit = resultEntries.find(
+        (entry) => entry.sensorId === sensorId,
+      )?.unitUut
+      const sensor = sensors.find((item: any) => item.id === sensorId)
+      units[key] =
+        resultUnit ||
+        rows.find((row) => row.unit_uut)?.unit_uut ||
+        sensor?.graduating_unit ||
+        sensor?.range_capacity_unit ||
+        ''
+    })
+    return units
+  }, [groupedData, resultEntries, sensors])
+
   const localCorrectionMap = React.useMemo(() => {
     const pairs = normalizedData
       .filter((row) => row.sensor_id_std != null && row.standard_data != null)
@@ -285,7 +305,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
     Promise.all(
       uutSensorIds.map(
         async (id) =>
-          [String(id), await fetchQCLimitForSensor(id)] as [
+          [String(id), await fetchQCLimitForSensor(id, uutUnitsBySensor[String(id)] || '')] as [
             string,
             QCLimit | null,
           ],
@@ -300,7 +320,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
       })
       .finally(() => setQcLimitsLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sensorKeys.join(','), usedCache])
+  }, [sensorKeys.join(','), JSON.stringify(uutUnitsBySensor), usedCache])
 
   /**
    * After raw data loads, call hitungKoreksiBatch which calls the DB function
@@ -471,6 +491,14 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
     instrumentNames,
     groupedData,
   ])
+
+  const activeSensorUnit =
+    activeTab !== 'unknown' && activeTab !== 0
+      ? formatLatexUnit(uutUnitsBySensor[String(activeTab)] || '')
+      : ''
+  const activeSensorLabel = activeSensorUnit
+    ? `${activeSensorName} (${activeSensorUnit})`
+    : activeSensorName
 
   // Sensor saat ini untuk deteksi pyranometer
   const currentSensorForPyranometer = React.useMemo(() => {
@@ -1241,6 +1269,8 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                         const s = sensors.find((sen) => sen.id === Number(key))
                         tabLabel = resolveSensorName(s)
                       }
+                      const unit = formatLatexUnit(uutUnitsBySensor[key] || '')
+                      if (unit) tabLabel = `${tabLabel} (${unit})`
                     }
                     const limit = key !== 'unknown' ? qcLimits[key] : null
                     return (
@@ -1367,9 +1397,9 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                       </div>
                       <div
                         className="text-sm font-bold text-indigo-900 truncate"
-                        title={activeSensorName}
+                        title={activeSensorLabel}
                       >
-                        {activeSensorName}
+                        {activeSensorLabel}
                       </div>
                     </div>
                     <div
@@ -1389,7 +1419,9 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                           `± ${activeSensorLimit.rawLimit} ${activeSensorLimit.unit}`
                         ) : (
                           <span className="text-xs italic text-yellow-700">
-                            Tidak ada di Master QC
+                            {activeSensorUnit
+                              ? `Tidak ada Master QC untuk satuan ${activeSensorUnit}`
+                              : 'Satuan UUT belum tersedia'}
                           </span>
                         )}
                       </div>

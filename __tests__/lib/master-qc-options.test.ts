@@ -1,4 +1,5 @@
 import {
+  findMasterQcByCodeAndUnit,
   filterMasterQcItemsByCode,
   filterInstrumentNamesByCode,
   getInstrumentNameCodeId,
@@ -38,6 +39,17 @@ describe('Master QC instrument options', () => {
     expect(filterMasterQcItemsByCode(rows, 10)).toHaveLength(2)
     expect(filterMasterQcItemsByCode(rows, 20)).toHaveLength(1)
     expect(filterMasterQcItemsByCode(rows, null)).toHaveLength(4)
+  })
+
+  it('finds an existing Master QC row by code and unit', () => {
+    const rows = [
+      { id: 101, instrument_name: names[0], unit_id: 5 },
+      { id: 102, instrument_name: names[2], ref_unit: { id: 5 } },
+    ]
+
+    expect(findMasterQcByCodeAndUnit(rows, 10, 5)?.id).toBe(101)
+    expect(findMasterQcByCodeAndUnit(rows, 20, 5)?.id).toBe(102)
+    expect(findMasterQcByCodeAndUnit(rows, 10, 6)).toBeNull()
   })
 
   it('paginates filtered Master QC rows without changing their order', () => {

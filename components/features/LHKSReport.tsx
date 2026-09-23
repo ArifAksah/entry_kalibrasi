@@ -103,15 +103,19 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
   useEffect(() => {
     if (!isOpen || rawData.length === 0) return
 
-    const uniqueSensorIds = Array.from(
-      new Set(
-        rawData.map((r) => r.sensor_id_uut).filter((id): id is number => !!id),
-      ),
-    )
+    const sensorUnits = new Map<number, string>()
+    rawData.forEach((row) => {
+      if (!row.sensor_id_uut || sensorUnits.has(row.sensor_id_uut)) return
+      const sensor = sensors.find((item: any) => item.id === row.sensor_id_uut)
+      sensorUnits.set(
+        row.sensor_id_uut,
+        row.unit_uut || sensor?.graduating_unit || sensor?.range_capacity_unit || '',
+      )
+    })
 
     Promise.all(
-      uniqueSensorIds.map(async (id) => {
-        const limit = await fetchQCLimitForSensor(id)
+      Array.from(sensorUnits.entries()).map(async ([id, unitUut]) => {
+        const limit = await fetchQCLimitForSensor(id, unitUut)
         return [String(id), limit] as [string, QCLimit | null]
       }),
     ).then((results) => {
@@ -121,7 +125,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
       })
       setQcLimits(map)
     })
-  }, [isOpen, rawData])
+  }, [isOpen, rawData, sensors])
 
   if (!isOpen) return null
 

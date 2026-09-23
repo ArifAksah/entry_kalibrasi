@@ -14,7 +14,7 @@
  *   → compare |uut_correction| with master_qc batas_koreksi
  */
 
-import { formatUnit } from './unitConversion';
+import { formatUnit, normaliseUnit } from './unitConversion';
 
 export interface QCLimit {
     /** Instrument name from instrument_names table */
@@ -269,29 +269,43 @@ export function parseNilaiBatasKoreksi(raw: string): number {
  */
 export function formatLatexUnit(raw: string): string {
     if (!raw) return '';
-    return formatUnit(raw);
+    return formatUnit(raw).replace(/°\s+/g, '°');
 }
 
-/** In-memory cache: sensor_id → QCLimit (null = no entry in DB) */
-const cache = new Map<number, QCLimit | null>()
+/** In-memory cache: sensor_id + normalized UUT unit → QCLimit. */
+const cache = new Map<string, QCLimit | null>()
+
+export function getQCLimitCacheKey(sensorId: number, unitUut: string): string {
+    return `${sensorId}:${normaliseUnit(unitUut)}`
+}
 
 /**
  * Fetches the QC limit for a given sensor ID from the master_qc table.
  * Uses the API endpoint /api/master-qc?sensor_id=N which resolves the chain.
  * Results are cached in memory for the session.
  */
-export async function fetchQCLimitForSensor(sensorId: number): Promise<QCLimit | null> {
-    if (cache.has(sensorId)) return cache.get(sensorId) ?? null
+export async function fetchQCLimitForSensor(sensorId: number, unitUut: string): Promise<QCLimit | null> {
+    const cacheKey = getQCLimitCacheKey(sensorId, unitUut)
+    if (cache.has(cacheKey)) return cache.get(cacheKey) ?? null
+
+    if (!normaliseUnit(unitUut)) {
+        cache.set(cacheKey, null)
+        return null
+    }
 
     try {
-        const res = await fetch(`/api/master-qc?sensor_id=${sensorId}`)
+        const params = new URLSearchParams({
+            sensor_id: String(sensorId),
+            unit_uut: unitUut,
+        })
+        const res = await fetch(`/api/master-qc?${params.toString()}`)
         if (!res.ok) {
-            cache.set(sensorId, null)
+            cache.set(cacheKey, null)
             return null
         }
         const json = await res.json()
         if (!json.data) {
-            cache.set(sensorId, null)
+            cache.set(cacheKey, null)
             return null
         }
 
@@ -299,16 +313,16 @@ export async function fetchQCLimitForSensor(sensorId: number): Promise<QCLimit |
         const limitValue = parseNilaiBatasKoreksi(row.nilai_batas_koreksi)
         const parsedUnit = formatLatexUnit(row.ref_unit?.unit ?? '')
         const result: QCLimit = {
-            instrumentName: row.instrument_names?.name ?? 'Unknown',
+            instrumentName: row.instrument_names?.names ?? row.instrument_names?.name ?? 'Unknown',
             rawLimit: row.nilai_batas_koreksi,
             limitValue,
             unit: parsedUnit,
             masterQcId: row.id,
         }
-        cache.set(sensorId, result)
+        cache.set(cacheKey, result)
         return result
     } catch {
-        cache.set(sensorId, null)
+        cache.set(cacheKey, null)
         return null
     }
 }

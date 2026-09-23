@@ -99,18 +99,16 @@ export async function computeQCData(sessionId: string): Promise<CacheEntry> {
   }
 
   // Step 3: Fetch QC limits for each unique UUT sensor
-  const uutSensorIds = Array.from(
-    new Set(
-      rawData
-        .filter(r => r.sensor_id_uut != null)
-        .map(r => r.sensor_id_uut!)
-    )
-  )
+  const uutSensorUnits = new Map<number, string>()
+  rawData.forEach((row) => {
+    if (row.sensor_id_uut == null || uutSensorUnits.has(row.sensor_id_uut)) return
+    uutSensorUnits.set(row.sensor_id_uut, row.unit_uut || '')
+  })
 
   const qcLimits: Record<string, QCLimit | null> = {}
   await Promise.all(
-    uutSensorIds.map(async (sensorId) => {
-      const limit = await fetchQCLimitForSensor(sensorId)
+    Array.from(uutSensorUnits.entries()).map(async ([sensorId, unitUut]) => {
+      const limit = await fetchQCLimitForSensor(sensorId, unitUut)
       qcLimits[String(sensorId)] = limit
     })
   )
@@ -154,7 +152,7 @@ export async function computeQCData(sessionId: string): Promise<CacheEntry> {
   // Fetch UUT sensor details for resolution/type info
   const uutSensorMap: Record<number, any> = {}
   await Promise.all(
-    uutSensorIds.map(async (sensorId) => {
+    Array.from(uutSensorUnits.keys()).map(async (sensorId) => {
       try {
         const res = await fetch(`/api/sensors/${sensorId}`)
         if (res.ok) {

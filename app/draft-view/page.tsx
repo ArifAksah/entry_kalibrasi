@@ -1989,6 +1989,19 @@ const DraftView: React.FC<{
         }
         instrumentNames={instrumentNames}
         standardCerts={standardCerts}
+        resultEntries={resultsToLegacyView(certificate.results).map((result: any) => ({
+          sensorId: result.sensorId ?? result.sensor_id ?? null,
+          unitUut: result.unitUut ?? null,
+          unitStd: result.unitStd ?? null,
+          calibrationMethod:
+            result.calibrationMethod ??
+            result.notesForm?.calibration_methode ??
+            null,
+          standardCertificateId:
+            result.standardCertificateId ??
+            result.standard_certificate_id ??
+            null,
+        }))}
         certificateStatus={certificate.status}
         onCalculateSaved={async (updates) => {
           if (!onUpdateCertificate) return

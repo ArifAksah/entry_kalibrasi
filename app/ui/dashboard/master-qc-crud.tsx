@@ -9,6 +9,7 @@ import { Spinner } from '../../../components/ui/Loading'
 import {
   filterMasterQcItemsByCode,
   filterInstrumentNamesByCode,
+  findMasterQcByCodeAndUnit,
   getInstrumentNameCodeId,
   paginateMasterQcItems,
 } from '../../../lib/master-qc-options'
@@ -38,6 +39,8 @@ interface MasterQCItem {
   catatan: string | null
   created_at: string
   updated_at: string
+  instrument_code_id?: number | null
+  unit_id?: number | null
   instrument_name: InstrumentName | null
   ref_unit: RefUnit | null
 }
@@ -261,7 +264,30 @@ const MasterQCCRUD: React.FC = () => {
     setSelectedInstrumentCodeId(
       codeId !== null && Number.isFinite(codeId) ? codeId : null,
     )
+    setEditingItem(null)
     setForm((prev) => ({ ...prev, instrument_name_id: '' }))
+  }
+
+  const handleUnitChange = (value: string | number | null) => {
+    const unitId = value == null || value === '' ? null : Number(value)
+    const existing = findMasterQcByCodeAndUnit(
+      items,
+      selectedInstrumentCodeId,
+      unitId !== null && Number.isFinite(unitId) ? unitId : null,
+    )
+
+    if (existing) {
+      setEditingItem(existing)
+      setForm({
+        instrument_name_id: String(existing.instrument_name?.id ?? ''),
+        unit_id: String(existing.ref_unit?.id ?? existing.unit_id ?? ''),
+        nilai_batas_koreksi: existing.nilai_batas_koreksi,
+        catatan: existing.catatan ?? '',
+      })
+      return
+    }
+
+    setForm((prev) => ({ ...prev, unit_id: value ? String(value) : '' }))
   }
 
   const handleChange = (
@@ -292,6 +318,7 @@ const MasterQCCRUD: React.FC = () => {
     setIsSubmitting(true)
     try {
       const payload = {
+        instrument_code_id: selectedInstrumentCodeId,
         instrument_name_id: Number(form.instrument_name_id),
         unit_id: Number(form.unit_id),
         nilai_batas_koreksi: form.nilai_batas_koreksi.trim(),
@@ -681,6 +708,7 @@ const MasterQCCRUD: React.FC = () => {
                   }))}
                   placeholder="Pilih Kode Instrumen"
                   searchPlaceholder="Cari kode instrumen..."
+                  disabled={Boolean(editingItem)}
                 />
                 <p className="text-xs text-gray-400 mt-1">
                   Pilihan kode menentukan daftar nama instrumen di bawah.
@@ -704,7 +732,7 @@ const MasterQCCRUD: React.FC = () => {
                     id: n.id,
                     name: n.name,
                   }))}
-                  disabled={!selectedInstrumentCodeId}
+                  disabled={!selectedInstrumentCodeId || Boolean(editingItem)}
                   placeholder={
                     selectedInstrumentCodeId
                       ? 'Pilih Nama Instrumen'
@@ -728,19 +756,25 @@ const MasterQCCRUD: React.FC = () => {
                 </label>
                 <SearchableDropdown
                   value={form.unit_id}
-                  onChange={(val) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      unit_id: val ? String(val) : '',
-                    }))
-                  }
+                  onChange={handleUnitChange}
                   options={units.map((u) => ({
                     id: u.id,
                     name: formatLatexUnit(u.unit),
                   }))}
                   placeholder="Pilih Satuan"
                   searchPlaceholder="Cari satuan..."
+                  disabled={Boolean(editingItem)}
                 />
+                {editingItem &&
+                  getInstrumentNameCodeId(editingItem.instrument_name) ===
+                    selectedInstrumentCodeId &&
+                  String(editingItem.ref_unit?.id ?? editingItem.unit_id) ===
+                    form.unit_id && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      Master QC untuk kode dan satuan ini sudah ada. Form beralih
+                      ke mode edit nilai yang tersedia.
+                    </p>
+                  )}
               </div>
 
               {/* Nilai Batas Koreksi */}

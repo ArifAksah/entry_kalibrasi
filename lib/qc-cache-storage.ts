@@ -4,7 +4,7 @@
  * Cache storage layer for QC computation results.
  * Handles localStorage read/write with serialization, validation, and LRU eviction.
  *
- * Key format: `qc_cache_{session_id}`
+ * Key format: `qc_cache_v2_{session_id}`
  */
 
 import type { QCLimit } from './qc-utils'
@@ -40,7 +40,7 @@ export interface CacheEntry {
 // Key Generation
 // ─────────────────────────────────────────────
 
-const CACHE_PREFIX = 'qc_cache_'
+const CACHE_PREFIX = 'qc_cache_v2_'
 
 /**
  * Returns the localStorage key for a given session ID.

@@ -24,7 +24,25 @@ export function filterInstrumentNamesByCode<
 }
 
 export type MasterQcListItem = {
+  id?: number
+  unit_id?: number | null
+  ref_unit?: { id: number } | null
   instrument_name?: MasterQcInstrumentNameOption | null
+}
+
+export function findMasterQcByCodeAndUnit<T extends MasterQcListItem>(
+  items: T[],
+  instrumentCodeId: number | null,
+  unitId: number | null,
+): T | null {
+  if (instrumentCodeId === null || unitId === null) return null
+  return items.find((item) => {
+    const itemUnitId = Number(item.unit_id ?? item.ref_unit?.id)
+    return (
+      getInstrumentNameCodeId(item.instrument_name) === instrumentCodeId &&
+      itemUnitId === unitId
+    )
+  }) ?? null
 }
 
 export function filterMasterQcItemsByCode<T extends MasterQcListItem>(
