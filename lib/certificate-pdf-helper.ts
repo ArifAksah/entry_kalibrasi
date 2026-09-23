@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { createHash } from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import { buildLocalPdfPath, isStoragePdfPath, uploadPdfToStorage } from './certificate-pdf-storage'
@@ -600,7 +601,7 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
             console.log(`[PDF Helper] PDF file size: ${pdfFile.length} bytes`)
 
             // Create multipart/form-data manually for Node.js
-            const signEndpoint = `${bsreBaseURL}/api/sign/pdf`
+            const signEndpoint = `${bsreBaseURL.replace(/\/$/, '')}/api/sign/pdf`
             console.log(`[PDF Helper] Calling BSrE sign endpoint: ${signEndpoint}`)
 
             const controller = new AbortController()
@@ -668,7 +669,10 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
             formDataParts.push(Buffer.from(`--${boundary}--${CRLF}`))
 
             const formDataBody = Buffer.concat(formDataParts)
-            console.log(`[PDF Helper] FormData body size: ${formDataBody.length} bytes`)
+            const pdfSha256 = createHash('sha256').update(pdfFile).digest('hex')
+            console.log(
+              `[PDF Helper] Signing payload: pdf_bytes=${pdfFile.length}, multipart_bytes=${formDataBody.length}, pdf_sha256=${pdfSha256}`
+            )
             // Note: `nik` is PII → never log its raw value. Same for passphrase/token.
             console.log(`[PDF Helper] Sending to BSrE: has_nik=${!!nik}, has_passphrase=${!!passphrase}, tampilan=invisible, page=1, image=false, linkQR=${linkQR ? 'yes' : '(empty — QR already in document)'}`)
             console.log(`[PDF Helper] Note: QR code already exists in document, using invisible mode to avoid duplicate QR code`)
@@ -687,8 +691,19 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
 
             clearTimeout(timeoutId)
 
-            console.log(`[PDF Helper] BSrE sign response status: ${signResponse.status}`)
-            console.log(`[PDF Helper] BSrE sign response headers:`, Object.fromEntries(signResponse.headers.entries()))
+            const upstreamRequestId =
+              signResponse.headers.get('x-request-id') ||
+              signResponse.headers.get('x-correlation-id') ||
+              signResponse.headers.get('request-id') ||
+              null
+            console.log('[PDF Helper] BSrE sign response:', {
+              status: signResponse.status,
+              contentType: signResponse.headers.get('content-type'),
+              contentLength: signResponse.headers.get('content-length'),
+              server: signResponse.headers.get('server'),
+              via: signResponse.headers.get('via'),
+              upstreamRequestId,
+            })
 
             if (!signResponse.ok) {
               const errorText = await signResponse.text().catch(() => '')
@@ -705,6 +720,30 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
                 // Extract meaningful error message
                 errorDetail = errJson.message || errJson.error || errJson.pesan || errorText
               } catch { /* not JSON */ }
+
+              // Some BSrE gateways wrap an internal nginx 503 page in an outer
+              // 400/401/403 response. Treat it as upstream unavailability, not
+              // as an invalid passphrase, and never expose the raw HTML body.
+              const errorDetailLower = errorDetail.toLowerCase()
+              const isUpstreamUnavailable =
+                errorDetailLower.includes('503 service temporarily unavailable') ||
+                errorDetailLower.includes('503 service unavailable') ||
+                (errorDetailLower.includes('<html') && errorDetailLower.includes('<center>nginx</center>'))
+
+              if (isUpstreamUnavailable) {
+                console.error('[PDF Helper] BSrE upstream unavailable:', {
+                  httpStatus: signResponse.status,
+                  upstreamRequestId,
+                  pdfBytes: pdfFile.length,
+                  multipartBytes: formDataBody.length,
+                  pdfSha256,
+                })
+                if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
+                return {
+                  success: false,
+                  error: `BSRE_UPSTREAM_UNAVAILABLE_HTTP_${signResponse.status}`
+                }
+              }
 
               // HTTP 400/401/403 from BSrE is not always a wrong passphrase.
               // Only classify it as passphrase-related when the message actually indicates that.
@@ -727,7 +766,6 @@ export async function generateAndSaveCertificatePDF(certificateId: number, userI
 
                 // ── Cek keyword NIK / user tidak ditemukan ──────────────────────
                 // BSrE mengembalikan 401/400 juga saat NIK tidak terdaftar
-                const errorDetailLower = errorDetail.toLowerCase()
                 const isNIKError =
                   errorDetailLower.includes('nik') ||
                   errorDetailLower.includes('sertifikat aktif') ||

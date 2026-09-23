@@ -390,6 +390,23 @@ export async function POST(request: NextRequest) {
           }, { status: 502 })
         }
 
+        if (pdfResult.error?.startsWith('BSRE_UPSTREAM_UNAVAILABLE_HTTP_')) {
+          const upstreamStatus = Number(
+            pdfResult.error.replace('BSRE_UPSTREAM_UNAVAILABLE_HTTP_', ''),
+          )
+          await logAction(request, user.id, 'bsre_sign', 'error', {
+            documentId,
+            attemptId,
+            reason: 'bsre_upstream_unavailable',
+            upstreamStatus: Number.isFinite(upstreamStatus) ? upstreamStatus : null,
+          })
+          return NextResponse.json({
+            error: 'Layanan penandatanganan BSrE sedang tidak tersedia. Silakan coba beberapa saat lagi.',
+            code: 'BSRE_UPSTREAM_UNAVAILABLE',
+            attemptId,
+          }, { status: 503 })
+        }
+
         // ── Baru setelah NIK tidak bermasalah, cek apakah ini error passphrase ──
         if (
           pdfResult.error?.includes('Passphrase') ||
