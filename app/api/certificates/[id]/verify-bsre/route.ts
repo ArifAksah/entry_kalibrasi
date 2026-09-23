@@ -63,7 +63,7 @@ export async function POST(
         }
 
         // 4. Send to BSrE
-        const bsreBaseURL = process.env.BSRE_BASE_URL || 'http://172.19.2.171'
+        const bsreBaseURL = process.env.BSRE_BASE_URL || 'http://172.19.0.243'
         const verifyEndpoint = `${bsreBaseURL}/api/sign/verify`
         const bsreUsername = process.env.BSRE_USERNAME
         const bsrePassword = process.env.BSRE_PASSWORD

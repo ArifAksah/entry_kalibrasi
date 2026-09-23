@@ -70,7 +70,7 @@ async function signPdfWithBsre(
   fileName: string,
   publicId?: string | null
 ): Promise<Buffer> {
-  const bsreBaseURL = process.env.BSRE_BASE_URL || 'http://172.19.2.171'
+  const bsreBaseURL = process.env.BSRE_BASE_URL || 'http://172.19.0.243'
   const bsreUsername = process.env.BSRE_USERNAME!
   const bsrePassword = process.env.BSRE_PASSWORD!
 
