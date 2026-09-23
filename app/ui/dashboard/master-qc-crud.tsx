@@ -9,7 +9,7 @@ import { Spinner } from '../../../components/ui/Loading'
 import {
   filterMasterQcItemsByCode,
   filterInstrumentNamesByCode,
-  findMasterQcByCodeAndUnit,
+  findMasterQcByNameAndUnit,
   getInstrumentNameCodeId,
   paginateMasterQcItems,
 } from '../../../lib/master-qc-options'
@@ -39,7 +39,6 @@ interface MasterQCItem {
   catatan: string | null
   created_at: string
   updated_at: string
-  instrument_code_id?: number | null
   unit_id?: number | null
   instrument_name: InstrumentName | null
   ref_unit: RefUnit | null
@@ -270,9 +269,12 @@ const MasterQCCRUD: React.FC = () => {
 
   const handleUnitChange = (value: string | number | null) => {
     const unitId = value == null || value === '' ? null : Number(value)
-    const existing = findMasterQcByCodeAndUnit(
+    const instrumentNameId = Number(form.instrument_name_id)
+    const existing = findMasterQcByNameAndUnit(
       items,
-      selectedInstrumentCodeId,
+      Number.isFinite(instrumentNameId) && instrumentNameId > 0
+        ? instrumentNameId
+        : null,
       unitId !== null && Number.isFinite(unitId) ? unitId : null,
     )
 
@@ -318,7 +320,6 @@ const MasterQCCRUD: React.FC = () => {
     setIsSubmitting(true)
     try {
       const payload = {
-        instrument_code_id: selectedInstrumentCodeId,
         instrument_name_id: Number(form.instrument_name_id),
         unit_id: Number(form.unit_id),
         nilai_batas_koreksi: form.nilai_batas_koreksi.trim(),
@@ -766,13 +767,13 @@ const MasterQCCRUD: React.FC = () => {
                   disabled={Boolean(editingItem)}
                 />
                 {editingItem &&
-                  getInstrumentNameCodeId(editingItem.instrument_name) ===
-                    selectedInstrumentCodeId &&
+                  String(editingItem.instrument_name?.id) ===
+                    form.instrument_name_id &&
                   String(editingItem.ref_unit?.id ?? editingItem.unit_id) ===
                     form.unit_id && (
                     <p className="text-xs text-blue-600 mt-1">
-                      Master QC untuk kode dan satuan ini sudah ada. Form beralih
-                      ke mode edit nilai yang tersedia.
+                      Master QC untuk nama instrumen dan satuan ini sudah ada.
+                      Form beralih ke mode edit nilai yang tersedia.
                     </p>
                   )}
               </div>

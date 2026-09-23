@@ -4,7 +4,6 @@ describe('Master QC payload validation', () => {
   it('normalizes a valid payload including numeric correction limits', () => {
     expect(
       parseMasterQcPayload({
-        instrument_code_id: '4',
         instrument_name_id: '10',
         unit_id: 2,
         nilai_batas_koreksi: 0,
@@ -13,7 +12,6 @@ describe('Master QC payload validation', () => {
     ).toEqual({
       success: true,
       data: {
-        instrumentCodeId: 4,
         instrumentNameId: 10,
         unitId: 2,
         correctionLimit: '0',
@@ -23,9 +21,8 @@ describe('Master QC payload validation', () => {
   })
 
   it('rejects malformed IDs and blank correction limits', () => {
-    expect(parseMasterQcPayload({ instrument_code_id: 0, instrument_name_id: 1, unit_id: 2, nilai_batas_koreksi: '1' })).toMatchObject({ success: false })
-    expect(parseMasterQcPayload({ instrument_code_id: 4, instrument_name_id: 'x', unit_id: 2, nilai_batas_koreksi: '1' })).toMatchObject({ success: false })
-    expect(parseMasterQcPayload({ instrument_code_id: 4, instrument_name_id: 1, unit_id: 0, nilai_batas_koreksi: '1' })).toMatchObject({ success: false })
-    expect(parseMasterQcPayload({ instrument_code_id: 4, instrument_name_id: 1, unit_id: 2, nilai_batas_koreksi: '  ' })).toMatchObject({ success: false })
+    expect(parseMasterQcPayload({ instrument_name_id: 'x', unit_id: 2, nilai_batas_koreksi: '1' })).toMatchObject({ success: false })
+    expect(parseMasterQcPayload({ instrument_name_id: 1, unit_id: 0, nilai_batas_koreksi: '1' })).toMatchObject({ success: false })
+    expect(parseMasterQcPayload({ instrument_name_id: 1, unit_id: 2, nilai_batas_koreksi: '  ' })).toMatchObject({ success: false })
   })
 })

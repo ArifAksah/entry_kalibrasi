@@ -10,7 +10,7 @@ function getMasterQcErrorMessage(error: any) {
             return 'ID Master QC bentrok. Sequence auto-increment perlu disinkronkan di database.'
         }
 
-        return 'Master QC untuk kode instrumen dan satuan ini sudah ada.'
+        return 'Master QC untuk nama instrumen dan satuan ini sudah ada.'
     }
 
     return error?.message || 'Gagal menyimpan data Master QC'
@@ -62,17 +62,7 @@ export async function GET(request: NextRequest) {
                 return NextResponse.json({ data: null, message: 'Sensor/Instrument name not found' }, { status: 200 })
             }
 
-            const { data: sensorName, error: sensorNameError } = await supabaseAdmin
-                .from('instrument_names')
-                .select('instrument_code_id')
-                .eq('id', targetNameId)
-                .maybeSingle()
-
-            if (sensorNameError || !sensorName?.instrument_code_id) {
-                return NextResponse.json({ data: null, message: 'Instrument code not found' }, { status: 200 })
-            }
-
-            // Step 3: select only the QC limit for the sensor code and UUT unit.
+            // Step 3: select only the QC limit for the sensor name and UUT unit.
             const { data: qcRows, error: qcErr } = await supabaseAdmin
                 .from('master_qc')
                 .select(`
@@ -83,7 +73,7 @@ export async function GET(request: NextRequest) {
                     instrument_names:instrument_name_id ( id, names ),
                     ref_unit ( id, unit )
                 `)
-                .eq('instrument_code_id', sensorName.instrument_code_id)
+                .eq('instrument_name_id', targetNameId)
 
             if (qcErr) {
                 console.error('GET /api/master-qc?sensor_id error:', qcErr)
@@ -100,7 +90,6 @@ export async function GET(request: NextRequest) {
                 console.error('GET /api/master-qc duplicate unit match:', {
                     sensorId: sensor_id,
                     targetNameId,
-                    instrumentCodeId: sensorName.instrument_code_id,
                     unit: requestedUnit,
                     ids: matchingRows.map((row: any) => row.id),
                 })
@@ -123,7 +112,6 @@ export async function GET(request: NextRequest) {
         created_at,
         updated_at,
         instrument_name_id,
-        instrument_code_id,
         unit_id
       `)
             .order('created_at', { ascending: false })
@@ -141,23 +129,10 @@ export async function GET(request: NextRequest) {
 
         // Fetch related data separately
         const instrumentNameIds = Array.from(new Set((data || []).map(item => item.instrument_name_id).filter(Boolean)))
-        const instrumentCodeIds = Array.from(new Set((data || []).map(item => item.instrument_code_id).filter(Boolean)))
         const unitIds = Array.from(new Set((data || []).map(item => item.unit_id).filter(Boolean)))
 
         let instrumentNamesMap: Record<number, any> = {}
-        let instrumentCodesMap: Record<number, any> = {}
         let unitsMap: Record<number, any> = {}
-
-        if (instrumentCodeIds.length > 0) {
-            const { data: codesData } = await supabaseAdmin
-                .from('instrument_code')
-                .select('id, code_alat')
-                .in('id', instrumentCodeIds)
-
-            if (codesData) {
-                instrumentCodesMap = Object.fromEntries(codesData.map(code => [code.id, code]))
-            }
-        }
 
         if (instrumentNameIds.length > 0) {
             const { data: namesData } = await supabaseAdmin
@@ -207,15 +182,7 @@ export async function GET(request: NextRequest) {
         // Map the data
         const mapped = (data || []).map(item => ({
             ...item,
-            instrument_name: instrumentNamesMap[item.instrument_name_id]
-                ? {
-                    ...instrumentNamesMap[item.instrument_name_id],
-                    instrument_code: instrumentCodesMap[item.instrument_code_id]
-                        || instrumentNamesMap[item.instrument_name_id].instrument_code
-                        || null,
-                }
-                : null,
-            instrument_code: instrumentCodesMap[item.instrument_code_id] || null,
+            instrument_name: instrumentNamesMap[item.instrument_name_id] || null,
             ref_unit: unitsMap[item.unit_id] || null
         }))
 
@@ -234,30 +201,16 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: parsed.error }, { status: 400 })
         }
         const {
-            instrumentCodeId: normalizedInstrumentCodeId,
             instrumentNameId: normalizedInstrumentNameId,
             unitId: normalizedUnitId,
             correctionLimit,
             notes,
         } = parsed.data
 
-        const { data: selectedName, error: selectedNameError } = await supabaseAdmin
-            .from('instrument_names')
-            .select('id, instrument_code_id')
-            .eq('id', normalizedInstrumentNameId)
-            .maybeSingle()
-
-        if (selectedNameError || selectedName?.instrument_code_id !== normalizedInstrumentCodeId) {
-            return NextResponse.json(
-                { error: 'Nama instrumen tidak sesuai dengan kode instrumen yang dipilih.' },
-                { status: 400 },
-            )
-        }
-
         const { data: existing, error: existingError } = await supabaseAdmin
             .from('master_qc')
             .select('id')
-            .eq('instrument_code_id', normalizedInstrumentCodeId)
+            .eq('instrument_name_id', normalizedInstrumentNameId)
             .eq('unit_id', normalizedUnitId)
             .maybeSingle()
 
@@ -268,7 +221,7 @@ export async function POST(request: NextRequest) {
 
         if (existing) {
             return NextResponse.json(
-                { error: 'Master QC untuk kode instrumen dan satuan ini sudah ada. Silakan edit nilai yang sudah tersedia.', existingId: existing.id },
+                { error: 'Master QC untuk nama instrumen dan satuan ini sudah ada. Silakan edit nilai yang sudah tersedia.', existingId: existing.id },
                 { status: 409 }
             )
         }
@@ -277,12 +230,11 @@ export async function POST(request: NextRequest) {
             .from('master_qc')
             .insert([{
                 instrument_name_id: normalizedInstrumentNameId,
-                instrument_code_id: normalizedInstrumentCodeId,
                 unit_id: normalizedUnitId,
                 nilai_batas_koreksi: correctionLimit,
                 catatan: notes,
             }])
-            .select('id, nilai_batas_koreksi, catatan, created_at, updated_at, instrument_name_id, instrument_code_id, unit_id')
+            .select('id, nilai_batas_koreksi, catatan, created_at, updated_at, instrument_name_id, unit_id')
             .single()
 
         if (error) {

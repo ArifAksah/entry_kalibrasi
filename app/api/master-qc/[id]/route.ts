@@ -9,7 +9,7 @@ function getMasterQcErrorMessage(error: any) {
             return 'ID Master QC bentrok. Sequence auto-increment perlu disinkronkan di database.'
         }
 
-        return 'Master QC untuk kode instrumen dan satuan ini sudah ada.'
+        return 'Master QC untuk nama instrumen dan satuan ini sudah ada.'
     }
 
     return error?.message || 'Gagal menyimpan data Master QC'
@@ -33,30 +33,16 @@ export async function PUT(
             return NextResponse.json({ error: parsed.error }, { status: 400 })
         }
         const {
-            instrumentCodeId: normalizedInstrumentCodeId,
             instrumentNameId: normalizedInstrumentNameId,
             unitId: normalizedUnitId,
             correctionLimit,
             notes,
         } = parsed.data
 
-        const { data: selectedName, error: selectedNameError } = await supabaseAdmin
-            .from('instrument_names')
-            .select('id, instrument_code_id')
-            .eq('id', normalizedInstrumentNameId)
-            .maybeSingle()
-
-        if (selectedNameError || selectedName?.instrument_code_id !== normalizedInstrumentCodeId) {
-            return NextResponse.json(
-                { error: 'Nama instrumen tidak sesuai dengan kode instrumen yang dipilih.' },
-                { status: 400 },
-            )
-        }
-
         const { data: duplicateRows, error: duplicateError } = await supabaseAdmin
             .from('master_qc')
             .select('id')
-            .eq('instrument_code_id', normalizedInstrumentCodeId)
+            .eq('instrument_name_id', normalizedInstrumentNameId)
             .eq('unit_id', normalizedUnitId)
             .neq('id', id)
             .limit(1)
@@ -68,7 +54,7 @@ export async function PUT(
 
         if (Array.isArray(duplicateRows) && duplicateRows.length > 0) {
             return NextResponse.json(
-                { error: 'Master QC untuk kode instrumen dan satuan ini sudah ada. Silakan edit nilai yang sudah tersedia.', existingId: duplicateRows[0].id },
+                { error: 'Master QC untuk nama instrumen dan satuan ini sudah ada. Silakan edit nilai yang sudah tersedia.', existingId: duplicateRows[0].id },
                 { status: 409 }
             )
         }
@@ -77,13 +63,12 @@ export async function PUT(
             .from('master_qc')
             .update({
                 instrument_name_id: normalizedInstrumentNameId,
-                instrument_code_id: normalizedInstrumentCodeId,
                 unit_id: normalizedUnitId,
                 nilai_batas_koreksi: correctionLimit,
                 catatan: notes,
             })
             .eq('id', id)
-            .select('id, nilai_batas_koreksi, catatan, created_at, updated_at, instrument_name_id, instrument_code_id, unit_id')
+            .select('id, nilai_batas_koreksi, catatan, created_at, updated_at, instrument_name_id, unit_id')
             .single()
 
         if (error) {

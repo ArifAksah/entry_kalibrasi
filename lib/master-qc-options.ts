@@ -30,16 +30,16 @@ export type MasterQcListItem = {
   instrument_name?: MasterQcInstrumentNameOption | null
 }
 
-export function findMasterQcByCodeAndUnit<T extends MasterQcListItem>(
+export function findMasterQcByNameAndUnit<T extends MasterQcListItem>(
   items: T[],
-  instrumentCodeId: number | null,
+  instrumentNameId: number | null,
   unitId: number | null,
 ): T | null {
-  if (instrumentCodeId === null || unitId === null) return null
+  if (instrumentNameId === null || unitId === null) return null
   return items.find((item) => {
     const itemUnitId = Number(item.unit_id ?? item.ref_unit?.id)
     return (
-      getInstrumentNameCodeId(item.instrument_name) === instrumentCodeId &&
+      Number(item.instrument_name?.id) === instrumentNameId &&
       itemUnitId === unitId
     )
   }) ?? null
