@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { parseCalculationSnapshots } from '../../../lib/calculation-snapshot'
 import { clientSafeMessage } from '../../../lib/api-error'
+import { requireRoles } from '../../../lib/api-auth'
 import { findInvalidStandardSelection } from '../../../lib/standard-certificate-filter'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -83,14 +84,23 @@ const selectBestColumn = (
 }
 
 export async function POST(req: NextRequest) {
+    const gate = await requireRoles(req, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     return saveRawData(req, false)
 }
 
 export async function PUT(req: NextRequest) {
+    const gate = await requireRoles(req, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     return saveRawData(req, true)
 }
 
 export async function PATCH(req: NextRequest) {
+    const gate = await requireRoles(req, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     try {
         const body = await req.json()
         const rows = parseCalculationSnapshots(body?.calculation_snapshots)

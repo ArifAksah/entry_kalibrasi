@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendWhatsApp } from '../../../../../lib/wa'
 import { buildDraftSubmissionMessage } from '../../../../../lib/wa-messages'
+import { forbidden, isAdminCaller, requireCaller } from '../../../../../lib/api-auth'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,14 +23,15 @@ export async function POST(
   try {
     const { id } = await params
     const certificateId = parseInt(id)
-    const { sent_by } = await request.json()
 
     if (!certificateId || isNaN(certificateId)) {
       return NextResponse.json({ error: 'Invalid certificate ID' }, { status: 400 })
     }
 
-    if (!sent_by) {
-      return NextResponse.json({ error: 'sent_by is required' }, { status: 400 })
+    const caller = await requireCaller(request)
+    if (caller instanceof NextResponse) return caller
+    if (!isAdminCaller(caller) && caller.role !== 'calibrator') {
+      return forbidden('Hanya admin atau kalibrator pemilik sertifikat yang dapat mengirim ke verifikator')
     }
 
     const { data: certificate, error: certError } = await supabase
@@ -41,6 +43,16 @@ export async function POST(
     if (certError || !certificate) {
       return NextResponse.json({ error: 'Certificate not found' }, { status: 404 })
     }
+
+    if (!isAdminCaller(caller)) {
+      const isOwner = [certificate.created_by, certificate.sent_by]
+        .some(value => value != null && String(value) === caller.user.id)
+      if (!isOwner) {
+        return forbidden('Hanya admin atau kalibrator pemilik sertifikat yang dapat mengirim ke verifikator')
+      }
+    }
+
+    const sentBy = caller.user.id
 
     if (certificate.status !== 'draft') {
       return NextResponse.json({ error: 'Certificate is not in draft status' }, { status: 400 })
@@ -154,7 +166,7 @@ export async function POST(
         status: 'sent',
         sent_to_verifiers_at: sentAt,
         results_frozen_at: certificate.results_frozen_at ?? sentAt,
-        sent_by: sent_by,
+        sent_by: sentBy,
         repair_status: 'none'
       })
       .eq('id', certificateId)
@@ -168,7 +180,7 @@ export async function POST(
       await createCertificateLog({
         certificate_id: certificateId,
         action: 'sent',
-        performed_by: sent_by,
+        performed_by: sentBy,
         previous_status: 'draft',
         new_status: 'sent',
         notes: latestRejection
@@ -187,7 +199,7 @@ export async function POST(
         const { data: calibrator } = await supabase
           .from('personel')
           .select('name')
-          .eq('id', sent_by)
+          .eq('id', sentBy)
           .single()
 
         const calibratorName = calibrator?.name || 'Unknown'
@@ -198,7 +210,7 @@ export async function POST(
           certificate.verifikator_2,
           certificate.verifikator_3,
           certificate.authorized_by
-        ].filter((id): id is string => !!id && id !== sent_by)
+        ].filter((id): id is string => !!id && id !== sentBy)
 
         if (recipientIds.length === 0) {
           console.warn(`[send-to-verifiers] No recipients (after excluding sent_by) for certificate ${certificateId}`)
@@ -256,7 +268,7 @@ export async function POST(
         status: 'sent',
         sent_to_verifiers_at: sentAt,
         results_frozen_at: certificate.results_frozen_at ?? sentAt,
-        sent_by: sent_by,
+        sent_by: sentBy,
         reset_from_level: resetFromLevel
       }
     })

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "../../../../lib/supabase";
 import { InstrumentNameUpdate } from "../../../../lib/supabase";
 import { clientSafeMessage } from '../../../../lib/api-error'
+import { requireRoles } from '../../../../lib/api-auth'
 
 export async function GET(
   request: NextRequest,
@@ -32,6 +33,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const gate = await requireRoles(request, ['admin', 'calibrator']);
+  if (gate instanceof NextResponse) return gate;
+
   try {
     const { id } = await params;
     const body = await request.json();
@@ -74,6 +78,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const gate = await requireRoles(request, ['admin', 'calibrator']);
+  if (gate instanceof NextResponse) return gate;
+
   try {
     const { id } = await params;
 

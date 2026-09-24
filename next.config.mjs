@@ -36,6 +36,51 @@ const nextConfig = {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
       process.env.ANON_KEY,
   },
+  async headers() {
+    // Content-Security-Policy is emitted as Report-Only on purpose: the app
+    // relies on Next.js inline bootstrap scripts and styled-components, so an
+    // enforcing CSP must be rolled out with nonces and staged testing first.
+    const supabaseOrigin = (() => {
+      try {
+        return new URL(
+          process.env.NEXT_PUBLIC_SUPABASE_URL ||
+            process.env.SUPABASE_PUBLIC_URL ||
+            process.env.API_EXTERNAL_URL ||
+            'http://localhost:7000',
+        ).origin
+      } catch {
+        return ''
+      }
+    })()
+
+    const cspReportOnly = [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' data: https://fonts.gstatic.com",
+      "style-src 'self' 'unsafe-inline'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      supabaseOrigin ? `connect-src 'self' ${supabaseOrigin}` : "connect-src 'self'",
+    ].join('; ')
+
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(), microphone=(), geolocation=(), payment=()',
+          },
+          { key: 'Content-Security-Policy-Report-Only', value: cspReportOnly },
+        ],
+      },
+    ]
+  },
 };
 
 export default nextConfig;

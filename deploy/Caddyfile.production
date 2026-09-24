@@ -1,0 +1,63 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Caddy production template — same-origin app + Supabase  (temuan C3/H5)
+#
+# Target topologi:
+#   Browser  ->  Caddy :80/:443  ->  Next.js 127.0.0.1:3001
+#                                ->  Kong    127.0.0.1:8000   (prefix /supabase)
+#
+# Setelah ini diterapkan, Kong/Studio/Postgres/GoTrue/MinIO tidak perlu
+# dipublikasikan ke jaringan user sama sekali.
+#
+# Pasang di: /etc/caddy/Caddyfile
+# Validasi:  sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+# Reload:    sudo systemctl reload caddy
+# ═══════════════════════════════════════════════════════════════════════════════
+
+:80 {
+	encode gzip
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		# CSP di server harus diselaraskan dengan next.config.mjs (Report-Only).
+	}
+
+	route {
+		# /supabase            -> /supabase/
+		handle /supabase {
+			redir /supabase/ 308
+		}
+
+		# Hanya sub-API Supabase yang benar-benar dipakai browser.
+		# Management plane (pg/meta, metrics, graphql admin, api/mgmt) TIDAK diizinkan.
+		@supabase_api path \
+			/supabase/auth/v1 \
+			/supabase/auth/v1/* \
+			/supabase/rest/v1 \
+			/supabase/rest/v1/* \
+			/supabase/storage/v1 \
+			/supabase/storage/v1/* \
+			/supabase/realtime/v1 \
+			/supabase/realtime/v1/*
+
+		handle_path @supabase_api {
+			reverse_proxy 127.0.0.1:8000
+		}
+
+		# Semua jalur /supabase lain -> 404 (termasuk management plane).
+		handle /supabase/* {
+			respond "Not Found" 404
+		}
+
+		# Aplikasi Next.js.
+		handle {
+			reverse_proxy 127.0.0.1:3001
+		}
+	}
+
+	log {
+		output file /var/log/caddy/entrykalibrasi_access.log
+	}
+}

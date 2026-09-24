@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../../lib/supabase'
 import { createClient } from '@supabase/supabase-js'
 import { clientSafeMessage } from '../../../../lib/api-error'
+import { requireRoles } from '../../../../lib/api-auth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,6 +32,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const gate = await requireRoles(request, ['admin', 'calibrator'])
+  if (gate instanceof NextResponse) return gate
+
   try {
     const { id } = await params
     const body = await request.json()
@@ -70,6 +74,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const gate = await requireRoles(request, ['admin', 'calibrator'])
+  if (gate instanceof NextResponse) return gate
+
   try {
     const { id } = await params
     const { error } = await supabaseAdmin
@@ -82,7 +89,6 @@ export async function DELETE(
     return NextResponse.json({ error: 'Failed to delete record' }, { status: 500 })
   }
 }
-
 
 
 

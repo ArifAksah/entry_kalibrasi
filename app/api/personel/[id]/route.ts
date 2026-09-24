@@ -128,13 +128,12 @@ export async function PUT(
     if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
 
     // Update metadata akun auth (non-fatal bila tidak tersedia di env tertentu)
+    // NIK/NIP tidak boleh masuk user_metadata karena metadata ikut ke JWT.
     const authUpdate: any = {
       email,
       user_metadata: {
         name,
         phone: phone || '',
-        nip: nip || '',
-        nik: nik || '',
       },
     }
     if (password) authUpdate.password = password

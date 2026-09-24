@@ -25,7 +25,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || ''
 
 if (typeof window === 'undefined' && !supabaseServiceKey) {
-  console.warn('SUPABASE_SERVICE_ROLE_KEY not found. Admin operations may fail.')
+  throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for server-side admin operations.')
 }
 
 export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey || supabaseAnonKey, {

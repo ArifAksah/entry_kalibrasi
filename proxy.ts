@@ -67,7 +67,7 @@ const ADMIN_PREFIXES = [
   '/api/debug/',
   '/api/test/',
   '/api/test-pdf-generation',
-  '/api/endpoint-catalog/scan',
+  '/api/endpoint-catalog',
   '/api/openapi/',
   '/api/resources',
   '/api/bsre/auth',

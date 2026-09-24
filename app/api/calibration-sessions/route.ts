@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../lib/supabase'
 import { clientSafeMessage } from '../../../lib/api-error'
+import { requireRoles } from '../../../lib/api-auth'
 
 const buildSessionPayload = (body: any) => ({
     station_id: body.station_id ? parseInt(body.station_id) : null,
@@ -15,6 +16,9 @@ const buildSessionPayload = (body: any) => ({
 })
 
 export async function POST(req: NextRequest) {
+    const gate = await requireRoles(req, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     try {
         const body = await req.json()
         console.log('Creating session with body:', body)
@@ -46,6 +50,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+    const gate = await requireRoles(req, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     try {
         const body = await req.json()
         const { session_id } = body

@@ -46,11 +46,12 @@ export async function POST(request: NextRequest) {
       email,
       password,
       email_confirm: true,
+      // Jangan menaruh NIK/NIP di metadata: user_metadata ikut tertanam
+      // ke JWT dan cookies, sehingga PII tersebar ke klien. Data identitas
+      // hanya boleh berada di tabel personel (server-side).
       user_metadata: {
         name,
         phone: phone || '',
-        nip: nip || '',
-        nik: nik || '',
       },
     })
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../../lib/supabase'
 import { clientSafeMessage } from '../../../../lib/api-error'
 import { parseMasterQcPayload } from '../../../../lib/master-qc-validation'
+import { requireRoles } from '../../../../lib/api-auth'
 
 function getMasterQcErrorMessage(error: any) {
     if (error?.code === '23505') {
@@ -20,6 +21,9 @@ export async function PUT(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
+    const gate = await requireRoles(request, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     try {
         const { id: rawId } = await params
         const id = Number(rawId)
@@ -120,6 +124,9 @@ export async function DELETE(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
+    const gate = await requireRoles(request, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     try {
         const { id: rawId } = await params
         const id = Number(rawId)

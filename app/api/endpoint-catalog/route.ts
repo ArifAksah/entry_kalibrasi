@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { clientSafeMessage } from '../../../lib/api-error'
+import { requireAdmin } from '../../../lib/api-auth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,7 +9,11 @@ const supabaseAdmin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 )
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // M8: katalog endpoint (inventaris internal) tidak boleh dibaca non-admin.
+  const gate = await requireAdmin(request)
+  if (gate instanceof NextResponse) return gate
+
   try {
     const { data, error } = await supabaseAdmin.from('endpoint_catalog').select('*').order('resource').order('method').order('path')
     if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
@@ -19,6 +24,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const gate = await requireAdmin(request)
+  if (gate instanceof NextResponse) return gate
+
   try {
     const body = await request.json()
     const { data, error } = await supabaseAdmin.from('endpoint_catalog').insert(body).select()
@@ -30,6 +38,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const gate = await requireAdmin(request)
+  if (gate instanceof NextResponse) return gate
+
   try {
     const body = await request.json()
     // support single or array
@@ -60,6 +71,9 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const gate = await requireAdmin(request)
+  if (gate instanceof NextResponse) return gate
+
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
@@ -71,6 +85,5 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to delete endpoint' }, { status: 500 })
   }
 }
-
 
 

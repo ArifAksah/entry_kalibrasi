@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin as supabase } from '../../../../lib/supabase'
 import { createClient } from '@supabase/supabase-js'
 import { sendAssignmentNotificationEmail } from '../../../../lib/email'
 import {
   normalizeResultsOnWrite,
   ResultsValidationError,
 } from '../../../../lib/validators/certificate-results-normalize'
-import { authorizeCertificateAccess, canUserAccessCertificate, getUserRole } from '../../../../lib/certificate-access'
+import { authorizeCertificateAccess } from '../../../../lib/certificate-access'
 import { verifyPdfRenderToken } from '../../../../lib/pdf-render-token'
 import { clientSafeMessage } from '../../../../lib/api-error'
+import { forbidden, isAdminCaller, requireCaller } from '../../../../lib/api-auth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -73,11 +73,30 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader) return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+    const caller = await requireCaller(request)
+    if (caller instanceof NextResponse) return caller
+    if (!isAdminCaller(caller) && caller.role !== 'calibrator') {
+      return forbidden('Hanya admin atau kalibrator pemilik sertifikat yang dapat mengubah sertifikat')
+    }
+
+    // Get current certificate data before updating
+    const { data: currentCertificate, error: currentError } = await supabaseAdmin
+      .from('certificate')
+      .select('authorized_by, verifikator_1, verifikator_2, verifikator_3, version, status, rejection_history, no_certificate, no_order, no_identification, issue_date, station, instrument, station_address, results, calibration_place, calibration_kind, results_frozen_at, created_by, sent_by')
+      .eq('id', id)
+      .single();
+
+    if (currentError) {
+      return NextResponse.json({ error: 'Certificate not found' }, { status: 404 });
+    }
+
+    if (!isAdminCaller(caller)) {
+      const isOwner = [currentCertificate.created_by, currentCertificate.sent_by]
+        .some(value => value != null && String(value) === caller.user.id)
+      if (!isOwner || currentCertificate.status !== 'draft') {
+        return forbidden('Kalibrator hanya dapat mengubah sertifikat draft miliknya')
+      }
+    }
 
     const body = await request.json()
     const {
@@ -94,31 +113,12 @@ export async function PUT(
       results,
       station_address,
       calibration_computed_at,
-      balai_id,
-      is_standard,
     } = body
 
     if (!no_certificate || !no_order || !no_identification) {
       return NextResponse.json({
         error: 'Certificate number, order number, and identification number are required',
       }, { status: 400 })
-    }
-
-    // Get current certificate data before updating
-    const { data: currentCertificate, error: currentError } = await supabaseAdmin
-      .from('certificate')
-      .select('authorized_by, verifikator_1, verifikator_2, verifikator_3, version, status, rejection_history, no_certificate, no_order, no_identification, issue_date, station, instrument, station_address, results, calibration_place, calibration_kind, results_frozen_at')
-      .eq('id', id)
-      .single();
-
-    if (currentError) {
-      return NextResponse.json({ error: 'Certificate not found' }, { status: 404 });
-    }
-
-    const userRole = await getUserRole(user.id)
-    const canAccess = await canUserAccessCertificate(user.id, userRole, currentCertificate)
-    if (!canAccess) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // Validate station foreign key if provided and fetch address
@@ -408,7 +408,7 @@ export async function PUT(
       await createCertificateLog({
         certificate_id: parseInt(id),
         action: 'updated',
-        performed_by: user.id,
+        performed_by: caller.user.id,
         previous_status: currentCert?.status || null,
         new_status: currentCert?.status || null,
         metadata: {
@@ -442,11 +442,11 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader) return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+    const caller = await requireCaller(request)
+    if (caller instanceof NextResponse) return caller
+    if (!isAdminCaller(caller) && caller.role !== 'calibrator') {
+      return forbidden('Hanya admin atau kalibrator pemilik sertifikat yang dapat menghapus sertifikat')
+    }
 
     // Get certificate data before deleting for log
     const { data: certData } = await supabaseAdmin
@@ -457,14 +457,12 @@ export async function DELETE(
 
     if (!certData) return NextResponse.json({ error: 'Certificate not found' }, { status: 404 })
 
-    const userRole = await getUserRole(user.id)
-    const canAccess = await canUserAccessCertificate(user.id, userRole, certData)
-    if (!canAccess) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    if (userRole === 'user_station') {
-      return NextResponse.json({ error: 'User station cannot delete certificates' }, { status: 403 })
+    if (!isAdminCaller(caller)) {
+      const isOwner = [certData.created_by, certData.sent_by]
+        .some(value => value != null && String(value) === caller.user.id)
+      if (!isOwner || certData.status !== 'draft') {
+        return forbidden('Kalibrator hanya dapat menghapus sertifikat draft miliknya')
+      }
     }
 
     const { error } = await supabaseAdmin
@@ -480,7 +478,7 @@ export async function DELETE(
       await createCertificateLog({
         certificate_id: parseInt(id),
         action: 'deleted',
-        performed_by: user.id,
+        performed_by: caller.user.id,
         previous_status: certData?.status || null,
         new_status: null,
         metadata: {

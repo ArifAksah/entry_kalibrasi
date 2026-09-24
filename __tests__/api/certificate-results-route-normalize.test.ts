@@ -133,6 +133,10 @@ describe('certificate routes normalize results wiring', () => {
         return {
           select: jest.fn().mockReturnThis(),
           eq: jest.fn().mockReturnThis(),
+          maybeSingle: jest.fn().mockResolvedValue({
+            data: { role: 'admin' },
+            error: null,
+          }),
           single: jest.fn().mockResolvedValue({
             data: { role: 'admin' },
             error: null,
@@ -207,6 +211,17 @@ describe('certificate routes normalize results wiring', () => {
     let updatePayload: any = null
 
     mockSupabaseAdmin.from.mockImplementation((table: string) => {
+      if (table === 'user_roles') {
+        return {
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn().mockReturnThis(),
+          maybeSingle: jest.fn().mockResolvedValue({
+            data: { role: 'admin' },
+            error: null,
+          }),
+        }
+      }
+
       if (table === 'certificate') {
         return {
           select: jest.fn().mockReturnThis(),

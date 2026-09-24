@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import fs from 'fs'
 import path from 'path'
+import { requireAdmin } from '../../../../lib/api-auth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -37,6 +38,9 @@ function sniffMethods(file: string): string[] {
 }
 
 export async function POST(request: NextRequest) {
+  const gate = await requireAdmin(request)
+  if (gate instanceof NextResponse) return gate
+
   try {
     const apiRoot = path.join(process.cwd(), 'app', 'api')
     if (!fs.existsSync(apiRoot)) return NextResponse.json({ error: 'api folder not found' }, { status: 400 })
@@ -78,6 +82,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to scan endpoints' }, { status: 500 })
   }
 }
-
 
 

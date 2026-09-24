@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { canUserAccessCertificate, filterCertificatesForUser } from '../../../../lib/certificate-access';
+import { filterCertificatesForUser } from '../../../../lib/certificate-access';
 import { clientSafeMessage } from '../../../../lib/api-error'
+import { forbidden, isAdminCaller, requireCaller } from '../../../../lib/api-auth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -135,17 +136,10 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const { user, error: authError } = await authenticateUser(request);
-    if (authError || !user) return NextResponse.json({ error: authError || 'Authentication failed' }, { status: 401 });
-
-    const userRole = await getUserRole(user.id);
-    if (!userRole) return NextResponse.json({ error: 'User role not found' }, { status: 404 });
-
-    // Block admin from editing certificates
-    if (userRole === 'admin') {
-      return NextResponse.json({ 
-        error: 'Admin cannot edit certificates to maintain data integrity' 
-      }, { status: 403 });
+    const caller = await requireCaller(request)
+    if (caller instanceof NextResponse) return caller
+    if (!isAdminCaller(caller) && caller.role !== 'calibrator') {
+      return forbidden('Hanya admin atau kalibrator pemilik sertifikat yang dapat mengubah sertifikat')
     }
 
     const body = await request.json();
@@ -164,8 +158,13 @@ export async function PUT(request: NextRequest) {
     if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
     if (!existingCertificate) return NextResponse.json({ error: 'Certificate not found' }, { status: 404 });
 
-    const allowed = await canUserAccessCertificate(user.id, userRole, existingCertificate);
-    if (!allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (!isAdminCaller(caller)) {
+      const isOwner = [existingCertificate.created_by, existingCertificate.sent_by]
+        .some(value => value != null && String(value) === caller.user.id)
+      if (!isOwner || existingCertificate.status !== 'draft') {
+        return forbidden('Kalibrator hanya dapat mengubah sertifikat draft miliknya')
+      }
+    }
 
     const { data, error } = await supabaseAdmin
       .from('certificate')
@@ -185,17 +184,10 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const { user, error: authError } = await authenticateUser(request);
-    if (authError || !user) return NextResponse.json({ error: authError || 'Authentication failed' }, { status: 401 });
-
-    const userRole = await getUserRole(user.id);
-    if (!userRole) return NextResponse.json({ error: 'User role not found' }, { status: 404 });
-
-    // Block admin from deleting certificates
-    if (userRole === 'admin') {
-      return NextResponse.json({ 
-        error: 'Admin cannot delete certificates to maintain data integrity' 
-      }, { status: 403 });
+    const caller = await requireCaller(request)
+    if (caller instanceof NextResponse) return caller
+    if (!isAdminCaller(caller) && caller.role !== 'calibrator') {
+      return forbidden('Hanya admin atau kalibrator pemilik sertifikat yang dapat menghapus sertifikat')
     }
 
     const body = await request.json();
@@ -214,8 +206,13 @@ export async function DELETE(request: NextRequest) {
     if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
     if (!existingCertificate) return NextResponse.json({ error: 'Certificate not found' }, { status: 404 });
 
-    const allowed = await canUserAccessCertificate(user.id, userRole, existingCertificate);
-    if (!allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (!isAdminCaller(caller)) {
+      const isOwner = [existingCertificate.created_by, existingCertificate.sent_by]
+        .some(value => value != null && String(value) === caller.user.id)
+      if (!isOwner || existingCertificate.status !== 'draft') {
+        return forbidden('Kalibrator hanya dapat menghapus sertifikat draft miliknya')
+      }
+    }
 
     const { error } = await supabaseAdmin
       .from('certificate')

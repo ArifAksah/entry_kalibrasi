@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../lib/supabase'
 import { clientSafeMessage } from '../../../lib/api-error'
+import { requireRoles } from '../../../lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,6 +45,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+    const gate = await requireRoles(request, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     try {
         const body = await request.json()
         console.log('POST /api/cert-standards body:', JSON.stringify(body, null, 2))

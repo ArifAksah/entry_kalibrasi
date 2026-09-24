@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { clientSafeMessage } from '../../../lib/api-error'
+import { forbidden, isAdminCaller, notFound, requireCaller } from '../../../lib/api-auth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,10 +9,24 @@ const supabaseAdmin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 )
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    const caller = await requireCaller(request)
+    if (caller instanceof NextResponse) return caller
+
     const { documentId, documentHash } = await request.json()
     if (!documentId || !documentHash) return NextResponse.json({ success: false, message: 'documentId dan documentHash wajib' }, { status: 400 })
+
+    const { data: certificate, error: certificateError } = await supabaseAdmin
+      .from('certificate')
+      .select('id, authorized_by')
+      .eq('id', documentId)
+      .maybeSingle()
+
+    if (certificateError || !certificate) return notFound('Sertifikat tidak ditemukan')
+    if (!isAdminCaller(caller) && String(certificate.authorized_by ?? '') !== caller.user.id) {
+      return forbidden('Hanya admin atau penandatangan sertifikat yang dapat menambahkan timestamp')
+    }
 
     const isMock = (process.env.BSRE_MOCK || '').toLowerCase() === 'true'
     if (isMock) {

@@ -1,23 +1,8 @@
 
 import { supabaseAdmin } from '../../../lib/supabase';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { clientSafeMessage } from '../../../lib/api-error'
-
-async function requireAuthenticatedUser(request: Request) {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-        return { user: null, response: NextResponse.json({ error: 'Authorization header required' }, { status: 401 }) };
-    }
-
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-
-    if (error || !user) {
-        return { user: null, response: NextResponse.json({ error: 'Invalid token' }, { status: 401 }) };
-    }
-
-    return { user, response: null };
-}
+import { requireRoles } from '../../../lib/api-auth'
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
@@ -41,11 +26,11 @@ export async function GET(request: Request) {
     return NextResponse.json(data);
 }
 
-export async function POST(request: Request) {
-    try {
-        const auth = await requireAuthenticatedUser(request);
-        if (auth.response) return auth.response;
+export async function POST(request: NextRequest) {
+    const gate = await requireRoles(request, ['admin', 'calibrator']);
+    if (gate instanceof NextResponse) return gate;
 
+    try {
         const json = await request.json();
         const { unit } = json;
 
@@ -69,11 +54,11 @@ export async function POST(request: Request) {
     }
 }
 
-export async function PUT(request: Request) {
-    try {
-        const auth = await requireAuthenticatedUser(request);
-        if (auth.response) return auth.response;
+export async function PUT(request: NextRequest) {
+    const gate = await requireRoles(request, ['admin', 'calibrator']);
+    if (gate instanceof NextResponse) return gate;
 
+    try {
         const json = await request.json();
         const { id, unit } = json;
 
@@ -98,9 +83,9 @@ export async function PUT(request: Request) {
     }
 }
 
-export async function DELETE(request: Request) {
-    const auth = await requireAuthenticatedUser(request);
-    if (auth.response) return auth.response;
+export async function DELETE(request: NextRequest) {
+    const gate = await requireRoles(request, ['admin', 'calibrator']);
+    if (gate instanceof NextResponse) return gate;
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

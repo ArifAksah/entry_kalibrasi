@@ -122,12 +122,7 @@ BEGIN
 
             v_delta := NEW.std_corrected - NEW.uut_data;
             IF COALESCE(v_is_wind_direction, FALSE) THEN
-                v_delta := MOD(v_delta, 360);
-                IF v_delta > 180 THEN
-                    v_delta := v_delta - 360;
-                ELSIF v_delta < -180 THEN
-                    v_delta := v_delta + 360;
-                END IF;
+                v_delta := MOD(MOD(v_delta + 180, 360) + 360, 360) - 180;
             END IF;
             NEW.uut_correction := v_delta;
         END IF;

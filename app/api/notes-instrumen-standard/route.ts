@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../lib/supabase'
 import { createClient } from '@supabase/supabase-js'
 import { clientSafeMessage } from '../../../lib/api-error'
+import { requireRoles } from '../../../lib/api-auth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,6 +24,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const gate = await requireRoles(request, ['admin', 'calibrator'])
+  if (gate instanceof NextResponse) return gate
+
   try {
     const body = await request.json()
     const { notes, instrumen_standard } = body as { notes?: number; instrumen_standard?: number }
@@ -56,7 +60,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create record' }, { status: 500 })
   }
 }
-
 
 
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireRoles } from '../../../../lib/api-auth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -30,6 +31,9 @@ async function ensureBucketExists(bucket: string) {
 }
 
 export async function POST(request: NextRequest) {
+  const gate = await requireRoles(request, ['admin', 'calibrator'])
+  if (gate instanceof NextResponse) return gate
+
   try {
     const contentType = request.headers.get('content-type') || ''
     if (!contentType.includes('multipart/form-data')) {
@@ -44,8 +48,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 })
     }
 
-    if (!file.type || !file.type.startsWith('image/')) {
+    const allowedTypes: Record<string, string> = {
+      'image/png': 'png',
+      'image/jpeg': 'jpg',
+      'image/webp': 'webp',
+      'image/gif': 'gif',
+    }
+    if (!file.type || !allowedTypes[file.type]) {
       return NextResponse.json({ error: 'Only image files are allowed' }, { status: 400 })
+    }
+
+    if (!/^certificate-(?:new|\d+)$/.test(folder)) {
+      return NextResponse.json({ error: 'Invalid certificate upload folder' }, { status: 400 })
     }
 
     const MAX_BYTES = 10 * 1024 * 1024 // 10MB
@@ -56,7 +70,7 @@ export async function POST(request: NextRequest) {
     const bucket = 'certificates'
     await ensureBucketExists(bucket)
 
-    const ext = file.name?.split('.').pop()?.toLowerCase() || 'png'
+    const ext = allowedTypes[file.type]
     const safeName = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
     const path = `${folder}/${safeName}`
 
@@ -84,7 +98,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: e?.message || 'Upload failed' }, { status: 500 })
   }
 }
-
 
 
 

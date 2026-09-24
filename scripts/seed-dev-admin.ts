@@ -147,8 +147,6 @@ async function main() {
         user_metadata: {
           name: cfg.name,
           phone: cfg.phone,
-          nip: cfg.nip,
-          nik: cfg.nik,
         },
       })
 

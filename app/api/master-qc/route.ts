@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../../../lib/supabase'
 import { clientSafeMessage } from '../../../lib/api-error'
 import { parseMasterQcPayload } from '../../../lib/master-qc-validation'
 import { normaliseUnit } from '../../../lib/unitConversion'
+import { requireRoles } from '../../../lib/api-auth'
 
 function getMasterQcErrorMessage(error: any) {
     if (error?.code === '23505') {
@@ -194,6 +195,9 @@ export async function GET(request: NextRequest) {
 
 // POST - Tambah data baru
 export async function POST(request: NextRequest) {
+    const gate = await requireRoles(request, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     try {
         const body = await request.json()
         const parsed = parseMasterQcPayload(body)
