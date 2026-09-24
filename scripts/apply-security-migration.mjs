@@ -26,6 +26,27 @@ import pg from 'pg'
 const here = dirname(fileURLToPath(import.meta.url))
 const root = join(here, '..')
 
+// Jalankan satu batch SQL lewat Supabase Management API.
+// Dipakai bila DATABASE_URL tidak tersedia tetapi SUPABASE_ACCESS_TOKEN ada.
+async function runViaManagementApi(projectRef, token, sql) {
+  const res = await fetch(
+    `https://api.supabase.com/v1/projects/${projectRef}/database/query`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query: sql }),
+    },
+  )
+  const text = await res.text()
+  if (!res.ok) {
+    throw new Error(`Management API HTTP ${res.status}: ${text.slice(0, 500)}`)
+  }
+  return text
+}
+
 const STAGES = {
   preflight: ['database/security_migration_01_preflight.sql'],
   bootstrap: ['database/staging_bootstrap_missing_tables.sql'],
@@ -46,50 +67,84 @@ function parseArgs(argv) {
   return stage
 }
 
-async function main() {
-  const databaseUrl = process.env.DATABASE_URL
-  if (!databaseUrl) {
-    throw new Error('DATABASE_URL belum diset. Contoh (staging): postgresql://postgres.<ref>:<pw>@<host>:5432/postgres')
+function projectRefFromUrl(url) {
+  try {
+    const host = new URL(url).host // <ref>.supabase.co
+    const ref = host.split('.')[0]
+    return /^[a-z0-9]{20}$/.test(ref) ? ref : null
+  } catch {
+    return null
   }
+}
 
+async function main() {
   const stage = parseArgs(process.argv.slice(2))
   const files = STAGES[stage]
 
-  const host = (() => {
-    try {
-      return new URL(databaseUrl).host
-    } catch {
-      return 'unknown-host'
-    }
-  })()
-  console.log(`Target host : ${host}`)
+  const databaseUrl = process.env.DATABASE_URL
+  const accessToken = process.env.SUPABASE_ACCESS_TOKEN
+  const projectUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ''
+  const projectRef =
+    process.env.SUPABASE_PROJECT_REF || projectRefFromUrl(projectUrl)
+
+  const mode = databaseUrl
+    ? 'direct-db'
+    : accessToken && projectRef
+      ? 'management-api'
+      : null
+
+  if (!mode) {
+    throw new Error(
+      'Butuh salah satu: DATABASE_URL, atau SUPABASE_ACCESS_TOKEN + project ref ' +
+        '(SUPABASE_PROJECT_REF / NEXT_PUBLIC_SUPABASE_URL).',
+    )
+  }
+
+  const targetLabel =
+    mode === 'direct-db'
+      ? (() => {
+          try {
+            return new URL(databaseUrl).host
+          } catch {
+            return 'unknown-host'
+          }
+        })()
+      : `project:${projectRef} (Management API)`
+
+  console.log(`Mode        : ${mode}`)
+  console.log(`Target      : ${targetLabel}`)
   console.log(`Tahap       : ${stage}`)
   console.log(`File        : ${files.join(', ')}\n`)
 
-  const client = new pg.Client({
-    connectionString: databaseUrl,
-    ssl: { rejectUnauthorized: false },
-  })
+  let client = null
+  if (mode === 'direct-db') {
+    client = new pg.Client({
+      connectionString: databaseUrl,
+      ssl: { rejectUnauthorized: false },
+    })
+    await client.connect()
+  }
 
-  await client.connect()
   try {
     for (const rel of files) {
       const sql = readFileSync(join(root, rel), 'utf8')
       process.stdout.write(`-> ${rel} ... `)
-      // Jalankan setiap file sebagai transaksi tersendiri.
-      await client.query('BEGIN')
       try {
-        await client.query(sql)
-        await client.query('COMMIT')
+        if (client) {
+          // File mengelola transaksinya sendiri (BEGIN/COMMIT di dalam file).
+          await client.query(sql)
+        } else {
+          await runViaManagementApi(projectRef, accessToken, sql)
+        }
         console.log('OK')
       } catch (error) {
-        await client.query('ROLLBACK')
         console.log('GAGAL (rollback)')
         throw error
       }
     }
   } finally {
-    await client.end()
+    if (client) await client.end()
   }
 
   console.log('\nSemua tahap selesai. Lanjutkan dengan:')
