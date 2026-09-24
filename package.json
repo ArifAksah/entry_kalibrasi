@@ -13,7 +13,8 @@
     "test:ci": "jest --ci --coverage --watchAll=false",
     "generate-template": "npx tsx scripts/generate-sample-template.ts",
     "check:pii-rls": "node scripts/check_pii_rls.mjs",
-    "check:anon-exposure": "node database/verify_anon_table_exposure.mjs"
+    "check:anon-exposure": "node database/verify_anon_table_exposure.mjs",
+    "security:migrate": "node scripts/apply-security-migration.mjs"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^8.5.0",
