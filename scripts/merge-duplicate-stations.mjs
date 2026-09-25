@@ -159,7 +159,9 @@ async function main() {
   for (const [wmo, rows] of groups) {
     if (rows.length < 2) continue
     if (onlyWmo && wmo !== onlyWmo) continue
-    if (SKIP_WMO.has(wmo)) continue
+    // SKIP_WMO hanya berlaku untuk proses massal; override eksplisit --wmo
+    // menandakan operator sudah meninjau grup tersebut secara manual.
+    if (SKIP_WMO.has(wmo) && !onlyWmo) continue
 
     const refs = refByWmo.get(wmo) || []
     const official = refs[0]?.station_name || null
