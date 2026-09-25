@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../lib/supabase'
 import { requireRoles } from '../../../lib/api-auth'
 import { clientSafeMessage } from '../../../lib/api-error'
+import { normalizeStationId } from '../../../lib/station-identity'
 
 // Using shared supabaseAdmin (with env fallbacks) for admin operations
 
@@ -110,6 +111,36 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
+    // Normalisasi dan validasi ID stasiun/WMO
+    const normalized = normalizeStationId(station_id)
+    if (!normalized.ok) {
+      return NextResponse.json({ error: normalized.error }, { status: 400 })
+    }
+
+    // Cegah duplikasi WMO: tolak bila sudah ada stasiun dengan ID yang sama
+    if (normalized.value) {
+      const { data: existing, error: existingError } = await supabaseAdmin
+        .from('station')
+        .select('id, name')
+        .eq('station_id', normalized.value)
+        .limit(1)
+
+      if (existingError) {
+        return NextResponse.json({ error: clientSafeMessage(existingError) }, { status: 500 })
+      }
+
+      if (existing && existing.length > 0) {
+        return NextResponse.json(
+          {
+            error: `ID Stasiun/WMO ${normalized.value} sudah digunakan oleh "${existing[0].name}". Gunakan atau edit stasiun yang sudah ada.`,
+            code: 'STATION_ID_DUPLICATE',
+            existingId: existing[0].id,
+          },
+          { status: 409 },
+        )
+      }
+    }
+
     // Validate that user exists in personel table
     const { data: personelData, error: personelError } = await supabaseAdmin
       .from('personel')
@@ -126,7 +157,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabaseAdmin
       .from('station')
       .insert({
-        station_id: station_id || null,
+        station_id: normalized.value,
         name,
         address,
         latitude: latitude === '' ? null : latitude,

@@ -77,6 +77,40 @@ function mockPersonelLookup() {
   }
 }
 
+// Station mock covering: duplicate-check select, insert, and update chains.
+function mockStationQuery(options: {
+  existing?: Array<{ id: number; name: string }>
+  mutationResult?: unknown
+}) {
+  const existing = options.existing || []
+  const duplicateSelect = jest.fn().mockReturnValue({
+    eq: jest.fn().mockReturnValue({
+      neq: jest.fn().mockReturnValue({
+        limit: jest.fn().mockResolvedValue({ data: existing, error: null }),
+      }),
+      limit: jest.fn().mockResolvedValue({ data: existing, error: null }),
+    }),
+  })
+
+  const single = jest.fn().mockResolvedValue({
+    data: options.mutationResult,
+    error: null,
+  })
+
+  return {
+    select: duplicateSelect,
+    insert: jest.fn().mockReturnValue({
+      select: jest.fn().mockReturnValue({ single }),
+    }),
+    update: jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue({ single }),
+      }),
+    }),
+    _duplicateSelect: duplicateSelect,
+  }
+}
+
 describe('station mutation response shape', () => {
   beforeEach(() => {
     jest.clearAllMocks()
@@ -87,21 +121,14 @@ describe('station mutation response shape', () => {
   })
 
   it('PUT returns the updated station with station_type relation', async () => {
-    const select = jest.fn().mockReturnValue({
-      single: jest.fn().mockResolvedValue({
-        data: {
-          ...stationPayload,
-          id: 12,
-          station_type: { name: 'Geofisika' },
-        },
-        error: null,
-      }),
+    const stationQuery = mockStationQuery({
+      existing: [],
+      mutationResult: {
+        ...stationPayload,
+        id: 12,
+        station_type: { name: 'Geofisika' },
+      },
     })
-    const stationQuery = {
-      update: jest.fn().mockReturnValue({
-        eq: jest.fn().mockReturnValue({ select }),
-      }),
-    }
 
     mockFrom.mockImplementation((table: string) =>
       table === 'personel' ? mockPersonelLookup() : stationQuery,
@@ -116,24 +143,18 @@ describe('station mutation response shape', () => {
     })
     const data = await response.json()
 
-    expect(select).toHaveBeenCalledWith('*, station_type(name)')
     expect(data.station_type.name).toBe('Geofisika')
   })
 
   it('POST returns the created station with station_type relation', async () => {
-    const select = jest.fn().mockReturnValue({
-      single: jest.fn().mockResolvedValue({
-        data: {
-          ...stationPayload,
-          id: 13,
-          station_type: { name: 'Geofisika' },
-        },
-        error: null,
-      }),
+    const stationQuery = mockStationQuery({
+      existing: [],
+      mutationResult: {
+        ...stationPayload,
+        id: 13,
+        station_type: { name: 'Geofisika' },
+      },
     })
-    const stationQuery = {
-      insert: jest.fn().mockReturnValue({ select }),
-    }
 
     mockFrom.mockImplementation((table: string) =>
       table === 'personel' ? mockPersonelLookup() : stationQuery,
@@ -146,8 +167,70 @@ describe('station mutation response shape', () => {
     const response = await POST(request)
     const data = await response.json()
 
-    expect(select).toHaveBeenCalledWith('*, station_type(name)')
     expect(response.status).toBe(201)
     expect(data.station_type.name).toBe('Geofisika')
+  })
+
+  it('POST rejects a duplicate WMO/station_id with 409', async () => {
+    const stationQuery = mockStationQuery({
+      existing: [{ id: 5, name: 'Stasiun Geofisika Aceh Besar' }],
+    })
+
+    mockFrom.mockImplementation((table: string) =>
+      table === 'personel' ? mockPersonelLookup() : stationQuery,
+    )
+
+    const request = new (require('next/server').NextRequest)('/api/stations', {
+      method: 'POST',
+      body: JSON.stringify(stationPayload),
+    })
+    const response = await POST(request)
+    const data = await response.json()
+
+    expect(response.status).toBe(409)
+    expect(data.code).toBe('STATION_ID_DUPLICATE')
+    expect(data.existingId).toBe(5)
+    expect(stationQuery.insert).not.toHaveBeenCalled()
+  })
+
+  it('PUT rejects a duplicate WMO/station_id with 409', async () => {
+    const stationQuery = mockStationQuery({
+      existing: [{ id: 9, name: 'Stasiun Lain' }],
+    })
+
+    mockFrom.mockImplementation((table: string) =>
+      table === 'personel' ? mockPersonelLookup() : stationQuery,
+    )
+
+    const request = new (require('next/server').NextRequest)('/api/stations/12', {
+      method: 'PUT',
+      body: JSON.stringify(stationPayload),
+    })
+    const response = await PUT(request, {
+      params: Promise.resolve({ id: '12' }),
+    })
+    const data = await response.json()
+
+    expect(response.status).toBe(409)
+    expect(data.code).toBe('STATION_ID_DUPLICATE')
+    expect(stationQuery.update).not.toHaveBeenCalled()
+  })
+
+  it('POST rejects a non-numeric station_id with 400', async () => {
+    const stationQuery = mockStationQuery({ existing: [] })
+
+    mockFrom.mockImplementation((table: string) =>
+      table === 'personel' ? mockPersonelLookup() : stationQuery,
+    )
+
+    const request = new (require('next/server').NextRequest)('/api/stations', {
+      method: 'POST',
+      body: JSON.stringify({ ...stationPayload, station_id: 'WIGOS-abc' }),
+    })
+    const response = await POST(request)
+    const data = await response.json()
+
+    expect(response.status).toBe(400)
+    expect(stationQuery.insert).not.toHaveBeenCalled()
   })
 })

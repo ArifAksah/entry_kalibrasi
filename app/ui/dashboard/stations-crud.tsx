@@ -267,7 +267,9 @@ export default function StationsCRUD() {
 
     setForm((prev) => ({
       ...prev,
-      station_id: ref.station_wmo_id || ref.wigos_id || ref.station_id || '', // Use WMO/WIGOS as station_id
+      // Hanya WMO ID yang boleh masuk ke kolom station_id. WIGOS/internal
+      // reference ID tidak dicampur agar identitas stasiun tetap konsisten.
+      station_id: ref.station_wmo_id || '',
       name: ref.station_name,
       latitude: ref.current_latitude ?? '',
       longitude: ref.current_longitude ?? '',
@@ -482,7 +484,10 @@ export default function StationsCRUD() {
       closeModal()
     } catch (e) {
       console.error('Error submitting station:', e)
-      setToast({ message: 'Failed to save station', type: 'error' })
+      setToast({
+        message: e instanceof Error && e.message ? e.message : 'Failed to save station',
+        type: 'error',
+      })
     } finally {
       setIsSubmitting(false)
     }
@@ -867,6 +872,12 @@ export default function StationsCRUD() {
                                   </div>
                                   <div className="text-[10px] text-gray-500">
                                     {ref.kabupaten_name}, {ref.propinsi_name}
+                                  </div>
+                                  <div className="text-[10px] text-blue-600">
+                                    {ref.station_wmo_id
+                                      ? `WMO: ${ref.station_wmo_id}`
+                                      : 'WMO: -'}
+                                    {ref.wigos_id ? ` • WIGOS: ${ref.wigos_id}` : ''}
                                   </div>
                                 </div>
                               ))

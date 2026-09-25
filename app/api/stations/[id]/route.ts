@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../../lib/supabase'
 import { requireRoles } from '../../../../lib/api-auth'
 import { clientSafeMessage } from '../../../../lib/api-error'
+import { normalizeStationId } from '../../../../lib/station-identity'
 
 export async function GET(
   request: NextRequest,
@@ -63,6 +64,37 @@ export async function PUT(
       }, { status: 400 })
     }
 
+    // Normalisasi dan validasi ID stasiun/WMO
+    const normalized = normalizeStationId(station_id)
+    if (!normalized.ok) {
+      return NextResponse.json({ error: normalized.error }, { status: 400 })
+    }
+
+    // Cegah duplikasi WMO selain row yang sedang diedit
+    if (normalized.value) {
+      const { data: existing, error: existingError } = await supabase
+        .from('station')
+        .select('id, name')
+        .eq('station_id', normalized.value)
+        .neq('id', id)
+        .limit(1)
+
+      if (existingError) {
+        return NextResponse.json({ error: clientSafeMessage(existingError) }, { status: 500 })
+      }
+
+      if (existing && existing.length > 0) {
+        return NextResponse.json(
+          {
+            error: `ID Stasiun/WMO ${normalized.value} sudah digunakan oleh "${existing[0].name}".`,
+            code: 'STATION_ID_DUPLICATE',
+            existingId: existing[0].id,
+          },
+          { status: 409 },
+        )
+      }
+    }
+
     // Validate that created_by exists in personel table
     const { data: personelData, error: personelError } = await supabase
       .from('personel')
@@ -79,7 +111,7 @@ export async function PUT(
     const { data, error } = await supabase
       .from('station')
       .update({
-        station_id: station_id === '' ? null : station_id,
+        station_id: normalized.value,
         name,
         address,
         latitude: latitude === '' ? null : latitude,

@@ -361,11 +361,16 @@ async function cmdUpsert(opts: { filePath: string; dryRun: boolean; createdBy: s
   const stations = parseStationsFromCsv(opts.filePath, opts.createdBy)
   const supabase = getClient()
 
-  // Ambil semua stasiun existing, buat map by name (lowercase)
+  // Ambil semua stasiun existing.
+  // Prioritas pencocokan: station_id (WMO) dulu, baru nama lowercase sebagai
+  // fallback. Ini mencegah stasiun yang berubah nama ter-insert ulang.
   const existing = await fetchAllStations(supabase)
-  const existingMap = new Map<string, any>()
+  const byName = new Map<string, any>()
+  const byWmo = new Map<string, any>()
   for (const s of existing) {
-    existingMap.set(String(s.name || '').toLowerCase(), s)
+    byName.set(String(s.name || '').toLowerCase(), s)
+    const wmo = String(s.station_id ?? '').trim()
+    if (wmo) byWmo.set(wmo, s)
   }
 
   const toInsert: StationInsert[] = []
@@ -373,7 +378,8 @@ async function cmdUpsert(opts: { filePath: string; dryRun: boolean; createdBy: s
 
   for (const s of stations) {
     const key = s.name.toLowerCase()
-    const match = existingMap.get(key)
+    const wmo = String(s.station_id ?? '').trim()
+    const match = (wmo && byWmo.get(wmo)) || byName.get(key)
     if (match) {
       // Cek apakah ada perubahan
       const changes: Partial<StationInsert> = {}
