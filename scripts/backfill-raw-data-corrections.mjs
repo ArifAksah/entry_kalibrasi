@@ -14,8 +14,9 @@
  *   node scripts/backfill-raw-data-corrections.mjs --apply --limit 5000
  *   node scripts/backfill-raw-data-corrections.mjs --session <uuid>
  *
- * Strategi: sentuh kolom `sheet_name` dengan nilainya sendiri (no-op value),
- * supaya trigger ikut terpicu tanpa mengubah data lain.
+ * Strategi: set ulang kolom `unit_uut` dengan nilainya sendiri. Kolom itu
+ * termasuk daftar `UPDATE OF` pada trigger, sehingga trigger terpicu dan
+ * menghitung ulang tanpa mengubah nilai.
  */
 
 import { readFileSync } from 'node:fs'
@@ -119,7 +120,7 @@ async function main() {
 
     for (const row of data) {
       scanned++
-      if (LIMIT && updated >= LIMIT && APPLY) {
+      if (LIMIT && stale >= LIMIT) {
         console.log('\nLimit tercapai, berhenti.')
         printSummary(scanned, stale, updated, failed)
         return
@@ -148,10 +149,10 @@ async function main() {
       stale++
       if (!APPLY) continue
 
-      // Sentuh sheet_name dengan nilai yang sama agar trigger terpicu.
+      // Set ulang unit_uut dengan nilai yang sama agar trigger terpicu.
       const { error: updateError } = await supabase
         .from('raw_data')
-        .update({ sheet_name: row.sheet_name })
+        .update({ unit_uut: row.unit_uut })
         .eq('id', row.id)
 
       if (updateError) {
