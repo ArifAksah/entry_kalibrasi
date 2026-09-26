@@ -18,6 +18,7 @@
 import { hitungKoreksiBatch, fetchQCLimitForSensor, QCLimit } from './qc-utils'
 import { calculateCalibrationResult } from './uncertainty-utils'
 import { CacheEntry, serializeMap } from './qc-cache-storage'
+import { filterPairedMeasurementRows } from './measurement-rows'
 
 // ─────────────────────────────────────────────
 // Message Interfaces (for compatibility with design spec)
@@ -169,8 +170,8 @@ export async function computeQCData(sessionId: string): Promise<CacheEntry> {
   const calibrationResults: Record<string, { uutAvg: number; correctionAvg: number; uncertainty: number }> = {}
 
   for (const key of Object.keys(groupedData)) {
-    const groupData = groupedData[key]
-    if (groupData.length === 0) continue
+    const groupData = filterPairedMeasurementRows(groupedData[key] || [])
+    if (groupData.length < 2) continue
 
     const sensorId = key === 'unknown' ? null : Number(key)
     const uutSensor = sensorId ? uutSensorMap[sensorId] || null : null
@@ -179,9 +180,11 @@ export async function computeQCData(sessionId: string): Promise<CacheEntry> {
     const stdSensorId = groupData[0]?.sensor_id_std
     const selectedCertificateId = groupData[0]?.standard_certificate_id
     const sensorCertificates = stdSensorId ? standardCertMap[stdSensorId] || [] : []
-    const standardCertRecord = selectedCertificateId
-      ? sensorCertificates.find(certificate => Number(certificate.id) === Number(selectedCertificateId)) || null
-      : sensorCertificates[0] || null
+    if (!selectedCertificateId) continue
+    const standardCertRecord = sensorCertificates.find(
+      certificate => Number(certificate.id) === Number(selectedCertificateId),
+    ) || null
+    if (!standardCertRecord) continue
 
     const { uutAvg, correction, uncertainty } = calculateCalibrationResult({
       currentData: groupData,

@@ -14,7 +14,11 @@ import {
 } from '../../../../lib/rich-text'
 import { resultsToLegacyView } from '../../../../lib/validators/certificate-results-render-adapter'
 import { calculateRoomCondition } from '../../../../lib/room-condition'
-import { formatCalibrationResultValue } from '../../../../lib/result-display-format'
+import {
+  classifyCalibrationParameter,
+  formatCalibrationResultRow,
+  formatCalibrationResultValue,
+} from '../../../../lib/result-display-format'
 import { supabase } from '../../../../lib/supabase'
 import type {
   TemplateConfig,
@@ -2892,6 +2896,13 @@ const PrintCertificatePage: React.FC = () => {
                                     }
                                   : null
                               const isPyrano = isPyranometer(pyrSensorData)
+                              const calibrationParameter =
+                                classifyCalibrationParameter({
+                                  name: res?.sensorDetails?.name,
+                                  type: res?.sensorDetails?.type,
+                                  sheetName: sec?.title,
+                                  isPyranometer: isPyrano,
+                                })
 
                               // HEADER: Gunakan dari data, atau default berdasarkan tipe sensor
                               let headers: string[]
@@ -2964,25 +2975,27 @@ const PrintCertificatePage: React.FC = () => {
                                       {/* Baris Unit Tambahan dihapus as requested */}
                                     </thead>
                                     <tbody>
-                                      {rows.map((row: any, rIdx: number) => (
+                                      {rows.map((row: any, rIdx: number) => {
+                                        const formatted =
+                                          formatCalibrationResultRow(
+                                            row.key,
+                                            row.unit,
+                                            row.value,
+                                            calibrationParameter,
+                                          )
+                                        return (
                                         <tr key={rIdx}>
                                           {/* If headers exist, map based on standard + extra values */}
                                           {headers.length > 0 ? (
                                             <>
                                               <td className="p-1 border border-black text-center">
-                                                {formatCalibrationResultValue(
-                                                  row.key,
-                                                )}
+                                                {formatted.reading}
                                               </td>
                                               <td className="p-1 border border-black text-center">
-                                                {formatCalibrationResultValue(
-                                                  row.unit,
-                                                )}
+                                                {formatted.correction}
                                               </td>
                                               <td className="p-1 border border-black text-center">
-                                                {formatCalibrationResultValue(
-                                                  row.value,
-                                                )}
+                                                {formatted.uncertainty}
                                               </td>
                                               {Array.isArray(row.extraValues) &&
                                                 row.extraValues.map(
@@ -3002,24 +3015,19 @@ const PrintCertificatePage: React.FC = () => {
                                             // Fallback
                                             <>
                                               <td className="p-1 border border-black text-center">
-                                                {formatCalibrationResultValue(
-                                                  row.key,
-                                                )}
+                                                {formatted.reading}
                                               </td>
                                               <td className="p-1 border border-black text-center">
-                                                {formatCalibrationResultValue(
-                                                  row.unit,
-                                                )}
+                                                {formatted.correction}
                                               </td>
                                               <td className="p-1 border border-black text-center">
-                                                {formatCalibrationResultValue(
-                                                  row.value,
-                                                )}
+                                                {formatted.uncertainty}
                                               </td>
                                             </>
                                           )}
                                         </tr>
-                                      ))}
+                                        )
+                                      })}
                                     </tbody>
                                   </table>
                                 </div>

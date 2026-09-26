@@ -38,6 +38,10 @@ import {
   FinalCertificateUncertainty,
 } from '../../lib/cmc-config'
 import { compareRawDataRows } from '../../lib/raw-data-order'
+import {
+  filterPairedMeasurementRows,
+  parseFiniteMeasurement,
+} from '../../lib/measurement-rows'
 import { LoadingState, Spinner } from '../ui/Loading'
 
 interface RawDataRow {
@@ -253,7 +257,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
             ?.standardCertificateId,
       }))
     return buildCorrectionMapFromCertificates(pairs, standardCerts)
-  }, [normalizedData, standardCerts])
+  }, [normalizedData, standardCerts, resultEntries])
 
   const sensorKeys = Object.keys(groupedData)
 
@@ -791,19 +795,41 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
           resultEntries.find(
             (entry) => entry.sensorId === groupData[0]?.sensor_id_uut,
           )?.standardCertificateId
-        const standardCertRecord = selectedCertificateId
-          ? standardCerts.find(
-              (certificate: any) =>
-                Number(certificate.id) === Number(selectedCertificateId),
-            )
-          : stdSensorId
-            ? standardCerts.find(
-                (certificate: any) => certificate.sensor_id === stdSensorId,
-              )
-            : null
+        if (!selectedCertificateId) {
+          throw new Error(
+            `Sensor ${uutSensor?.name || sensorId || key} belum memiliki sertifikat standar yang dipilih.`,
+          )
+        }
+        const standardCertRecord = standardCerts.find(
+          (certificate: any) =>
+            Number(certificate.id) === Number(selectedCertificateId),
+        )
+        if (!standardCertRecord) {
+          throw new Error(
+            `Sertifikat standar ID ${selectedCertificateId} tidak ditemukan. Pilih ulang sertifikat standar.`,
+          )
+        }
+        if (
+          !stdSensorId ||
+          Number(standardCertRecord.sensor_id) !== Number(stdSensorId)
+        ) {
+          throw new Error(
+            `Sertifikat standar ID ${selectedCertificateId} tidak sesuai dengan sensor standar pada raw data.`,
+          )
+        }
 
-        const rowsForCalc = groupData.filter((r) => r.uut_data != null)
-        if (rowsForCalc.length === 0) continue
+        const rowsForCalc = filterPairedMeasurementRows(groupData)
+        if (rowsForCalc.length < 2) {
+          throw new Error(
+            `Sensor ${uutSensor?.name || sensorId || key} membutuhkan minimal 2 pasangan pembacaan STD dan UUT yang valid.`,
+          )
+        }
+        const ignoredRows = groupData.length - rowsForCalc.length
+        if (ignoredRows > 0) {
+          console.warn(
+            `[QCDataModal] ${ignoredRows} row parsial/invalid diabaikan untuk sensor ${sensorId || key}`,
+          )
+        }
         const isWindDirectionGroup = isWindDirectionRow(rowsForCalc[0])
         const uutAvg =
           rowsForCalc.reduce((sum, r) => sum + (r.uut_data as number), 0) /
@@ -822,6 +848,18 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
           : null
 
         const isPyranometerSensor = isPyranometer(pyranometerSensorData)
+        if (!isPyranometerSensor) {
+          const missingSelectedCorrection = rowsForCalc.find((row) => {
+            if (!row.sensor_id_std) return true
+            const key = `${selectedCertificateId}:${row.sensor_id_std}:${row.standard_data}`
+            return !localCorrectionMap.has(key)
+          })
+          if (missingSelectedCorrection) {
+            throw new Error(
+              `Koreksi aktif dari sertifikat standar ID ${selectedCertificateId} belum tersedia untuk semua row. Periksa tabel koreksi sertifikat standar.`,
+            )
+          }
+        }
         const finalCorrectionPairs = isPyranometerSensor
           ? []
           : rowsForCalc
@@ -861,8 +899,8 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
           const cfPerRow = rowsForCalc
             .map((row, idx) => {
-              const std = row.standard_data || 0
-              const uut = row.uut_data || 0
+              const std = parseFiniteMeasurement(row.standard_data)!
+              const uut = parseFiniteMeasurement(row.uut_data)!
               if (std <= 0 || uut <= 0) return null
               const cf = (std / uut - 1) * 100
               if (idx < 3)
@@ -906,10 +944,10 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
         if (isPyranometerSensor && uutSensor) {
           // PYRANOMETER: Hitung CF (rasio) dalam %
           const stdReadings = rowsForCalc
-            .map((r) => r.standard_data || 0)
+            .map((r) => parseFiniteMeasurement(r.standard_data)!)
             .filter((v) => v > 0)
           const uutReadingsForCF = rowsForCalc
-            .map((r) => r.uut_data || 0)
+            .map((r) => parseFiniteMeasurement(r.uut_data)!)
             .filter((v) => v > 0)
 
           const cfResult = calculateCalibrationFactor(
@@ -1106,6 +1144,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
       }
     } catch (err: any) {
       console.error('Error calculating table bulk:', err)
+      setError(err?.message || 'Gagal menghitung hasil kalibrasi')
     } finally {
       setIsSavingToTable(false)
     }

@@ -111,9 +111,9 @@ describe('mapCertificateToTemplateData', () => {
     expect(result.sensors[0].sensor_nama).toBe('Sensor Tekanan')
     expect(result.sensors[0].hasil_kalibrasi).toHaveLength(2)
     expect(result.sensors[0].hasil_kalibrasi[0]).toEqual({
-      titik_ukur: '900',
-      pembacaan: '900',
-      koreksi: '0.10',
+      titik_ukur: '900.00',
+      pembacaan: '900.10',
+      koreksi: '0.100',
       ketidakpastian: '0.050',
     })
     expect(result.sensors[1].sensor_nama).toBe('Sensor Suhu')
@@ -306,11 +306,11 @@ describe('mapCertificateToTemplateData', () => {
     expect(result.kapasitas).toBe('1100')
   })
 
-  it('formats template result values to two significant figures', () => {
+  it('formats template result values using workbook digit rules', () => {
     const result = mapCertificateToTemplateData({
       sensors: [
         {
-          name: 'Sensor',
+          name: 'Termometer',
           results: [
             {
               measurement_point: 27.78,
@@ -324,9 +324,9 @@ describe('mapCertificateToTemplateData', () => {
     })
 
     expect(result.sensors[0].hasil_kalibrasi[0]).toEqual({
-      titik_ukur: '28',
-      pembacaan: '0.0017',
-      koreksi: '2.0',
+      titik_ukur: '27.78',
+      pembacaan: '0.00',
+      koreksi: '2.00',
       ketidakpastian: '0.50',
     })
   })
@@ -358,9 +358,9 @@ describe('mapCertificateToTemplateData', () => {
     expect(result.nama_alat).toBe('AWS Utama')
     expect(result.merk).toBe('Vaisala')
     expect(result.sensors[0].hasil_kalibrasi[0]).toEqual({
-      titik_ukur: '28',
-      pembacaan: '28',
-      koreksi: '0.0017',
+      titik_ukur: '27.78',
+      pembacaan: '27.78',
+      koreksi: '0.00',
       ketidakpastian: '0.50',
     })
   })

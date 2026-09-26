@@ -15,6 +15,7 @@
  */
 
 import { formatUnit, normaliseUnit } from './unitConversion';
+import { parseFiniteMeasurement } from './measurement-rows';
 
 export interface QCLimit {
     /** Instrument name from instrument_names table */
@@ -54,26 +55,41 @@ export interface CertCorrectionTable {
 export function parseCertCorrectionPoints(cert: any): CertCorrectionPoint[] {
     if (!cert) return []
 
+    const generalU95 = parseFiniteMeasurement(cert.u95_general) ?? 0
+    const withoutDuplicateSetpoints = (points: CertCorrectionPoint[]) => {
+        const seen = new Set<number>()
+        for (const point of points) {
+            if (seen.has(point.setpoint)) return []
+            seen.add(point.setpoint)
+        }
+        return points
+    }
+
     // Format A: separate setpoint[] and correction_std[] arrays (current schema)
     if (Array.isArray(cert.setpoint) && cert.setpoint.length > 0 && Array.isArray(cert.correction_std)) {
-        return cert.setpoint
-            .map((s: any, idx: number) => ({
-                setpoint: parseFloat(String(s ?? '').replace(',', '.')) || 0,
-                correction: parseFloat(String((cert.correction_std as any[])[idx] ?? '').replace(',', '.')) || 0,
-                u95: parseFloat(String((Array.isArray(cert.u95_std) ? (cert.u95_std as any[])[idx] : 0) ?? '').replace(',', '.')) || 0,
-            }))
-            .filter((p: CertCorrectionPoint) => !isNaN(p.setpoint))
+        if (cert.setpoint.length !== cert.correction_std.length) return []
+        const points = cert.setpoint.flatMap((s: any, idx: number) => {
+            const setpoint = parseFiniteMeasurement(s)
+            const correction = parseFiniteMeasurement(cert.correction_std[idx])
+            if (setpoint === null || correction === null) return []
+            const u95 = parseFiniteMeasurement(
+                Array.isArray(cert.u95_std) ? cert.u95_std[idx] : null,
+            ) ?? generalU95
+            return [{ setpoint, correction, u95 }]
+        })
+        return withoutDuplicateSetpoints(points)
     }
 
     // Format B: correction_std is an array of objects
     if (Array.isArray(cert.correction_std) && cert.correction_std.length > 0 && typeof cert.correction_std[0] === 'object') {
-        return cert.correction_std
-            .map((d: any) => ({
-                setpoint: parseFloat(String(d.setpoint ?? '').replace(',', '.')) || 0,
-                correction: parseFloat(String(d.correction ?? d.koreksi ?? '').replace(',', '.')) || 0,
-                u95: parseFloat(String(d.u95 ?? d.u95_std ?? '').replace(',', '.')) || 0,
-            }))
-            .filter((p: CertCorrectionPoint) => !isNaN(p.setpoint))
+        const points = cert.correction_std.flatMap((d: any) => {
+            const setpoint = parseFiniteMeasurement(d.setpoint)
+            const correction = parseFiniteMeasurement(d.correction ?? d.koreksi)
+            if (setpoint === null || correction === null) return []
+            const u95 = parseFiniteMeasurement(d.u95 ?? d.u95_std) ?? generalU95
+            return [{ setpoint, correction, u95 }]
+        })
+        return withoutDuplicateSetpoints(points)
     }
 
     return []
@@ -103,6 +119,7 @@ export function interpolateCorrectionFromPoints(
         const lo = sorted[i]
         const hi = sorted[i + 1]
         if (standardReading >= lo.setpoint && standardReading <= hi.setpoint) {
+            if (hi.setpoint === lo.setpoint) return lo.correction
             const t = (standardReading - lo.setpoint) / (hi.setpoint - lo.setpoint)
             return lo.correction + t * (hi.correction - lo.correction)
         }

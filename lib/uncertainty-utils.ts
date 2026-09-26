@@ -13,6 +13,7 @@ import { CertCorrectionPoint } from './qc-utils';
 import { canConvertUnit, convertDeltaUnit, convertUnit, normaliseUnit } from './unitConversion';
 import { parseCertCorrectionPoints, interpolateCorrectionFromPoints } from './qc-utils';
 import { isWindDirectionSensor, wrapWindDirectionCorrection } from './wind-direction';
+import { filterPairedMeasurementRows, parseFiniteMeasurement } from './measurement-rows';
 
 export interface UncertaintyComponent {
     name: string;
@@ -94,6 +95,7 @@ export function interpolateU95FromPoints(
         const lo = sorted[i];
         const hi = sorted[i + 1];
         if (standardReading >= lo.setpoint && standardReading <= hi.setpoint) {
+            if (hi.setpoint === lo.setpoint) return lo.u95 || 0;
             const t = (standardReading - lo.setpoint) / (hi.setpoint - lo.setpoint);
             const loU = lo.u95 || 0;
             const hiU = hi.u95 || 0;
@@ -274,7 +276,8 @@ export function calculateCalibrationResult(params: {
     isWindDirection?: boolean;
     finalCorrections?: number[];
 }) {
-    const { currentData, uutSensor, standardCertRecord, isAnalog } = params;
+    const { uutSensor, standardCertRecord, isAnalog } = params;
+    const currentData = filterPairedMeasurementRows(params.currentData || []);
     
     if (!currentData || currentData.length === 0) {
         return { uutAvg: 0, correction: 0, uncertainty: 0 };
@@ -305,12 +308,12 @@ export function calculateCalibrationResult(params: {
     let totalUut = 0;
 
     currentData.forEach((row) => {
-        const stdData = row.standard_data || 0;
+        const stdData = parseFiniteMeasurement(row.standard_data)!;
         const correction = stdCorrectionPoints.length > 0
             ? interpolateCorrectionFromPoints(stdCorrectionPoints, stdData)
             : 0;
         totalStdCorrected += (stdData + correction);
-        totalUut += (row.uut_data || 0);
+        totalUut += parseFiniteMeasurement(row.uut_data)!;
     });
 
     const globalStdCorrected = totalStdCorrected / currentData.length;
@@ -319,7 +322,7 @@ export function calculateCalibrationResult(params: {
 
     const unitStd = currentData[0]?.unit_std || '';
     const calculatedCorrections = currentData.map(row => {
-        const stdData = row.standard_data || 0;
+        const stdData = parseFiniteMeasurement(row.standard_data)!;
         const unitStdRow = row.unit_std || unitStd || '';
         const unitUutRow = row.unit_uut || unitUut || '';
         
@@ -332,7 +335,7 @@ export function calculateCalibrationResult(params: {
             ? convertUnit(stdCorrected, unitStdRow, unitUutRow)
             : stdCorrected;
             
-        const deltaRaw = stdCorrectedInUutUnit - (row.uut_data || 0);
+        const deltaRaw = stdCorrectedInUutUnit - parseFiniteMeasurement(row.uut_data)!;
         return isWindDirection ? wrapWindDirectionCorrection(deltaRaw) : deltaRaw;
     });
     const finalCorrections = params.finalCorrections?.length === currentData.length

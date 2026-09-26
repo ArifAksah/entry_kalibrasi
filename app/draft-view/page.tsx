@@ -23,7 +23,11 @@ import {
   resultsToLegacyView,
 } from '../../lib/validators/certificate-results-render-adapter'
 import { calculateRoomCondition } from '../../lib/room-condition'
-import { formatCalibrationResultValue } from '../../lib/result-display-format'
+import {
+  classifyCalibrationParameter,
+  formatCalibrationResultRow,
+  formatCalibrationResultValue,
+} from '../../lib/result-display-format'
 import qcCacheService from '../../lib/qc-cache-service'
 import {
   isPyranometer,
@@ -1213,6 +1217,13 @@ const CertificatePreview: React.FC<{
                                 }
                               : null
                           const isPyrano = isPyranometer(pyrSensorData)
+                          const calibrationParameter =
+                            classifyCalibrationParameter({
+                              name: res?.sensorDetails?.name,
+                              type: res?.sensorDetails?.type,
+                              sheetName: sec?.title,
+                              isPyranometer: isPyrano,
+                            })
 
                           // HEADER: Gunakan dari data, atau default berdasarkan tipe sensor
                           let headers: string[]
@@ -1276,6 +1287,13 @@ const CertificatePreview: React.FC<{
                                 </thead>
                                 <tbody>
                                   {rows.map((row: any, rIdx: number) => {
+                                    const formatted =
+                                      formatCalibrationResultRow(
+                                        row.key,
+                                        row.unit,
+                                        row.value,
+                                        calibrationParameter,
+                                      )
                                     const isBlank = (val: any) =>
                                       !val ||
                                       String(val).trim() === '' ||
@@ -1291,27 +1309,21 @@ const CertificatePreview: React.FC<{
                                         <td className="p-1 border border-black text-center">
                                           {isFirstEmptyRow
                                             ? unitDisplay
-                                            : formatCalibrationResultValue(
-                                                row.key,
-                                              )}
+                                            : formatted.reading}
                                         </td>
                                         <td className="p-1 border border-black text-center">
                                           {isFirstEmptyRow
                                             ? isPyrano
                                               ? '-'
                                               : unitDisplay
-                                            : formatCalibrationResultValue(
-                                                row.unit,
-                                              )}
+                                            : formatted.correction}
                                         </td>
                                         <td className="p-1 border border-black text-center">
                                           {isFirstEmptyRow
                                             ? isPyrano
                                               ? '%'
                                               : unitDisplay
-                                            : formatCalibrationResultValue(
-                                                row.value,
-                                              )}
+                                            : formatted.uncertainty}
                                         </td>
                                         {Array.isArray(row.extraValues) &&
                                           row.extraValues.map(

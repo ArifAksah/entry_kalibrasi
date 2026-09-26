@@ -49,6 +49,10 @@ import {
 } from '../../../lib/cmc-config'
 import { Spinner } from '../../../components/ui/Loading'
 import {
+  filterPairedMeasurementRows,
+  parseFiniteMeasurement,
+} from '../../../lib/measurement-rows'
+import {
   filterStandardCertificates,
   isStandardCertificateSelectionValid,
 } from '../../../lib/standard-certificate-filter'
@@ -1493,10 +1497,13 @@ const CertificatesCRUD: React.FC = () => {
       // Fetch QC Raw Data
       const res = await fetch(`/api/raw-data?session_id=${sessionId}`)
       const json = await res.json()
-      const currentData = json.data || []
+      const allCurrentData: any[] = Array.isArray(json.data) ? json.data : []
+      const currentData = filterPairedMeasurementRows(allCurrentData)
 
-      if (!currentData.length) {
-        showError('Data QC kosong. Silakan isi Data QC terlebih dahulu.')
+      if (currentData.length < 2) {
+        showError(
+          'Minimal 2 pasangan pembacaan STD dan UUT yang valid diperlukan untuk menghitung hasil kalibrasi.',
+        )
         setIsGenerating(false)
         return
       }
@@ -1510,6 +1517,14 @@ const CertificatesCRUD: React.FC = () => {
             (c) => c.id === currentResult.standardCertificateId,
           )
         : null
+
+      if (!currentResult.standardCertificateId || !standardCertRecord) {
+        showError(
+          'Sertifikat standar belum dipilih atau tidak ditemukan. Pilih ulang sertifikat standar sebelum menghitung.',
+        )
+        setIsGenerating(false)
+        return
+      }
 
       const uutInstrument = instruments.find((i) => i.id === form.instrument)
       const isAnalog = (uutInstrument?.instrument_type_id ?? 1) === 2
@@ -1548,10 +1563,10 @@ const CertificatesCRUD: React.FC = () => {
       if (isPyranometerSensor && activeUutSensor) {
         // PYRANOMETER: Hitung CF (rasio) dalam %
         const stdReadings = currentData.map(
-          (row: any) => row.standard_data || 0,
+          (row: any) => parseFiniteMeasurement(row.standard_data)!,
         )
         const uutReadingsForCF = currentData.map(
-          (row: any) => row.uut_data || 0,
+          (row: any) => parseFiniteMeasurement(row.uut_data)!,
         )
 
         const cfResult = calculateCalibrationFactor(
@@ -1589,7 +1604,8 @@ const CertificatesCRUD: React.FC = () => {
         // Untuk pyranometer: Penunjukkan Alat = Rata-rata UUT, Faktor Kalibrasi = CF, Uncertainty = U95%
         const avgUut =
           currentData.reduce(
-            (sum: number, row: any) => sum + (row.uut_data || 0),
+            (sum: number, row: any) =>
+              sum + parseFiniteMeasurement(row.uut_data)!,
             0,
           ) / currentData.length
         uutAvg = avgUut // Penunjukkan Alat (Rata-rata UUT)

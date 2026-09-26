@@ -32,4 +32,19 @@ describe('final QC corrections as uncertainty repeatability input', () => {
         expect(result.correction).toBeCloseTo(-0.06666666666666643, 12);
         expect(result.uncertainty).toBeGreaterThan(0);
     });
+
+    it('ignores partial rows instead of converting blanks to zero', () => {
+        const result = calculateCalibrationResult({
+            currentData: [
+                ...currentData,
+                { standard_data: null, uut_data: 99, unit_std: '°C', unit_uut: '°C' },
+                { standard_data: 99, uut_data: null, unit_std: '°C', unit_uut: '°C' },
+            ],
+            uutSensor: { name: 'Termometer', resolution: 0 },
+            standardCertRecord: null,
+        });
+
+        expect(result.uutAvg).toBeCloseTo((9.8 + 10.1 + 10.3) / 3, 12);
+        expect(result.correction).toBeCloseTo(-0.06666666666666643, 12);
+    });
 });

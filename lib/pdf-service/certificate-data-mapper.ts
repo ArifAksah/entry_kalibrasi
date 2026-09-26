@@ -10,7 +10,10 @@
  * @see Requirements 8.2, 8.3
  */
 
-import { formatCalibrationResultValue } from '../result-display-format'
+import {
+  classifyCalibrationParameter,
+  formatCalibrationResultRow,
+} from '../result-display-format'
 import { resultsToLegacyView } from '../validators/certificate-results-render-adapter'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -89,9 +92,8 @@ function safeString(value: any): string {
   return String(value)
 }
 
-function formatResultValue(value: any): string {
-  if (value == null || String(value).trim() === '') return ''
-  return formatCalibrationResultValue(value)
+function emptyOrFormatted(value: any, formatted: string): string {
+  return value == null || String(value).trim() === '' ? '' : formatted
 }
 
 // ─── Mapper ──────────────────────────────────────────────────────────────────
@@ -122,6 +124,7 @@ export function mapCertificateToTemplateData(certificate: any): TemplateData {
   const sensors = legacyResults.length > 0
     ? legacyResults.map((result, index) => ({
         name: result.sensorDetails?.name || `Sensor ${index + 1}`,
+        type: result.sensorDetails?.type || '',
         results: result.table.flatMap((section) =>
           section.rows.map((row) => ({
             measurement_point: row.key,
@@ -176,12 +179,31 @@ export function mapCertificateToTemplateData(certificate: any): TemplateData {
       ? sensors.map((sensor: any) => ({
           sensor_nama: safeString(sensor?.name),
           hasil_kalibrasi: Array.isArray(sensor?.results)
-            ? sensor.results.map((result: any) => ({
-                titik_ukur: formatResultValue(result?.measurement_point),
-                pembacaan: formatResultValue(result?.reading),
-                koreksi: formatResultValue(result?.correction),
-                ketidakpastian: formatResultValue(result?.uncertainty),
-              }))
+            ? sensor.results.map((result: any) => {
+                const parameter = classifyCalibrationParameter({
+                  name: sensor?.name,
+                  type: sensor?.type,
+                })
+                const formatted = formatCalibrationResultRow(
+                  result?.reading,
+                  result?.correction,
+                  result?.uncertainty,
+                  parameter,
+                )
+                const measurementPoint = formatCalibrationResultRow(
+                  result?.measurement_point,
+                  result?.correction,
+                  result?.uncertainty,
+                  parameter,
+                ).reading
+
+                return {
+                  titik_ukur: emptyOrFormatted(result?.measurement_point, measurementPoint),
+                  pembacaan: emptyOrFormatted(result?.reading, formatted.reading),
+                  koreksi: emptyOrFormatted(result?.correction, formatted.correction),
+                  ketidakpastian: emptyOrFormatted(result?.uncertainty, formatted.uncertainty),
+                }
+              })
             : [],
         }))
       : [],
