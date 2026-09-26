@@ -14,9 +14,39 @@
 #   - Script ini idempoten: chain dibuat/di-flush lalu diisi ulang.
 #   - Ini lapisan sementara/pertahanan tambahan. Kontrol utama tetap:
 #     bind port Compose ke 127.0.0.1 dan proxy Supabase lewat Caddy.
+#
+# Pemakaian:
+#   # Lihat rencana tanpa mengubah apa pun:
+#   sudo ADMIN_ALLOW_CIDRS="10.20.30.0/24,192.168.15.10" ./deploy/harden-network.sh --dry-run
+#
+#   # Terapkan (minta konfirmasi):
+#   sudo ADMIN_ALLOW_CIDRS="10.20.30.0/24" ./deploy/harden-network.sh
+#
+#   # Terapkan tanpa prompt (otomasi):
+#   sudo ADMIN_ALLOW_CIDRS="10.20.30.0/24" ./deploy/harden-network.sh --yes
+#
+# PENTING: isi ADMIN_ALLOW_CIDRS dengan IP/jump host Anda SEBELUM menjalankan,
+# atau akses langsung ke Postgres/Studio dari luar akan terputus.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
+
+DRY_RUN=false
+ASSUME_YES=false
+for arg in "$@"; do
+	case "${arg}" in
+		--dry-run) DRY_RUN=true ;;
+		--yes|-y) ASSUME_YES=true ;;
+		--help|-h)
+			sed -n '2,40p' "$0"
+			exit 0
+			;;
+		*)
+			echo "Opsi tidak dikenal: ${arg}" >&2
+			exit 1
+			;;
+	esac
+done
 
 if [[ "${EUID}" -ne 0 ]]; then
 	echo "Jalankan sebagai root (sudo)." >&2
@@ -24,85 +54,134 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 CHAIN="SIMKAL-CONTAIN"
+INPUT_COMMENT="simkal-backend-block"
 
 # Port backend yang hanya boleh diakses lokal/host (bukan segmen user).
 #   3000 Studio | 4000 Analytics | 5432 Postgres | 6543 pooler
 #   8000 Kong   | 8443 Kong TLS  | 9000/9001 MinIO | 9999 GoTrue
 BLOCKED_PORTS=(3000 4000 5432 6543 8000 8443 9000 9001 9999)
 
-# Subnet/IP admin yang tetap boleh mengakses backend (mis. VPN/jump host).
-# WAJIB diisi bila operator perlu akses Studio/Postgres langsung.
-# Contoh: ADMIN_ALLOW_CIDRS=("10.20.30.0/24" "192.168.15.10")
-ADMIN_ALLOW_CIDRS=("${ADMIN_ALLOW_CIDRS[@]:-}")
-
 # Hanya host/port publik yang boleh terbuka untuk segmen user.
-# Daftar ini didokumentasikan, bukan di-allow oleh script (default-drop).
 #   80/443 Caddy HTTPS, 22 SSH (batasi ke jump host bila mungkin)
 ALLOWED_PUBLIC_PORTS=(80 443 22)
 
-# H5: port backend PDF template service (docker) — bind ke loopback saja.
+# Port backend PDF template service (docker) — bind ke loopback saja.
 BACKEND_LOOPBACK_BIND=true
 
-echo "[1/4] Menyiapkan chain ${CHAIN}"
-iptables -N "${CHAIN}" 2>/dev/null || true
-iptables -F "${CHAIN}"
+# ---------------------------------------------------------------------------
+# Parse allowlist: dukung koma dan/atau spasi.
+# Env var `ADMIN_ALLOW_CIDRS` adalah string, jadi pecah manual.
+# ---------------------------------------------------------------------------
+parse_allow_cidrs() {
+	local raw="${ADMIN_ALLOW_CIDRS:-}"
+	local -a out=()
+	# ganti koma dengan spasi, lalu pecah per whitespace
+	local normalized="${raw//,/ }"
+	# shellcheck disable=SC2206
+	local parts=(${normalized})
+	for p in "${parts[@]}"; do
+		[[ -n "${p}" ]] && out+=("${p}")
+	done
+	printf '%s\n' "${out[@]:-}"
+}
 
-# Izinkan balasan koneksi yang sudah terbentuk.
-iptables -A "${CHAIN}" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+mapfile -t ALLOW_CIDRS < <(parse_allow_cidrs)
 
-# Izinkan akses dari loopback/host.
-iptables -A "${CHAIN}" -i lo -j RETURN
+run() {
+	if [[ "${DRY_RUN}" == "true" ]]; then
+		echo "  [dry-run] $*"
+	else
+		"$@"
+	fi
+}
 
-# Izinkan admin yang dideklarasikan eksplisit.
-for cidr in "${ADMIN_ALLOW_CIDRS[@]:-}"; do
-	[[ -n "${cidr}" ]] && iptables -A "${CHAIN}" -s "${cidr}" -j RETURN
-done
+echo "═══════════════════════════════════════════════════════════════"
+echo " SIMKAL network containment"
+echo " Mode        : $([[ "${DRY_RUN}" == "true" ]] && echo 'DRY-RUN (tidak mengubah apa pun)' || echo 'APPLY')"
+echo " Blocked     : ${BLOCKED_PORTS[*]}"
+echo " Public ok   : ${ALLOWED_PUBLIC_PORTS[*]}"
+echo " Admin allow : ${ALLOW_CIDRS[*]:-(kosong — akses manajemen dari luar akan tertutup)}"
+echo "═══════════════════════════════════════════════════════════════"
 
-echo "[2/4] Menolak port backend dari jaringan lain"
-# --ctorigdstport mencocokkan port host sebelum DNAT Docker, lebih aman di DOCKER-USER.
-for port in "${BLOCKED_PORTS[@]}"; do
-	iptables -A "${CHAIN}" -p tcp -m conntrack --ctstate NEW --ctorigdstport "${port}" -j DROP
-done
-iptables -A "${CHAIN}" -j RETURN
-
-echo "[3/4] Memasang jump di DOCKER-USER"
-if ! iptables -C DOCKER-USER -j "${CHAIN}" 2>/dev/null; then
-	iptables -I DOCKER-USER 1 -j "${CHAIN}"
+if [[ "${DRY_RUN}" != "true" && "${ASSUME_YES}" != "true" ]]; then
+	read -r -p "Lanjutkan menerapkan aturan firewall? [y/N] " answer
+	case "${answer}" in
+		y|Y|yes|YES) ;;
+		*) echo "Dibatalkan."; exit 0 ;;
+	esac
 fi
 
-echo "[4/6] Menolak port INPUT ke management plane (bukan hanya Docker)"
-# Docker DNAT ditangani DOCKER-USER; port yang di-bind langsung ke host
-# (Studio/Postgres pada instalasi non-Docker) ditangani INPUT.
+echo
+echo "[1/6] Menyiapkan chain ${CHAIN}"
+run iptables -N "${CHAIN}" 2>/dev/null || true
+run iptables -F "${CHAIN}"
+
+# Izinkan balasan koneksi yang sudah terbentuk.
+run iptables -A "${CHAIN}" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+
+# Izinkan akses dari loopback/host.
+run iptables -A "${CHAIN}" -i lo -j RETURN
+
+# Izinkan admin yang dideklarasikan eksplisit.
+for cidr in "${ALLOW_CIDRS[@]:-}"; do
+	[[ -n "${cidr}" ]] && run iptables -A "${CHAIN}" -s "${cidr}" -j RETURN
+done
+
+echo
+echo "[2/6] Menolak port backend dari jaringan lain (Docker DOCKER-USER)"
+# --ctorigdstport mencocokkan port host sebelum DNAT Docker, lebih aman di DOCKER-USER.
 for port in "${BLOCKED_PORTS[@]}"; do
-	if ! iptables -C INPUT -p tcp --dport "${port}" -j DROP 2>/dev/null; then
-		iptables -I INPUT -p tcp --dport "${port}" \
-			-m comment --comment "simkal-backend-block" -j DROP
+	run iptables -A "${CHAIN}" -p tcp -m conntrack --ctstate NEW --ctorigdstport "${port}" -j DROP
+done
+run iptables -A "${CHAIN}" -j RETURN
+
+echo
+echo "[3/6] Memasang jump di DOCKER-USER"
+if ! iptables -C DOCKER-USER -j "${CHAIN}" 2>/dev/null; then
+	run iptables -I DOCKER-USER 1 -j "${CHAIN}"
+else
+	echo "  jump sudah ada (skip)"
+fi
+
+echo
+echo "[4/6] Menolak port INPUT ke management plane (instalasi non-Docker)"
+# Docker DNAT ditangani DOCKER-USER; port yang di-bind langsung ke host
+# ditangani INPUT. Cek memakai spesifikasi LENGKAP (termasuk comment) agar
+# idempoten dan tidak menumpuk aturan duplikat.
+for port in "${BLOCKED_PORTS[@]}"; do
+	if iptables -C INPUT -p tcp --dport "${port}" \
+		-m comment --comment "${INPUT_COMMENT}" -j DROP 2>/dev/null; then
+		echo "  INPUT ${port} sudah diblok (skip)"
+	else
+		run iptables -I INPUT -p tcp --dport "${port}" \
+			-m comment --comment "${INPUT_COMMENT}" -j DROP
 	fi
 done
 
-echo "[5/6] Pastikan hook dibersihkan saat reboot (persist)"
-if command -v netfilter-persistent >/dev/null 2>&1; then
+echo
+echo "[5/6] Persist agar aturan bertahan setelah reboot"
+if [[ "${DRY_RUN}" == "true" ]]; then
+	echo "  [dry-run] netfilter-persistent save"
+elif command -v netfilter-persistent >/dev/null 2>&1; then
 	netfilter-persistent save || true
 else
-	echo "  netfilter-persistent tidak ada; simpan manual (iptables-save > /etc/iptables/rules.v4)" >&2
+	echo "  netfilter-persistent tidak ada; simpan manual:" >&2
+	echo "    iptables-save | sudo tee /etc/iptables/rules.v4" >&2
 fi
 
+echo
 echo "[6/6] Status"
 iptables -nvL DOCKER-USER --line-numbers | sed -n '1,20p'
 echo
-iptables -nvL INPUT --line-numbers | grep -E "simkal-backend-block|Chain INPUT" | sed -n '1,15p'
+iptables -nvL INPUT --line-numbers | grep -E "${INPUT_COMMENT}|Chain INPUT" | sed -n '1,15p'
 echo
-echo "Chain backend yang diblokir: ${BLOCKED_PORTS[*]}"
-echo "Port publik yang diizinkan: ${ALLOWED_PUBLIC_PORTS[*]}"
-echo "Admin allowlist: ${ADMIN_ALLOW_CIDRS[*]:-(kosong)}"
 if [[ "${BACKEND_LOOPBACK_BIND}" == "true" ]]; then
+	echo "WAJIB: bind port Compose ke loopback (kontrol utama), contoh:"
+	echo "  \"127.0.0.1:8000:8000\"   (Kong)"
+	echo "  \"127.0.0.1:3000:3000\"   (Studio)"
+	echo "  \"127.0.0.1:5432:5432\"   (Postgres)"
 	echo
-	echo "WAJIB: bind port Compose ke loopback, contoh:"
-	echo "  127.0.0.1:8000:8000   (Kong)"
-	echo "  127.0.0.1:3000:3000   (Studio)"
-	echo "  127.0.0.1:5432:5432   (Postgres)"
 fi
-echo
 echo "Untuk membatalkan containment:"
-echo "  iptables -D DOCKER-USER -j ${CHAIN} && iptables -F ${CHAIN} && iptables -X ${CHAIN}"
-echo "  iptables -D FORWARD -j ${CHAIN} 2>/dev/null || true"
+echo "  sudo iptables -D DOCKER-USER -j ${CHAIN} && sudo iptables -F ${CHAIN} && sudo iptables -X ${CHAIN}"
+echo "  sudo iptables -S INPUT | grep ${INPUT_COMMENT}   # lalu -D satu per satu"
