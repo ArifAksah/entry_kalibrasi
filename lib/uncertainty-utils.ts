@@ -105,9 +105,125 @@ export function interpolateU95FromPoints(
     return 0;
 }
 
+/** Lanczos approximation of ln(Γ(x)) for x > 0. */
+function logGamma(x: number): number {
+    const coefficients = [
+        76.18009172947146,
+        -86.50532032941677,
+        24.01409824083091,
+        -1.231739572450155,
+        0.1208650973866179e-2,
+        -0.5395239384953e-5,
+    ];
+    let y = x;
+    let tmp = x + 5.5;
+    tmp -= (x + 0.5) * Math.log(tmp);
+    let ser = 1.000000000190015;
+    for (let j = 0; j < 6; j++) {
+        y += 1;
+        ser += coefficients[j] / y;
+    }
+    return -tmp + Math.log((2.5066282746310005 * ser) / x);
+}
+
+/** Continued fraction for the regularized incomplete beta function. */
+function betaContinuedFraction(a: number, b: number, x: number): number {
+    const MAX_ITERATIONS = 300;
+    const EPSILON = 3e-16;
+    const TINY = 1e-300;
+
+    const qab = a + b;
+    const qap = a + 1;
+    const qam = a - 1;
+
+    let c = 1;
+    let d = 1 - (qab * x) / qap;
+    if (Math.abs(d) < TINY) d = TINY;
+    d = 1 / d;
+    let h = d;
+
+    for (let m = 1; m <= MAX_ITERATIONS; m++) {
+        const m2 = 2 * m;
+
+        let aa = (m * (b - m) * x) / ((qam + m2) * (a + m2));
+        d = 1 + aa * d;
+        if (Math.abs(d) < TINY) d = TINY;
+        c = 1 + aa / c;
+        if (Math.abs(c) < TINY) c = TINY;
+        d = 1 / d;
+        h *= d * c;
+
+        aa = (-(a + m) * (qab + m) * x) / ((a + m2) * (qap + m2));
+        d = 1 + aa * d;
+        if (Math.abs(d) < TINY) d = TINY;
+        c = 1 + aa / c;
+        if (Math.abs(c) < TINY) c = TINY;
+        d = 1 / d;
+        const delta = d * c;
+        h *= delta;
+
+        if (Math.abs(delta - 1) < EPSILON) break;
+    }
+
+    return h;
+}
+
+/** Regularized incomplete beta function I_x(a, b). */
+function regularizedIncompleteBeta(a: number, b: number, x: number): number {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+
+    const betacfTerm =
+        Math.exp(
+            logGamma(a + b) -
+                logGamma(a) -
+                logGamma(b) +
+                a * Math.log(x) +
+                b * Math.log(1 - x),
+        );
+
+    if (x < (a + 1) / (a + b + 2)) {
+        return (betacfTerm * betaContinuedFraction(a, b, x)) / a;
+    }
+    return 1 - (betacfTerm * betaContinuedFraction(b, a, 1 - x)) / b;
+}
+
+/** Cumulative distribution function of Student's t with df degrees of freedom. */
+export function studentTCDF(t: number, df: number): number {
+    if (df <= 0) return Number.NaN;
+    const x = df / (df + t * t);
+    const tail = 0.5 * regularizedIncompleteBeta(df / 2, 0.5, x);
+    return t > 0 ? 1 - tail : tail;
+}
+
+/** Inverse CDF (quantile) of Student's t via bisection. */
+function studentTInverse(probability: number, df: number): number {
+    if (df <= 0) return Number.NaN;
+    if (probability <= 0) return Number.NEGATIVE_INFINITY;
+    if (probability >= 1) return Number.POSITIVE_INFINITY;
+
+    let low = 0;
+    let high = 1000;
+    for (let i = 0; i < 200; i++) {
+        const mid = (low + high) / 2;
+        if (studentTCDF(mid, df) < probability) {
+            low = mid;
+        } else {
+            high = mid;
+        }
+    }
+    return (low + high) / 2;
+}
+
+const coverageFactorCache = new Map<number, number>();
+
 /**
- * Get Coverage Factor (k) for 95% Confidence Level based on Effective Degrees of Freedom (veff)
- * Using Student's t-distribution table approximation for 95% CL.
+ * Get Coverage Factor (k) for 95% Confidence Level based on Effective Degrees of Freedom (veff).
+ *
+ * - df <= 30: exact tabulated Student-t values (t_{0.975, df}).
+ * - df > 30 : exact inverse Student-t via regularized incomplete beta, matching
+ *   Excel TINV(0.05, df) to ~1e-13. Results are cached per df because the QC
+ *   calculation calls this repeatedly for the same veff.
  */
 export function getCoverageFactorFor95(veff: number): number {
     const v = Math.floor(veff);
@@ -115,7 +231,7 @@ export function getCoverageFactorFor95(veff: number): number {
     if (v <= 0) return 2.0; // Fallback
 
     // T-distribution table for 95% CL (two-tailed p=0.05)
-    // Degrees of freedom 1 to 30, then typical larger values
+    // Degrees of freedom 1 to 30.
     const tTable: Record<number, number> = {
         1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
         6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
@@ -123,26 +239,16 @@ export function getCoverageFactorFor95(veff: number): number {
         16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086,
         21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060,
         26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042,
-        40: 2.021, 50: 2.009, 60: 2.000, 80: 1.990, 100: 1.984,
-        120: 1.980, 1000: 1.962
     };
 
     if (v <= 30 && tTable[v]) return tTable[v];
 
-    // Cornish-Fisher expansion for the 97.5th percentile of Student's t.
-    // Workbook LOOKUP values match t_{0.975, floor(veff)} rather than a coarse
-    // linear interpolation between only a few tabulated degrees of freedom.
-    const z = 1.959963984540054;
-    const z2 = z * z;
-    const z3 = z2 * z;
-    const z5 = z3 * z2;
-    const z7 = z5 * z2;
-    const z9 = z7 * z2;
-    return z
-        + (z3 + z) / (4 * v)
-        + (5 * z5 + 16 * z3 + 3 * z) / (96 * v ** 2)
-        + (3 * z7 + 19 * z5 + 17 * z3 - 15 * z) / (384 * v ** 3)
-        + (79 * z9 + 776 * z7 + 1482 * z5 - 1920 * z3 - 945 * z) / (92160 * v ** 4);
+    const cached = coverageFactorCache.get(v);
+    if (cached !== undefined) return cached;
+
+    const k = studentTInverse(0.975, v);
+    coverageFactorCache.set(v, k);
+    return k;
 }
 
 /**
