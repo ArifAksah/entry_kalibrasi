@@ -22,9 +22,13 @@ export async function sendWhatsApp(params: SendWhatsAppParams): Promise<SendWhat
       return { success: false, error: 'Missing WA_SERVICE_URL configuration' };
     }
 
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const serviceToken = process.env.WA_SERVICE_TOKEN?.trim();
+    if (serviceToken) headers['x-wa-token'] = serviceToken;
+
     const response = await fetch(`${waServiceUrl.trim()}/send-message`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         phone: params.phone,
         message: params.message,

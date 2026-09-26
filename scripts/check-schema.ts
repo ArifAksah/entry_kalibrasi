@@ -1,8 +1,15 @@
 
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = 'http://172.19.3.171:8000'
-const supabaseServiceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaWF0IjoxNzU5Mjg3NTY4LCJleHAiOjIwNzQ4NjM1NjgsImlzcyI6InN1cGFiYXNlIn0.xcGIJbLa0QPVgezUbbdtsYyLK5q7AQR0hFdQvZlRP5c'
+// Credentials must come from the environment. Never hardcode the service-role
+// key or internal host in tracked source.
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_PUBLIC_URL
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
+  process.exit(1)
+}
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 

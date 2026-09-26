@@ -76,6 +76,11 @@ const nextConfig = {
             key: 'Permissions-Policy',
             value: 'camera=(), microphone=(), geolocation=(), payment=()',
           },
+          // HSTS: only meaningful over HTTPS; harmless on HTTP (ignored).
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=31536000; includeSubDomains',
+          },
           { key: 'Content-Security-Policy-Report-Only', value: cspReportOnly },
         ],
       },

@@ -2,10 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../../lib/supabase'
 import { sendEmail } from '../../../../lib/brevo'
 import { buildPasswordResetHtml } from '../../../../lib/email-templates'
+import { checkRateLimit, clientIp } from '../../../../lib/rate-limit'
 import crypto from 'crypto'
 
 export async function POST(request: NextRequest) {
   try {
+    // M7: rate-limit password-reset requests per IP to slow abuse.
+    const limit = checkRateLimit(`forgot-password:${clientIp(request)}`, 5, 15 * 60 * 1000)
+    if (!limit.ok) {
+      return NextResponse.json(
+        { success: true, message: 'Jika email terdaftar, link reset password telah dikirim.' },
+        { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
+      )
+    }
+
     // Ensure we always return JSON
     const contentType = request.headers.get('content-type')
     if (!contentType || !contentType.includes('application/json')) {

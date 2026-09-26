@@ -3,6 +3,7 @@ import { supabaseAdmin as supabase } from '../../../../lib/supabase';
 import { requireAdmin } from '../../../../lib/api-auth';
 import { sendEmail } from '../../../../lib/brevo';
 import { buildAccountConfirmationHtml } from '../../../../lib/email-templates';
+import { checkRateLimit, clientIp } from '../../../../lib/rate-limit';
 
 async function sendAccountConfirmationEmail(email: string, name: string): Promise<void> {
   try {
@@ -25,6 +26,15 @@ export async function POST(request: NextRequest) {
     // H4 (open registration) fix: account creation is admin-driven only.
     const gate = await requireAdmin(request);
     if (gate instanceof NextResponse) return gate;
+
+    // M7: throttle even authenticated account creation.
+    const limit = checkRateLimit(`signup:${clientIp(request)}`, 20, 15 * 60 * 1000);
+    if (!limit.ok) {
+      return NextResponse.json(
+        { error: 'Terlalu banyak permintaan. Coba lagi nanti.' },
+        { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } }
+      );
+    }
 
     const { email, password, userData } = await request.json();
 

@@ -32,7 +32,9 @@ function readConfig(): AdminSeedConfig {
 
   return {
     email: process.env.DEV_ADMIN_EMAIL || 'admin.dev@local.test',
-    password: process.env.DEV_ADMIN_PASSWORD || 'Admin123!',
+    // No default password: require an explicit DEV_ADMIN_PASSWORD so a known
+    // credential can never be created accidentally.
+    password: requireEnv('DEV_ADMIN_PASSWORD'),
     name: process.env.DEV_ADMIN_NAME || 'Development Admin',
     nip: process.env.DEV_ADMIN_NIP || '',
     nik: process.env.DEV_ADMIN_NIK || '',

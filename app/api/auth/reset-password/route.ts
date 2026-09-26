@@ -2,9 +2,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../../lib/supabase'
 import { sendEmail } from '../../../../lib/brevo'
 import { buildPasswordResetConfirmationHtml } from '../../../../lib/email-templates'
+import { checkRateLimit, clientIp } from '../../../../lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {
+    // M7: throttle token guessing / password-reset submission per IP.
+    const limit = checkRateLimit(`reset-password:${clientIp(request)}`, 10, 15 * 60 * 1000)
+    if (!limit.ok) {
+      return NextResponse.json(
+        { error: 'Terlalu banyak percobaan. Coba lagi nanti.' },
+        { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
+      )
+    }
+
     // Ensure we always return JSON
     const contentType = request.headers.get('content-type')
     if (!contentType || !contentType.includes('application/json')) {

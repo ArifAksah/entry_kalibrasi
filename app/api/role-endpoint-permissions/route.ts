@@ -11,6 +11,10 @@ const supabaseAdmin = createClient(
 
 export async function GET(request: NextRequest) {
   try {
+    // M8: role↔endpoint matrix embeds the full endpoint catalog; admin only.
+    const adminGate = await requireAdmin(request)
+    if (adminGate instanceof NextResponse) return adminGate
+
     const { searchParams } = new URL(request.url)
     const role = searchParams.get('role')
     const q = supabaseAdmin.from('role_endpoint_permissions').select('*, endpoint_catalog(*)')

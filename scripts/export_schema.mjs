@@ -4,14 +4,21 @@ import fs from 'fs';
 
 const { Client } = pg;
 
-const client = new Client({
-  host: '172.19.3.171',
-  port: 5432,
-  database: 'postgres',
-  user: 'postgres',
-  password: '117b4d69200eeb00cb326d4174c2bec3',
-  connectionTimeoutMillis: 10000,
-});
+// Credentials must come from the environment. Never hardcode connection
+// secrets in tracked source. Use DATABASE_URL or the discrete DB_* vars.
+const client = new Client(
+  process.env.DATABASE_URL
+    ? { connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 10000 }
+    : {
+        host: process.env.DB_HOST,
+        port: Number(process.env.DB_PORT || 5432),
+        database: process.env.DB_NAME || 'postgres',
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+        connectionTimeoutMillis: 10000,
+      },
+);
 
 async function exportSchema() {
   await client.connect();

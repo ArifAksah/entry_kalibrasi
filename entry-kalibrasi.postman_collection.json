@@ -2340,7 +2340,7 @@
   "variable": [
     { "key": "base_url", "value": "http://172.19.3.171", "type": "string" },
     { "key": "supabase_url", "value": "http://172.19.3.171:8000", "type": "string" },
-    { "key": "supabase_anon_key", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlhdCI6MTc1OTI4NzU2OCwiZXhwIjoyMDc0ODYzNTY4LCJpc3MiOiJzdXBhYmFzZSJ9.cLjQLA6K6_HMuz1p4iHJcQFR0djaX2BW_KSXASkcdqU", "type": "string" },
+    { "key": "supabase_anon_key", "value": "{{SUPABASE_ANON_KEY}}", "type": "string" },
     { "key": "token", "value": "", "type": "string" },
     { "key": "email", "value": "user@example.com", "type": "string" },
     { "key": "password", "value": "password", "type": "string" }

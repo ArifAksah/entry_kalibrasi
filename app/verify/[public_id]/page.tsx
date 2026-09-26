@@ -7,7 +7,6 @@ import Image from 'next/image'
 type PublicPerson = {
   id: string
   name: string
-  nip?: string | null
 } | null
 
 type VerificationStep = {
@@ -15,7 +14,6 @@ type VerificationStep = {
   role: string
   status: string
   approved_at?: string | null
-  approval_notes?: string | null
   person: PublicPerson
 }
 
@@ -58,7 +56,6 @@ type PublicCertificateResponse = {
     provider?: string | null
     signed_at?: string | null
     signer: PublicPerson
-    notes?: string | null
     metadata?: Record<string, any> | null
   }
 }

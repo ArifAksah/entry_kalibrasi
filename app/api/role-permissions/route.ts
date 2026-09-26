@@ -9,8 +9,12 @@ const supabaseAdmin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 )
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // M8: the RBAC matrix must not be readable by non-admin accounts.
+    const adminGate = await requireAdmin(request)
+    if (adminGate instanceof NextResponse) return adminGate
+
     const { data, error } = await supabaseAdmin
       .from('role_permissions')
       .select('*')

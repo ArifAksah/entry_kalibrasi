@@ -22,14 +22,15 @@ const statusLabel: Record<string, string> = {
   completed: 'Selesai'
 }
 
+// PII minimization: the public verification portal only needs a display name.
+// NIP/NIK must never be exposed on an unauthenticated endpoint.
 function publicPerson(personelMap: Record<string, any>, id?: string | null) {
   if (!id) return null
   const person = personelMap[id]
-  if (!person) return { id, name: 'Tidak diketahui', nip: null }
+  if (!person) return { id, name: 'Tidak diketahui' }
   return {
     id,
-    name: person.name || 'Tidak diketahui',
-    nip: person.nip || null
+    name: person.name || 'Tidak diketahui'
   }
 }
 
@@ -38,12 +39,13 @@ function getSignatureProvider(signatureData: any) {
   return signatureData.provider || signatureData.issuer || signatureData.ca || 'BSrE'
 }
 
+// Only non-sensitive provider/timestamp are surfaced publicly. Internal
+// document identifiers and raw signature payloads stay server-side.
 function getPublicSignatureMetadata(signatureData: any) {
   if (!signatureData || typeof signatureData !== 'object') return null
   return {
     provider: getSignatureProvider(signatureData),
-    timestamp: signatureData.timestamp || signatureData.signed_at || null,
-    document_id: signatureData.document_id || signatureData.id_dokumen || signatureData.id || null
+    timestamp: signatureData.timestamp || signatureData.signed_at || null
   }
 }
 
@@ -153,7 +155,6 @@ export async function GET(
       approved_at: verification.status === 'approved'
         ? verification.signed_at || verification.updated_at || verification.created_at
         : null,
-      approval_notes: verification.approval_notes || null,
       person: publicPerson(personelMap, verification.verified_by)
     }))
 
@@ -205,7 +206,6 @@ export async function GET(
         provider: signedVerification ? getSignatureProvider(signedVerification.signature_data) : null,
         signed_at: signedAt,
         signer,
-        notes: signedVerification?.approval_notes || null,
         metadata: getPublicSignatureMetadata(signedVerification?.signature_data)
       }
     })

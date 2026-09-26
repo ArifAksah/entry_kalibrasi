@@ -3,15 +3,19 @@ import pg from 'pg';
 const { Client } = pg;
 
 async function pushSchema() {
-  const password = 'Arifakasah12$';
-  const client = new Client({
-    host: 'aws-0-ap-southeast-1.pooler.supabase.com',
-    port: 6543,
-    database: 'postgres',
-    user: 'postgres.vnhbfqghoijflilpadwl',
-    password: password,
-    ssl: { rejectUnauthorized: false }
-  });
+  // Credentials come from the environment only.
+  const client = new Client(
+    process.env.DATABASE_URL
+      ? { connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }
+      : {
+          host: process.env.DB_HOST,
+          port: Number(process.env.DB_PORT || 6543),
+          database: process.env.DB_NAME || 'postgres',
+          user: process.env.DB_USER,
+          password: process.env.DB_PASSWORD,
+          ssl: { rejectUnauthorized: false },
+        },
+  );
 
   try {
     await client.connect();

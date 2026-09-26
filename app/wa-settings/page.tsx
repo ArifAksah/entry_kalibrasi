@@ -20,12 +20,24 @@ export default function WASettingsPage() {
   const [loggingOut, setLoggingOut] = useState(false)
   const pollRef = useRef<NodeJS.Timeout | null>(null)
 
-  const WA_URL =
-    process.env.NEXT_PUBLIC_WA_SERVICE_URL || 'http://localhost:3001'
+  // Requests go through the Next.js proxy, which injects the WA service token
+  // server-side and only allows admin/calibrator sessions.
+  const WA_URL = '/api/wa'
+
+  const authHeaders = async (): Promise<Record<string, string>> => {
+    const { supabase } = await import('../../lib/supabase')
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    return session?.access_token
+      ? { Authorization: `Bearer ${session.access_token}` }
+      : {}
+  }
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch(`${WA_URL}/status`)
+      const headers = await authHeaders()
+      const res = await fetch(`${WA_URL}/status`, { headers, cache: 'no-store' })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data: WAStatus = await res.json()
       setStatus(data)
@@ -33,7 +45,7 @@ export default function WASettingsPage() {
 
       // If has QR and not connected, fetch QR
       if (data.hasQR && !data.connected) {
-        const qrRes = await fetch(`${WA_URL}/qr`)
+        const qrRes = await fetch(`${WA_URL}/qr`, { headers, cache: 'no-store' })
         if (qrRes.ok) {
           const qrJson = await qrRes.json()
           setQrData(qrJson.qr)
@@ -64,7 +76,8 @@ export default function WASettingsPage() {
   const handleLogout = async () => {
     setLoggingOut(true)
     try {
-      await fetch(`${WA_URL}/logout`, { method: 'POST' })
+      const headers = await authHeaders()
+      await fetch(`${WA_URL}/logout`, { method: 'POST', headers })
       await fetchStatus()
     } catch {
       setError('Gagal logout')

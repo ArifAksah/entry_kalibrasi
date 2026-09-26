@@ -71,6 +71,8 @@ const ADMIN_PREFIXES = [
   '/api/openapi/',
   '/api/resources',
   '/api/bsre/auth',
+  '/api/role-permissions',
+  '/api/role-endpoint-permissions',
 ]
 
 function isAdminPath(pathname: string) {

@@ -21,13 +21,41 @@
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		# CSP di server harus diselaraskan dengan next.config.mjs (Report-Only).
 	}
+
+	# M7: rate limit.
+	# Caddy standar tidak memiliki direktif rate_limit. Pasang plugin
+	# caddy-ratelimit , lalu tambahkan:
+	#
+	#   @auth_paths path /api/auth/* /supabase/auth/v1/*
+	#   rate_limit @auth_paths {
+	#       zone auth_zone
+	#       key {remote_host}
+	#       events 10
+	#       window 1m
+	#   }
+	#   rate_limit {
+	#       zone api_zone
+	#       key {remote_host}
+	#       events 120
+	#       window 1m
+	#   }
+	#
+	# Tanpa plugin, rate limit tetap tersedia lewat GoTrue (auth) dan
+	# lib/rate-limit.ts (app-level). Lihat deploy/README.md.
 
 	route {
 		# /supabase            -> /supabase/
 		handle /supabase {
 			redir /supabase/ 308
+		}
+
+		# Hanya metode yang dipakai; tolak TRACE/CONNECT dan verb aneh.
+		@bad_method method TRACE CONNECT TRACK
+		handle @bad_method {
+			respond 405
 		}
 
 		# Hanya sub-API Supabase yang benar-benar dipakai browser.
