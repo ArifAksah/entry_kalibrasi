@@ -10,11 +10,27 @@
 -- ─── 1. Normalisasi satuan ───────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.normalize_unit(p_unit TEXT)
 RETURNS TEXT AS $$
+DECLARE
+    v TEXT;
 BEGIN
     IF p_unit IS NULL THEN
         RETURN '';
     END IF;
-    RETURN LOWER(REPLACE(REPLACE(REPLACE(BTRIM(p_unit), ' ', ''), '\circ', '°'), 'mathrm', ''));
+    v := BTRIM(p_unit);
+    v := REPLACE(v, '\circ', '°');
+    v := REPLACE(v, '\degree', '°');
+    v := REPLACE(v, 'mathrm', '');
+    v := REPLACE(v, 'text', '');
+    v := REPLACE(v, '\mu', 'µ');
+    v := REPLACE(v, '\cdot', '·');
+    v := REPLACE(v, '\times', '×');
+    -- Buang sisa markup LaTeX: backslash, ^, {, }
+    v := REPLACE(v, '\', '');
+    v := REPLACE(v, '^', '');
+    v := REPLACE(v, '{', '');
+    v := REPLACE(v, '}', '');
+    v := REPLACE(v, ' ', '');
+    RETURN LOWER(v);
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
@@ -272,3 +288,9 @@ BEFORE INSERT OR UPDATE OF standard_data, uut_data, sensor_id_std, sensor_id_uut
 ON public.raw_data
 FOR EACH ROW
 EXECUTE FUNCTION public.trigger_calculate_calibration();
+
+-- ─── 5. Grant untuk pemakaian via RPC service_role ───────────────────────────
+GRANT EXECUTE ON FUNCTION public.normalize_unit(text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.unit_conversion_factor(text, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.convert_unit_absolute(double precision, text, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.hitung_koreksi(double precision, bigint, bigint) TO service_role;
