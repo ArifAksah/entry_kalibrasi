@@ -33,12 +33,14 @@ set -euo pipefail
 
 DRY_RUN=false
 ASSUME_YES=false
+FORCE=false
 for arg in "$@"; do
 	case "${arg}" in
 		--dry-run) DRY_RUN=true ;;
 		--yes|-y) ASSUME_YES=true ;;
+		--force) FORCE=true ;;
 		--help|-h)
-			sed -n '2,40p' "$0"
+			sed -n '2,45p' "$0"
 			exit 0
 			;;
 		*)
@@ -111,6 +113,40 @@ if [[ "${DRY_RUN}" != "true" && "${ASSUME_YES}" != "true" ]]; then
 	esac
 fi
 
+# ---------------------------------------------------------------------------
+# GUARD: jangan blokir port 8000 selama aplikasi masih menunjuk langsung ke
+# Kong (bukan lewat reverse proxy). Kalau tidak, browser semua user kehilangan
+# akses Supabase dan aplikasi rusak.
+# ---------------------------------------------------------------------------
+guard_direct_supabase_url() {
+	local env_file
+	for env_file in .env .env.local .env.production; do
+		[[ -f "${env_file}" ]] || continue
+		local current
+		current="$(grep -E '^\s*NEXT_PUBLIC_SUPABASE_URL=' "${env_file}" | tail -1 | sed -E 's/^[^=]+=//; s/^["'\'']|["'\'']$//g' || true)"
+		[[ -n "${current}" ]] || continue
+		if [[ "${current}" =~ :8000(/|$) ]]; then
+			echo "GUARD: ${env_file} menunjuk langsung ke Kong :8000" >&2
+			echo "       NEXT_PUBLIC_SUPABASE_URL=${current}" >&2
+			echo "       Pindahkan ke jalur reverse proxy lebih dulu, mis.:" >&2
+			echo "         NEXT_PUBLIC_SUPABASE_URL=https://<domain>/supabase" >&2
+			echo "       lalu rebuild + restart aplikasi." >&2
+			if [[ "${FORCE}" == "true" ]]; then
+				echo "       (--force diberikan, melanjutkan apa pun risikonya)" >&2
+				return 0
+			fi
+			return 1
+		fi
+		return 0
+	done
+	return 0
+}
+
+if ! guard_direct_supabase_url && [[ "${DRY_RUN}" != "true" ]]; then
+	echo "Dibatalkan demi mencegah aplikasi rusak. Gunakan --force untuk memaksa." >&2
+	exit 1
+fi
+
 echo
 echo "[1/6] Menyiapkan chain ${CHAIN}"
 run iptables -N "${CHAIN}" 2>/dev/null || true
@@ -149,11 +185,13 @@ echo "[4/6] Menolak port INPUT ke management plane (instalasi non-Docker)"
 # ditangani INPUT. Cek memakai spesifikasi LENGKAP (termasuk comment) agar
 # idempoten dan tidak menumpuk aturan duplikat.
 for port in "${BLOCKED_PORTS[@]}"; do
-	if iptables -C INPUT -p tcp --dport "${port}" \
+	# `! -i lo` penting: tanpa ini, trafik dari server sendiri (mis. aplikasi
+	# mengakses Supabase via IP host) ikut terblokir dan aplikasi rusak.
+	if iptables -C INPUT ! -i lo -p tcp --dport "${port}" \
 		-m comment --comment "${INPUT_COMMENT}" -j DROP 2>/dev/null; then
 		echo "  INPUT ${port} sudah diblok (skip)"
 	else
-		run iptables -I INPUT -p tcp --dport "${port}" \
+		run iptables -I INPUT ! -i lo -p tcp --dport "${port}" \
 			-m comment --comment "${INPUT_COMMENT}" -j DROP
 	fi
 done
