@@ -44,6 +44,7 @@
 | `ecosystem.config.cjs` | PM2 process manager config (Next.js 3001 + WA service 3002) |
 | `Caddyfile.production` | **Reverse proxy produksi (Caddy)** — app + `/supabase` |
 | `harden-network.sh` | Containment firewall (block Kong/Studio/Postgres dari jaringan user) |
+| `simkal-network-containment.service` | Terapkan ulang containment setelah Docker siap/restart |
 | `deploy.sh` | Automated deployment script |
 | `setup-vm.sh` | One-time VM setup (Node.js, Docker, Caddy, PM2) |
 | `.env.production` | Template for production environment variables |

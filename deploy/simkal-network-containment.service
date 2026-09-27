@@ -1,0 +1,19 @@
+[Unit]
+Description=SIMKAL backend network containment
+Documentation=file:/home/entry/kalibrasi_opr/deploy/RUNBOOK-HARDEN-NETWORK.md
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/entry/kalibrasi_opr
+Environment=ADMIN_ALLOW_CIDRS=
+Environment=SKIP_FIREWALL_PERSIST=true
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do /usr/sbin/iptables -nL DOCKER-USER >/dev/null 2>&1 && exit 0; sleep 1; done; exit 1'
+ExecStart=/bin/bash /home/entry/kalibrasi_opr/deploy/harden-network.sh --yes
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

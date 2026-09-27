@@ -236,13 +236,17 @@ done
 
 echo
 echo "[5/6] Persist agar aturan bertahan setelah reboot"
-if [[ "${DRY_RUN}" == "true" ]]; then
+if [[ "${SKIP_FIREWALL_PERSIST:-false}" == "true" ]]; then
+	echo "  persistence eksternal aktif (systemd); skip penyimpanan ruleset"
+elif [[ "${DRY_RUN}" == "true" ]]; then
 	echo "  [dry-run] netfilter-persistent save"
 elif command -v netfilter-persistent >/dev/null 2>&1; then
 	netfilter-persistent save || true
 else
-	echo "  netfilter-persistent tidak ada; simpan manual:" >&2
-	echo "    iptables-save | sudo tee /etc/iptables/rules.v4" >&2
+	echo "  netfilter-persistent tidak ada." >&2
+	echo "  Pasang deploy/simkal-network-containment.service agar aturan" >&2
+	echo "  diterapkan ulang setelah Docker siap; jangan simpan seluruh ruleset" >&2
+	echo "  iptables Docker secara manual." >&2
 fi
 
 echo

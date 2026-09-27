@@ -157,38 +157,83 @@ curl -sk -o /dev/null -w 'kong 8443 = %{http_code}\n' https://172.19.3.171:8443/
 
 ---
 
-## 7. Bind Kong/Studio ke loopback (kontrol utama)
+## 7. Bind semua port Supabase ke loopback (kontrol utama)
 
 Edit `docker-compose.yml` stack Supabase (di folder stack Supabase, cari dulu):
 
 ```bash
 # Cari file compose Supabase
 docker inspect supabase-kong --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}'
+
+# Tampilkan nama service Compose untuk setiap container yang publish port
+for c in supabase-kong supabase-studio supabase-analytics supabase-auth supabase-pooler supabase-minio-1; do
+  printf '%-24s service=' "$c"
+  docker inspect "$c" --format '{{ index .Config.Labels "com.docker.compose.service" }}'
+done
 ```
 
-Ubah mapping `ports:` menjadi loopback (contoh):
+Masuk ke working directory yang ditampilkan, backup compose, lalu buka file:
+
+```bash
+cd "$(docker inspect supabase-kong --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}')"
+cp docker-compose.yml "docker-compose.yml.bak.$(date +%F-%H%M%S)"
+nano docker-compose.yml
+```
+
+Ubah setiap mapping `ports:` yang dipublish ke host agar memiliki prefix
+`127.0.0.1:`. Gunakan **nama service dari label di atas**, bukan nama container.
+Contoh topologi server ini:
 
 ```yaml
-  kong:
+services:
+  kong:       # container supabase-kong
     ports:
       - "127.0.0.1:8000:8000"
       - "127.0.0.1:8443:8443"
-  studio:
+  studio:     # container supabase-studio
     ports:
       - "127.0.0.1:3000:3000"
-  db:
+  analytics:  # container supabase-analytics
+    ports:
+      - "127.0.0.1:4000:4000"
+  auth:       # container supabase-auth
+    ports:
+      - "127.0.0.1:9999:9999"
+  pooler:     # nama aktual bisa supavisor; ikuti label Compose
     ports:
       - "127.0.0.1:5432:5432"
+      - "127.0.0.1:6543:6543"
+  minio:      # ikuti nama service dari label Compose
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
 ```
 
-Recreate hanya service terdampak:
+Validasi hasil Compose sebelum melakukan perubahan container:
 
 ```bash
-docker compose up -d --no-deps --force-recreate kong studio db
-docker ps --format 'table {{.Names}}\t{{.Ports}}' | grep -E 'kong|studio|pooler'
+docker compose config --quiet
+docker compose config | grep -A8 -E '^  (kong|studio|analytics|auth|pooler|supavisor|minio):'
 ```
 
-Pastikan sekarang `127.0.0.1:8000->8000` (bukan `0.0.0.0`).
+Recreate hanya service yang mapping port-nya diubah. Ganti nama di bawah dengan
+hasil label Compose jika berbeda; jangan gunakan `docker compose down`:
+
+```bash
+docker compose up -d --no-deps --force-recreate kong studio analytics auth pooler minio
+docker compose ps
+docker ps --format 'table {{.Names}}\t{{.Ports}}' | grep -E 'kong|studio|analytics|auth|pooler|minio'
+```
+
+Semua mapping host harus diawali `127.0.0.1:`; tidak boleh ada `0.0.0.0` atau
+`[::]` untuk port backend. Setelah recreate, uji dari server:
+
+```bash
+curl -sS -o /dev/null -w 'app=%{http_code}\n' http://127.0.0.1/
+curl -sS -o /dev/null -w 'supabase=%{http_code}\n' http://127.0.0.1/supabase/rest/v1/
+```
+
+Ekspektasi: `app=200`, `supabase=401` tanpa `apikey`.
 
 ---
 
@@ -234,21 +279,43 @@ nc -vz 172.19.3.171 22     # harus open
 Uji aplikasi dari browser: buka `http://172.19.3.171/`, login, akses data —
 harus normal.
 
-Aturan sudah di-persist otomatis oleh script (`netfilter-persistent save`).
+### Persist dengan systemd (server ini tidak punya netfilter-persistent)
+
+Pasang unit yang tersedia di repo. Unit berjalan setelah Docker siap dan ikut
+di-restart ketika `docker.service` di-restart:
+
+```bash
+sudo cp deploy/simkal-network-containment.service /etc/systemd/system/
+sudo systemd-analyze verify /etc/systemd/system/simkal-network-containment.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now simkal-network-containment.service
+sudo systemctl status simkal-network-containment.service --no-pager -l
+```
+
+Status yang diharapkan: `active (exited)`. Pastikan tidak ada duplikasi:
+
+```bash
+sudo iptables -S DOCKER-USER | grep -c -- '-j SIMKAL-CONTAIN'  # harus 1
+sudo iptables -S INPUT | grep -c simkal-backend-block          # harus 9
+```
+
+Tidak perlu `iptables-save`; menyimpan seluruh ruleset Docker dapat memulihkan
+chain dinamis yang sudah tidak cocok setelah Docker restart.
 
 ---
 
 ## 10. Cara membatalkan (rollback)
 
 ```bash
-# Firewall
+# Firewall dan persistence systemd
+sudo systemctl disable --now simkal-network-containment.service 2>/dev/null || true
+sudo rm -f /etc/systemd/system/simkal-network-containment.service
+sudo systemctl daemon-reload
 sudo iptables -D DOCKER-USER -j SIMKAL-CONTAIN 2>/dev/null
 sudo iptables -F SIMKAL-CONTAIN 2>/dev/null
 sudo iptables -X SIMKAL-CONTAIN 2>/dev/null
 sudo iptables -S INPUT | grep simkal-backend-block
 # hapus tiap baris: sudo iptables -D INPUT -p tcp --dport <port> -m comment --comment simkal-backend-block -j DROP
-sudo netfilter-persistent save
-
 # Caddy & .env
 sudo cp /etc/caddy/Caddyfile.bak.* /etc/caddy/Caddyfile
 sudo systemctl reload caddy

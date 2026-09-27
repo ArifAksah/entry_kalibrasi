@@ -195,6 +195,10 @@ docker compose ps
 Jika perlu membuka kembali:
 
 ```bash
+sudo systemctl disable --now simkal-network-containment.service 2>/dev/null || true
+sudo rm -f /etc/systemd/system/simkal-network-containment.service
+sudo systemctl daemon-reload
+
 sudo iptables -D DOCKER-USER -j SIMKAL-CONTAIN
 sudo iptables -F SIMKAL-CONTAIN
 sudo iptables -X SIMKAL-CONTAIN
@@ -203,8 +207,6 @@ sudo iptables -X SIMKAL-CONTAIN
 sudo iptables -S INPUT | grep simkal-backend-block
 # lalu untuk setiap baris:
 # sudo iptables -D INPUT -p tcp --dport <port> -m comment --comment simkal-backend-block -j DROP
-
-sudo netfilter-persistent save
 ```
 
 ---
@@ -229,11 +231,15 @@ sudo iptables -nvL DOCKER-USER --line-numbers
 
 - Script bersifat idempoten: aman dijalankan berulang, aturan tidak menumpuk.
 - Script menolak dijalankan jika bukan root.
-- `netfilter-persistent save` membuat aturan bertahan setelah reboot. Jika paket
-  tidak tersedia, simpan manual:
+- Untuk host Docker, gunakan `deploy/simkal-network-containment.service` agar
+  script idempoten diterapkan ulang setelah Docker siap/restart. Jangan simpan
+  seluruh ruleset Docker dengan `iptables-save`, karena chain dinamis Docker
+  dapat berubah setelah restart.
 
   ```bash
-  sudo iptables-save | sudo tee /etc/iptables/rules.v4
+  sudo cp deploy/simkal-network-containment.service /etc/systemd/system/
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now simkal-network-containment.service
   ```
 
 - Setelah firewall aktif, seluruh aplikasi (browser) tetap berjalan normal
