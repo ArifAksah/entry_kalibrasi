@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { useInstruments } from '../../../hooks/useInstruments'
 import { useAuth } from '../../../contexts/AuthContext'
 import { Instrument, InstrumentInsert, Station } from '../../../lib/supabase'
@@ -109,6 +109,8 @@ const InstrumentsCRUD: React.FC = () => {
     instruments,
     loading,
     error,
+    total: serverTotal,
+    totalPages: serverTotalPages,
     addInstrument,
     updateInstrument,
     deleteInstrument,
@@ -606,15 +608,10 @@ const InstrumentsCRUD: React.FC = () => {
     }
   }, [role, can, stations, form.station_id])
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return instruments
-    return instruments.filter((it) =>
-      `${it.manufacturer} ${it.type} ${it.serial_number} ${it.name} ${it.station?.name ?? ''}`
-        .toLowerCase()
-        .includes(q),
-    )
-  }, [instruments, search])
+  // Paginasi & pencarian sudah ditangani server (query `q`, `page`, `pageSize`).
+  // Daftar `instruments` di sini adalah ISI SATU HALAMAN server, jadi jangan
+  // difilter/slice ulang di klien — kalau tidak, halaman lain tak pernah tampil.
+  const filtered = instruments
 
   // Datalist for units
   const unitOptions = (
@@ -625,14 +622,10 @@ const InstrumentsCRUD: React.FC = () => {
     </datalist>
   )
 
-  const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(filtered.length / pageSize)),
-    [filtered],
-  )
-  const paged = useMemo(() => {
-    const start = (currentPage - 1) * pageSize
-    return filtered.slice(start, start + pageSize)
-  }, [filtered, currentPage])
+  const totalPages = serverTotalPages > 0 ? serverTotalPages : 1
+  const paged = filtered
+  const firstRowNumber = serverTotal === 0 ? 0 : (currentPage - 1) * pageSize + 1
+  const lastRowNumber = Math.min(currentPage * pageSize, serverTotal)
 
   const openModal = async (item?: Instrument) => {
     if (item) {
@@ -1423,6 +1416,12 @@ const InstrumentsCRUD: React.FC = () => {
         <div className="text-sm text-gray-600">
           Page <span className="font-medium">{currentPage}</span> of{' '}
           <span className="font-medium">{totalPages}</span>
+          {serverTotal > 0 && (
+            <span className="text-gray-400">
+              {' '}
+              • {firstRowNumber}-{lastRowNumber} dari {serverTotal} data
+            </span>
+          )}
         </div>
         <div className="inline-flex items-center gap-2">
           <button

@@ -5,6 +5,10 @@ export const useInstruments = () => {
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Metadata paginasi server. Dibiarkan null sampai fetch pertama selesai agar
+  // konsumen tidak salah menghitung halaman sebelum data tersedia.
+  const [total, setTotal] = useState<number>(0)
+  const [totalPages, setTotalPages] = useState<number>(1)
 
   const fetchInstruments = useCallback(async (opts?: { q?: string; page?: number; pageSize?: number; type?: 'standard' | 'uut'; userId?: string }) => {
     try {
@@ -21,11 +25,23 @@ export const useInstruments = () => {
       const payload = await res.json()
       const data = Array.isArray(payload) ? payload : (payload?.data ?? [])
       setInstruments(data)
+      if (!Array.isArray(payload)) {
+        const serverTotal = Number(payload?.total) || 0
+        const serverPages = Number(payload?.totalPages)
+        setTotal(serverTotal)
+        setTotalPages(
+          Number.isFinite(serverPages) && serverPages > 0
+            ? serverPages
+            : Math.max(1, Math.ceil(serverTotal / (opts?.pageSize || 10))),
+        )
+      }
       setError(null)
       return payload
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'An error occurred'
       setError(msg)
+      setTotal(0)
+      setTotalPages(1)
       return { data: [], total: 0, page: 1, pageSize: 10, totalPages: 1 }
     } finally {
       setLoading(false)
@@ -86,7 +102,7 @@ export const useInstruments = () => {
 
   // useEffect(() => { fetchInstruments({ page: 1, pageSize: 10 }) }, [])
 
-  return { instruments, loading, error, addInstrument, updateInstrument, deleteInstrument, refetch: fetchInstruments, fetchInstruments }
+  return { instruments, loading, error, total, totalPages, addInstrument, updateInstrument, deleteInstrument, refetch: fetchInstruments, fetchInstruments }
 }
 
 
