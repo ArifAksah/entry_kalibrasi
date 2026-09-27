@@ -7,29 +7,36 @@ import { verifyPdfRenderToken } from './lib/pdf-render-token'
 // /certificates/{id}/print?render_token=… — that page then fetches several
 // GET /api/* endpoints with no browser session. Instead of Bearer tokens these
 // requests carry an HMAC render token (5-minute TTL, bound to the certificate
-// id, verified with the same secret as the route at /api/certificates/[id]).
-const RENDER_ALLOWED_PREFIXES = [
-  '/api/certificates/',
-  '/api/personel',
-  '/api/stations',
-  '/api/instruments',
-  '/api/sensors',
-  '/api/instrument-names',
-  '/api/raw-data',
-  '/api/notes',
-  '/api/notes-instrumen-standard',
-  '/api/cert-standards',
-  '/api/calibration-results',
+// id). Only the exact single-record reads used by the print page are allowed;
+// route handlers additionally bind related ids to that certificate.
+const RENDER_RELATED_PATHS = [
+  /^\/api\/instruments\/\d+$/,
+  /^\/api\/instrument-names\/\d+$/,
+  /^\/api\/stations\/\d+$/,
+  /^\/api\/sensors\/\d+$/,
+  /^\/api\/personel\/[^/]+$/,
 ]
 
-function renderBypassAllowed(request: NextRequest): boolean {
+export function isPdfRenderPathAllowed(request: NextRequest, certificateId: string): boolean {
+  const { pathname, searchParams } = request.nextUrl
+  const queryKeys = Array.from(searchParams.keys())
+  if (pathname === `/api/certificates/${certificateId}`) return queryKeys.length === 0
+  if (RENDER_RELATED_PATHS.some(pattern => pattern.test(pathname))) return queryKeys.length === 0
+  if (pathname !== '/api/raw-data') return false
+
+  return queryKeys.length === 2
+    && queryKeys.every(key => key === 'session_id' || key === 'mode')
+    && Boolean(searchParams.get('session_id'))
+    && searchParams.get('mode') === 'room'
+}
+
+export function renderBypassAllowed(request: NextRequest): boolean {
   if (request.method !== 'GET') return false
   const token = request.headers.get('x-pdf-render-token')
   const ts = request.headers.get('x-pdf-render-ts')
   const certId = request.headers.get('x-pdf-render-cert')
   if (!token || !ts || !certId || !/^\d+$/.test(certId)) return false
-  const { pathname } = request.nextUrl
-  if (!RENDER_ALLOWED_PREFIXES.some(p => pathname === p.slice(0, -1) || pathname.startsWith(p) || pathname === p)) return false
+  if (!isPdfRenderPathAllowed(request, certId)) return false
   try {
     return verifyPdfRenderToken(certId, token, ts)
   } catch {
@@ -80,10 +87,13 @@ function isAdminPath(pathname: string) {
   return ADMIN_PREFIXES.some(p => normalized === p.replace(/\/$/, '') || normalized.startsWith(p))
 }
 
-function isPublicPath(pathname: string) {
+export function isPublicPath(pathname: string) {
   const normalized = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname
   if (PUBLIC_EXACT.has(normalized)) return true
-  return PUBLIC_PREFIXES.some(p => normalized.startsWith(p.replace(/\/$/, '')))
+  return PUBLIC_PREFIXES.some(p => {
+    const prefix = p.replace(/\/$/, '')
+    return normalized === prefix || normalized.startsWith(`${prefix}/`)
+  })
 }
 
 export async function proxy(request: NextRequest) {

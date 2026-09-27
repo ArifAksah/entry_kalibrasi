@@ -22,19 +22,15 @@ const nextConfig = {
     return config
   },
   env: {
-    // Expose VM-style envs to the client for browser fallback support
-    SUPABASE_PUBLIC_URL: process.env.SUPABASE_PUBLIC_URL,
-    API_EXTERNAL_URL: process.env.API_EXTERNAL_URL,
-    ANON_KEY: process.env.ANON_KEY,
-    // Ensure client receives NEXT_PUBLIC_* values derived from VM envs
+    // Only explicitly public Supabase values may be compiled into browser JS.
+    // Generic ANON_KEY/SUPABASE_PUBLIC_URL aliases stay server-side to avoid
+    // accidentally bundling a privileged key through an ambiguous variable.
     NEXT_PUBLIC_SUPABASE_URL:
       process.env.NEXT_PUBLIC_SUPABASE_URL ||
       process.env.SUPABASE_PUBLIC_URL ||
       process.env.API_EXTERNAL_URL ||
       'http://localhost:8000',
-    NEXT_PUBLIC_SUPABASE_ANON_KEY:
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-      process.env.ANON_KEY,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   },
   async headers() {
     // Content-Security-Policy is emitted as Report-Only on purpose: the app

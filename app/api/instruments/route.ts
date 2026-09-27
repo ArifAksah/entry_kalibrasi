@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../lib/supabase";
 import { clientSafeMessage } from "../../../lib/api-error";
+import { requireRoles } from "../../../lib/api-auth";
 
 // Menggunakan shared supabaseAdmin dari lib/supabase agar memiliki fallback env dan konfigurasi konsisten
 
@@ -265,6 +266,9 @@ export async function GET(request: NextRequest) {
 // Handler POST, PUT, DELETE (tetap sama seperti yang Anda unggah)
 export async function POST(request: NextRequest) {
   try {
+    const gate = await requireRoles(request, ["admin", "calibrator"]);
+    if (gate instanceof NextResponse) return gate;
+
     const body = await request.json();
     const {
       manufacturer,

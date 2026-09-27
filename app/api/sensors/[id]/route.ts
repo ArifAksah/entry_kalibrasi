@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../../lib/supabase'
 import { clientSafeMessage } from '../../../../lib/api-error'
+import { hasRenderCredentials, isRenderAuthorizedFor, unauthorized } from '../../../../lib/api-auth'
+import { requireRoles } from '../../../../lib/api-auth'
 
 // GET - Get single sensor
 export async function GET(
@@ -9,6 +11,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params
+    if (hasRenderCredentials(request) && !await isRenderAuthorizedFor(request, { type: 'sensor', id })) {
+      return unauthorized()
+    }
     const { data, error } = await supabase
       .from('sensor')
       .select('*')
@@ -31,6 +36,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const gate = await requireRoles(request, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     const { id } = await params
     const body = await request.json()
     const {
@@ -96,6 +104,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const gate = await requireRoles(request, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     const { id } = await params
     const { error } = await supabase
       .from('sensor')

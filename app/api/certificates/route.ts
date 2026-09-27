@@ -155,11 +155,21 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Validate verifikator fields are required
-    if (!verifikator_1 || !verifikator_2 || !verifikator_3) {
+    // Every approval stage must have an explicitly assigned account. Never
+    // fall back to the creator for a signing role.
+    if (!verifikator_1 || !verifikator_2 || !verifikator_3 || !authorized_by) {
       return NextResponse.json({
-        error: 'Verifikator 1, Verifikator 2, and Verifikator 3 are required',
+        error: 'Verifikator 1, Verifikator 2, Verifikator 3, and authorized_by are required',
       }, { status: 400 })
+    }
+
+    const assignments = [verifikator_1, verifikator_2, verifikator_3, authorized_by]
+    if (new Set(assignments).size !== assignments.length) {
+      return NextResponse.json({ error: 'Assigned verifiers and authorized_by must be distinct' }, { status: 400 })
+    }
+
+    if (assignments.includes(user.id)) {
+      return NextResponse.json({ error: 'Certificate creator cannot verify or authorize their own certificate' }, { status: 400 })
     }
 
     // Validate station foreign key if provided and fetch address
@@ -194,69 +204,55 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Validate authorized_by (personel) if provided; else default to user.id
-    let authorizedPersonId: string = user.id
-    if (authorized_by) {
-      const { data: p, error: pErr } = await supabaseAdmin
+    const personelResult = await supabaseAdmin
+      .from('personel')
+      .select('id, is_active')
+      .in('id', assignments)
+
+    let assignedPeople: Array<{ id: string; is_active?: boolean | null }> | null = personelResult.data
+    let assignedPeopleError = personelResult.error
+
+    // Some deployments predate the soft-delete column. In that schema only,
+    // retain existence validation; all newer schemas must reject inactive users.
+    if (assignedPeopleError && /is_active/i.test(assignedPeopleError.message || '')) {
+      const fallbackResult = await supabaseAdmin
         .from('personel')
         .select('id')
-        .eq('id', authorized_by)
-        .single()
-      if (pErr || !p) {
-        return NextResponse.json({ error: 'Invalid authorized_by (personel) id' }, { status: 400 })
-      }
-      authorizedPersonId = authorized_by
+        .in('id', assignments)
+      assignedPeople = fallbackResult.data
+      assignedPeopleError = fallbackResult.error
     }
 
-    // Validate verifikator_1 if provided
-    let v1: string | null = null
-    if (verifikator_1) {
-      const { data: p1, error: p1Err } = await supabaseAdmin
-        .from('personel')
-        .select('id')
-        .eq('id', verifikator_1)
-        .single()
-      if (p1Err || !p1) {
-        return NextResponse.json({ error: 'Invalid verifikator_1 (personel) id' }, { status: 400 })
-      }
-      v1 = verifikator_1
+    if (assignedPeopleError || !assignedPeople || assignedPeople.length !== assignments.length) {
+      return NextResponse.json({ error: 'One or more assigned personnel do not exist' }, { status: 400 })
     }
 
-    // Validate verifikator_2 if provided
-    let v2: string | null = null
-    if (verifikator_2) {
-      const { data: p2, error: p2Err } = await supabaseAdmin
-        .from('personel')
-        .select('id')
-        .eq('id', verifikator_2)
-        .single()
-      if (p2Err || !p2) {
-        return NextResponse.json({ error: 'Invalid verifikator_2 (personel) id' }, { status: 400 })
-      }
-      v2 = verifikator_2
+    if (assignedPeople.some(person => person.is_active === false)) {
+      return NextResponse.json({ error: 'Assigned personnel must be active' }, { status: 400 })
     }
 
-    // Validate verifikator_3 if provided
-    let v3: string | null = null
-    if (verifikator_3) {
-      const { data: p3, error: p3Err } = await supabaseAdmin
-        .from('personel')
-        .select('id')
-        .eq('id', verifikator_3)
-        .single()
-      if (p3Err || !p3) {
-        return NextResponse.json({ error: 'Invalid verifikator_3 (personel) id' }, { status: 400 })
-      }
-      v3 = verifikator_3
+    const { data: assignmentRoles, error: assignmentRoleError } = await supabaseAdmin
+      .from('user_roles')
+      .select('user_id, role')
+      .in('user_id', assignments)
+
+    if (assignmentRoleError) {
+      return NextResponse.json({ error: 'Failed to validate assigned personnel roles' }, { status: 500 })
     }
 
-    // Debug logging for certificate creation
-    console.log('=== Creating Certificate ===')
-    console.log('Verifikator 1:', v1)
-    console.log('Verifikator 2:', v2)
-    console.log('Verifikator 3:', v3)
-    console.log('Authorized By:', authorizedPersonId)
-    console.log('============================')
+    const roleByUser = new Map((assignmentRoles || []).map((row: any) => [row.user_id, row.role]))
+    if ([verifikator_1, verifikator_2, verifikator_3].some(id => roleByUser.get(id) !== 'verifikator')) {
+      return NextResponse.json({ error: 'Assigned verifiers must have the verifikator role' }, { status: 400 })
+    }
+
+    if (!['assignor', 'admin'].includes(String(roleByUser.get(authorized_by) || ''))) {
+      return NextResponse.json({ error: 'authorized_by must have the assignor or admin role' }, { status: 400 })
+    }
+
+    const authorizedPersonId = authorized_by
+    const v1 = verifikator_1
+    const v2 = verifikator_2
+    const v3 = verifikator_3
 
     // -----------------------------------------------------------------------
     // INSERT atomik via RPC dengan retry.

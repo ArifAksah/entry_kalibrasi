@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from './supabase'
 import { verifyPdfRenderToken } from './pdf-render-token'
+import { resultsToLegacyView } from './validators/certificate-results-render-adapter'
 
 // Render-context check for route handlers (see proxy.ts): the signed-PDF
 // renderer (headless Chromium with ?render_token=…) has no session token.
@@ -14,6 +15,65 @@ export function isRenderAuthorized(request: NextRequest): boolean {
   if (!token || !ts || !certId || !/^\d+$/.test(certId)) return false
   try {
     return verifyPdfRenderToken(certId, token, ts)
+  } catch {
+    return false
+  }
+}
+
+export function hasRenderCredentials(request: NextRequest): boolean {
+  return ['x-pdf-render-token', 'x-pdf-render-ts', 'x-pdf-render-cert']
+    .some(header => request.headers.has(header))
+}
+
+type RenderResource =
+  | { type: 'certificate'; id: string }
+  | { type: 'instrument' | 'instrument-name' | 'station' | 'personel' | 'sensor'; id: string }
+  | { type: 'raw-data'; sessionId: string }
+
+export async function isRenderAuthorizedFor(
+  request: NextRequest,
+  resource: RenderResource,
+): Promise<boolean> {
+  if (!isRenderAuthorized(request)) return false
+
+  const certificateId = request.headers.get('x-pdf-render-cert')!
+  if (resource.type === 'certificate') return resource.id === certificateId
+
+  try {
+    const { data: certificate, error } = await supabaseAdmin
+      .from('certificate')
+      .select('instrument, station, authorized_by, verifikator_1, verifikator_2, verifikator_3, results')
+      .eq('id', certificateId)
+      .maybeSingle()
+    if (error || !certificate) return false
+
+    if (resource.type === 'instrument') return String(certificate.instrument ?? '') === resource.id
+    if (resource.type === 'instrument-name') {
+      if (certificate.instrument == null) return false
+      const { data: instrument, error: instrumentError } = await supabaseAdmin
+        .from('instrument')
+        .select('names')
+        .eq('id', certificate.instrument)
+        .maybeSingle()
+      return !instrumentError && String(instrument?.names ?? '') === resource.id
+    }
+    if (resource.type === 'station') return String(certificate.station ?? '') === resource.id
+    if (resource.type === 'personel') {
+      return [certificate.authorized_by, certificate.verifikator_1, certificate.verifikator_2, certificate.verifikator_3]
+        .some(id => id != null && String(id) === resource.id)
+    }
+
+    const results = resultsToLegacyView(certificate.results ?? [])
+    if (resource.type === 'raw-data') {
+      return results.some((result: any) => String(result?.session_id ?? '') === resource.sessionId)
+    }
+
+    return results.some((result: any) => [
+      result?.sensorId,
+      ...(Array.isArray(result?.notesForm?.standardInstruments)
+        ? result.notesForm.standardInstruments
+        : []),
+    ].some(id => id != null && String(id) === resource.id))
   } catch {
     return false
   }

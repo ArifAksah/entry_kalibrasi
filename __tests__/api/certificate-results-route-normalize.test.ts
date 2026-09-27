@@ -73,9 +73,9 @@ jest.mock('../../lib/email', () => ({
     mockSendAssignmentNotificationEmail(...args),
 }))
 
-jest.mock('../../../../lib/certificate-log-helper', () => ({
+jest.mock('../../lib/certificate-log-helper', () => ({
   createCertificateLog: (...args: unknown[]) => mockCreateCertificateLog(...args),
-}), { virtual: true })
+}))
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: (...args: unknown[]) => mockCreateClient(...args),
@@ -113,6 +113,7 @@ describe('certificate routes normalize results wiring', () => {
       verifikator_1: 'ver-1',
       verifikator_2: 'ver-2',
       verifikator_3: 'ver-3',
+      authorized_by: 'signer-1',
       instrument_code: 'AWS',
       calibration_place: 'FC',
       results: [
@@ -128,8 +129,24 @@ describe('certificate routes normalize results wiring', () => {
       ],
     }
 
+    let userRoleCalls = 0
     mockSupabaseAdmin.from.mockImplementation((table: string) => {
       if (table === 'user_roles') {
+        userRoleCalls += 1
+        if (userRoleCalls === 2) {
+          return {
+            select: jest.fn().mockReturnThis(),
+            in: jest.fn().mockResolvedValue({
+              data: [
+                { user_id: 'ver-1', role: 'verifikator' },
+                { user_id: 'ver-2', role: 'verifikator' },
+                { user_id: 'ver-3', role: 'verifikator' },
+                { user_id: 'signer-1', role: 'assignor' },
+              ],
+              error: null,
+            }),
+          }
+        }
         return {
           select: jest.fn().mockReturnThis(),
           eq: jest.fn().mockReturnThis(),
@@ -146,12 +163,23 @@ describe('certificate routes normalize results wiring', () => {
 
       if (table === 'personel') {
         return {
-          select: jest.fn().mockReturnThis(),
-          eq: jest.fn().mockReturnThis(),
-          single: jest.fn().mockResolvedValue({
-            data: { id: 'ok' },
-            error: null,
-          }),
+          select: jest.fn((columns: string) => columns.includes('is_active')
+            ? {
+                in: jest.fn().mockResolvedValue({
+                  data: [
+                    { id: 'ver-1', is_active: true },
+                    { id: 'ver-2', is_active: true },
+                    { id: 'ver-3', is_active: true },
+                    { id: 'signer-1', is_active: true },
+                  ],
+                  error: null,
+                }),
+              }
+            : {
+                eq: jest.fn().mockReturnValue({
+                  single: jest.fn().mockResolvedValue({ data: { email: null }, error: null }),
+                }),
+              }),
         }
       }
 

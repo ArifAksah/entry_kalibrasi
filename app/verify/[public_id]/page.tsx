@@ -1,21 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Image from 'next/image'
 
 type PublicPerson = {
-  id: string
   name: string
 } | null
-
-type VerificationStep = {
-  level: number
-  role: string
-  status: string
-  approved_at?: string | null
-  person: PublicPerson
-}
 
 type PublicCertificateResponse = {
   valid: boolean
@@ -26,37 +17,19 @@ type PublicCertificateResponse = {
     statement: string
   }
   certificate: {
-    id: number
-    public_id: string
     no_certificate: string
-    no_order?: string | null
     no_identification?: string | null
     issue_date?: string | null
     status?: string | null
     status_label?: string | null
-    created_at?: string | null
-    pdf_generated_at?: string | null
-    version?: number | null
     station_name?: string | null
     instrument_name?: string | null
-  }
-  people: {
-    creator: PublicPerson
-    sent_by: PublicPerson
-    verifikator_1: PublicPerson
-    verifikator_2: PublicPerson
-    verifikator_3: PublicPerson
-    signer: PublicPerson
-  }
-  workflow: {
-    steps: VerificationStep[]
   }
   signature: {
     signed: boolean
     provider?: string | null
     signed_at?: string | null
     signer: PublicPerson
-    metadata?: Record<string, any> | null
   }
 }
 
@@ -115,18 +88,6 @@ export default function PublicVerificationPage() {
     fetchCertificate()
   }, [publicId])
 
-  const team = useMemo(() => {
-    if (!data) return []
-    return [
-      { label: 'Pembuat Sertifikat', person: data.people.creator },
-      { label: 'Pengirim Konsep', person: data.people.sent_by },
-      { label: 'Verifikator 1', person: data.people.verifikator_1 },
-      { label: 'Verifikator 2', person: data.people.verifikator_2 },
-      { label: 'Verifikator 3', person: data.people.verifikator_3 },
-      { label: 'Penandatangan', person: data.people.signer }
-    ]
-  }, [data])
-
   if (loading) {
     return (
       <main className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
@@ -153,7 +114,7 @@ export default function PublicVerificationPage() {
     )
   }
 
-  const { certificate, signature, source, workflow } = data
+  const { certificate, signature, source } = data
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -192,12 +153,10 @@ export default function PublicVerificationPage() {
 
           <div className="p-5 sm:p-6 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Info label="Nomor Order" value={certificate.no_order || '-'} />
               <Info label="Identifikasi Alat" value={certificate.no_identification || '-'} />
               <Info label="Instrumen" value={certificate.instrument_name || '-'} />
               <Info label="Stasiun / Lokasi" value={certificate.station_name || '-'} />
               <Info label="Tanggal Terbit" value={formatDate(certificate.issue_date)} />
-              <Info label="Versi Sertifikat" value={String(certificate.version || 1)} />
             </div>
 
             <div className="border border-slate-200 rounded-lg p-4">
@@ -216,46 +175,11 @@ export default function PublicVerificationPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              <div className="border border-slate-200 rounded-lg p-4">
-                <h3 className="font-semibold text-slate-900 mb-3">Tim Sertifikat</h3>
-                <div className="space-y-3">
-                  {team.map((item) => (
-                    <div key={item.label} className="flex items-start justify-between gap-3 border-b border-slate-100 last:border-0 pb-2 last:pb-0">
-                      <p className="text-sm text-slate-500">{item.label}</p>
-                      <p className="text-sm font-semibold text-slate-900 text-right">{personName(item.person)}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="border border-slate-200 rounded-lg p-4">
-                <h3 className="font-semibold text-slate-900 mb-3">Riwayat Verifikasi</h3>
-                {workflow.steps.length > 0 ? (
-                  <div className="space-y-3">
-                    {workflow.steps.map((step) => (
-                      <div key={`${step.level}-${step.role}`} className="flex items-start gap-3">
-                        <div className={`mt-1 h-2.5 w-2.5 rounded-full ${step.status === 'approved' ? 'bg-emerald-500' : step.status === 'rejected' ? 'bg-red-500' : 'bg-amber-500'}`} />
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-slate-900">{step.role}: {personName(step.person)}</p>
-                          <p className="text-xs text-slate-500">
-                            {step.status === 'approved' ? `Disetujui pada ${formatDate(step.approved_at, true)}` : step.status}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-600">Riwayat verifikasi belum tersedia untuk sertifikat ini.</p>
-                )}
-              </div>
-            </div>
-
             <div className="text-center border-t border-slate-200 pt-5">
               <p className="text-xs text-slate-500">
                 Halaman ini adalah tautan publik dari QR code sertifikat SIMKAL. Informasi sensitif seperti NIK dan passphrase tidak ditampilkan.
               </p>
-              <p className="text-xs text-slate-400 mt-1 break-all">Public ID: {certificate.public_id || publicId}</p>
+              <p className="text-xs text-slate-400 mt-1 break-all">Public ID: {publicId}</p>
             </div>
           </div>
         </div>

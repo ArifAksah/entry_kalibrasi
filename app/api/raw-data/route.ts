@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { parseCalculationSnapshots } from '../../../lib/calculation-snapshot'
 import { clientSafeMessage } from '../../../lib/api-error'
-import { requireRoles } from '../../../lib/api-auth'
+import { hasRenderCredentials, isRenderAuthorizedFor, requireRoles, unauthorized } from '../../../lib/api-auth'
 import { findInvalidStandardSelection } from '../../../lib/standard-certificate-filter'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -335,6 +335,15 @@ export async function GET(req: NextRequest) {
 
         if (!session_id) {
             return NextResponse.json({ error: 'Missing session_id' }, { status: 400 })
+        }
+        if (hasRenderCredentials(req)) {
+            const keys = Array.from(searchParams.keys())
+            const hasExactRenderQuery = keys.length === 2
+                && keys.every(key => key === 'session_id' || key === 'mode')
+                && mode === 'room'
+            if (!hasExactRenderQuery || !await isRenderAuthorizedFor(req, { type: 'raw-data', sessionId: session_id })) {
+                return unauthorized()
+            }
         }
 
         if (lean) {

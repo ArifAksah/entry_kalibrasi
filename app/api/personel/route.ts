@@ -1,27 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../lib/supabase'
-import { getCaller, isAdminCaller, isRenderAuthorized, requireAdmin, unauthorized } from '../../../lib/api-auth'
+import { getCaller, isAdminCaller, requireAdmin, unauthorized } from '../../../lib/api-auth'
 import { clientSafeMessage } from '../../../lib/api-error'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
     try {
-      const isRender = isRenderAuthorized(request)
-      const caller = isRender ? null : await getCaller(request)
-      // headless PDF renderer (signed print flow) gets the same restricted
-      // projection as non-admin users: no NIK/telepon.
-      if (!isRender && !caller) return unauthorized()
-      const is_admin = !isRender && isAdminCaller(caller!)
+      const caller = await getCaller(request)
+      if (!caller) return unauthorized()
+      const is_admin = isAdminCaller(caller)
 
       const { searchParams } = new URL(request.url)
       const includeInactive = is_admin && searchParams.get('includeInactive') === 'true'
 
-      // C3 (PII exposure): NIK/telepon hanya boleh dibaca admin. Kolom lain
-      // (id, name, nip, email) tetap diberikan ke user login karena dikonsumsi
-      // dropdown penunjukan verifikator/penandatangan pada alur sertifikat;
-      // renderer PDF cukup id+name.
-      const columns = is_admin ? '*' : (isRender ? 'id, name' : 'id, name, nip, email')
+      // Non-admin assignment UI needs role filtering and balai-based signer
+      // suggestions; all other personnel fields remain admin-only.
+      const columns = is_admin ? '*' : 'id, name, balai_id'
 
       let query = supabaseAdmin.from('personel').select(columns)
       if (!includeInactive) {
@@ -50,13 +45,8 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: personelError.message }, { status: 500 })
       }
 
-      // Renderer PDF hanya butuh id+name, tanpa merge role.
-      if (isRender) {
-        return NextResponse.json(personelData || [])
-      }
-
-      // Semua user login tetap dapat role/station_id (dipakai dropdown
-      // penunjukan petugas), bukan NIK/telepon.
+      // Role is required by assignment dropdowns. station_id is only exposed
+      // to admins for personnel and station-assignment management.
       const { data: rolesData, error: rolesError } = await supabaseAdmin
         .from('user_roles')
         .select('user_id, role, station_id')
@@ -68,7 +58,9 @@ export async function GET(request: NextRequest) {
 
       const mergedData = (personelData || []).map((p: any) => {
         const roleInfo = (rolesData || []).find((r: any) => r.user_id === p.id)
-        return { ...p, role: roleInfo?.role || null, station_id: roleInfo?.station_id || null }
+        return is_admin
+          ? { ...p, role: roleInfo?.role || null, station_id: roleInfo?.station_id || null }
+          : { ...p, role: roleInfo?.role || null }
       })
 
       const olehRole = mergedData.reduce((acc: Record<string, number>, p: any) => {

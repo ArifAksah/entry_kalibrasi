@@ -28,8 +28,17 @@ const ResetPasswordContent: React.FC = () => {
     setLoading(true)
     hideAlert()
     try {
-      if (!password || password.length < 8)
-        throw new Error('Password minimal 8 karakter')
+      if (
+        !password ||
+        password.length < 12 ||
+        password.length > 128 ||
+        !/[A-Z]/.test(password) ||
+        !/[a-z]/.test(password) ||
+        !/[0-9]/.test(password) ||
+        !/[^A-Za-z0-9\s]/.test(password)
+      ) {
+        throw new Error('Password harus 12-128 karakter dan mengandung huruf besar, huruf kecil, angka, dan simbol')
+      }
       if (password !== confirm)
         throw new Error('Konfirmasi password tidak sama')
 
@@ -82,7 +91,7 @@ const ResetPasswordContent: React.FC = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
-              placeholder="Minimal 8 karakter"
+              placeholder="Minimal 12 karakter, huruf besar/kecil, angka, simbol"
             />
           </div>
           <div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../../lib/supabase'
 import { clientSafeMessage } from '../../../../lib/api-error'
+import { requireRoles } from '../../../../lib/api-auth'
 
 export async function GET(
   request: NextRequest,
@@ -26,6 +27,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const gate = await requireRoles(request, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     const { id } = await params
     const body = await request.json()
     const { 
@@ -96,6 +100,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const gate = await requireRoles(request, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     const { id } = await params
     const { error } = await supabase
       .from('calibration_result')

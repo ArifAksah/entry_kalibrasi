@@ -6,9 +6,8 @@ import {
   ResultsValidationError,
 } from '../../../../lib/validators/certificate-results-normalize'
 import { authorizeCertificateAccess } from '../../../../lib/certificate-access'
-import { verifyPdfRenderToken } from '../../../../lib/pdf-render-token'
 import { clientSafeMessage } from '../../../../lib/api-error'
-import { forbidden, isAdminCaller, requireCaller } from '../../../../lib/api-auth'
+import { forbidden, isAdminCaller, isRenderAuthorizedFor, requireCaller } from '../../../../lib/api-auth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,10 +21,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const renderToken = request.headers.get('x-pdf-render-token')
-    const renderTimestamp = request.headers.get('x-pdf-render-ts')
-
-    if (verifyPdfRenderToken(id, renderToken, renderTimestamp)) {
+    if (await isRenderAuthorizedFor(request, { type: 'certificate', id })) {
       const { data: certificate, error } = await supabaseAdmin
         .from('certificate')
         .select(`

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { clientSafeMessage } from '../../../../lib/api-error'
+import { hasRenderCredentials, isRenderAuthorizedFor, unauthorized } from '../../../../lib/api-auth'
+import { requireRoles } from '../../../../lib/api-auth'
 
 // Use service role client to avoid RLS issues on server-side updates
 const supabaseAdmin = createClient(
@@ -47,6 +49,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    if (hasRenderCredentials(request) && !await isRenderAuthorizedFor(request, { type: 'instrument', id })) {
+      return unauthorized();
+    }
     const { data, error } = await supabaseAdmin
       .from("instrument")
       .select("*")
@@ -69,6 +74,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const gate = await requireRoles(request, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     const { id } = await params;
     const body = await request.json();
     const {
@@ -139,6 +147,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const gate = await requireRoles(request, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     const { id } = await params;
     const instrumentId = Number(id);
 

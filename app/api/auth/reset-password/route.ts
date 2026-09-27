@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../../../../lib/supabase'
 import { sendEmail } from '../../../../lib/brevo'
 import { buildPasswordResetConfirmationHtml } from '../../../../lib/email-templates'
 import { checkRateLimit, clientIp } from '../../../../lib/rate-limit'
+import { validatePassword } from '../../../../lib/password-policy'
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,10 +30,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    if (password.length < 8) {
-      return NextResponse.json({ 
-        error: 'Password minimal 8 karakter' 
-      }, { status: 400 })
+    const passwordError = validatePassword(password)
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 })
     }
 
     // Verify token

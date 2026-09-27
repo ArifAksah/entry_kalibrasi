@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../../lib/supabase'
-import { requireRoles } from '../../../../lib/api-auth'
+import { hasRenderCredentials, isRenderAuthorizedFor, requireRoles, unauthorized } from '../../../../lib/api-auth'
 import { clientSafeMessage } from '../../../../lib/api-error'
 import { normalizeStationId } from '../../../../lib/station-identity'
 
@@ -10,6 +10,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params
+    if (hasRenderCredentials(request) && !await isRenderAuthorizedFor(request, { type: 'station', id })) {
+      return unauthorized()
+    }
     const { data, error } = await supabase
       .from('station')
       .select('*, station_type(name)')

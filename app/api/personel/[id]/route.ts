@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../../lib/supabase'
-import { forbidden, getCaller, isAdminCaller, isRenderAuthorized, unauthorized } from '../../../../lib/api-auth'
+import { forbidden, getCaller, isAdminCaller, isRenderAuthorizedFor, unauthorized } from '../../../../lib/api-auth'
 import { clientSafeMessage } from '../../../../lib/api-error'
+import { validatePassword } from '../../../../lib/password-policy'
 
 const allowedRoles = new Set(['admin', 'calibrator', 'verifikator', 'assignor', 'user_station'])
 
@@ -28,7 +29,7 @@ export async function GET(
   try {
     const { id } = await params
     let caller = await getCaller(request)
-    if (!caller && !isRenderAuthorized(request)) return unauthorized()
+    if (!caller && !await isRenderAuthorizedFor(request, { type: 'personel', id })) return unauthorized()
 
     const { data, error } = await supabaseAdmin
       .from('personel')
@@ -74,6 +75,13 @@ export async function PUT(
 
     if (!name || !email) {
       return NextResponse.json({ error: 'Nama dan email wajib diisi' }, { status: 400 })
+    }
+
+    if (password !== undefined && password !== '') {
+      const passwordError = validatePassword(password)
+      if (passwordError) {
+        return NextResponse.json({ error: passwordError }, { status: 400 })
+      }
     }
 
     const existing = await getPersonelOrNull(id)

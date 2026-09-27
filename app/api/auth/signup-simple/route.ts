@@ -4,6 +4,7 @@ import { requireAdmin } from '../../../../lib/api-auth';
 import { sendEmail } from '../../../../lib/brevo';
 import { buildAccountConfirmationHtml } from '../../../../lib/email-templates';
 import { checkRateLimit, clientIp } from '../../../../lib/rate-limit';
+import { validatePassword } from '../../../../lib/password-policy';
 
 async function sendAccountConfirmationEmail(email: string, name: string): Promise<void> {
   try {
@@ -45,6 +46,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 });
+    }
+
+    // PII minimization: hanya name/phone yang masuk user_metadata. Jangan
+    // pernah menyebar NIK/NIP ke metadata Auth karena ikut tertanam di
+    // JWT/cookie dan terekspos ke klien.
+    const authMetadata: Record<string, string> = {
+      name: userData?.name || '',
+      phone: userData?.phone || '',
+    };
+
     console.log('Creating user in Supabase...');
     
     // Buat user di Supabase
@@ -52,7 +66,7 @@ export async function POST(request: NextRequest) {
       email,
       password,
       options: {
-        data: userData
+        data: authMetadata
       },
     });
 
@@ -99,5 +113,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
 

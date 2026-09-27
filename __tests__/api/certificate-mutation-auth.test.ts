@@ -134,4 +134,30 @@ describe('certificate mutation authorization', () => {
     expect(mockUpdate).not.toHaveBeenCalled()
     expect(mockDelete).not.toHaveBeenCalled()
   })
+
+  it('allowlists fields in the legacy role-based update', async () => {
+    mockRequireCaller.mockResolvedValue({ user: { id: 'admin-1' }, role: 'admin' })
+    mockCertificate({ id: 7, status: 'draft', created_by: 'calibrator-1', sent_by: null })
+    const single = jest.fn().mockResolvedValue({ data: { id: 7 }, error: null })
+    const select = jest.fn().mockReturnValue({ single })
+    const eq = jest.fn().mockReturnValue({ select })
+    mockUpdate.mockReturnValue({ eq })
+    const req = request({
+      id: 7,
+      no_certificate: 'CERT-007',
+      results: { value: 1 },
+      status: 'completed',
+      created_by: 'attacker',
+      sent_by: 'attacker',
+      version: 999,
+    })
+
+    const response = await updateLegacyCertificate(req as any)
+
+    expect(response.status).toBe(200)
+    expect(mockUpdate).toHaveBeenCalledWith({
+      no_certificate: 'CERT-007',
+      results: { value: 1 },
+    })
+  })
 })

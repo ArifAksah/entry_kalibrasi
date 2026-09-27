@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../lib/supabase'
 import { clientSafeMessage } from '../../../lib/api-error'
+import { requireRoles } from '../../../lib/api-auth'
 
 export async function GET() {
   try {
@@ -18,6 +19,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const gate = await requireRoles(request, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     const body = await request.json()
     const { 
       calibration_date_start, 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { clientSafeMessage } from '../../../../../lib/api-error'
+import { requireRoles } from '../../../../../lib/api-auth'
 
 // Use service role client to avoid RLS issues on server-side
 const supabaseAdmin = createClient(
@@ -170,6 +171,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const gate = await requireRoles(request, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     const { id } = await params
     const body = await request.json()
 
@@ -330,6 +334,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const gate = await requireRoles(request, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     const { id } = await params
     const body = await request.json()
 
@@ -507,6 +514,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const gate = await requireRoles(request, ['admin', 'calibrator'])
+    if (gate instanceof NextResponse) return gate
+
     const { id } = await params
     const { searchParams } = new URL(request.url)
     const sensorId = searchParams.get('sensorId')

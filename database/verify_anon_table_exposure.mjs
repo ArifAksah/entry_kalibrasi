@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
-// Read-only PostgREST verification for the 52-table production schema.
+// Read-only PostgREST verification for the known 52-table production schema.
+// PostgREST cannot reliably discover tables hidden by revoked privileges; run
+// verify_security_catalog.mjs as well to dynamically verify every public table.
 // Exit 0: all tables reject anon; 1: anon exposure; 2: network failure;
 // exit 3: unexpected HTTP/API response made the result inconclusive.
 

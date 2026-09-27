@@ -66,6 +66,13 @@ import * as notesInstrumentStandard from '../../app/api/notes-instrumen-standard
 import * as notesInstrumentStandardById from '../../app/api/notes-instrumen-standard/[id]/route'
 import * as certStandards from '../../app/api/cert-standards/route'
 import * as certStandardsById from '../../app/api/cert-standards/[id]/route'
+import * as sensors from '../../app/api/sensors/route'
+import * as sensorsById from '../../app/api/sensors/[id]/route'
+import * as instruments from '../../app/api/instruments/route'
+import * as instrumentsById from '../../app/api/instruments/[id]/route'
+import * as instrumentSensors from '../../app/api/instruments/[id]/sensors/route'
+import * as calibrationResults from '../../app/api/calibration-results/route'
+import * as calibrationResultsById from '../../app/api/calibration-results/[id]/route'
 import { POST as sendToVerifiers } from '../../app/api/certificates/[id]/send-to-verifiers/route'
 import { POST as addTimestamp } from '../../app/api/timestamp/route'
 import { POST as uploadCertificateImage } from '../../app/api/uploads/certificates/route'
@@ -125,6 +132,18 @@ describe('service-role mutation authorization', () => {
     ['certificate standards POST', certStandards.POST, false],
     ['certificate standards PUT', certStandardsById.PUT, true],
     ['certificate standards DELETE', certStandardsById.DELETE, true],
+    ['sensors POST', sensors.POST, false],
+    ['sensors PUT', sensorsById.PUT, true],
+    ['sensors DELETE', sensorsById.DELETE, true],
+    ['instruments POST', instruments.POST, false],
+    ['instruments PUT', instrumentsById.PUT, true],
+    ['instruments DELETE', instrumentsById.DELETE, true],
+    ['instrument sensors POST', instrumentSensors.POST, true],
+    ['instrument sensors PUT', instrumentSensors.PUT, true],
+    ['instrument sensors DELETE', instrumentSensors.DELETE, true],
+    ['calibration results POST', calibrationResults.POST, false],
+    ['calibration results PUT', calibrationResultsById.PUT, true],
+    ['calibration results DELETE', calibrationResultsById.DELETE, true],
     ['certificate image upload', uploadCertificateImage, false],
   ])('requires admin/calibrator for %s', async (_name, handler, hasParams) => {
     const denied = NextResponse.json({ error: 'role denied' }, { status: 403 })

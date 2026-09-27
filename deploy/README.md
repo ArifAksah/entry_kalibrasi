@@ -65,7 +65,6 @@ sudo ./deploy/setup-vm.sh
 # 3. Configure environment
 cp deploy/.env.production .env
 nano .env  # Fill in actual values (NEXT_PUBLIC_SUPABASE_URL=http://<host>/supabase)
-
 # 4. Setup Caddy (reverse proxy + /supabase)
 sudo cp deploy/Caddyfile.production /etc/caddy/Caddyfile
 sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
@@ -74,6 +73,11 @@ sudo systemctl reload caddy
 # 5. Deploy
 ./deploy/deploy.sh
 ```
+
+> **WAJIB (temuan V1):** `.env` **harus** mendefinisikan `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+> dengan anon key (JWT ber-`role: anon`). Build sekarang di-gate: `npm run build`
+> akan **gagal** bila variabel ini kosong atau rolenya bukan `anon`. Alias
+> `ANON_KEY` tidak lagi diteruskan ke bundle browser, jadi jangan mengandalkannya.
 
 ## Subsequent Deployments
 
@@ -225,13 +229,17 @@ Studio & Postgres hanya lewat SSH tunnel (mis. `-L 13000:127.0.0.1:3000`).
 ### 4. RLS menyeluruh (temuan C1/C2) — wajib sebelum go-live
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/security_migration_01_preflight.sql
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/security_migration_02_lockdown.sql
-npm run check:anon-exposure   # harus 52 denied, 0 exposed
+npm run security:migrate -- --stage production
+npm run check:security-catalog  # semua tabel public ditemukan dinamis; 0 violation
+npm run check:anon-exposure     # schema dikenal: 52 denied, 0 exposed
 ```
 
+Tahap production selalu menjalankan migrasi `01`, `02`, `03`, lalu `04`.
 Migration memakai preflight ketat: berhenti tanpa perubahan bila daftar tabel
 public berbeda dari 52 yang dikenal, atau bila `service_role` tidak BYPASSRLS.
+Bootstrap staging tidak termasuk tahap `production`/`all`; bila benar-benar
+diperlukan, jalankan terpisah dengan
+`npm run security:migrate -- --stage bootstrap --target staging`.
 
 ### 5. Rotasi kredensial yang pernah ter-commit
 

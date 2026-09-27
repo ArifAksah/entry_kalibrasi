@@ -158,13 +158,6 @@ const isOthersEnabled = (
     ? notesForm.others_enabled
     : Boolean(notesForm?.others)
 
-const unwrapListResponse = (payload: any): any[] =>
-  Array.isArray(payload)
-    ? payload
-    : Array.isArray(payload?.data)
-      ? payload.data
-      : []
-
 // --- Komponen QR Code dengan styling (modules/finder) dan logo BMKG di tengah ---
 const QRCodeWithBMKGLogo: React.FC<{
   value: string
@@ -805,22 +798,6 @@ const PrintCertificatePage: React.FC = () => {
         )
         setCert(c)
 
-        // Merge-by-id (later wins per field) so a fast single-record top-up is
-        // never wiped when the slow paginated list eventually arrives without it.
-        const mergeById = (prev: any[], next: any[]) => {
-          const byKey = new Map<string, any>()
-          prev.forEach((x) => {
-            if (x?.id != null) byKey.set(String(x.id), x)
-          })
-          next.forEach((x) => {
-            if (x?.id != null) {
-              const key = String(x.id)
-              byKey.set(key, { ...(byKey.get(key) || {}), ...x })
-            }
-          })
-          return Array.from(byKey.values())
-        }
-
         // FAST TOP-UP: fetch exactly the records this certificate references
         // (/api/…/:id is a tiny indexed query). This is what keeps Nama Alat,
         // Pemilik, Pejabat, Verifikator, and Standar Kalibrasi out of '-' when
@@ -843,6 +820,20 @@ const PrintCertificatePage: React.FC = () => {
                       : [...prev, row],
                   )
                   console.log('[Print] Top-up instrument', (row as any).id)
+                }
+              })(),
+            )
+          }
+          if (c?.instrument_data?.names != null) {
+            jobs.push(
+              (async () => {
+                const r = await fetchWithTimeout(
+                  `/api/instrument-names/${c.instrument_data.names}`,
+                  8000,
+                )
+                const row = r ? await safeJson(r) : null
+                if (row?.id != null) {
+                  setInstrumentNames((prev) => [...prev, row])
                 }
               })(),
             )
@@ -985,138 +976,6 @@ const PrintCertificatePage: React.FC = () => {
           setRawDataSettled(true)
         }
 
-        // SECONDARY (non-blocking): kick off in parallel; we'll setState as each finishes.
-
-        // Personel
-        ;(async () => {
-          const r = await fetchWithRetry('/api/personel', 10000)
-          const p = await safeJson(r)
-          if (Array.isArray(p)) setPersonel((prev) => mergeById(p, prev))
-        })()
-
-        // Sensors
-        ;(async () => {
-          try {
-            const first = await fetchWithRetry(
-              '/api/sensors?page=1&pageSize=100',
-              10000,
-            )
-            const firstPayload = await safeJson(first)
-            if (!firstPayload) return
-            const firstData = unwrapListResponse(firstPayload)
-            const totalPages = Array.isArray(firstPayload)
-              ? 1
-              : Number(firstPayload?.totalPages ?? 1)
-            let listData = firstData
-            if (totalPages > 1) {
-              const restRes = await Promise.all(
-                Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(
-                  (page) =>
-                    fetchWithRetry(
-                      `/api/sensors?page=${page}&pageSize=100`,
-                      10000,
-                    ),
-                ),
-              )
-              const restPayloads = await Promise.all(
-                restRes.map((r) => safeJson(r)),
-              )
-              listData = [
-                ...firstData,
-                ...restPayloads.flatMap(unwrapListResponse),
-              ]
-            }
-            setSensors((prev) => mergeById(listData, prev))
-          } catch (e) {
-            console.error('[Print] Failed to fetch sensors:', e)
-          }
-        })()
-
-        // Instrument names
-        ;(async () => {
-          const r = await fetchWithRetry('/api/instrument-names', 10000)
-          const inData = await safeJson(r)
-          if (inData)
-            setInstrumentNames(
-              Array.isArray(inData) ? inData : (inData?.data ?? []),
-            )
-        })()
-
-        // Instruments — paginated
-        ;(async () => {
-          try {
-            const first = await fetchWithRetry(
-              '/api/instruments?page=1&pageSize=100',
-              10000,
-            )
-            const fj = await safeJson(first)
-            if (!fj) return
-            const firstData = Array.isArray(fj) ? fj : (fj?.data ?? [])
-            const totalPages = (
-              Array.isArray(fj) ? 1 : (fj?.totalPages ?? 1)
-            ) as number
-            let listData = firstData
-            if (totalPages > 1) {
-              const restRes = await Promise.all(
-                Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(
-                  (p) =>
-                    fetchWithRetry(
-                      `/api/instruments?page=${p}&pageSize=100`,
-                      10000,
-                    ),
-                ),
-              )
-              const restJsons = await Promise.all(
-                restRes.map((r) => safeJson(r)),
-              )
-              const restData = restJsons.flatMap((j: any) =>
-                Array.isArray(j) ? j : (j?.data ?? []),
-              )
-              listData = [...firstData, ...restData]
-            }
-            setInstruments((prev) => mergeById(listData, prev))
-          } catch (e) {
-            console.error('[Print] Failed to fetch instruments:', e)
-          }
-        })()
-
-        // Stations — paginated
-        ;(async () => {
-          try {
-            const first = await fetchWithRetry(
-              '/api/stations?page=1&pageSize=100',
-              10000,
-            )
-            const fj = await safeJson(first)
-            if (!fj) return
-            const firstData = Array.isArray(fj) ? fj : (fj?.data ?? [])
-            const totalPages = (
-              Array.isArray(fj) ? 1 : (fj?.totalPages ?? 1)
-            ) as number
-            let listData = firstData
-            if (totalPages > 1) {
-              const restRes = await Promise.all(
-                Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(
-                  (p) =>
-                    fetchWithRetry(
-                      `/api/stations?page=${p}&pageSize=100`,
-                      10000,
-                    ),
-                ),
-              )
-              const restJsons = await Promise.all(
-                restRes.map((r) => safeJson(r)),
-              )
-              const restData = restJsons.flatMap((j: any) =>
-                Array.isArray(j) ? j : (j?.data ?? []),
-              )
-              listData = [...firstData, ...restData]
-            }
-            setStations((prev) => mergeById(listData, prev))
-          } catch (e) {
-            console.error('[Print] Failed to fetch stations:', e)
-          }
-        })()
       } catch (e) {
         console.error('[Print] Load failed:', e)
         setError(e instanceof Error ? e.message : 'Failed to load data')

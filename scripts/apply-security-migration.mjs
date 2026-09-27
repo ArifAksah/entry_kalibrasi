@@ -5,18 +5,20 @@
 // lewat DATABASE_URL (staging atau production). Setiap tahap dijalankan
 // sebagai satu transaksi; bila tahap gagal, tidak ada perubahan parsial.
 //
-// Pemakaian (STAGING):
+// Pemakaian (production):
 //   DATABASE_URL='postgresql://postgres.<ref>:<password>@<host>:5432/postgres' \
-//     node scripts/apply-security-migration.mjs --stage all
+//     node scripts/apply-security-migration.mjs --stage production
 //
 // Tahap:
 //   preflight  -> database/security_migration_01_preflight.sql (read-only)
-//   bootstrap  -> database/staging_bootstrap_missing_tables.sql (staging only)
 //   lockdown   -> database/security_migration_02_lockdown.sql
-//   all        -> preflight, bootstrap, lockdown (urutan ini)
+//   rls        -> database/security_migration_03_rls_consolidated.sql
+//   revoke-rpc -> database/security_migration_04_revoke_rpc.sql
+//   production/all -> preflight, lockdown, rls, revoke-rpc (urutan ini)
+//   bootstrap  -> database/staging_bootstrap_missing_tables.sql (staging only)
 //
-// Catatan: bootstrap hanya untuk staging yang belum punya 11 tabel production.
-// Jangan jalankan --stage bootstrap di production.
+// Bootstrap wajib memakai `--target staging` dan tidak pernah menjadi bagian
+// dari tahap `production` atau `all`.
 
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -47,24 +49,59 @@ async function runViaManagementApi(projectRef, token, sql) {
   return text
 }
 
+const PRODUCTION_FILES = [
+  'database/security_migration_01_preflight.sql',
+  'database/security_migration_02_lockdown.sql',
+  'database/security_migration_03_rls_consolidated.sql',
+  'database/security_migration_04_revoke_rpc.sql',
+]
+
 const STAGES = {
   preflight: ['database/security_migration_01_preflight.sql'],
-  bootstrap: ['database/staging_bootstrap_missing_tables.sql'],
   lockdown: ['database/security_migration_02_lockdown.sql'],
-  all: [
-    'database/security_migration_01_preflight.sql',
-    'database/staging_bootstrap_missing_tables.sql',
-    'database/security_migration_02_lockdown.sql',
-  ],
+  rls: ['database/security_migration_03_rls_consolidated.sql'],
+  'revoke-rpc': ['database/security_migration_04_revoke_rpc.sql'],
+  bootstrap: ['database/staging_bootstrap_missing_tables.sql'],
+  production: PRODUCTION_FILES,
+  all: PRODUCTION_FILES,
 }
 
 function parseArgs(argv) {
-  const idx = argv.indexOf('--stage')
-  const stage = idx >= 0 ? argv[idx + 1] : 'all'
+  const valueFor = (flag, fallback) => {
+    const index = argv.indexOf(flag)
+    if (index < 0) return fallback
+    const value = argv[index + 1]
+    if (!value || value.startsWith('--')) throw new Error(`Nilai ${flag} wajib diisi.`)
+    return value
+  }
+
+  const stage = valueFor('--stage', 'production')
+  const target = valueFor('--target', 'production')
+  const dryRun = argv.includes('--dry-run')
+
   if (!STAGES[stage]) {
     throw new Error(`Tahap tidak dikenal: ${stage}. Pilihan: ${Object.keys(STAGES).join(', ')}`)
   }
-  return stage
+  if (!['production', 'staging'].includes(target)) {
+    throw new Error(`Target tidak dikenal: ${target}. Pilihan: production, staging`)
+  }
+  // Bootstrap hanya aman untuk staging. --target hanyalah label yang diketik
+  // operator, jadi jangan percaya begitu saja: perlu opt-in eksplisit lewat
+  // ALLOW_STAGING_BOOTSTRAP=1 supaya bootstrap tidak sengaja dijalankan ke
+  // database produksi hanya karena salah mengetik --target staging.
+  if (stage === 'bootstrap') {
+    if (target !== 'staging') {
+      throw new Error('Bootstrap hanya boleh dijalankan dengan --target staging.')
+    }
+    if (process.env.ALLOW_STAGING_BOOTSTRAP !== '1') {
+      throw new Error(
+        'Menolak bootstrap: set ALLOW_STAGING_BOOTSTRAP=1 hanya bila DATABASE_URL ' +
+          'benar-benar menunjuk database staging.',
+      )
+    }
+  }
+
+  return { stage, target, dryRun }
 }
 
 function projectRefFromUrl(url) {
@@ -78,8 +115,17 @@ function projectRefFromUrl(url) {
 }
 
 async function main() {
-  const stage = parseArgs(process.argv.slice(2))
+  const { stage, target, dryRun } = parseArgs(process.argv.slice(2))
   const files = STAGES[stage]
+
+  console.log(`Target      : ${target}`)
+  console.log(`Tahap       : ${stage}`)
+  console.log(`File        : ${files.join(', ')}`)
+
+  if (dryRun) {
+    console.log('Mode        : dry-run')
+    return
+  }
 
   const databaseUrl = process.env.DATABASE_URL
   const accessToken = process.env.SUPABASE_ACCESS_TOKEN
@@ -113,9 +159,7 @@ async function main() {
       : `project:${projectRef} (Management API)`
 
   console.log(`Mode        : ${mode}`)
-  console.log(`Target      : ${targetLabel}`)
-  console.log(`Tahap       : ${stage}`)
-  console.log(`File        : ${files.join(', ')}\n`)
+  console.log(`Database    : ${targetLabel}\n`)
 
   let client = null
   if (mode === 'direct-db') {
@@ -148,7 +192,8 @@ async function main() {
   }
 
   console.log('\nSemua tahap selesai. Lanjutkan dengan:')
-  console.log('  npm run check:anon-exposure   # harus 52 denied, 0 exposed')
+  console.log('  npm run check:security-catalog')
+  console.log('  npm run check:anon-exposure')
 }
 
 main().catch((error) => {

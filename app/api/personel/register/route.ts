@@ -4,6 +4,8 @@ import { sendEmail } from '../../../../lib/brevo'
 import { buildAccountConfirmationHtml } from '../../../../lib/email-templates'
 import { sendWhatsApp } from '../../../../lib/wa'
 import { buildAccountConfirmationMessage } from '../../../../lib/wa-messages'
+import { validatePassword } from '../../../../lib/password-policy'
+import { ASSIGNABLE_ROLES } from '../../../../lib/api-auth'
 
 export async function POST(request: NextRequest) {
   let createdUserId: string | null = null
@@ -36,6 +38,15 @@ export async function POST(request: NextRequest) {
 
     if (!name || !email || !password) {
       return NextResponse.json({ error: 'Nama, email, dan password wajib diisi' }, { status: 400 })
+    }
+
+    const passwordError = validatePassword(password)
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 })
+    }
+
+    if (!role || !ASSIGNABLE_ROLES.has(String(role))) {
+      return NextResponse.json({ error: 'Role tidak valid' }, { status: 400 })
     }
 
     if (role === 'user_station' && !station_id) {

@@ -125,8 +125,6 @@ const ProfileSettingsPage: React.FC = () => {
         await supabase.auth.updateUser({
           data: {
             name: formData.name,
-            nip: formData.nip,
-            nik: formData.nik,
             phone: formData.phone
           }
         })

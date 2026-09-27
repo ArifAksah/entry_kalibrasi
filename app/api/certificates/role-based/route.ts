@@ -143,7 +143,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, ...updateData } = body;
+    const { id } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'Certificate ID is required' }, { status: 400 });
@@ -165,6 +165,27 @@ export async function PUT(request: NextRequest) {
         return forbidden('Kalibrator hanya dapat mengubah sertifikat draft miliknya')
       }
     }
+
+    const allowedFields = [
+      'no_certificate',
+      'no_order',
+      'no_identification',
+      'issue_date',
+      'station',
+      'instrument',
+      'authorized_by',
+      'verifikator_1',
+      'verifikator_2',
+      'verifikator_3',
+      'results',
+      'station_address',
+      'calibration_computed_at',
+    ] as const;
+    const updateData = Object.fromEntries(
+      allowedFields
+        .filter(field => Object.prototype.hasOwnProperty.call(body, field))
+        .map(field => [field, body[field]])
+    );
 
     const { data, error } = await supabaseAdmin
       .from('certificate')
