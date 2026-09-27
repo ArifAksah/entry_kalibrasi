@@ -60,11 +60,19 @@ if ! command -v docker &> /dev/null; then
 fi
 echo "  Docker $(docker --version | cut -d' ' -f3) installed"
 
-# ─── Nginx ───────────────────────────────────────────────────────────────────
-echo "[5/7] Installing Nginx..."
-apt-get install -y nginx
-systemctl enable nginx
-echo "  Nginx installed"
+# ─── Caddy (reverse proxy produksi) ──────────────────────────────────────────
+echo "[5/7] Installing Caddy..."
+if ! command -v caddy >/dev/null 2>&1; then
+    apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl gnupg
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+        | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+        | tee /etc/apt/sources.list.d/caddy-stable.list
+    apt-get update
+    apt-get install -y caddy
+fi
+systemctl enable caddy
+echo "  Caddy installed ($(caddy version 2>/dev/null | head -1))"
 
 # ─── Playwright dependencies ─────────────────────────────────────────────────
 echo "[6/7] Installing Playwright browser dependencies..."
@@ -75,12 +83,17 @@ npx playwright install-deps chromium 2>/dev/null || apt-get install -y \
 echo "  Playwright deps installed"
 
 # ─── Firewall ────────────────────────────────────────────────────────────────
-echo "[7/7] Configuring firewall..."
+# Catatan: Docker mem-publish port melalui DOCKER-USER dan MEMBYPASS ufw.
+# UFW saja TIDAK cukup untuk menutup Kong/Studio/Postgres. Gunakan
+# deploy/harden-network.sh untuk itu. UFW di sini hanya untuk host non-Docker.
+echo "[7/7] Configuring firewall (UFW)..."
 ufw allow 22/tcp    # SSH
-ufw allow 80/tcp    # HTTP
-ufw allow 443/tcp   # HTTPS
+ufw allow 80/tcp    # HTTP (Caddy)
+# 443 hanya jika domain + TLS dipasang:
+# ufw allow 443/tcp
 ufw --force enable 2>/dev/null || true
-echo "  Firewall configured (ports 22, 80, 443 open)"
+echo "  Firewall configured (ports 22, 80 open)"
+echo "  PENTING: jalankan deploy/harden-network.sh untuk menutup port Docker"
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo ""
@@ -89,13 +102,13 @@ echo "  Setup Complete!"
 echo "═══════════════════════════════════════════════════════════════"
 echo ""
 echo "  Next steps:"
-echo "  1. Copy nginx config:  sudo cp deploy/nginx.conf /etc/nginx/sites-available/kalibrasi"
-echo "  2. Enable site:        sudo ln -sf /etc/nginx/sites-available/kalibrasi /etc/nginx/sites-enabled/"
-echo "  3. Remove default:     sudo rm -f /etc/nginx/sites-enabled/default"
-echo "  4. Test nginx:         sudo nginx -t"
-echo "  5. Reload nginx:       sudo systemctl reload nginx"
-echo "  6. Configure .env:     cp .env.example .env && nano .env"
-echo "  7. Deploy:             ./deploy/deploy.sh"
+echo "  1. Copy Caddy config:  sudo cp deploy/Caddyfile.production /etc/caddy/Caddyfile"
+echo "  2. Validate:           sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile"
+echo "  3. Reload Caddy:       sudo systemctl reload caddy"
+echo "  4. Configure .env:     cp deploy/.env.production .env && nano .env"
+echo "                         (NEXT_PUBLIC_SUPABASE_URL=http://<host>/supabase)"
+echo "  5. Deploy:             ./deploy/deploy.sh"
+echo "  6. Harden network:     sudo ADMIN_ALLOW_CIDRS=\"<IP-admin>\" ./deploy/harden-network.sh --dry-run"
 echo ""
 echo "  For HTTPS (recommended):"
 echo "  sudo apt install certbot python3-certbot-nginx"

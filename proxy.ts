@@ -46,7 +46,7 @@ const supabaseUrl =
   process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.SUPABASE_PUBLIC_URL ||
   process.env.API_EXTERNAL_URL ||
-  'http://localhost:7000'
+  'http://localhost:8000'
 
 const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.ANON_KEY || ''

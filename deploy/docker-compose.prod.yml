@@ -1,7 +1,11 @@
 version: '3.8'
 
-# Production Docker Compose for auxiliary services
-# Run alongside the PM2-managed Next.js app
+# ⚠️  TIDAK DIPAKAI DI PRODUKSI — PDF Template Service dibatalkan.
+#     JANGAN dijalankan: mapping "8000:8000" DI SERVER BENTROK dengan Kong
+#     (Supabase gateway) yang menempati host port 8000. File dipertahankan
+#     hanya sebagai arsip; deploy.sh tidak lagi memanggilnya.
+#
+# Production Docker Compose for auxiliary services (arsip)
 #
 # Usage:
 #   cd deploy

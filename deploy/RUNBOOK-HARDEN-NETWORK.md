@@ -98,9 +98,12 @@ sudo ADMIN_ALLOW_CIDRS="10.20.30.0/24" ./deploy/harden-network.sh --dry-run
 
 Periksa output:
 
-- `Blocked` menampilkan port `3000 4000 5432 6543 8000 8443 9000 9001 9999`.
+- `Blocked` menampilkan port `3000 4000 5432 6543 8000 8443 9000 9001 9999`
+  (3000 = Studio, 8000/8443 = Kong).
 - `Admin allow` menampilkan IP/CIDR Anda.
 - Setiap baris `[dry-run] iptables ...` hanya dicetak, tidak dijalankan.
+- **Guard**: jika `.env` masih menembak Kong langsung (`:8000`/`:8443`),
+  akan muncul peringatan — perbaiki `.env` ke `http://<host>/supabase` dulu.
 
 ---
 
@@ -139,10 +142,19 @@ Harapan:
 Uji dari laptop **lain** (bukan allowlist):
 
 ```bash
-nc -vz 172.19.3.171 5432   # harus timeout/refused
-nc -vz 172.19.3.171 8000   # harus timeout/refused
-nc -vz 172.19.3.171 443    # harus open
-nc -vz 172.19.3.171 22     # harus open
+nc -vz 172.19.3.171 5432   # harus timeout/refused (Postgres)
+nc -vz 172.19.3.171 8000   # harus timeout/refused (Kong) — dulu terbuka!
+nc -vz 172.19.3.171 8443   # harus timeout/refused (Kong HTTPS)
+nc -vz 172.19.3.171 3000   # harus timeout/refused (Studio)
+nc -vz 172.19.3.171 80     # harus open (Caddy)
+nc -vz 172.19.3.171 22     # harus open (SSH)
+```
+
+Uji aplikasi tetap jalan (dari browser/laptop):
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://172.19.3.171/supabase/auth/v1/health  # lewat Caddy
+curl -s -o /dev/null -w '%{http_code}\n' http://172.19.3.171/supabase/pg/meta          # harus 404
 ```
 
 ---
@@ -150,14 +162,15 @@ nc -vz 172.19.3.171 22     # harus open
 ## 7. Kontrol utama: bind Compose ke loopback
 
 Firewall adalah lapisan tambahan. Kontrol yang lebih kuat adalah tidak
-mem-publish port manajemen ke publik. Edit `docker-compose.yml` Supabase:
+mem-publish port manajemen ke publik. Edit `docker-compose.yml` stack Supabase
+(di folder stack Supabase, bukan file ini):
 
 ```yaml
 services:
   kong:
     ports:
-      - "127.0.0.1:8000:8000"
-      - "127.0.0.1:8443:8443"
+      - "127.0.0.1:8000:8000"   # Kong HTTP
+      - "127.0.0.1:8443:8443"   # Kong HTTPS
   studio:
     ports:
       - "127.0.0.1:3000:3000"
@@ -166,12 +179,14 @@ services:
       - "127.0.0.1:5432:5432"
 ```
 
-Lalu:
+Lalu recreate hanya service terdampak:
 
 ```bash
-docker compose up -d
+docker compose up -d --no-deps --force-recreate kong studio db
 docker compose ps
 ```
+
+> Server ini TIDAK punya port 7000. Kong = 8000/8443.
 
 ---
 
@@ -222,4 +237,8 @@ sudo iptables -nvL DOCKER-USER --line-numbers
   ```
 
 - Setelah firewall aktif, seluruh aplikasi (browser) tetap berjalan normal
-  karena hanya lewat Caddy di port 80/443.
+  karena hanya lewat Caddy di port 80 (saat ini tanpa domain/TLS).
+- **PRASYARAT MUTLAK sebelum menjalankan firewall**: Caddyfile produksi sudah
+  terpasang (blok `/supabase`) dan `.env` aplikasi sudah menunjuk
+  `http://<host>/supabase`, serta aplikasi sudah di-rebuild. Jika tidak,
+  browser semua user akan kehilangan akses Supabase.

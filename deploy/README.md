@@ -1,36 +1,55 @@
 # Production Deployment Guide
 
-## Architecture
+## Architecture (topologi NYATA di server)
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        VM (Ubuntu)                           │
-│                                                             │
-│  ┌─────────┐    ┌──────────────────────────────────────┐   │
-│  │  Nginx  │───▶│  Next.js App (PM2, port 3000)        │   │
-│  │  :80    │    └──────────────────────────────────────┘   │
-│  │  :443   │    ┌──────────────────────────────────────┐   │
-│  │         │───▶│  WA Service (PM2, port 3001)         │   │
-│  └─────────┘    └──────────────────────────────────────┘   │
-│                 ┌──────────────────────────────────────┐   │
-│                 │  PDF Template Service (Docker, :8000) │   │
-│                 └──────────────────────────────────────┘   │
-│                 ┌──────────────────────────────────────┐   │
-│                 │  Supabase (Docker, :7000)             │   │
-│                 └──────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                        VM (Ubuntu)                            │
+│                                                              │
+│  ┌─────────┐   ┌──────────────────────────────────────┐     │
+│  │  Caddy  │──▶│  Next.js App (PM2, 127.0.0.1:3001)   │     │
+│  │  :80    │   └──────────────────────────────────────┘     │
+│  │         │   ┌──────────────────────────────────────┐     │
+│  │         │──▶│  WA Service (PM2, :3002)             │     │
+│  │         │   └──────────────────────────────────────┘     │
+│  │         │   ┌──────────────────────────────────────┐     │
+│  │         │──▶│  Kong / Supabase (Docker, :8000/8443)│     │
+│  └─────────┘   │   prefix /supabase -> Kong           │     │
+│                └──────────────────────────────────────┘     │
+│                Supabase lain (Docker): Studio :3000,         │
+│                Postgres :5432, pooler :6543, GoTrue :9999,   │
+│                MinIO :9000/9001, Analytics :4000             │
+└──────────────────────────────────────────────────────────────┘
 ```
+
+| Layanan | Port host | Akses |
+|---------|-----------|-------|
+| Caddy (proxy publik) | **80** | publik |
+| Next.js app | **3001** | via Caddy |
+| WA service | **3002** | via Caddy (opsional) |
+| Kong (Supabase gateway) | **8000 / 8443** | hanya via Caddy `/supabase` |
+| Studio | 3000 | SSH tunnel saja |
+| Postgres / pooler | 5432 / 6543 | SSH tunnel saja |
+| GoTrue | 9999 | internal |
+| MinIO | 9000 / 9001 | internal |
+| Analytics | 4000 | internal |
+
+> Tidak ada port 7000 di server (nilai itu hanya di template lama).
+> PDF Template Service tidak dipakai.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `ecosystem.config.cjs` | PM2 process manager config (Next.js + WA service) |
-| `docker-compose.prod.yml` | Docker Compose for PDF Template Service |
-| `nginx.conf` | Nginx reverse proxy configuration |
+| `ecosystem.config.cjs` | PM2 process manager config (Next.js 3001 + WA service 3002) |
+| `Caddyfile.production` | **Reverse proxy produksi (Caddy)** — app + `/supabase` |
+| `harden-network.sh` | Containment firewall (block Kong/Studio/Postgres dari jaringan user) |
 | `deploy.sh` | Automated deployment script |
-| `setup-vm.sh` | One-time VM setup (Node.js, Docker, Nginx, PM2) |
+| `setup-vm.sh` | One-time VM setup (Node.js, Docker, Caddy, PM2) |
 | `.env.production` | Template for production environment variables |
+| `supabase-hardening.env` | Overlay hardening Supabase (signup, CORS, dll) |
+| `nginx.conf` | ⚠️ usang — tidak dipakai (produksi pakai Caddy) |
+| `docker-compose.prod.yml` | ⚠️ usang — PDF service dibatalkan (bentrok port 8000) |
 
 ## Quick Start (Fresh VM)
 
@@ -39,18 +58,17 @@
 git clone <repo-url> /opt/kalibrasi
 cd /opt/kalibrasi
 
-# 2. Run initial setup (installs Node.js, Docker, Nginx, PM2)
+# 2. Run initial setup (installs Node.js, Docker, Caddy, PM2)
 sudo ./deploy/setup-vm.sh
 
 # 3. Configure environment
 cp deploy/.env.production .env
-nano .env  # Fill in actual values
+nano .env  # Fill in actual values (NEXT_PUBLIC_SUPABASE_URL=http://<host>/supabase)
 
-# 4. Setup Nginx
-sudo cp deploy/nginx.conf /etc/nginx/sites-available/kalibrasi
-sudo ln -sf /etc/nginx/sites-available/kalibrasi /etc/nginx/sites-enabled/
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t && sudo systemctl reload nginx
+# 4. Setup Caddy (reverse proxy + /supabase)
+sudo cp deploy/Caddyfile.production /etc/caddy/Caddyfile
+sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+sudo systemctl reload caddy
 
 # 5. Deploy
 ./deploy/deploy.sh
@@ -79,26 +97,24 @@ pm2 logs next-app           # View Next.js logs only
 pm2 restart next-app        # Restart Next.js
 pm2 restart all             # Restart all PM2 services
 
-# Docker (PDF service)
-docker compose -f deploy/docker-compose.prod.yml logs -f
-docker compose -f deploy/docker-compose.prod.yml restart pdf-template-service
-docker compose -f deploy/docker-compose.prod.yml down
-docker compose -f deploy/docker-compose.prod.yml up -d --build
+# Caddy (reverse proxy produksi)
+sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+sudo systemctl reload caddy   # Reload tanpa downtime
+sudo systemctl restart caddy
 
-# Nginx
-sudo nginx -t               # Test config
-sudo systemctl reload nginx # Reload without downtime
-sudo systemctl restart nginx
+# Supabase (docker-compose terpisah, di folder stack Supabase)
+docker compose -f docker-compose.yml ps
+docker compose -f docker-compose.yml restart kong
 ```
 
 ## Monitoring
 
 ```bash
 # Check all services
-curl http://localhost:3000          # Next.js
-curl http://localhost:3001          # WA Service
-curl http://localhost:8000/health   # PDF Service
-curl http://localhost:7000/rest/v1/ # Supabase
+curl http://localhost:3001         # Next.js App (via lokal)
+curl http://localhost:3002         # WA Service
+curl http://localhost/supabase/auth/v1/health   # Supabase via Caddy (same-origin)
+curl -sk https://localhost:8443/rest/v1/        # Kong langsung (harus 401)
 
 # PM2 monitoring dashboard
 pm2 monit
@@ -122,9 +138,9 @@ Docker services auto-start via `restart: unless-stopped` policy.
 | Issue | Solution |
 |-------|----------|
 | Next.js 502 | `pm2 logs next-app` — check for build errors |
-| PDF service 503 | `docker compose -f deploy/docker-compose.prod.yml logs` |
+| Supabase 401/502 via Caddy | Pastikan Kong 8000 hidup & blok `/supabase` di Caddyfile |
 | WA service down | `pm2 restart wa-service` |
-| Port conflict | `lsof -i :3000` to find conflicting process |
+| Port conflict | `ss -tlnp` — cek port 3000 (Studio) vs 3001 (Next.js) |
 | Out of memory | Check `pm2 monit`, increase VM RAM |
 | Playwright error | `npx playwright install chromium` |
 
@@ -135,23 +151,22 @@ registrasi admin-only). Sisa perbaikan berada di level VM/infra:
 
 ### 1. Kunci akses langsung ke Supabase/Kong (temuan H5 & C3)
 
-Semua trafik browser harus lewat nginx (`https://<domain>/supabase/…),
-bukan ke port Kong. Backend tidak boleh terjangkau dari jaringan user:
+Semua trafik browser harus lewat Caddy (`http://<host>/supabase/…`),
+bukan ke port Kong (8000/8443). Backend tidak boleh terjangkau dari jaringan user:
 
 ```bash
 # docker-compose Supabase self-hosted: bind mapping ke loopback saja
 #   ports:
-#     - "127.0.0.1:7000:8000"   # Kong (HTTP)
-#     - "127.0.0.1:7443:8443"   # Kong (HTTPS)
+#     - "127.0.0.1:8000:8000"   # Kong (HTTP)
+#     - "127.0.0.1:8443:8443"   # Kong (HTTPS)
+#     - "127.0.0.1:3000:3000"   # Studio
 
-# Docker melewati ufw — kunci lewat iptables DOCKER-USER juga:
-sudo iptables -I DOCKER-USER -p tcp --dport 7000 -j DROP    # atau batasi IP
-sudo iptables -I DOCKER-USER -p tcp --dport 8000 -j DROP    # Kong/PDF publik
-sudo netfilter-persistent save 2>/dev/null || true
+# Docker melewati ufw — kunci lewat iptables DOCKER-USER (deploy/harden-network.sh):
+sudo ADMIN_ALLOW_CIDRS="<IP-admin>" ./deploy/harden-network.sh
 ```
 
 Set di `.env` produksi:
-`NEXT_PUBLIC_SUPABASE_URL=https://<domain-nginx>/supabase`
+`NEXT_PUBLIC_SUPABASE_URL=http://<host-Caddy>/supabase`
 
 ### 2. Membuka registrasi publik & autoconfirm (temuan H4)
 
@@ -165,7 +180,7 @@ merupakan satu-satunya jalur registrasi yang tersisa di aplikasi.
 
 Self-hosted Supabase men-set `Access-Control-Allow-Origin: *` secara default.
 Matikan wildcard di Kong (`KONG_CORS_ENABLE=false` karena akses kini lewat
-proxy nginx domain yang sama = same-origin, tidak butuh CORS sama sekali),
+proxy Caddy host yang sama = same-origin, tidak butuh CORS sama sekali),
 dan pastikan origin aplikasi tidak pernah memakai `*`.
 
 ### 3b. Same-origin via Caddy (temuan C3/H5) — wajib

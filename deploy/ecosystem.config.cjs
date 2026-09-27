@@ -2,11 +2,14 @@
  * PM2 Ecosystem Configuration for Production VM
  *
  * Services managed:
- * 1. next-app       — Next.js dashboard (port 3000)
- * 2. wa-service     — WhatsApp notification service (port 3001)
+ * 1. next-app       — Next.js dashboard (port 3001, di belakang Caddy :80)
+ * 2. wa-service     — WhatsApp notification service (port 3002)
  *
- * Note: PDF Template Service runs via Docker (see deploy/docker-compose.prod.yml)
- *       Supabase runs separately via its own docker-compose
+ * PENTING (topologi server produksi):
+ *   - Port 3000 DIPAKAI Supabase Studio (docker), JANGAN pakai untuk Next.js.
+ *   - Supabase (Kong 8000/8443, Studio 3000, dst) jalan via docker-compose-nya
+ *     sendiri, terpisah dari file ini.
+ *   - PDF Template Service TIDAK dipakai di produksi (fitur dibatalkan).
  *
  * Usage:
  *   pm2 start deploy/ecosystem.config.cjs
@@ -27,7 +30,7 @@ module.exports = {
       cwd: ROOT,
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        PORT: 3001,
       },
       // Restart policy
       autorestart: true,
@@ -52,7 +55,7 @@ module.exports = {
       cwd: path.join(ROOT, 'wa-service'),
       env: {
         NODE_ENV: 'production',
-        PORT: 3001,
+        PORT: 3002,
       },
       autorestart: true,
       max_restarts: 10,

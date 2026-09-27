@@ -1,11 +1,17 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # Caddy production template — same-origin app + Supabase  (temuan C3/H5)
 #
-# Target topologi:
-#   Browser  ->  Caddy :80/:443  ->  Next.js 127.0.0.1:3001
-#                                ->  Kong    127.0.0.1:8000   (prefix /supabase)
+# Topologi NYATA di server produksi (terverifikasi via ss/docker ps):
+#   Browser  ->  Caddy :80  ->  Next.js 127.0.0.1:3001
+#                          ->  Kong    127.0.0.1:8000   (prefix /supabase)
 #
-# Setelah ini diterapkan, Kong/Studio/Postgres/GoTrue/MinIO tidak perlu
+#   8000/8443 = Kong (gateway Supabase), 3000 = Studio, 3001 = Next.js,
+#   3002 = WA service. TIDAK ada port 7000 di server ini.
+#
+# Belum ada domain publik/TLS: akses via http://<IP>/supabase.
+# Karena itu listener hanya :80 (tanpa automatic HTTPS). HSTS tidak efektif
+# di HTTP dan diabaikan browser — tetap ditulis untuk saat TLS dipasang nanti.
+# Setelah diterapkan, Kong/Studio/Postgres/GoTrue/MinIO TIDAK perlu
 # dipublikasikan ke jaringan user sama sekali.
 #
 # Pasang di: /etc/caddy/Caddyfile

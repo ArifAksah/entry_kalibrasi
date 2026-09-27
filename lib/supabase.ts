@@ -5,14 +5,14 @@ const supabaseUrl =
   process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.SUPABASE_PUBLIC_URL ||
   process.env.API_EXTERNAL_URL ||
-  'http://localhost:7000'
+  'http://localhost:8000'
 
 const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   process.env.ANON_KEY ||
   ''
 
-// supabaseUrl will default to http://localhost:7000 for local dev if not provided
+// supabaseUrl will default to http://localhost:8000 (Kong) if not provided
 
 if (!supabaseAnonKey) {
   console.warn('NEXT_PUBLIC_SUPABASE_ANON_KEY not found. Public client operations may fail; proceeding without throwing.')

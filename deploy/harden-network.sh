@@ -6,7 +6,15 @@
 #   - Studio (3000), Postgres/pooler (5432/6543), Kong (8000/8443),
 #     MinIO (9000/9001), GoTrue (9999), Analytics (4000) tidak dapat diakses
 #     dari jaringan user.
-#   - Hanya Caddy (80/443) dan SSH (22) yang terbuka untuk pengguna.
+#   - Hanya Caddy (80) dan SSH (22) yang terbuka untuk pengguna.
+#
+# CATATAN TOPOLOGI (hasil verifikasi langsung di server produksi):
+#   - Kong (gateway Supabase) di-publish ke host :8000 (HTTP) dan :8443 (HTTPS).
+#     TIDAK ADA port 7000 di server ini (7000 hanya muncul di template lama).
+#   - Next.js app (PM2 next-server) listen di 127.0.0.1:3001.
+#     Port 3000 BUKAN aplikasi — itu Supabase Studio.
+#   - WA service listen di :3002.
+#   - Caddy mem-proxy :80 -> Next.js 3001 dan /supabase -> Kong 8000.
 #
 # Catatan penting:
 #   - Docker mem-publish port melalui chain FORWARD/DOCKER-USER, sehingga UFW
@@ -60,15 +68,19 @@ INPUT_COMMENT="simkal-backend-block"
 
 # Port backend yang hanya boleh diakses lokal/host (bukan segmen user).
 #   3000 Studio | 4000 Analytics | 5432 Postgres | 6543 pooler
-#   8000 Kong   | 8443 Kong TLS  | 9000/9001 MinIO | 9999 GoTrue
+#   8000 Kong HTTP | 8443 Kong HTTPS | 9000/9001 MinIO | 9999 GoTrue
+# (Tidak ada 7000: itu template lama/usang. Port 8000 di server ini = Kong,
+#  bukan PDF service — PDF template service tidak dipakai di produksi.)
 BLOCKED_PORTS=(3000 4000 5432 6543 8000 8443 9000 9001 9999)
 
 # Hanya host/port publik yang boleh terbuka untuk segmen user.
-#   80/443 Caddy HTTPS, 22 SSH (batasi ke jump host bila mungkin)
-ALLOWED_PUBLIC_PORTS=(80 443 22)
+#   80 Caddy HTTP, 22 SSH (batasi ke jump host bila mungkin)
+# (443 hanya jika ada TLS/domain; saat ini akses via HTTP :80)
+ALLOWED_PUBLIC_PORTS=(80 22)
 
-# Port backend PDF template service (docker) — bind ke loopback saja.
-BACKEND_LOOPBACK_BIND=true
+# Port backend (Kong) yang browser capai lewat proxy Caddy, bukan langsung.
+# Next.js app ada di 3001; WA service di 3002 — keduanya di belakang Caddy.
+BACKEND_URL_PORT_RE=':(8000|8443)(/|$)'
 
 # ---------------------------------------------------------------------------
 # Parse allowlist: dukung koma dan/atau spasi.
@@ -120,16 +132,20 @@ fi
 # ---------------------------------------------------------------------------
 guard_direct_supabase_url() {
 	local env_file
-	for env_file in .env .env.local .env.production; do
+	local found_any=false
+	for env_file in .env .env.local .env.production deploy/.env.production; do
 		[[ -f "${env_file}" ]] || continue
 		local current
-		current="$(grep -E '^\s*NEXT_PUBLIC_SUPABASE_URL=' "${env_file}" | tail -1 | sed -E 's/^[^=]+=//; s/^["'\'']|["'\'']$//g' || true)"
+		current="$(grep -E '^[[:space:]]*NEXT_PUBLIC_SUPABASE_URL=' "${env_file}" | tail -1 | sed -E 's/^[^=]+=//; s/^["'\'']|["'\'']$//g' || true)"
 		[[ -n "${current}" ]] || continue
-		if [[ "${current}" =~ :8000(/|$) ]]; then
-			echo "GUARD: ${env_file} menunjuk langsung ke Kong :8000" >&2
+		found_any=true
+		# Mengarah langsung ke Kong (HTTP 8000 / HTTPS 8443) atau ke IP mentah
+		# dengan port backend -> akan mati begitu firewall aktif.
+		if [[ "${current}" =~ ${BACKEND_URL_PORT_RE} ]]; then
+			echo "GUARD: ${env_file} menunjuk langsung ke Kong (bukan lewat proxy)" >&2
 			echo "       NEXT_PUBLIC_SUPABASE_URL=${current}" >&2
-			echo "       Pindahkan ke jalur reverse proxy lebih dulu, mis.:" >&2
-			echo "         NEXT_PUBLIC_SUPABASE_URL=https://<domain>/supabase" >&2
+			echo "       Pindahkan ke jalur reverse proxy (same-origin) lebih dulu:" >&2
+			echo "         NEXT_PUBLIC_SUPABASE_URL=http://<host-Caddy>/supabase" >&2
 			echo "       lalu rebuild + restart aplikasi." >&2
 			if [[ "${FORCE}" == "true" ]]; then
 				echo "       (--force diberikan, melanjutkan apa pun risikonya)" >&2
@@ -137,14 +153,36 @@ guard_direct_supabase_url() {
 			fi
 			return 1
 		fi
-		return 0
+		# Harus same-origin lewat /supabase (tanpa port backend di belakang).
+		if [[ "${current}" != *"/supabase"* && "${current}" != *"/supabase/"* ]]; then
+			echo "GUARD: ${env_file} NEXT_PUBLIC_SUPABASE_URL tidak lewat /supabase:" >&2
+			echo "       ${current}" >&2
+			echo "       Set ke same-origin, mis. http://<host-Caddy>/supabase" >&2
+			if [[ "${FORCE}" != "true" ]]; then
+				return 1
+			fi
+		fi
 	done
+	if [[ "${found_any}" != "true" ]]; then
+		echo "GUARD: tidak menemukan NEXT_PUBLIC_SUPABASE_URL di .env mana pun" >&2
+		echo "       Pastikan aplikasi di titik ke http://<host-Caddy>/supabase" >&2
+		if [[ "${FORCE}" != "true" ]]; then
+			return 1
+		fi
+	fi
 	return 0
 }
 
-if ! guard_direct_supabase_url && [[ "${DRY_RUN}" != "true" ]]; then
-	echo "Dibatalkan demi mencegah aplikasi rusak. Gunakan --force untuk memaksa." >&2
-	exit 1
+# Jalankan guard SELALU (termasuk dry-run) supaya masalah konfigurasi terlihat
+# sebelum aturan diterapkan. Di dry-run hanya melaporkan, tidak membatalkan.
+if ! guard_direct_supabase_url; then
+	if [[ "${DRY_RUN}" == "true" ]]; then
+		echo "PERINGATAN: konfigurasi Supabase masih menembak backend langsung." >&2
+		echo "            Firewall belum dijalankan (dry-run). Perbaiki .env lebih dulu." >&2
+	else
+		echo "Dibatalkan demi mencegah aplikasi rusak. Gunakan --force untuk memaksa." >&2
+		exit 1
+	fi
 fi
 
 echo
@@ -213,13 +251,15 @@ iptables -nvL DOCKER-USER --line-numbers | sed -n '1,20p'
 echo
 iptables -nvL INPUT --line-numbers | grep -E "${INPUT_COMMENT}|Chain INPUT" | sed -n '1,15p'
 echo
-if [[ "${BACKEND_LOOPBACK_BIND}" == "true" ]]; then
-	echo "WAJIB: bind port Compose ke loopback (kontrol utama), contoh:"
-	echo "  \"127.0.0.1:8000:8000\"   (Kong)"
-	echo "  \"127.0.0.1:3000:3000\"   (Studio)"
-	echo "  \"127.0.0.1:5432:5432\"   (Postgres)"
-	echo
-fi
+echo "WAJIB: bind port Compose ke loopback (kontrol utama), contoh:"
+echo "  \"127.0.0.1:8000:8000\"   (Kong HTTP)"
+echo "  \"127.0.0.1:8443:8443\"   (Kong HTTPS)"
+echo "  \"127.0.0.1:3000:3000\"   (Studio)"
+echo "  \"127.0.0.1:5432:5432\"   (Postgres)"
+echo "  \"127.0.0.1:9999:9999\"   (GoTrue)"
+echo
+echo "CATATAN: Next.js app harus listen di 127.0.0.1:3001 (di belakang Caddy),"
+echo "         BUKAN 3000 — port 3000 dipakai Supabase Studio."
 echo "Untuk membatalkan containment:"
 echo "  sudo iptables -D DOCKER-USER -j ${CHAIN} && sudo iptables -F ${CHAIN} && sudo iptables -X ${CHAIN}"
 echo "  sudo iptables -S INPUT | grep ${INPUT_COMMENT}   # lalu -D satu per satu"

@@ -13,8 +13,13 @@ set -e
 # Prerequisites:
 #   - Node.js 20+ installed
 #   - PM2 installed globally: npm install -g pm2
-#   - Docker & Docker Compose installed
-#   - Nginx installed and configured
+#   - Caddy installed and configured (lihat deploy/Caddyfile.production)
+#
+# Catatan topologi:
+#   - Next.js listen 127.0.0.1:3001 (di belakang Caddy :80).
+#   - WA service listen :3002.
+#   - Supabase (Kong 8000/8443, Studio 3000) dikelola compose terpisah.
+#   - PDF Template Service tidak dipakai.
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -23,6 +28,8 @@ APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DEPLOY_DIR="$APP_DIR/deploy"
 LOG_DIR="$APP_DIR/logs"
 WA_LOG_DIR="$APP_DIR/wa-service/logs"
+NEXT_PORT=3001
+WA_PORT=3002
 
 # Colors for output
 RED='\033[0;31m'
@@ -88,32 +95,7 @@ if [ "$SERVICES_ONLY" = false ]; then
     log_success "Next.js build complete"
 fi
 
-# ─── Step 4: Start/Restart PDF Template Service (Docker) ──────────────────────
-log_info "Starting PDF Template Service (Docker)..."
-cd "$DEPLOY_DIR"
-
-if docker compose -f docker-compose.prod.yml ps --quiet pdf-template-service 2>/dev/null | grep -q .; then
-    docker compose -f docker-compose.prod.yml up -d --build pdf-template-service 2>&1 | tail -5
-else
-    docker compose -f docker-compose.prod.yml up -d --build 2>&1 | tail -5
-fi
-
-cd "$APP_DIR"
-
-# Wait for PDF service to be healthy
-log_info "Waiting for PDF service health check..."
-for i in $(seq 1 30); do
-    if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-        log_success "PDF Template Service is healthy"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        log_warn "PDF service health check timed out (may still be starting)"
-    fi
-    sleep 2
-done
-
-# ─── Step 5: Start/Restart PM2 services ──────────────────────────────────────
+# ─── Step 4: Start/Restart PM2 services ──────────────────────────────────────
 log_info "Starting PM2 services..."
 
 if pm2 list 2>/dev/null | grep -q "next-app"; then
@@ -128,7 +110,7 @@ fi
 pm2 save 2>/dev/null
 log_success "PM2 services started"
 
-# ─── Step 6: Verify services ─────────────────────────────────────────────────
+# ─── Step 5: Verify services ─────────────────────────────────────────────────
 echo ""
 log_info "Verifying services..."
 sleep 3
@@ -143,11 +125,12 @@ check_service() {
     fi
 }
 
-check_service "Next.js App (port 3000)" "http://localhost:3000"
-check_service "WA Service (port 3001)" "http://localhost:3001"
-check_service "PDF Service (port 8000)" "http://localhost:8000/health"
+check_service "Next.js App (port ${NEXT_PORT})" "http://localhost:${NEXT_PORT}"
+check_service "WA Service (port ${WA_PORT})" "http://localhost:${WA_PORT}"
+# Verifikasi same-origin Supabase lewat Caddy (harus menjawab, bukan langsung ke Kong).
+check_service "Caddy /supabase (same-origin)" "http://localhost/supabase/auth/v1/health"
 
-# ─── Step 7: Show status ─────────────────────────────────────────────────────
+# ─── Step 6: Show status ─────────────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════════════════════════════"
 echo "  Deployment Complete!"
@@ -155,7 +138,5 @@ echo "════════════════════════�
 echo ""
 pm2 list
 echo ""
-docker compose -f "$DEPLOY_DIR/docker-compose.prod.yml" ps 2>/dev/null || true
-echo ""
-log_info "Logs: pm2 logs | docker compose -f deploy/docker-compose.prod.yml logs -f"
+log_info "Logs: pm2 logs next-app | pm2 logs wa-service"
 echo ""
