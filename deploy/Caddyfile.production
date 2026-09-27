@@ -76,7 +76,10 @@
 			/supabase/realtime/v1 \
 			/supabase/realtime/v1/*
 
-		handle_path @supabase_api {
+		# Named matcher tidak dapat dipakai dengan handle_path. Strip prefix
+		# secara eksplisit agar Kong menerima /auth/v1, /rest/v1, dan seterusnya.
+		handle @supabase_api {
+			uri strip_prefix /supabase
 			reverse_proxy 127.0.0.1:8000
 		}
 
