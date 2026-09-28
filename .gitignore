@@ -138,3 +138,6 @@ tsbuildinfo
 /RUMUS_DAN_ALUR_QC_CHECK.md
 /scripts/backfill-via-pgmeta.mjs
 /scripts/simulate-workbook-parity.ts
+
+# Script administratif manual (destruktif, bukan untuk deploy)
+/database/dev_hard_reset_for_resign.sql

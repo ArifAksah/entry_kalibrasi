@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../lib/supabase'
 import { clientSafeMessage } from '../../../lib/api-error'
 import { requireRoles } from '../../../lib/api-auth'
+import { buildRepresentativeIdByCode } from '../../../lib/instrument-code-representative'
 
 // Schema production: instrument_names(id, name, code_alat, created_at).
 // Frontend lama mengharapkan field `instrument_code_id` + objek `instrument_code`.
-// Kita petakan secara virtual: id perwakilan = id instrument_names pertama pada
-// kelompok code_alat yang sama.
+// ID perwakilan kode = MIN(id) per code_alat (deterministik, konsisten dengan
+// /api/instrument-code).
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -35,15 +36,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     }
 
-    const representativeByCode = new Map<string, number>()
-    for (const item of data || []) {
-      if (item.code_alat && !representativeByCode.has(item.code_alat)) {
-        representativeByCode.set(item.code_alat, Number(item.id))
-      }
-    }
+    // Ambil seluruh kode untuk menentukan MIN(id) per kode secara global,
+    // bukan hanya dari hasil yang sedang difilter.
+    const { data: allCodes } = await supabase
+      .from('instrument_names')
+      .select('id, code_alat')
+      .not('code_alat', 'is', null)
+
+    const representativeByCode = buildRepresentativeIdByCode(allCodes || [])
 
     const mapped = (data || []).map((item: any) => {
-      const repId = item.code_alat ? representativeByCode.get(item.code_alat) ?? null : null
+      const repId = item.code_alat ? representativeByCode.get(String(item.code_alat).trim()) ?? null : null
       return {
         id: item.id,
         name: item.name,

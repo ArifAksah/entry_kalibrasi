@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '../../../lib/supabase'
 import { clientSafeMessage } from '../../../lib/api-error'
 import { requireRoles } from '../../../lib/api-auth'
+import { buildRepresentativeIdByCode } from '../../../lib/instrument-code-representative'
 
 // Schema production: kode alat tersimpan langsung di instrument_names.code_alat.
 // Tidak ada tabel master `instrument_code`. Endpoint ini membentuk daftar kode
-// unik agar UI lama (dropdown kode) tetap berfungsi. ID yang dikembalikan adalah
-// ID baris instrument_names pertama pada kelompok kode tersebut.
+// unik agar UI lama (dropdown kode) tetap berfungsi. ID perwakilan = MIN(id) per
+// code_alat agar konsisten dengan /api/instrument-names.
 export async function GET() {
   try {
     const { data, error } = await supabase
@@ -20,14 +21,18 @@ export async function GET() {
       return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     }
 
-    const codes = new Map<string, { id: number; code_alat: string; name: string }>()
+    const representativeByCode = buildRepresentativeIdByCode(data || [])
+
+    const codes: Array<{ id: number; code_alat: string; name: string }> = []
+    const seen = new Set<string>()
     for (const row of data || []) {
       const code = String(row.code_alat || '').trim()
-      if (!code || codes.has(code)) continue
-      codes.set(code, { id: Number(row.id), code_alat: code, name: code })
+      if (!code || seen.has(code)) continue
+      seen.add(code)
+      codes.push({ id: representativeByCode.get(code)!, code_alat: code, name: code })
     }
 
-    return NextResponse.json(Array.from(codes.values()))
+    return NextResponse.json(codes)
   } catch (error) {
     return NextResponse.json(
       { error: 'Failed to fetch instrument codes' },
