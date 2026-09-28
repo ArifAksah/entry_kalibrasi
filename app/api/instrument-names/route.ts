@@ -3,11 +3,48 @@ import { supabaseAdmin as supabase } from '../../../lib/supabase'
 import { clientSafeMessage } from '../../../lib/api-error'
 import { requireRoles } from '../../../lib/api-auth'
 import { buildRepresentativeIdByCode } from '../../../lib/instrument-code-representative'
+import {
+  INSTRUMENT_NAME_TEXT_COLUMNS,
+  isMissingColumnError,
+  normalizeInstrumentNameRow,
+} from '../../../lib/instrument-names-schema'
 
-// Schema production: instrument_names(id, name, code_alat, created_at).
+// Kompatibel dua schema: sebagian deployment punya kolom `name`, sebagian `names`.
 // Frontend lama mengharapkan field `instrument_code_id` + objek `instrument_code`.
 // ID perwakilan kode = MIN(id) per code_alat (deterministik, konsisten dengan
 // /api/instrument-code).
+
+/** Ambil daftar nama dari instrument_names, fallback kolom teks yang tersedia. */
+async function fetchInstrumentNames(
+  selectColumns: 'code_alat' | 'full',
+  filterCode?: string | null,
+) {
+  for (const textCol of INSTRUMENT_NAME_TEXT_COLUMNS) {
+    const columns =
+      selectColumns === 'full'
+        ? `id, ${textCol}, code_alat, created_at`
+        : `id, ${textCol}, code_alat`
+
+    let query = supabase.from('instrument_names').select(columns)
+    if (selectColumns === 'full') query = query.order(textCol, { ascending: true })
+    if (filterCode) query = query.eq('code_alat', filterCode)
+
+    const { data, error } = await query
+    if (!error) {
+      return {
+        rows: (data || []).map((row: any) => normalizeInstrumentNameRow(row)),
+        textColumn: textCol,
+        error: null as null,
+      }
+    }
+    if (!isMissingColumnError(error, textCol)) {
+      return { rows: [], textColumn: textCol, error }
+    }
+    // kolom tidak ada → coba nama kolom berikutnya
+  }
+  return { rows: [], textColumn: 'name', error: { message: 'instrument_names tidak punya kolom teks nama' } }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -15,29 +52,28 @@ export async function GET(request: NextRequest) {
 
     let filterCode: string | null = null
     if (codeId) {
-      const { data } = await supabase
-        .from('instrument_names')
-        .select('code_alat')
-        .eq('id', codeId)
-        .maybeSingle()
-      filterCode = data?.code_alat || null
+      for (const textCol of INSTRUMENT_NAME_TEXT_COLUMNS) {
+        const { data, error } = await supabase
+          .from('instrument_names')
+          .select(`id, ${textCol}, code_alat`)
+          .eq('id', codeId)
+          .maybeSingle()
+        if (!error) {
+          filterCode = data?.code_alat || null
+          break
+        }
+        if (!isMissingColumnError(error, textCol)) {
+          return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
+        }
+      }
     }
 
-    let query = supabase
-      .from('instrument_names')
-      .select('id, name, code_alat, created_at')
-      .order('name', { ascending: true })
-
-    if (filterCode) query = query.eq('code_alat', filterCode)
-
-    const { data, error } = await query
-
-    if (error) {
-      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
+    const result = await fetchInstrumentNames('full', filterCode)
+    if (result.error) {
+      return NextResponse.json({ error: clientSafeMessage(result.error) }, { status: 500 })
     }
 
-    // Ambil seluruh kode untuk menentukan MIN(id) per kode secara global,
-    // bukan hanya dari hasil yang sedang difilter.
+    // Ambil seluruh kode untuk menentukan MIN(id) per kode secara global.
     const { data: allCodes } = await supabase
       .from('instrument_names')
       .select('id, code_alat')
@@ -45,8 +81,10 @@ export async function GET(request: NextRequest) {
 
     const representativeByCode = buildRepresentativeIdByCode(allCodes || [])
 
-    const mapped = (data || []).map((item: any) => {
-      const repId = item.code_alat ? representativeByCode.get(String(item.code_alat).trim()) ?? null : null
+    const mapped = result.rows.map((item) => {
+      const repId = item.code_alat
+        ? representativeByCode.get(String(item.code_alat).trim()) ?? null
+        : null
       return {
         id: item.id,
         name: item.name,
@@ -94,18 +132,30 @@ export async function POST(request: NextRequest) {
       resolvedCode = data?.code_alat ?? null
     }
 
-    const { data, error } = await supabase
-      .from('instrument_names')
-      .insert({ name: nameValue, code_alat: resolvedCode })
-      .select()
-      .single()
-
-    if (error) {
-      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
+    // Coba insert dengan 'name', fallback ke 'names' bila kolom tidak ada.
+    let inserted: any = null
+    let lastError: any = null
+    for (const textCol of INSTRUMENT_NAME_TEXT_COLUMNS) {
+      const { data, error } = await supabase
+        .from('instrument_names')
+        .insert({ [textCol]: nameValue, code_alat: resolvedCode })
+        .select()
+        .single()
+      if (!error) {
+        inserted = data
+        break
+      }
+      lastError = error
+      if (!isMissingColumnError(error, textCol)) break
     }
 
+    if (!inserted) {
+      return NextResponse.json({ error: clientSafeMessage(lastError) }, { status: 500 })
+    }
+
+    const normalized = normalizeInstrumentNameRow(inserted)
     return NextResponse.json(
-      { ...data, name: data.name, code_alat: data.code_alat },
+      { ...inserted, name: normalized.name, code_alat: normalized.code_alat },
       { status: 201 },
     )
   } catch (error) {

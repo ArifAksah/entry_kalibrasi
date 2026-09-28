@@ -8,6 +8,10 @@ import {
   type CalibratorWorkflowStage,
 } from '../../../../lib/dashboard/calibrator-workflow'
 import { validateCertificateSigningReadiness } from '../../../../lib/certificate-signing-readiness'
+import {
+  resolveInstrumentNameTextColumn,
+  pickNameText,
+} from '../../../../lib/instrument-names-schema'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -369,14 +373,19 @@ async function getStationDashboardInstruments(stationIds: number[]) {
   // Only fetch instrument names if we have valid IDs
   let nameData: any[] = []
   if (instrumentNameIds.length > 0) {
+    const nameTextCol = await resolveInstrumentNameTextColumn(supabaseAdmin)
     const { data: fetchedNameData, error: nameError } = await supabaseAdmin
       .from('instrument_names')
-      .select('id, name, code_alat')
+      .select(`id, ${nameTextCol}, code_alat`)
       .in('id', instrumentNameIds)
     if (nameError) {
       console.warn('Could not fetch instrument_names:', nameError.message)
     } else {
-      nameData = fetchedNameData || []
+      nameData = (fetchedNameData || []).map((row: any) => ({
+        id: row.id,
+        name: pickNameText(row),
+        code_alat: row.code_alat,
+      }))
     }
   }
 

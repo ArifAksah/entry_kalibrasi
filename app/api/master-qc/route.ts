@@ -4,6 +4,10 @@ import { clientSafeMessage } from '../../../lib/api-error'
 import { parseMasterQcPayload } from '../../../lib/master-qc-validation'
 import { normaliseUnit } from '../../../lib/unitConversion'
 import { requireRoles } from '../../../lib/api-auth'
+import {
+    resolveInstrumentNameTextColumn,
+    pickNameText,
+} from '../../../lib/instrument-names-schema'
 
 function getMasterQcErrorMessage(error: any) {
     if (error?.code === '23505') {
@@ -64,6 +68,7 @@ export async function GET(request: NextRequest) {
             }
 
             // Step 3: select only the QC limit for the sensor name and UUT unit.
+            const nameTextCol = await resolveInstrumentNameTextColumn(supabaseAdmin)
             const { data: qcRows, error: qcErr } = await supabaseAdmin
                 .from('master_qc')
                 .select(`
@@ -71,7 +76,7 @@ export async function GET(request: NextRequest) {
                     unit_id,
                     nilai_batas_koreksi,
                     catatan,
-                    instrument_names:instrument_name_id ( id, name ),
+                    instrument_names:instrument_name_id ( id, ${nameTextCol} ),
                     ref_unit ( id, unit )
                 `)
                 .eq('instrument_name_id', targetNameId)
@@ -136,9 +141,10 @@ export async function GET(request: NextRequest) {
         let unitsMap: Record<number, any> = {}
 
         if (instrumentNameIds.length > 0) {
+            const nameTextCol = await resolveInstrumentNameTextColumn(supabaseAdmin)
             const { data: namesData } = await supabaseAdmin
                 .from('instrument_names')
-                .select('id, name, code_alat')
+                .select(`id, ${nameTextCol}, code_alat`)
                 .in('id', instrumentNameIds)
 
             if (namesData) {
@@ -154,7 +160,7 @@ export async function GET(request: NextRequest) {
                         n.id,
                         {
                             id: n.id,
-                            name: n.name,
+                            name: pickNameText(n),
                             instrument_code: n.code_alat
                                 ? { id: representativeByCode.get(n.code_alat), code_alat: n.code_alat }
                                 : null
@@ -242,9 +248,10 @@ export async function POST(request: NextRequest) {
         }
 
         // Fetch related data for the inserted record
+        const postNameCol = await resolveInstrumentNameTextColumn(supabaseAdmin)
         const { data: nameData } = await supabaseAdmin
             .from('instrument_names')
-            .select('id, name, code_alat')
+            .select(`id, ${postNameCol}, code_alat`)
             .eq('id', data.instrument_name_id)
             .single()
 
@@ -262,7 +269,7 @@ export async function POST(request: NextRequest) {
             ...data,
             instrument_name: nameData ? {
                 id: nameData.id,
-                name: nameData.name,
+                name: pickNameText(nameData),
                 instrument_code: instrumentCode
             } : null,
             ref_unit: unitData

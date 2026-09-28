@@ -3,6 +3,10 @@ import { supabaseAdmin } from '../../../../lib/supabase'
 import { clientSafeMessage } from '../../../../lib/api-error'
 import { parseMasterQcPayload } from '../../../../lib/master-qc-validation'
 import { requireRoles } from '../../../../lib/api-auth'
+import {
+    resolveInstrumentNameTextColumn,
+    pickNameText,
+} from '../../../../lib/instrument-names-schema'
 
 function getMasterQcErrorMessage(error: any) {
     if (error?.code === '23505') {
@@ -81,9 +85,10 @@ export async function PUT(
         }
 
         // Fetch related data for the updated record
+        const nameTextCol = await resolveInstrumentNameTextColumn(supabaseAdmin)
         const { data: nameData } = await supabaseAdmin
             .from('instrument_names')
-            .select('id, name, code_alat')
+            .select(`id, ${nameTextCol}, code_alat`)
             .eq('id', data.instrument_name_id)
             .single()
 
@@ -101,7 +106,7 @@ export async function PUT(
             ...data,
             instrument_name: nameData ? {
                 id: nameData.id,
-                name: nameData.name,
+                name: pickNameText(nameData),
                 instrument_code: instrumentCode
             } : null,
             ref_unit: unitData

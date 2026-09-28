@@ -2,8 +2,29 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "../../../../lib/supabase";
 import { clientSafeMessage } from '../../../../lib/api-error'
 import { hasRenderCredentials, isRenderAuthorizedFor, requireRoles, unauthorized } from '../../../../lib/api-auth'
+import {
+  INSTRUMENT_NAME_TEXT_COLUMNS,
+  isMissingColumnError,
+  normalizeInstrumentNameRow,
+} from '../../../../lib/instrument-names-schema'
 
-// Schema production: instrument_names(id, name, code_alat, created_at).
+// Kompatibel dua schema: kolom teks nama bisa `name` (baru) atau `names` (lama).
+
+async function fetchOne(id: string) {
+  let lastError: any = null
+  for (const textCol of INSTRUMENT_NAME_TEXT_COLUMNS) {
+    const { data, error } = await supabase
+      .from("instrument_names")
+      .select(`id, ${textCol}, code_alat, created_at`)
+      .eq("id", id)
+      .single()
+    if (!error) return { row: normalizeInstrumentNameRow(data), error: null }
+    lastError = error
+    if (!isMissingColumnError(error, textCol)) break
+  }
+  return { row: null, error: lastError }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -13,17 +34,11 @@ export async function GET(
     if (hasRenderCredentials(request) && !await isRenderAuthorizedFor(request, { type: 'instrument-name', id })) {
       return unauthorized();
     }
-    const { data, error } = await supabase
-      .from("instrument_names")
-      .select("id, name, code_alat, created_at")
-      .eq("id", id)
-      .single();
-
-    if (error) {
+    const { row, error } = await fetchOne(id)
+    if (error || !row) {
       return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
     }
-
-    return NextResponse.json(data);
+    return NextResponse.json(row);
   } catch (error) {
     return NextResponse.json(
       { error: "Failed to fetch instrument name" },
@@ -60,21 +75,30 @@ export async function PUT(
       resolvedCode = codeRow?.code_alat ?? null;
     }
 
-    const updatePayload: any = { name: nameValue };
-    if (resolvedCode !== undefined) updatePayload.code_alat = resolvedCode;
+    // Coba update dengan 'name', fallback ke 'names'.
+    let updated: any = null
+    let lastError: any = null
+    for (const textCol of INSTRUMENT_NAME_TEXT_COLUMNS) {
+      const payload: any = { [textCol]: nameValue }
+      if (resolvedCode !== undefined) payload.code_alat = resolvedCode
 
-    const { data, error } = await supabase
-      .from("instrument_names")
-      .update(updatePayload)
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
+      const { data, error } = await supabase
+        .from("instrument_names")
+        .update(payload)
+        .eq("id", id)
+        .select()
+        .single()
+      if (!error) { updated = data; break }
+      lastError = error
+      if (!isMissingColumnError(error, textCol)) break
     }
 
-    return NextResponse.json(data);
+    if (!updated) {
+      return NextResponse.json({ error: clientSafeMessage(lastError) }, { status: 500 });
+    }
+
+    const normalized = normalizeInstrumentNameRow(updated)
+    return NextResponse.json({ ...updated, name: normalized.name, code_alat: normalized.code_alat });
   } catch (error) {
     return NextResponse.json(
       { error: "Failed to update instrument name" },
@@ -93,7 +117,7 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    // Cek referensi dari instrument lewat FK production: instrument.instrument_names_id.
+    // Cek referensi instrument lewat FK (nama kolom FK sama di kedua schema).
     const { count: instrumentCount } = await supabase
       .from("instrument")
       .select("id", { count: "exact", head: true })

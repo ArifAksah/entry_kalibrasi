@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { supabaseAdmin } from './supabase'
+import { resolveInstrumentNameTextColumn } from './instrument-names-schema'
 
 type AccessResult =
   | { allowed: true; user: any; role: string | null; certificate: any }
@@ -101,6 +102,7 @@ export async function authorizeCertificateAccess(request: NextRequest, certifica
   }
 
   const role = await getUserRole(user.id)
+  const nameTextCol = await resolveInstrumentNameTextColumn(supabaseAdmin)
   const { data: certificate, error: certificateError } = await supabaseAdmin
     .from('certificate')
     .select(`
@@ -114,7 +116,7 @@ export async function authorizeCertificateAccess(request: NextRequest, certifica
         serial_number,
         others,
         memiliki_lebih_satu,
-        instrument_names:instrument_names_id(id, name, code_alat)
+        instrument_names:instrument_names_id(id, ${nameTextCol}, code_alat)
       )
     `)
     .eq('id', certificateId)
