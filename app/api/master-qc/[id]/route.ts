@@ -83,19 +83,13 @@ export async function PUT(
         // Fetch related data for the updated record
         const { data: nameData } = await supabaseAdmin
             .from('instrument_names')
-            .select('id, names, instrument_code_id')
+            .select('id, name, code_alat')
             .eq('id', data.instrument_name_id)
             .single()
 
-        let instrumentCode = null
-        if (nameData?.instrument_code_id) {
-            const { data: codeData } = await supabaseAdmin
-                .from('instrument_code')
-                .select('id, code_alat')
-                .eq('id', nameData.instrument_code_id)
-                .single()
-            instrumentCode = codeData
-        }
+        const instrumentCode = nameData?.code_alat
+            ? { id: nameData.id, code_alat: nameData.code_alat }
+            : null
 
         const { data: unitData } = await supabaseAdmin
             .from('ref_unit')
@@ -107,7 +101,7 @@ export async function PUT(
             ...data,
             instrument_name: nameData ? {
                 id: nameData.id,
-                name: nameData.names,
+                name: nameData.name,
                 instrument_code: instrumentCode
             } : null,
             ref_unit: unitData

@@ -320,13 +320,13 @@ async function getInstruments() {
 async function getStationDashboardInstruments(stationIds: number[]) {
   if (stationIds.length === 0) return [] as StationDashboardInstrument[]
 
-  // Schema aktif memakai kolom `names` sebagai FK ke instrument_names.
+  // Schema production: instrument.instrument_names_id sebagai FK ke instrument_names.
   let instrumentData: any[] = []
   let hasInstrumentNamesId = true
   
   const { data: dataWithNamesId, error: errorWithNamesId } = await supabaseAdmin
     .from('instrument')
-    .select('id, manufacturer, type, serial_number, station_id, names')
+    .select('id, manufacturer, type, serial_number, station_id, instrument_names_id')
     .in('station_id', stationIds)
     .order('manufacturer', { ascending: true })
 
@@ -352,8 +352,8 @@ async function getStationDashboardInstruments(stationIds: number[]) {
   const instrumentIds = instruments.map((instrument: any) => Number(instrument.id)).filter((id: number) => Number.isFinite(id))
   const instrumentNameIds = Array.from(new Set(
     instruments
-      .filter((instrument: any) => hasInstrumentNamesId && instrument.names != null)
-      .map((instrument: any) => Number(instrument.names))
+      .filter((instrument: any) => hasInstrumentNamesId && instrument.instrument_names_id != null)
+      .map((instrument: any) => Number(instrument.instrument_names_id))
       .filter((id: number) => Number.isFinite(id))
   ))
 
@@ -397,7 +397,9 @@ async function getStationDashboardInstruments(stationIds: number[]) {
   })
 
     return instruments.map((instrument: any) => {
-    const instrumentName = hasInstrumentNamesId && instrument.names ? namesById.get(Number(instrument.names)) : null
+    const instrumentName = hasInstrumentNamesId && instrument.instrument_names_id
+      ? namesById.get(Number(instrument.instrument_names_id))
+      : null
     // Create a meaningful name from available fields
     const instrumentNameFromFields = [
       instrument.manufacturer,

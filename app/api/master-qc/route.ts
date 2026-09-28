@@ -46,16 +46,16 @@ export async function GET(request: NextRequest) {
 
             let targetNameId = sensor.sensor_name_id;
 
-            // Step 2: if sensor_name_id not available, fallback to instrument to find names (FK to instrument_names)
+            // Step 2: if sensor_name_id not available, fallback ke instrument.instrument_names_id (FK ke instrument_names)
             if (!targetNameId && sensor.instrument_id) {
                 const { data: instrument, error: iErr } = await supabaseAdmin
                     .from('instrument')
-                    .select('id, names')
+                    .select('id, instrument_names_id')
                     .eq('id', sensor.instrument_id)
                     .maybeSingle()
 
-                if (!iErr && instrument?.names) {
-                    targetNameId = instrument.names;
+                if (!iErr && instrument?.instrument_names_id) {
+                    targetNameId = instrument.instrument_names_id;
                 }
             }
 
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
                     unit_id,
                     nilai_batas_koreksi,
                     catatan,
-                    instrument_names:instrument_name_id ( id, names ),
+                    instrument_names:instrument_name_id ( id, name ),
                     ref_unit ( id, unit )
                 `)
                 .eq('instrument_name_id', targetNameId)
@@ -138,21 +138,14 @@ export async function GET(request: NextRequest) {
         if (instrumentNameIds.length > 0) {
             const { data: namesData } = await supabaseAdmin
                 .from('instrument_names')
-                .select('id, names, instrument_code_id')
+                .select('id, name, code_alat')
                 .in('id', instrumentNameIds)
 
             if (namesData) {
-                const codeIds = Array.from(new Set(namesData.map(n => n.instrument_code_id).filter(Boolean)))
-                let codesMap: Record<number, any> = {}
-
-                if (codeIds.length > 0) {
-                    const { data: codesData } = await supabaseAdmin
-                        .from('instrument_code')
-                        .select('id, code_alat')
-                        .in('id', codeIds)
-
-                    if (codesData) {
-                        codesMap = Object.fromEntries(codesData.map(c => [c.id, c]))
+                const representativeByCode = new Map<string, number>()
+                for (const row of namesData) {
+                    if (row.code_alat && !representativeByCode.has(row.code_alat)) {
+                        representativeByCode.set(row.code_alat, Number(row.id))
                     }
                 }
 
@@ -161,8 +154,10 @@ export async function GET(request: NextRequest) {
                         n.id,
                         {
                             id: n.id,
-                            name: n.names,
-                            instrument_code: n.instrument_code_id ? codesMap[n.instrument_code_id] : null
+                            name: n.name,
+                            instrument_code: n.code_alat
+                                ? { id: representativeByCode.get(n.code_alat), code_alat: n.code_alat }
+                                : null
                         }
                     ])
                 )
@@ -249,19 +244,13 @@ export async function POST(request: NextRequest) {
         // Fetch related data for the inserted record
         const { data: nameData } = await supabaseAdmin
             .from('instrument_names')
-            .select('id, names, instrument_code_id')
+            .select('id, name, code_alat')
             .eq('id', data.instrument_name_id)
             .single()
 
-        let instrumentCode = null
-        if (nameData?.instrument_code_id) {
-            const { data: codeData } = await supabaseAdmin
-                .from('instrument_code')
-                .select('id, code_alat')
-                .eq('id', nameData.instrument_code_id)
-                .single()
-            instrumentCode = codeData
-        }
+        const instrumentCode = nameData?.code_alat
+            ? { id: nameData.id, code_alat: nameData.code_alat }
+            : null
 
         const { data: unitData } = await supabaseAdmin
             .from('ref_unit')
@@ -273,7 +262,7 @@ export async function POST(request: NextRequest) {
             ...data,
             instrument_name: nameData ? {
                 id: nameData.id,
-                name: nameData.names,
+                name: nameData.name,
                 instrument_code: instrumentCode
             } : null,
             ref_unit: unitData

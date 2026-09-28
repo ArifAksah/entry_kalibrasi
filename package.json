@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
+    "dev": "next dev --webpack --hostname 127.0.0.1",
+    "supabase:local:start": "sg docker -c 'docker compose --project-directory .supabase-local --env-file .supabase-local/.env -f .supabase-local/docker-compose.yml -f .supabase-local/docker-compose.local.yml up -d'",
+    "supabase:local:stop": "sg docker -c 'docker compose --project-directory .supabase-local --env-file .supabase-local/.env -f .supabase-local/docker-compose.yml -f .supabase-local/docker-compose.local.yml down'",
+    "supabase:local:status": "sg docker -c 'docker compose --project-directory .supabase-local --env-file .supabase-local/.env -f .supabase-local/docker-compose.yml -f .supabase-local/docker-compose.local.yml ps'",
     "build": "node scripts/check-public-supabase-key.mjs && next build --webpack",
     "start": "next start",
     "lint": "eslint .",

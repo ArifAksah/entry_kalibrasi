@@ -128,3 +128,13 @@ tsbuildinfo
 
 # Station dataset inputs (ingest scripts only; large/binary, not part of app)
 /scripts/data/
+# Local self-hosted Supabase runtime (developer machine only)
+.supabase-local/
+
+# Local study/reference artifacts (large binary + ad-hoc notes)
+*.xlsx
+/DEMO_QC_CHECK_*.md
+/DOKUMENTASI_MODE_QC_CHECK.md
+/RUMUS_DAN_ALUR_QC_CHECK.md
+/scripts/backfill-via-pgmeta.mjs
+/scripts/simulate-workbook-parity.ts

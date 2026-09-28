@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "../../../../lib/supabase";
-import { InstrumentNameUpdate } from "../../../../lib/supabase";
 import { clientSafeMessage } from '../../../../lib/api-error'
 import { hasRenderCredentials, isRenderAuthorizedFor, requireRoles, unauthorized } from '../../../../lib/api-auth'
 
+// Schema production: instrument_names(id, name, code_alat, created_at).
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -15,7 +15,7 @@ export async function GET(
     }
     const { data, error } = await supabase
       .from("instrument_names")
-      .select("*")
+      .select("id, name, code_alat, created_at")
       .eq("id", id)
       .single();
 
@@ -49,10 +49,19 @@ export async function PUT(
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    const updatePayload: any = { names: nameValue };
-    if (code_alat !== undefined) updatePayload.code_alat = code_alat;
-    if (instrument_code_id !== undefined)
-      updatePayload.instrument_code_id = instrument_code_id;
+    // Resolve kode: eksplisit dari code_alat, atau turunkan dari instrument_code_id.
+    let resolvedCode: string | null | undefined = code_alat;
+    if (resolvedCode === undefined && instrument_code_id) {
+      const { data: codeRow } = await supabase
+        .from('instrument_names')
+        .select('code_alat')
+        .eq('id', instrument_code_id)
+        .maybeSingle();
+      resolvedCode = codeRow?.code_alat ?? null;
+    }
+
+    const updatePayload: any = { name: nameValue };
+    if (resolvedCode !== undefined) updatePayload.code_alat = resolvedCode;
 
     const { data, error } = await supabase
       .from("instrument_names")
@@ -65,10 +74,7 @@ export async function PUT(
       return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
     }
 
-    // Map 'names' to 'name' for frontend compatibility
-    const mapped = { ...data, name: data.names ?? data.name };
-
-    return NextResponse.json(mapped);
+    return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json(
       { error: "Failed to update instrument name" },
@@ -87,11 +93,11 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    // Check if any instruments still reference this name
+    // Cek referensi dari instrument lewat FK production: instrument.instrument_names_id.
     const { count: instrumentCount } = await supabase
       .from("instrument")
       .select("id", { count: "exact", head: true })
-      .eq("names", id);
+      .eq("instrument_names_id", id);
 
     if (instrumentCount && instrumentCount > 0) {
       return NextResponse.json(

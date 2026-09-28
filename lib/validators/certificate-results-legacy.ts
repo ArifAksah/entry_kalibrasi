@@ -187,6 +187,9 @@ function convertLegacyEntry(raw: unknown, index: number): SensorResultV1 {
       uut: asString(entry.unitUut ?? entry.unit_uut),
       std: asString(entry.unitStd ?? entry.unit_std),
     },
+    ...((entry as any).tippingBucket
+      ? { tipping_bucket: (entry as any).tippingBucket }
+      : {}),
   }
 
   // --- display ----------------------------------------------------------

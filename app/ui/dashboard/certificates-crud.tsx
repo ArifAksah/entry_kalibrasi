@@ -27,6 +27,7 @@ import { read, utils } from 'xlsx'
 import QCDataModal from '../../../components/features/QCDataModal'
 import UncertaintyModal from '../../../components/features/UncertaintyModal'
 import LHKSReport from '../../../components/features/LHKSReport'
+import TippingBucketForm from '../../../components/features/TippingBucketForm'
 import {
   calculateCalibrationResult,
   isPyranometer,
@@ -56,6 +57,10 @@ import {
   filterStandardCertificates,
   isStandardCertificateSelectionValid,
 } from '../../../lib/standard-certificate-filter'
+import {
+  isTippingBucketSensor,
+  type TippingBucketFormData,
+} from '../../../lib/tipping-bucket'
 
 // Keep TrashIcon for backward compatibility in this file
 
@@ -970,13 +975,6 @@ const CertificatesCRUD: React.FC = () => {
   const [viewingCorrectionStandard, setViewingCorrectionStandard] =
     useState<CertStandard | null>(null)
 
-  // Global Standard Instrument Selection
-  const [globalStandardInstrumentId, setGlobalStandardInstrumentId] = useState<
-    number | null
-  >(null)
-  const [globalStandardCertificateNumber, setGlobalStandardCertificateNumber] =
-    useState<string | null>(null)
-
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage] = useState(10)
@@ -1029,6 +1027,7 @@ const CertificatesCRUD: React.FC = () => {
     unit: string
     value: string
     extraValues?: string[]
+    uncertaintyMeta?: any
   }
   type TableSection = { title: string; headers?: string[]; rows: TableRow[] }
   type ResultItem = {
@@ -1053,6 +1052,7 @@ const CertificatesCRUD: React.FC = () => {
     standardCertificateId?: number | null
     unitUut?: string | null // unit override for UUT data on this sheet
     unitStd?: string | null // unit override for STD data on this sheet
+    tippingBucket?: TippingBucketFormData
   }
 
   const createDefaultNotesForm = () => ({
@@ -1278,6 +1278,9 @@ const CertificatesCRUD: React.FC = () => {
   const [envDraft, setEnvDraft] = useState<KV[]>([])
   const [tableEditIndex, setTableEditIndex] = useState<number | null>(null)
   const [tableDraft, setTableDraft] = useState<TableSection[]>([])
+  const [tippingBucketIndex, setTippingBucketIndex] = useState<number | null>(
+    null,
+  )
 
   // Raw Data State
   const [rawData, setRawData] = useState<{ name: string; data: any[][] }[]>([])
@@ -1484,6 +1487,28 @@ const CertificatesCRUD: React.FC = () => {
 
     try {
       const currentResult = results[tableEditIndex]
+      const selectedUutSensor = sensors.find(
+        (sensor) => sensor.id === currentResult.sensorId,
+      )
+      const selectedCanonicalName = selectedUutSensor?.sensor_name_id
+        ? instrumentNames.find(
+            (name) => name.id === selectedUutSensor.sensor_name_id,
+          )?.name
+        : null
+      if (
+        isTippingBucketSensor(
+          {
+            ...selectedUutSensor,
+            instrument_code: (form as any).instrument_code,
+          },
+          selectedCanonicalName,
+          currentResult.notesForm?.calibration_methode,
+        )
+      ) {
+        setTableEditIndex(null)
+        setTippingBucketIndex(tableEditIndex)
+        return
+      }
       const sessionId = (currentResult as any)?.session_id
 
       if (!sessionId) {
@@ -2846,38 +2871,9 @@ const CertificatesCRUD: React.FC = () => {
 
       setResults(enrichedResults as unknown as ResultItem[])
 
-      // Restore global standard instrument from first result (if available)
+      // Session metadata masih mengikuti result pertama. Referensi alat standar
+      // tetap disimpan pada masing-masing result/sensor.
       const firstResult = enrichedResults[0] as any
-
-      // First try: get from enriched results
-      let restoredStdInstrumentId = firstResult?.standardInstrumentId ?? null
-      let restoredStdCertNumber = firstResult?.standardCertificateNumber ?? null
-
-      // Last-resort recovery for older certificates whose standard_instruments
-      // was damaged by the previous QC-save round-trip (instrument_id /
-      // certificate_no stripped). Only standardCertificateId survives, so
-      // re-derive the instrument + certificate number from it.
-      if (!restoredStdInstrumentId || !restoredStdCertNumber) {
-        const fallbackCert = firstResult?.standardCertificateId
-          ? (standardCerts.find(
-              (c: any) =>
-                Number(c.id) === Number(firstResult.standardCertificateId),
-            ) ?? null)
-          : null
-        if (fallbackCert) {
-          if (!restoredStdInstrumentId) {
-            restoredStdInstrumentId = resolveStandardInstrumentId(
-              fallbackCert.sensor_id,
-            )
-          }
-          if (!restoredStdCertNumber) {
-            restoredStdCertNumber = fallbackCert.no_certificate ?? null
-          }
-        }
-      }
-
-      setGlobalStandardInstrumentId(restoredStdInstrumentId ?? null)
-      setGlobalStandardCertificateNumber(restoredStdCertNumber ?? null)
 
       // Restore sessionDetails from first result
       if (
@@ -3061,8 +3057,6 @@ const CertificatesCRUD: React.FC = () => {
         notes: '',
       })
       setUseStationAddressForPlace(false)
-      setGlobalStandardInstrumentId(null)
-      setGlobalStandardCertificateNumber(null)
       setInstrumentPreview({})
       setForm({
         no_certificate:
@@ -3110,6 +3104,7 @@ const CertificatesCRUD: React.FC = () => {
   const closeModal = () => {
     setIsModalOpen(false)
     setEditing(null)
+    setTippingBucketIndex(null)
     setRawData([])
     setRawDataFilename(null)
   }
@@ -3248,10 +3243,7 @@ const CertificatesCRUD: React.FC = () => {
       return
     }
 
-    const hasStandardSelection =
-      globalStandardInstrumentId != null ||
-      globalStandardCertificateNumber != null ||
-      results.some(
+    const hasStandardSelection = results.some(
         (result) =>
           result.standardInstrumentId != null ||
           result.standardCertificateNumber != null ||
@@ -3263,8 +3255,8 @@ const CertificatesCRUD: React.FC = () => {
         return !isStandardCertificateSelectionValid(
           standardCerts,
           standardInstruments.length > 0 ? standardInstruments : instruments,
-          result?.standardInstrumentId ?? globalStandardInstrumentId,
-          result?.standardCertificateNumber ?? globalStandardCertificateNumber,
+          result?.standardInstrumentId,
+          result?.standardCertificateNumber,
           result?.standardCertificateId,
         )
       })
@@ -5119,7 +5111,7 @@ const CertificatesCRUD: React.FC = () => {
                   </h3>
 
                   {/* 0. Pilih Instrument (Parent) */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                  <div className="grid grid-cols-1 gap-6 mb-6">
                     {/* Left Column: UUT Instrument */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative group hover:border-[#1e377c]/30 transition-all">
                       <div className="absolute top-0 left-0 w-1 h-full bg-[#1e377c] rounded-l-xl"></div>
@@ -5197,132 +5189,6 @@ const CertificatesCRUD: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Right Column: Global Standard Instrument Selection */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative group hover:border-green-200 transition-all">
-                      <div className="absolute top-0 left-0 w-1 h-full bg-green-600 rounded-l-xl"></div>
-                      <div className="flex items-center justify-between mb-4 pl-2">
-                        <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                          <CertificateIcon className="w-5 h-5 text-green-600" />
-                          Alat Standar
-                        </h3>
-                      </div>
-
-                      <div className="space-y-4">
-                        {/* Step 1: Instrument Standar (Global) */}
-                        <div className="space-y-1">
-                          <label className="text-xs font-semibold text-gray-600">
-                            1. Pilih Instrument Standar *
-                          </label>
-                          <SearchableDropdown
-                            value={globalStandardInstrumentId}
-                            onChange={(val) => {
-                              const instrumentId = Number(val)
-                              setGlobalStandardInstrumentId(instrumentId)
-                              setGlobalStandardCertificateNumber(null)
-                              setResults((prev) =>
-                                prev.map((r) => ({
-                                  ...r,
-                                  standardInstrumentId: null,
-                                  standardCertificateNumber: null,
-                                  standardCertificateId: null,
-                                  notesForm: {
-                                    ...r.notesForm,
-                                    standardInstruments: [],
-                                    traceable_to_si_through: '',
-                                  },
-                                })),
-                              )
-                            }}
-                            options={standardInstruments.map((i) => {
-                              const baseName =
-                                (i as any).instrument_names?.name ||
-                                instrumentNames.find(
-                                  (n) =>
-                                    n.id === (i as any).instrument_names_id,
-                                )?.name ||
-                                (i as any).name_alias ||
-                                (i as any).name ||
-                                'Unknown'
-                              const alias = (i as any).name_alias
-                              const aliasPart =
-                                alias &&
-                                String(alias).trim() &&
-                                alias !== baseName
-                                  ? ` — ${alias}`
-                                  : ''
-                              return {
-                                id: i.id,
-                                name: `${baseName}${aliasPart} (${i.manufacturer || '-'} ${i.type || '-'} • SN: ${(i as any).serial_number || '-'})`,
-                                station_id: i.station?.name || '',
-                              }
-                            })}
-                            placeholder="Pilih Instrument Standar..."
-                            searchPlaceholder="Cari Instrument Standar..."
-                          />
-                        </div>
-
-                        {/* Step 2: Nomor Sertifikat (Global) */}
-                        <div
-                          className={`space-y-1 transition-opacity ${!globalStandardInstrumentId ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}
-                        >
-                          <label className="text-xs font-semibold text-gray-600">
-                            2. Pilih Nomor Sertifikat *
-                          </label>
-                          <SearchableDropdown
-                            value={globalStandardCertificateNumber}
-                            onChange={(val) => {
-                              const certificateNumber = String(val).trim()
-                              setGlobalStandardCertificateNumber(certificateNumber)
-                              setResults((prev) =>
-                                prev.map((r) => ({
-                                  ...r,
-                                  standardInstrumentId: null,
-                                  standardCertificateNumber: null,
-                                  standardCertificateId: null,
-                                  notesForm: {
-                                    ...r.notesForm,
-                                    standardInstruments: [],
-                                    traceable_to_si_through: '',
-                                  },
-                                })),
-                              )
-                            }}
-                            options={(() => {
-                              if (!globalStandardInstrumentId) return []
-                              // Get sensor IDs that belong to the selected standard instrument
-                              // Look in standardInstruments first (unfiltered), fallback to instruments
-                              const certsForInst = filterStandardCertificates(
-                                standardCerts,
-                                standardInstruments.length > 0
-                                  ? standardInstruments
-                                  : instruments,
-                                globalStandardInstrumentId,
-                              )
-                              // Group by certificate number (normalize by trimming)
-                              const uniqueNos = Array.from(
-                                new Set(
-                                  certsForInst.map((c) =>
-                                    c.no_certificate.trim(),
-                                  ),
-                                ),
-                              )
-                              const computedOptions = uniqueNos.map((no) => ({
-                                id: no,
-                                name: no,
-                                station_id: `${certsForInst.find((c) => c.no_certificate.trim() === no)?.calibration_date || ''}`,
-                              }))
-                              return computedOptions
-                            })()}
-                            placeholder={
-                              globalStandardInstrumentId
-                                ? 'Pilih Nomor Sertifikat...'
-                                : 'Pilih Instrument Terlebih Dahulu'
-                            }
-                            searchPlaceholder="Cari Nomor Sertifikat..."
-                          />
-                        </div>
-                      </div>
-                    </div>
                   </div>
 
                   {/* Data Mentah Upload Positioned Here (Moved from Bottom) */}
@@ -5764,6 +5630,59 @@ const CertificatesCRUD: React.FC = () => {
                                   {/* ... more inputs can go here, simplified for now ... */}
                                 </div>
                               </div>
+
+                              {(() => {
+                                const activeSensor = sensors.find(
+                                  (sensor) => sensor.id === result.sensorId,
+                                )
+                                const canonicalName = activeSensor?.sensor_name_id
+                                  ? instrumentNames.find(
+                                      (name) => name.id === activeSensor.sensor_name_id,
+                                    )?.name
+                                  : null
+                                const isRainGauge = isTippingBucketSensor(
+                                  {
+                                    ...activeSensor,
+                                    instrument_code:
+                                      (form as any).instrument_code,
+                                  },
+                                  canonicalName,
+                                  result.notesForm?.calibration_methode,
+                                )
+                                if (!isRainGauge) return null
+
+                                return (
+                                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                      <div>
+                                        <p className="text-sm font-bold text-blue-950">
+                                          Kalibrasi Tipping Bucket / RR
+                                        </p>
+                                        <p className="text-xs text-blue-700">
+                                          Input diameter corong dan pembacaan UUT tanpa upload raw data.
+                                        </p>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setTippingBucketIndex(resultIndex)
+                                        }
+                                        className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-800"
+                                      >
+                                        {result.tippingBucket
+                                          ? 'Edit Input RR'
+                                          : 'Input Kalibrasi RR'}
+                                      </button>
+                                    </div>
+                                    {result.tippingBucket &&
+                                      result.table?.length > 0 && (
+                                        <p className="mt-2 text-xs font-semibold text-emerald-700">
+                                          Hasil RR sudah dihitung dan siap disimpan ke sertifikat.
+                                        </p>
+                                      )}
+                                  </div>
+                                )
+                              })()}
                             </div>
                           </div>
 
@@ -5778,12 +5697,109 @@ const CertificatesCRUD: React.FC = () => {
                             </div>
 
                             <div className="space-y-4">
-                              {/* Step 3: Pilih Sensor Standar (Now the ONLY step here) */}
+                              <div className="space-y-1">
+                                <label className="text-xs font-semibold text-gray-600">
+                                  1. Pilih Instrument Standar *
+                                </label>
+                                <SearchableDropdown
+                                  value={result.standardInstrumentId || null}
+                                  onChange={(val) => {
+                                    const instrumentId = val ? Number(val) : null
+                                    updateResult(resultIndex, {
+                                      standardInstrumentId: instrumentId,
+                                      standardCertificateNumber: null,
+                                      standardCertificateId: null,
+                                      notesForm: {
+                                        ...result.notesForm,
+                                        standardInstruments: [],
+                                        traceable_to_si_through: '',
+                                      },
+                                    })
+                                  }}
+                                  options={standardInstruments.map((instrument) => {
+                                    const baseName =
+                                      (instrument as any).instrument_names?.name ||
+                                      instrumentNames.find(
+                                        (name) =>
+                                          name.id ===
+                                          (instrument as any).instrument_names_id,
+                                      )?.name ||
+                                      (instrument as any).name_alias ||
+                                      (instrument as any).name ||
+                                      'Unknown'
+                                    return {
+                                      id: instrument.id,
+                                      name: `${baseName} (${instrument.manufacturer || '-'} ${instrument.type || '-'} • SN: ${(instrument as any).serial_number || '-'})`,
+                                      station_id: instrument.station?.name || '',
+                                    }
+                                  })}
+                                  placeholder="Pilih Instrument Standar..."
+                                  searchPlaceholder="Cari Instrument Standar..."
+                                />
+                              </div>
+
                               <div
-                                className={`space-y-1 ${!globalStandardInstrumentId || !globalStandardCertificateNumber ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}
+                                className={`space-y-1 ${!result.standardInstrumentId ? 'opacity-50 pointer-events-none' : ''}`}
                               >
                                 <label className="text-xs font-semibold text-gray-600">
-                                  Pilih Sensor Standar *
+                                  2. Pilih Nomor Sertifikat *
+                                </label>
+                                <SearchableDropdown
+                                  value={result.standardCertificateNumber || null}
+                                  onChange={(val) =>
+                                    updateResult(resultIndex, {
+                                      standardCertificateNumber: val
+                                        ? String(val).trim()
+                                        : null,
+                                      standardCertificateId: null,
+                                      notesForm: {
+                                        ...result.notesForm,
+                                        standardInstruments: [],
+                                        traceable_to_si_through: '',
+                                      },
+                                    })
+                                  }
+                                  options={(() => {
+                                    if (!result.standardInstrumentId) return []
+                                    const certsForInstrument =
+                                      filterStandardCertificates(
+                                        standardCerts,
+                                        standardInstruments.length > 0
+                                          ? standardInstruments
+                                          : instruments,
+                                        result.standardInstrumentId,
+                                      )
+                                    return Array.from(
+                                      new Set(
+                                        certsForInstrument.map((certificate) =>
+                                          certificate.no_certificate.trim(),
+                                        ),
+                                      ),
+                                    ).map((certificateNumber) => ({
+                                      id: certificateNumber,
+                                      name: certificateNumber,
+                                      station_id:
+                                        certsForInstrument.find(
+                                          (certificate) =>
+                                            certificate.no_certificate.trim() ===
+                                            certificateNumber,
+                                        )?.calibration_date || '',
+                                    }))
+                                  })()}
+                                  placeholder={
+                                    result.standardInstrumentId
+                                      ? 'Pilih Nomor Sertifikat...'
+                                      : 'Pilih Instrument Standar Dahulu'
+                                  }
+                                  searchPlaceholder="Cari Nomor Sertifikat..."
+                                />
+                              </div>
+
+                              <div
+                                className={`space-y-1 ${!result.standardInstrumentId || !result.standardCertificateNumber ? 'opacity-50 pointer-events-none' : ''}`}
+                              >
+                                <label className="text-xs font-semibold text-gray-600">
+                                  3. Pilih Sensor Standar *
                                 </label>
                                 <SearchableDropdown
                                   value={result.standardCertificateId || null}
@@ -5805,11 +5821,6 @@ const CertificatesCRUD: React.FC = () => {
                                       ''
 
                                     updateResult(resultIndex, {
-                                      // Sync global values into this result item ensures data integrity
-                                      standardInstrumentId:
-                                        globalStandardInstrumentId,
-                                      standardCertificateNumber:
-                                        globalStandardCertificateNumber,
                                       standardCertificateId: certId,
                                       notesForm: {
                                         ...result.notesForm,
@@ -5828,8 +5839,8 @@ const CertificatesCRUD: React.FC = () => {
                                   }}
                                   options={(() => {
                                     if (
-                                      !globalStandardInstrumentId ||
-                                      !globalStandardCertificateNumber
+                                      !result.standardInstrumentId ||
+                                      !result.standardCertificateNumber
                                     )
                                       return []
 
@@ -5839,8 +5850,8 @@ const CertificatesCRUD: React.FC = () => {
                                         standardInstruments.length > 0
                                           ? standardInstruments
                                           : instruments,
-                                        globalStandardInstrumentId,
-                                        globalStandardCertificateNumber,
+                                        result.standardInstrumentId,
+                                        result.standardCertificateNumber,
                                       )
 
                                     // Helper: does a cert row have real (non-empty) calibration data?
@@ -5914,17 +5925,16 @@ const CertificatesCRUD: React.FC = () => {
                                   })()}
 
                                   placeholder={
-                                    globalStandardCertificateNumber
+                                    result.standardCertificateNumber
                                       ? 'Pilih Sensor dari Sertifikat ini...'
-                                      : 'Pilih Alat Standar & Sertifikat di Atas'
+                                      : 'Pilih Instrument & Sertifikat Standar Dahulu'
                                   }
                                   searchPlaceholder="Cari Sensor..."
                                 />
-                                {(!globalStandardInstrumentId ||
-                                  !globalStandardCertificateNumber) && (
+                                {(!result.standardInstrumentId ||
+                                  !result.standardCertificateNumber) && (
                                   <p className="text-[10px] text-red-500 italic mt-1">
-                                    * Silakan pilih Instrument Standar & Nomor
-                                    Sertifikat di bagian atas terlebih dahulu.
+                                    * Pilih Instrument Standar dan Nomor Sertifikat untuk sensor ini.
                                   </p>
                                 )}
                               </div>
@@ -6125,9 +6135,7 @@ const CertificatesCRUD: React.FC = () => {
                                     </span>
                                     <span className="font-semibold text-gray-700">
                                       {(() => {
-                                        const stdId =
-                                          result.standardInstrumentId ??
-                                          globalStandardInstrumentId
+                                        const stdId = result.standardInstrumentId
                                         if (!stdId) return '-'
                                         const inst = instruments.find(
                                           (i) => i.id === stdId,
@@ -6145,9 +6153,7 @@ const CertificatesCRUD: React.FC = () => {
                                     </span>
                                     <span className="font-semibold text-gray-700">
                                       {(() => {
-                                        const stdId =
-                                          result.standardInstrumentId ??
-                                          globalStandardInstrumentId
+                                        const stdId = result.standardInstrumentId
                                         const inst = instruments.find(
                                           (i) => i.id === stdId,
                                         )
@@ -6168,9 +6174,7 @@ const CertificatesCRUD: React.FC = () => {
                                     </span>
                                     <span className="font-semibold text-gray-700">
                                       {(() => {
-                                        const stdId =
-                                          result.standardInstrumentId ??
-                                          globalStandardInstrumentId
+                                        const stdId = result.standardInstrumentId
                                         const inst = instruments.find(
                                           (i) => i.id === stdId,
                                         )
@@ -6191,9 +6195,7 @@ const CertificatesCRUD: React.FC = () => {
                                     </span>
                                     <span className="font-semibold text-gray-700">
                                       {(() => {
-                                        const stdId =
-                                          result.standardInstrumentId ??
-                                          globalStandardInstrumentId
+                                        const stdId = result.standardInstrumentId
                                         const inst = instruments.find(
                                           (i) => i.id === stdId,
                                         )
@@ -6356,6 +6358,14 @@ const CertificatesCRUD: React.FC = () => {
                       </div>
                     )
                   })}
+                  <button
+                    type="button"
+                    onClick={addResult}
+                    className="mb-6 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-blue-300 bg-blue-50/50 px-4 py-3 text-sm font-bold text-blue-800 transition-colors hover:border-blue-500 hover:bg-blue-50"
+                  >
+                    <PlusIcon className="h-4 w-4" />
+                    Tambah Sensor UUT
+                  </button>
                 </div>
                 {/* end frozen wrapper */}
 
@@ -7906,6 +7916,87 @@ const CertificatesCRUD: React.FC = () => {
         </div>
       )}
 
+      {tippingBucketIndex !== null &&
+        (() => {
+          const result = results[tippingBucketIndex]
+          const activeSensor = sensors.find(
+            (sensor) => sensor.id === result?.sensorId,
+          )
+          const selectedStandard = standardCerts.find(
+            (certificate) => certificate.id === result?.standardCertificateId,
+          )
+          const instrument = instruments.find(
+            (item) => item.id === form.instrument,
+          )
+          const isAnalog = (instrument?.instrument_type_id ?? 1) === 2
+          const defaultCmcMm = isAnalog ? 0.29 : 0.19
+
+          return (
+            <TippingBucketForm
+              isOpen
+              onClose={() => setTippingBucketIndex(null)}
+              sensor={{ ...activeSensor, ...result?.sensorDetails }}
+              standardCertificate={selectedStandard}
+              initialData={result?.tippingBucket}
+              defaultCmcMm={defaultCmcMm}
+              onSubmit={(data, calculation) => {
+                if (!result) return
+                const uncertaintyMeta = {
+                  raw_u95: calculation.rawU95Mm,
+                  reported_u95: calculation.reportedU95Mm,
+                  reporting_rule: 'MAX_U95_CMC',
+                  cmc_profile_id: null,
+                  cmc_profile_code: isAnalog
+                    ? 'CMC-RR-ANALOG'
+                    : 'CMC-RR-DIGITAL',
+                  cmc_version: null,
+                  cmc_value_native: data.cmcMm ?? null,
+                  cmc_unit_native: 'mm',
+                  cmc_value_output: data.cmcMm ?? null,
+                }
+
+                updateResult(tippingBucketIndex, {
+                  tippingBucket: data,
+                  unitUut: 'mm',
+                  unitStd: 'mm',
+                  sensorDetails: {
+                    ...result.sensorDetails,
+                    funnel_diameter: calculation.averageFunnelDiameter,
+                    funnel_diameter_unit: 'mm',
+                    funnel_area: calculation.funnelAreaMm2,
+                    funnel_area_unit: 'mm2',
+                    volume_per_tip: String(data.volumePerTip),
+                    volume_per_tip_unit: 'ml',
+                  },
+                  table: [
+                    {
+                      title: 'Hasil Kalibrasi / Calibration Result',
+                      headers: [
+                        'Penunjukan Alat / Instrument Reading (mm)',
+                        'Koreksi / Correction (%)',
+                        'Ketidakpastian / Uncertainty (%)',
+                      ],
+                      rows: [
+                        {
+                          key: String(calculation.averageUut),
+                          unit: String(calculation.averageCorrectionPercent),
+                          value: String(calculation.reportedU95Percent),
+                          uncertaintyMeta,
+                          extraValues: [],
+                        },
+                      ],
+                    },
+                  ],
+                })
+                setTippingBucketIndex(null)
+                showSuccess(
+                  'Perhitungan Tipping Bucket berhasil diisi ke tabel sertifikat.',
+                )
+              }}
+            />
+          )
+        })()}
+
       {/* QC Modal */}
       {qcModalCertificate && (
         <QCDataModal
@@ -7934,6 +8025,19 @@ const CertificatesCRUD: React.FC = () => {
                 r.standardCertificateId ?? r.standard_certificate_id ?? null,
             }),
           )}
+          tippingBucketEntries={resultsToLegacyView(
+            qcModalCertificate.results,
+          )
+            .filter((r: any) => r.tippingBucket)
+            .map((r: any) => ({
+              sensorId: r.sensorId ?? r.sensor_id ?? null,
+              sensorLabel:
+                r.sensorDetails?.name ||
+                r.notesForm?.calibration_methode ||
+                null,
+              standardLabel: r.standardCertificateNumber ?? null,
+              tippingBucket: r.tippingBucket,
+            }))}
           certificateStatus={qcModalCertificate.status}
           onCalculateSaved={async (updates) => {
             const results = resultsToLegacyView(qcModalCertificate.results)

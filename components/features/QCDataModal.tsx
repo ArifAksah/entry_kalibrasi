@@ -43,6 +43,9 @@ import {
   parseFiniteMeasurement,
 } from '../../lib/measurement-rows'
 import { LoadingState, Spinner } from '../ui/Loading'
+import TippingBucketPanel, {
+  type TippingBucketPanelEntry,
+} from './TippingBucketPanel'
 
 interface RawDataRow {
   id: number
@@ -89,6 +92,11 @@ interface QCDataModalProps {
    * Jika undefined → default permissive (tombol tampil) untuk backward compat.
    */
   certificateStatus?: string | null
+  /**
+   * Hasil kalibrasi Tipping Bucket / RR (read-only, dari `setup.tipping_bucket`).
+   * Bila ada, QC Check menampilkan toggle "Tipping Bucket (RR)".
+   */
+  tippingBucketEntries?: TippingBucketPanelEntry[]
 }
 
 const QCDataModal: React.FC<QCDataModalProps> = ({
@@ -104,6 +112,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
   resultEntries = [],
   onCalculateSaved,
   certificateStatus,
+  tippingBucketEntries = [],
 }) => {
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<RawDataRow[]>([])
@@ -112,6 +121,13 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
   const [isSavingToTable, setIsSavingToTable] = useState(false)
   const [hasSavedToTable, setHasSavedToTable] = useState(false)
   const [showCalculationAudit, setShowCalculationAudit] = useState(false)
+  /** 'raw' = QC dari data mentah, 'rr' = panel read-only Tipping Bucket. */
+  const [viewMode, setViewMode] = useState<'raw' | 'rr'>('raw')
+
+  useEffect(() => {
+    if (tippingBucketEntries.length > 0) setViewMode('rr')
+    else setViewMode('raw')
+  }, [tippingBucketEntries.length, isOpen])
 
   // Per UUT sensor: QC limits from master_qc
   const [qcLimits, setQcLimits] = useState<Record<string, QCLimit | null>>({})
@@ -1271,7 +1287,28 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
         {/* Content */}
         <div className="flex-1 overflow-hidden flex flex-col bg-gray-100">
-          {loading ? (
+          {tippingBucketEntries.length > 0 && (
+            <div className="flex gap-1 border-b border-gray-200 bg-white px-6 pt-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setViewMode('rr')}
+                className={`rounded-t-lg border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${viewMode === 'rr' ? 'border-[#1e377c] text-[#1e377c] bg-blue-50/50' : 'border-transparent text-gray-500 hover:bg-gray-50'}`}
+              >
+                Tipping Bucket (RR)
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('raw')}
+                className={`rounded-t-lg border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${viewMode === 'raw' ? 'border-[#1e377c] text-[#1e377c] bg-blue-50/50' : 'border-transparent text-gray-500 hover:bg-gray-50'}`}
+              >
+                Raw Data (QC)
+              </button>
+            </div>
+          )}
+
+          {viewMode === 'rr' && tippingBucketEntries.length > 0 ? (
+            <TippingBucketPanel entries={tippingBucketEntries} />
+          ) : loading ? (
             <LoadingState
               label="Memuat data…"
               tone="slate"

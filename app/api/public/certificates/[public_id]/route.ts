@@ -62,7 +62,7 @@ export async function GET(
       cert.instrument
         ? supabaseAdmin
           .from('instrument')
-          .select('names')
+          .select('name, instrument_names_id')
           .eq('id', cert.instrument)
           .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
@@ -76,7 +76,15 @@ export async function GET(
     ])
 
     const stationName = stationResult.data?.name || '-'
-    const instrumentName = instrumentResult.data?.names || '-'
+    let instrumentName = instrumentResult.data?.name || '-'
+    if (instrumentResult.data?.instrument_names_id) {
+      const { data: nameRow } = await supabaseAdmin
+        .from('instrument_names')
+        .select('name')
+        .eq('id', instrumentResult.data.instrument_names_id)
+        .maybeSingle()
+      instrumentName = nameRow?.name || instrumentName
+    }
     const signer = cert.authorized_by
       ? { name: signerResult.data?.name || 'Tidak diketahui' }
       : null

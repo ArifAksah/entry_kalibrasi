@@ -31,6 +31,7 @@ import {
   type CertificateResultsV1,
   type SensorResultV1,
 } from './certificate-results'
+import type { TippingBucketFormData } from '../tipping-bucket'
 
 // ---------------------------------------------------------------------------
 // Shape V0 yang diharapkan renderer (dokumentasi kontrak, bukan runtime)
@@ -62,6 +63,7 @@ export interface LegacyResultEntry {
     /** Array of sensor IDs — sesuai type renderer di certificates-crud.tsx */
     standardInstruments: number[]
   }
+  tippingBucket?: TippingBucketFormData
   sensorDetails: {
     id: number | null
     name: string
@@ -131,6 +133,9 @@ function sensorV1ToLegacyEntry(s: SensorResultV1): LegacyResultEntry {
         .map((si) => si.sensor_id ?? si.instrument_id)
         .filter((id): id is number => typeof id === 'number'),
     },
+    ...(s.setup.tipping_bucket
+      ? { tippingBucket: s.setup.tipping_bucket }
+      : {}),
     sensorDetails: {
       id: s.links.sensor_id,
       name: s.snapshot.name,

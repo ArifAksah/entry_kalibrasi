@@ -1,113 +1,114 @@
-import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin as supabase } from "../../../lib/supabase";
-import { InstrumentNameInsert } from "../../../lib/supabase";
+import { NextRequest, NextResponse } from 'next/server'
+import { supabaseAdmin as supabase } from '../../../lib/supabase'
 import { clientSafeMessage } from '../../../lib/api-error'
 import { requireRoles } from '../../../lib/api-auth'
 
+// Schema production: instrument_names(id, name, code_alat, created_at).
+// Frontend lama mengharapkan field `instrument_code_id` + objek `instrument_code`.
+// Kita petakan secara virtual: id perwakilan = id instrument_names pertama pada
+// kelompok code_alat yang sama.
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const codeId = searchParams.get("instrument_code_id");
+    const { searchParams } = new URL(request.url)
+    const codeId = searchParams.get('instrument_code_id')
+
+    let filterCode: string | null = null
+    if (codeId) {
+      const { data } = await supabase
+        .from('instrument_names')
+        .select('code_alat')
+        .eq('id', codeId)
+        .maybeSingle()
+      filterCode = data?.code_alat || null
+    }
 
     let query = supabase
-      .from("instrument_names")
-      .select("*")
-      .order("names", { ascending: true });
+      .from('instrument_names')
+      .select('id, name, code_alat, created_at')
+      .order('name', { ascending: true })
 
-    if (codeId) {
-      query = query.eq("instrument_code_id", codeId);
-    }
+    if (filterCode) query = query.eq('code_alat', filterCode)
 
-    const { data, error } = await query;
+    const { data, error } = await query
 
     if (error) {
-      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     }
 
-    // Fetch instrument_code data separately to avoid JOIN issues
-    const codeIds = Array.from(new Set((data || []).map((item: any) => item.instrument_code_id).filter(Boolean)));
-    let codesMap: Record<number, any> = {};
-    
-    console.log('[API instrument-names] Fetched instrument_names:', data?.length || 0);
-    console.log('[API instrument-names] Unique code_ids to fetch:', codeIds);
-    
-    if (codeIds.length > 0) {
-      const { data: codesData, error: codesError } = await supabase
-        .from("instrument_code")
-        .select("id, code_alat, name")
-        .in("id", codeIds);
-      
-      console.log('[API instrument-names] Fetched instrument_codes:', codesData?.length || 0, 'error:', codesError);
-      
-      if (codesData) {
-        codesMap = Object.fromEntries(codesData.map((c: any) => [c.id, c]));
-        console.log('[API instrument-names] Codes map:', codesMap);
+    const representativeByCode = new Map<string, number>()
+    for (const item of data || []) {
+      if (item.code_alat && !representativeByCode.has(item.code_alat)) {
+        representativeByCode.set(item.code_alat, Number(item.id))
       }
     }
 
-    // Map 'names' column to 'name' for frontend compatibility
-    // Also add instrument_code data
     const mapped = (data || []).map((item: any) => {
-      const code = item.instrument_code_id ? codesMap[item.instrument_code_id] : null;
+      const repId = item.code_alat ? representativeByCode.get(item.code_alat) ?? null : null
       return {
-        id: item.id, // Ensure we use instrument_names.id, not instrument_code_id
-        name: item.names ?? item.name,
-        instrument_code_id: item.instrument_code_id,
-        code_alat: code?.code_alat ?? null,
-        instrument_code_name: code?.name ?? null,
-        instrument_code: code ? { id: code.id, code_alat: code.code_alat } : null,
+        id: item.id,
+        name: item.name,
+        code_alat: item.code_alat,
+        instrument_code_id: repId,
+        instrument_code_name: item.code_alat,
+        instrument_code: item.code_alat
+          ? { id: repId, code_alat: item.code_alat }
+          : null,
         created_at: item.created_at,
-      };
-    });
+      }
+    })
 
-    console.log('[API instrument-names] Sample mapped data (first 3):', mapped.slice(0, 3));
-
-    return NextResponse.json(mapped);
+    return NextResponse.json(mapped)
   } catch (error: any) {
-    console.error("Error in GET /api/instrument-names:", error);
+    console.error('Error in GET /api/instrument-names:', error)
     return NextResponse.json(
-      { error: clientSafeMessage(error, "Failed to fetch instrument names") },
+      { error: clientSafeMessage(error, 'Failed to fetch instrument names') },
       { status: 500 },
-    );
+    )
   }
 }
 
 export async function POST(request: NextRequest) {
-  const gate = await requireRoles(request, ['admin', 'calibrator']);
-  if (gate instanceof NextResponse) return gate;
+  const gate = await requireRoles(request, ['admin', 'calibrator'])
+  if (gate instanceof NextResponse) return gate
 
   try {
-    const body = await request.json();
-    const { name, names, code_alat, instrument_code_id } = body;
+    const body = await request.json()
+    const { name, names, code_alat, instrument_code_id } = body
 
-    const nameValue = names || name;
+    const nameValue = names || name
     if (!nameValue) {
-      return NextResponse.json({ error: "Name is required" }, { status: 400 });
+      return NextResponse.json({ error: 'Name is required' }, { status: 400 })
     }
 
-    const insertPayload: any = { names: nameValue };
-    if (code_alat !== undefined) insertPayload.code_alat = code_alat;
-    if (instrument_code_id !== undefined)
-      insertPayload.instrument_code_id = instrument_code_id;
+    // Resolve kode dari salah satu sumber.
+    let resolvedCode: string | null = code_alat ?? null
+    if (!resolvedCode && instrument_code_id) {
+      const { data } = await supabase
+        .from('instrument_names')
+        .select('code_alat')
+        .eq('id', instrument_code_id)
+        .maybeSingle()
+      resolvedCode = data?.code_alat ?? null
+    }
 
     const { data, error } = await supabase
-      .from("instrument_names")
-      .insert(insertPayload)
+      .from('instrument_names')
+      .insert({ name: nameValue, code_alat: resolvedCode })
       .select()
-      .single();
+      .single()
 
     if (error) {
-      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
     }
 
-    // Map 'names' to 'name' for frontend compatibility
-    const mapped = { ...data, name: data.names ?? data.name };
-
-    return NextResponse.json(mapped, { status: 201 });
+    return NextResponse.json(
+      { ...data, name: data.name, code_alat: data.code_alat },
+      { status: 201 },
+    )
   } catch (error) {
     return NextResponse.json(
-      { error: "Failed to create instrument name" },
+      { error: 'Failed to create instrument name' },
       { status: 500 },
-    );
+    )
   }
 }

@@ -2014,6 +2014,17 @@ const DraftView: React.FC<{
             result.standard_certificate_id ??
             null,
         }))}
+        tippingBucketEntries={resultsToLegacyView(certificate.results)
+          .filter((result: any) => result.tippingBucket)
+          .map((result: any) => ({
+            sensorId: result.sensorId ?? result.sensor_id ?? null,
+            sensorLabel:
+              result.sensorDetails?.name ||
+              result.notesForm?.calibration_methode ||
+              null,
+            standardLabel: result.standardCertificateNumber ?? null,
+            tippingBucket: result.tippingBucket,
+          }))}
         certificateStatus={certificate.status}
         onCalculateSaved={async (updates) => {
           if (!onUpdateCertificate) return

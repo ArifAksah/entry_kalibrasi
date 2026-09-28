@@ -28,13 +28,14 @@ export async function GET(
           *,
           instrument_data:instrument(
             id,
-            name_alias,
+            name,
+            instrument_names_id,
             manufacturer,
             type,
             serial_number,
             others,
             memiliki_lebih_satu,
-            names
+            instrument_names:instrument_names_id(id, name, code_alat)
           )
         `)
         .eq('id', id)

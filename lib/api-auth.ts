@@ -52,10 +52,10 @@ export async function isRenderAuthorizedFor(
       if (certificate.instrument == null) return false
       const { data: instrument, error: instrumentError } = await supabaseAdmin
         .from('instrument')
-        .select('names')
+        .select('instrument_names_id')
         .eq('id', certificate.instrument)
         .maybeSingle()
-      return !instrumentError && String(instrument?.names ?? '') === resource.id
+      return !instrumentError && String(instrument?.instrument_names_id ?? '') === resource.id
     }
     if (resource.type === 'station') return String(certificate.station ?? '') === resource.id
     if (resource.type === 'personel') {

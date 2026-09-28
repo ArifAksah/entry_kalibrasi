@@ -211,6 +211,23 @@ export const CalibrationSetupSchema = z.object({
     uut: z.string().default(''),
     std: z.string().default(''),
   }).optional(),
+  /** Input form RR/Tipping Bucket. Disimpan agar dapat diedit tanpa raw-data. */
+  tipping_bucket: z.object({
+    funnelDiameterReadings: z.array(z.number()),
+    rainUutReadings: z.array(z.number()),
+    volumePerTip: z.number(),
+    resolutionUut: z.number(),
+    testVolume: z.number(),
+    volumeCertificateU95: z.number(),
+    volumeStandardDrift: z.number(),
+    caliperCertificateU95: z.number(),
+    caliperDrift: z.number(),
+    caliperResolution: z.number(),
+    meniscusUncertainty: z.number(),
+    cmcMm: z.number().nullable().optional(),
+    repeatabilityDivisor: z.number().optional(),
+    diameterDivisor: z.number().optional(),
+  }).optional(),
 })
 
 // ---------------------------------------------------------------------------

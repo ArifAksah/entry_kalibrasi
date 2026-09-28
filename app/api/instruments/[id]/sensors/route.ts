@@ -192,22 +192,6 @@ export async function POST(
 
       console.log('Validation result (instrument_names):', { nameExists, nameCheckError });
 
-      // If not found in instrument_names, try instrument_code (for backward compatibility)
-      if (!nameExists && !nameCheckError) {
-        const { data: codeExists, error: codeCheckError } = await supabaseAdmin
-          .from('instrument_code')
-          .select('id')
-          .eq('id', sensorNameIdInt)
-          .maybeSingle()
-        
-        console.log('Validation result (instrument_code):', { codeExists, codeCheckError });
-        
-        if (codeExists) {
-          nameExists = codeExists;
-          nameCheckError = codeCheckError;
-        }
-      }
-
       if (nameCheckError) {
         console.error('Error checking sensor_name_id:', nameCheckError)
         return NextResponse.json({
@@ -218,7 +202,7 @@ export async function POST(
       if (!nameExists) {
         console.error('sensor_name_id not found:', sensorNameIdInt)
         return NextResponse.json({
-          error: `Invalid sensor_name_id (${sensorNameIdInt}). The ID does not exist in instrument_names or instrument_code table. Please select a valid instrument name.`
+          error: `Invalid sensor_name_id (${sensorNameIdInt}). The ID does not exist in instrument_names. Please select a valid instrument name.`
         }, { status: 400 })
       }
     }
@@ -359,22 +343,6 @@ export async function PUT(
 
       console.log('Validation result (instrument_names):', { nameExists, nameCheckError });
 
-      // If not found in instrument_names, try instrument_code (for backward compatibility)
-      if (!nameExists && !nameCheckError) {
-        const { data: codeExists, error: codeCheckError } = await supabaseAdmin
-          .from('instrument_code')
-          .select('id')
-          .eq('id', sensorNameIdInt)
-          .maybeSingle()
-        
-        console.log('Validation result (instrument_code):', { codeExists, codeCheckError });
-        
-        if (codeExists) {
-          nameExists = codeExists;
-          nameCheckError = codeCheckError;
-        }
-      }
-
       if (nameCheckError) {
         console.error('Error checking sensor_name_id:', nameCheckError)
         return NextResponse.json({
@@ -385,7 +353,7 @@ export async function PUT(
       if (!nameExists) {
         console.error('sensor_name_id not found:', sensorNameIdInt)
         return NextResponse.json({
-          error: `Invalid sensor_name_id (${sensorNameIdInt}). The ID does not exist in instrument_names or instrument_code table. Please select a valid instrument name.`
+          error: `Invalid sensor_name_id (${sensorNameIdInt}). The ID does not exist in instrument_names. Please select a valid instrument name.`
         }, { status: 400 })
       }
     }
