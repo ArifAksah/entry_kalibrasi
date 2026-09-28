@@ -8,7 +8,6 @@ import {
 import { authorizeCertificateAccess } from '../../../../lib/certificate-access'
 import { clientSafeMessage } from '../../../../lib/api-error'
 import { forbidden, isAdminCaller, isRenderAuthorizedFor, requireCaller } from '../../../../lib/api-auth'
-import { resolveInstrumentNameTextColumn } from '../../../../lib/instrument-names-schema'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,21 +22,19 @@ export async function GET(
   try {
     const { id } = await params
     if (await isRenderAuthorizedFor(request, { type: 'certificate', id })) {
-      const nameTextCol = await resolveInstrumentNameTextColumn(supabaseAdmin)
       const { data: certificate, error } = await supabaseAdmin
         .from('certificate')
         .select(`
           *,
           instrument_data:instrument(
             id,
-            name,
-            instrument_names_id,
+            name_alias,
             manufacturer,
             type,
             serial_number,
             others,
             memiliki_lebih_satu,
-            instrument_names:instrument_names_id(id, ${nameTextCol}, code_alat)
+            names
           )
         `)
         .eq('id', id)

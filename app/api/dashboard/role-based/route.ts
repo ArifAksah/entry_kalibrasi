@@ -8,10 +8,6 @@ import {
   type CalibratorWorkflowStage,
 } from '../../../../lib/dashboard/calibrator-workflow'
 import { validateCertificateSigningReadiness } from '../../../../lib/certificate-signing-readiness'
-import {
-  resolveInstrumentNameTextColumn,
-  pickNameText,
-} from '../../../../lib/instrument-names-schema'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -324,13 +320,13 @@ async function getInstruments() {
 async function getStationDashboardInstruments(stationIds: number[]) {
   if (stationIds.length === 0) return [] as StationDashboardInstrument[]
 
-  // Schema production: instrument.instrument_names_id sebagai FK ke instrument_names.
+  // Schema aktif memakai kolom `names` sebagai FK ke instrument_names.
   let instrumentData: any[] = []
   let hasInstrumentNamesId = true
   
   const { data: dataWithNamesId, error: errorWithNamesId } = await supabaseAdmin
     .from('instrument')
-    .select('id, manufacturer, type, serial_number, station_id, instrument_names_id')
+    .select('id, manufacturer, type, serial_number, station_id, names')
     .in('station_id', stationIds)
     .order('manufacturer', { ascending: true })
 
@@ -356,8 +352,8 @@ async function getStationDashboardInstruments(stationIds: number[]) {
   const instrumentIds = instruments.map((instrument: any) => Number(instrument.id)).filter((id: number) => Number.isFinite(id))
   const instrumentNameIds = Array.from(new Set(
     instruments
-      .filter((instrument: any) => hasInstrumentNamesId && instrument.instrument_names_id != null)
-      .map((instrument: any) => Number(instrument.instrument_names_id))
+      .filter((instrument: any) => hasInstrumentNamesId && instrument.names != null)
+      .map((instrument: any) => Number(instrument.names))
       .filter((id: number) => Number.isFinite(id))
   ))
 
@@ -373,19 +369,14 @@ async function getStationDashboardInstruments(stationIds: number[]) {
   // Only fetch instrument names if we have valid IDs
   let nameData: any[] = []
   if (instrumentNameIds.length > 0) {
-    const nameTextCol = await resolveInstrumentNameTextColumn(supabaseAdmin)
     const { data: fetchedNameData, error: nameError } = await supabaseAdmin
       .from('instrument_names')
-      .select(`id, ${nameTextCol}, code_alat`)
+      .select('id, name, code_alat')
       .in('id', instrumentNameIds)
     if (nameError) {
       console.warn('Could not fetch instrument_names:', nameError.message)
     } else {
-      nameData = (fetchedNameData || []).map((row: any) => ({
-        id: row.id,
-        name: pickNameText(row),
-        code_alat: row.code_alat,
-      }))
+      nameData = fetchedNameData || []
     }
   }
 
@@ -406,9 +397,7 @@ async function getStationDashboardInstruments(stationIds: number[]) {
   })
 
     return instruments.map((instrument: any) => {
-    const instrumentName = hasInstrumentNamesId && instrument.instrument_names_id
-      ? namesById.get(Number(instrument.instrument_names_id))
-      : null
+    const instrumentName = hasInstrumentNamesId && instrument.names ? namesById.get(Number(instrument.names)) : null
     // Create a meaningful name from available fields
     const instrumentNameFromFields = [
       instrument.manufacturer,

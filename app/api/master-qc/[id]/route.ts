@@ -3,10 +3,6 @@ import { supabaseAdmin } from '../../../../lib/supabase'
 import { clientSafeMessage } from '../../../../lib/api-error'
 import { parseMasterQcPayload } from '../../../../lib/master-qc-validation'
 import { requireRoles } from '../../../../lib/api-auth'
-import {
-    resolveInstrumentNameTextColumn,
-    pickNameText,
-} from '../../../../lib/instrument-names-schema'
 
 function getMasterQcErrorMessage(error: any) {
     if (error?.code === '23505') {
@@ -85,16 +81,21 @@ export async function PUT(
         }
 
         // Fetch related data for the updated record
-        const nameTextCol = await resolveInstrumentNameTextColumn(supabaseAdmin)
         const { data: nameData } = await supabaseAdmin
             .from('instrument_names')
-            .select(`id, ${nameTextCol}, code_alat`)
+            .select('id, names, instrument_code_id')
             .eq('id', data.instrument_name_id)
             .single()
 
-        const instrumentCode = nameData?.code_alat
-            ? { id: nameData.id, code_alat: nameData.code_alat }
-            : null
+        let instrumentCode = null
+        if (nameData?.instrument_code_id) {
+            const { data: codeData } = await supabaseAdmin
+                .from('instrument_code')
+                .select('id, code_alat')
+                .eq('id', nameData.instrument_code_id)
+                .single()
+            instrumentCode = codeData
+        }
 
         const { data: unitData } = await supabaseAdmin
             .from('ref_unit')
@@ -106,7 +107,7 @@ export async function PUT(
             ...data,
             instrument_name: nameData ? {
                 id: nameData.id,
-                name: pickNameText(nameData),
+                name: nameData.names,
                 instrument_code: instrumentCode
             } : null,
             ref_unit: unitData

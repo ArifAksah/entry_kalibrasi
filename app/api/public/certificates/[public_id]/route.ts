@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import {
-  resolveInstrumentNameTextColumn,
-  pickNameText,
-} from '../../../../../lib/instrument-names-schema'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -66,7 +62,7 @@ export async function GET(
       cert.instrument
         ? supabaseAdmin
           .from('instrument')
-          .select('name, instrument_names_id')
+          .select('names')
           .eq('id', cert.instrument)
           .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
@@ -80,16 +76,7 @@ export async function GET(
     ])
 
     const stationName = stationResult.data?.name || '-'
-    let instrumentName = instrumentResult.data?.name || '-'
-    if (instrumentResult.data?.instrument_names_id) {
-      const nameTextCol = await resolveInstrumentNameTextColumn(supabaseAdmin)
-      const { data: nameRow } = await supabaseAdmin
-        .from('instrument_names')
-        .select(`id, ${nameTextCol}`)
-        .eq('id', instrumentResult.data.instrument_names_id)
-        .maybeSingle()
-      instrumentName = pickNameText(nameRow) || instrumentName
-    }
+    const instrumentName = instrumentResult.data?.names || '-'
     const signer = cert.authorized_by
       ? { name: signerResult.data?.name || 'Tidak diketahui' }
       : null

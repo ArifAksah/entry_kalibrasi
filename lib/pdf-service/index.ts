@@ -32,7 +32,6 @@ import { shouldUsePdfTemplateService, renderPdfViaTemplateService } from './pdf-
 import { mapCertificateToTemplateData } from './certificate-data-mapper'
 import { getActiveRichTextTemplate, getRichTextTemplateByVersion } from '../rich-text-editor/storage-service'
 import { validateCertificateSigningReadiness } from '../certificate-signing-readiness'
-import { resolveInstrumentNameTextColumn } from '../instrument-names-schema'
 import type { PdfServiceResult } from './types'
 
 // ─── Supabase Admin Client ───────────────────────────────────────────────────
@@ -589,13 +588,13 @@ export async function generateAndSaveCertificatePDF(
       let pythonServiceSuccess = false
       try {
         // Fetch full certificate data with relations for the mapper
-        const nameTextCol = await resolveInstrumentNameTextColumn(supabaseAdmin)
         const { data: fullCert, error: fullCertError } = await supabaseAdmin
           .from('certificate')
           .select(`
             *,
-            instrument:instrument(*, instrument_names:instrument_names_id(id, ${nameTextCol})),
-            station:station(*)
+            instrument:instrument_id(*, instrument_names:names(id, name)),
+            station:station_id(*),
+            sensors:certificate_sensor(*, sensor:sensor_id(*), results:calibration_result(*))
           `)
           .eq('id', certificateId)
           .single()

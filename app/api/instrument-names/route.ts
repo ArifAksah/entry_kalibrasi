@@ -1,167 +1,113 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin as supabase } from '../../../lib/supabase'
+import { NextRequest, NextResponse } from "next/server";
+import { supabaseAdmin as supabase } from "../../../lib/supabase";
+import { InstrumentNameInsert } from "../../../lib/supabase";
 import { clientSafeMessage } from '../../../lib/api-error'
 import { requireRoles } from '../../../lib/api-auth'
-import { buildRepresentativeIdByCode } from '../../../lib/instrument-code-representative'
-import {
-  INSTRUMENT_NAME_TEXT_COLUMNS,
-  isMissingColumnError,
-  normalizeInstrumentNameRow,
-} from '../../../lib/instrument-names-schema'
-
-// Kompatibel dua schema: sebagian deployment punya kolom `name`, sebagian `names`.
-// Frontend lama mengharapkan field `instrument_code_id` + objek `instrument_code`.
-// ID perwakilan kode = MIN(id) per code_alat (deterministik, konsisten dengan
-// /api/instrument-code).
-
-/** Ambil daftar nama dari instrument_names, fallback kolom teks yang tersedia. */
-async function fetchInstrumentNames(
-  selectColumns: 'code_alat' | 'full',
-  filterCode?: string | null,
-) {
-  for (const textCol of INSTRUMENT_NAME_TEXT_COLUMNS) {
-    const columns =
-      selectColumns === 'full'
-        ? `id, ${textCol}, code_alat, created_at`
-        : `id, ${textCol}, code_alat`
-
-    let query = supabase.from('instrument_names').select(columns)
-    if (selectColumns === 'full') query = query.order(textCol, { ascending: true })
-    if (filterCode) query = query.eq('code_alat', filterCode)
-
-    const { data, error } = await query
-    if (!error) {
-      return {
-        rows: (data || []).map((row: any) => normalizeInstrumentNameRow(row)),
-        textColumn: textCol,
-        error: null as null,
-      }
-    }
-    if (!isMissingColumnError(error, textCol)) {
-      return { rows: [], textColumn: textCol, error }
-    }
-    // kolom tidak ada → coba nama kolom berikutnya
-  }
-  return { rows: [], textColumn: 'name', error: { message: 'instrument_names tidak punya kolom teks nama' } }
-}
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const codeId = searchParams.get('instrument_code_id')
+    const { searchParams } = new URL(request.url);
+    const codeId = searchParams.get("instrument_code_id");
 
-    let filterCode: string | null = null
+    let query = supabase
+      .from("instrument_names")
+      .select("*")
+      .order("names", { ascending: true });
+
     if (codeId) {
-      for (const textCol of INSTRUMENT_NAME_TEXT_COLUMNS) {
-        const { data, error } = await supabase
-          .from('instrument_names')
-          .select(`id, ${textCol}, code_alat`)
-          .eq('id', codeId)
-          .maybeSingle()
-        if (!error) {
-          filterCode = data?.code_alat || null
-          break
-        }
-        if (!isMissingColumnError(error, textCol)) {
-          return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
-        }
+      query = query.eq("instrument_code_id", codeId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
+    }
+
+    // Fetch instrument_code data separately to avoid JOIN issues
+    const codeIds = Array.from(new Set((data || []).map((item: any) => item.instrument_code_id).filter(Boolean)));
+    let codesMap: Record<number, any> = {};
+    
+    console.log('[API instrument-names] Fetched instrument_names:', data?.length || 0);
+    console.log('[API instrument-names] Unique code_ids to fetch:', codeIds);
+    
+    if (codeIds.length > 0) {
+      const { data: codesData, error: codesError } = await supabase
+        .from("instrument_code")
+        .select("id, code_alat, name")
+        .in("id", codeIds);
+      
+      console.log('[API instrument-names] Fetched instrument_codes:', codesData?.length || 0, 'error:', codesError);
+      
+      if (codesData) {
+        codesMap = Object.fromEntries(codesData.map((c: any) => [c.id, c]));
+        console.log('[API instrument-names] Codes map:', codesMap);
       }
     }
 
-    const result = await fetchInstrumentNames('full', filterCode)
-    if (result.error) {
-      return NextResponse.json({ error: clientSafeMessage(result.error) }, { status: 500 })
-    }
-
-    // Ambil seluruh kode untuk menentukan MIN(id) per kode secara global.
-    const { data: allCodes } = await supabase
-      .from('instrument_names')
-      .select('id, code_alat')
-      .not('code_alat', 'is', null)
-
-    const representativeByCode = buildRepresentativeIdByCode(allCodes || [])
-
-    const mapped = result.rows.map((item) => {
-      const repId = item.code_alat
-        ? representativeByCode.get(String(item.code_alat).trim()) ?? null
-        : null
+    // Map 'names' column to 'name' for frontend compatibility
+    // Also add instrument_code data
+    const mapped = (data || []).map((item: any) => {
+      const code = item.instrument_code_id ? codesMap[item.instrument_code_id] : null;
       return {
-        id: item.id,
-        name: item.name,
-        code_alat: item.code_alat,
-        instrument_code_id: repId,
-        instrument_code_name: item.code_alat,
-        instrument_code: item.code_alat
-          ? { id: repId, code_alat: item.code_alat }
-          : null,
+        id: item.id, // Ensure we use instrument_names.id, not instrument_code_id
+        name: item.names ?? item.name,
+        instrument_code_id: item.instrument_code_id,
+        code_alat: code?.code_alat ?? null,
+        instrument_code_name: code?.name ?? null,
+        instrument_code: code ? { id: code.id, code_alat: code.code_alat } : null,
         created_at: item.created_at,
-      }
-    })
+      };
+    });
 
-    return NextResponse.json(mapped)
+    console.log('[API instrument-names] Sample mapped data (first 3):', mapped.slice(0, 3));
+
+    return NextResponse.json(mapped);
   } catch (error: any) {
-    console.error('Error in GET /api/instrument-names:', error)
+    console.error("Error in GET /api/instrument-names:", error);
     return NextResponse.json(
-      { error: clientSafeMessage(error, 'Failed to fetch instrument names') },
+      { error: clientSafeMessage(error, "Failed to fetch instrument names") },
       { status: 500 },
-    )
+    );
   }
 }
 
 export async function POST(request: NextRequest) {
-  const gate = await requireRoles(request, ['admin', 'calibrator'])
-  if (gate instanceof NextResponse) return gate
+  const gate = await requireRoles(request, ['admin', 'calibrator']);
+  if (gate instanceof NextResponse) return gate;
 
   try {
-    const body = await request.json()
-    const { name, names, code_alat, instrument_code_id } = body
+    const body = await request.json();
+    const { name, names, code_alat, instrument_code_id } = body;
 
-    const nameValue = names || name
+    const nameValue = names || name;
     if (!nameValue) {
-      return NextResponse.json({ error: 'Name is required' }, { status: 400 })
+      return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    // Resolve kode dari salah satu sumber.
-    let resolvedCode: string | null = code_alat ?? null
-    if (!resolvedCode && instrument_code_id) {
-      const { data } = await supabase
-        .from('instrument_names')
-        .select('code_alat')
-        .eq('id', instrument_code_id)
-        .maybeSingle()
-      resolvedCode = data?.code_alat ?? null
+    const insertPayload: any = { names: nameValue };
+    if (code_alat !== undefined) insertPayload.code_alat = code_alat;
+    if (instrument_code_id !== undefined)
+      insertPayload.instrument_code_id = instrument_code_id;
+
+    const { data, error } = await supabase
+      .from("instrument_names")
+      .insert(insertPayload)
+      .select()
+      .single();
+
+    if (error) {
+      return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 });
     }
 
-    // Coba insert dengan 'name', fallback ke 'names' bila kolom tidak ada.
-    let inserted: any = null
-    let lastError: any = null
-    for (const textCol of INSTRUMENT_NAME_TEXT_COLUMNS) {
-      const { data, error } = await supabase
-        .from('instrument_names')
-        .insert({ [textCol]: nameValue, code_alat: resolvedCode })
-        .select()
-        .single()
-      if (!error) {
-        inserted = data
-        break
-      }
-      lastError = error
-      if (!isMissingColumnError(error, textCol)) break
-    }
+    // Map 'names' to 'name' for frontend compatibility
+    const mapped = { ...data, name: data.names ?? data.name };
 
-    if (!inserted) {
-      return NextResponse.json({ error: clientSafeMessage(lastError) }, { status: 500 })
-    }
-
-    const normalized = normalizeInstrumentNameRow(inserted)
-    return NextResponse.json(
-      { ...inserted, name: normalized.name, code_alat: normalized.code_alat },
-      { status: 201 },
-    )
+    return NextResponse.json(mapped, { status: 201 });
   } catch (error) {
     return NextResponse.json(
-      { error: 'Failed to create instrument name' },
+      { error: "Failed to create instrument name" },
       { status: 500 },
-    )
+    );
   }
 }

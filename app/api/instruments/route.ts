@@ -113,10 +113,12 @@ export async function GET(request: NextRequest) {
         manufacturer,
         type,
         serial_number,
-        name,
+        name_alias,
         others,
-        instrument_names_id,
+        names,
+        instrument_code_id,
         instrument_type_id,
+        instrument_id,
         memiliki_lebih_satu,
         station_id,
         created_at,
@@ -141,7 +143,7 @@ export async function GET(request: NextRequest) {
       // Tambahkan filter pencarian jika ada query 'q'
       if (q) {
         queryBuilder = queryBuilder.or(
-          `manufacturer.ilike.%${q}%,type.ilike.%${q}%,serial_number.ilike.%${q}%,name.ilike.%${q}%,others.ilike.%${q}%`,
+          `manufacturer.ilike.%${q}%,type.ilike.%${q}%,serial_number.ilike.%${q}%,name_alias.ilike.%${q}%,others.ilike.%${q}%`,
         );
       }
 
@@ -211,13 +213,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Map data agar frontend lama tetap mendapatkan field yang diharapkan.
-    // Schema production: instrument.name (alias teks) + instrument.instrument_names_id (FK).
+    // Map data to ensure instrument_names_id is available for frontend
     const mappedData = (data || []).map((item: any) => ({
       ...item,
-      name_alias: item.name ?? null,
-      names: item.instrument_names_id ?? null,
-      instrument_names_id: item.instrument_names_id ?? null,
+      instrument_names_id: item.names ?? item.instrument_names_id ?? null,
     }));
 
     console.log('[API instruments] Sample mapped data (first 2):', mappedData.slice(0, 2).map((i: any) => ({
@@ -225,6 +224,7 @@ export async function GET(request: NextRequest) {
       name_alias: i.name_alias,
       names: i.names,
       instrument_names_id: i.instrument_names_id,
+      instrument_code_id: i.instrument_code_id
     })));
 
     // Kirim response sukses
@@ -316,7 +316,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Schema production: "name" (alias teks bebas) & "instrument_names_id" (FK ke instrument_names).
+    // kolom aktual di DB: "names" (FK ke instrument_names), "name_alias" (alias teks bebas)
     const namesId = names ?? instrument_names_id;
     const aliasValue = name_alias || name || null;
 
@@ -327,13 +327,17 @@ export async function POST(request: NextRequest) {
         type,
         serial_number,
         others: others || null,
-        name: aliasValue,
-        instrument_names_id: namesId ? parseInt(namesId as any) : null,
+        name_alias: aliasValue,
+        names: namesId ? parseInt(namesId as any) : null,
+        instrument_code_id: instrument_code_id
+          ? parseInt(instrument_code_id as any)
+          : null,
         instrument_type_id: instrument_type_id
           ? parseInt(instrument_type_id as any)
           : null,
         station_id: station_id ? parseInt(station_id as any) : null,
         memiliki_lebih_satu: memiliki_lebih_satu || false,
+        instrument_id: instrument_id || null,
       })
       .select("*, station(id, name)") // Ambil data station setelah insert
       .single();

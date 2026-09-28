@@ -104,7 +104,7 @@ export async function PUT(
       );
     }
 
-    // Schema production: "name" (alias teks bebas) & "instrument_names_id" (FK ke instrument_names).
+    // kolom aktual di DB: "names" (FK ke instrument_names), "name_alias" (alias teks bebas)
     const namesId = names ?? instrument_names_id;
     const aliasValue = name_alias || name || null;
 
@@ -115,13 +115,17 @@ export async function PUT(
         type,
         serial_number,
         others,
-        name: aliasValue,
-        instrument_names_id: namesId ? parseInt(namesId as any) : null,
+        name_alias: aliasValue,
+        names: namesId ? parseInt(namesId as any) : null,
+        instrument_code_id: instrument_code_id
+          ? parseInt(instrument_code_id as any)
+          : null,
         instrument_type_id: instrument_type_id
           ? parseInt(instrument_type_id as any)
           : null,
         station_id: station_id ? parseInt(station_id as any) : null,
         memiliki_lebih_satu: memiliki_lebih_satu || false,
+        instrument_id: instrument_id || null,
       })
       .eq("id", id)
       .select("*, station(id, name)")
