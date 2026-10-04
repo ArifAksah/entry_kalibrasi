@@ -423,6 +423,7 @@ REVOKE ALL ON FUNCTION public.reserve_order_identification(jsonb) FROM PUBLIC, a
 REVOKE ALL ON FUNCTION public.admin_reset_order_counter(smallint,text,text,integer,text,uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.create_calibration_order_draft(jsonb) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.confirm_calibration_order(bigint,uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.preview_next_order_number(smallint,text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.reserve_calibration_order(jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.reserve_order_identification(jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.admin_reset_order_counter(smallint,text,text,integer,text,uuid) TO service_role;
