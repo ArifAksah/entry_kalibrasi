@@ -479,13 +479,32 @@ export async function PUT(
         const certsWithoutId = certsToUpsert.filter((c: any) => c.id === undefined);
 
         if (certsWithId.length > 0) {
-          const { error: certError } = await supabaseAdmin
+          // Jangan pernah memindahkan sertifikat milik sensor lain: upsert hanya
+          // baris yang memang sudah terikat ke sensor ini. Id asing diabaikan
+          // agar "edit satu sertifikat" tidak mengubah sertifikat sensor/instrumen lain.
+          const { data: ownedRows, error: ownedError } = await supabaseAdmin
             .from('certificate_standard')
-            .upsert(certsWithId, { onConflict: 'id' })
+            .select('id')
+            .eq('sensor_id', sensorData.id)
+            .in('id', certsWithId.map((c: any) => c.id))
 
-          if (certError) {
-            console.error('Error upserting existing certs in PUT:', certError)
-            return NextResponse.json({ error: getCertificateStandardErrorMessage(certError) }, { status: 500 })
+          if (ownedError) {
+            console.error('Error checking certificate ownership in PUT:', ownedError)
+            return NextResponse.json({ error: getCertificateStandardErrorMessage(ownedError) }, { status: 500 })
+          }
+
+          const ownedIds = new Set((ownedRows || []).map((row: any) => row.id))
+          const updatableCerts = certsWithId.filter((c: any) => ownedIds.has(c.id))
+
+          if (updatableCerts.length > 0) {
+            const { error: certError } = await supabaseAdmin
+              .from('certificate_standard')
+              .upsert(updatableCerts, { onConflict: 'id' })
+
+            if (certError) {
+              console.error('Error upserting existing certs in PUT:', certError)
+              return NextResponse.json({ error: getCertificateStandardErrorMessage(certError) }, { status: 500 })
+            }
           }
         }
 

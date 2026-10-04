@@ -165,6 +165,67 @@ function convertLegacyEntry(raw: unknown, index: number): SensorResultV1 {
     }
   })
 
+  // RR memakai N standar dinamis (peran dari parameter_code VL/LN). Bentuk rich
+  // refs dari `tipping_bucket.standards[]` agar tiap sertifikat tetap terlacak
+  // di V1. Fallback ke metadata flat lama bila standards[] belum ada.
+  const tippingBucket = asPlainObject((entry as any).tippingBucket)
+  const rawTippingStandards = asArray<unknown>(tippingBucket.standards)
+  const rrStandards = (
+    rawTippingStandards.length > 0
+      ? rawTippingStandards.map((row) => {
+          const item = asPlainObject(row)
+          return {
+            instrument_id: asNumberOrNull(item.instrumentId ?? item.instrument_id),
+            sensor_id: asNumberOrNull(item.sensorId ?? item.sensor_id),
+            certificate_id: asNumberOrNull(item.certificateId ?? item.certificate_id),
+            certificate_no: asString(item.certificateNumber ?? item.certificate_no),
+            name:
+              item.role === 'volume'
+                ? 'Standar Volume'
+                : item.role === 'length'
+                  ? 'Standar Panjang'
+                  : 'Standar',
+          }
+        })
+      : [
+          {
+            instrument_id: asNumberOrNull(tippingBucket.volumeStandardInstrumentId),
+            sensor_id: asNumberOrNull(tippingBucket.volumeStandardSensorId),
+            certificate_id: asNumberOrNull(tippingBucket.volumeStandardCertificateId),
+            certificate_no: asString(tippingBucket.volumeStandardCertificateNumber),
+            name: 'Gelas Ukur',
+          },
+          {
+            instrument_id: asNumberOrNull(tippingBucket.caliperStandardInstrumentId),
+            sensor_id: asNumberOrNull(tippingBucket.caliperStandardSensorId),
+            certificate_id: asNumberOrNull(tippingBucket.caliperStandardCertificateId),
+            certificate_no: asString(tippingBucket.caliperStandardCertificateNumber),
+            name: 'Jangka Sorong',
+          },
+        ]
+  )
+    .filter((standard) => standard.certificate_id != null || standard.sensor_id != null)
+    .map((standard) => ({
+      ...standard,
+      serial_number: '',
+      traceable_to: '',
+    }))
+
+  const mergedStandardInstruments = [...standardInstruments]
+  for (const standard of rrStandards) {
+    const index = mergedStandardInstruments.findIndex(
+      (item) =>
+        (item.certificate_id != null &&
+          standard.certificate_id != null &&
+          Number(item.certificate_id) === Number(standard.certificate_id)) ||
+        (item.sensor_id != null &&
+          standard.sensor_id != null &&
+          Number(item.sensor_id) === Number(standard.sensor_id)),
+    )
+    if (index >= 0) mergedStandardInstruments[index] = standard
+    else mergedStandardInstruments.push(standard)
+  }
+
   const environment = asArray<Record<string, unknown>>(entry.environment).map((c) => ({
     key: asString(c.key),
     value: asString(c.value),
@@ -182,7 +243,7 @@ function convertLegacyEntry(raw: unknown, index: number): SensorResultV1 {
     start_date: asString(entry.startDate ?? entry.start_date),
     end_date: asString(entry.endDate ?? entry.end_date),
     environment,
-    standard_instruments: standardInstruments,
+    standard_instruments: mergedStandardInstruments,
     measurement_units: {
       uut: asString(entry.unitUut ?? entry.unit_uut),
       std: asString(entry.unitStd ?? entry.unit_std),

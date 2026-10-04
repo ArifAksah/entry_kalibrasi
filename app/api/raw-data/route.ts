@@ -347,31 +347,51 @@ export async function GET(req: NextRequest) {
         }
 
         if (lean) {
-            const { data, error } = await supabase
-                .from('raw_data')
-                .select('id, created_at, timestamp, standard_data, uut_data, sensor_id_uut, sensor_id_std, session_id, std_correction, std_corrected, sheet_name, unit_std, unit_uut, source_row_index')
-                .eq('session_id', session_id)
-                .order('id', { ascending: true })
-
-            if (error) throw error
-            console.log('[raw-data] lean fetched rows for session', session_id, (data ?? []).length)
-            return NextResponse.json({ data: data ?? [] })
+            const leanColumns = 'id, created_at, timestamp, standard_data, uut_data, sensor_id_uut, sensor_id_std, session_id, std_correction, std_corrected, sheet_name, unit_std, unit_uut, source_row_index'
+            const leanPageSize = 1000
+            const leanRows: any[] = []
+            let leanFrom = 0
+            while (true) {
+                const { data: batch, error } = await supabase
+                    .from('raw_data')
+                    .select(leanColumns)
+                    .eq('session_id', session_id)
+                    .order('id', { ascending: true })
+                    .range(leanFrom, leanFrom + leanPageSize - 1)
+                if (error) throw error
+                const rows = batch ?? []
+                leanRows.push(...rows)
+                if (rows.length < leanPageSize) break
+                leanFrom += leanPageSize
+            }
+            console.log('[raw-data] lean fetched rows for session', session_id, leanRows.length)
+            return NextResponse.json({ data: leanRows })
         }
 
         // mode=room → hanya baris suhu/kelembaban (rujuk lib/room-condition.ts).
         // Dipakai halaman print: Suhu/RH saja yang butuh raw_data, tidak perlu
         // menarik seluruh sesi (4-6 ribu baris = lambat & memboroskan timeout).
         if (mode === 'room') {
-            const { data, error } = await supabase
-                .from('raw_data')
-                .select('id, timestamp, standard_data, sensor_id_uut, sensor_id_std, session_id, std_correction, std_corrected, sheet_name, unit_std, unit_uut')
-                .eq('session_id', session_id)
-                .or('sheet_name.ilike.*suhu*,sheet_name.ilike.*temp*,sheet_name.ilike.*termo*,sheet_name.ilike.*hygro*,sheet_name.ilike.*lembab*,sheet_name.ilike.*lambab*,sheet_name.ilike.*humid*,sheet_name.ilike.*rh*')
-                .order('id', { ascending: true })
-
-            if (error) throw error
-            console.log('[raw-data] room-condition rows for session', session_id, (data ?? []).length)
-            return NextResponse.json({ data: data ?? [] })
+            const roomColumns = 'id, timestamp, standard_data, sensor_id_uut, sensor_id_std, session_id, std_correction, std_corrected, sheet_name, unit_std, unit_uut'
+            const roomPageSize = 1000
+            const roomRows: any[] = []
+            let roomFrom = 0
+            while (true) {
+                const { data: batch, error } = await supabase
+                    .from('raw_data')
+                    .select(roomColumns)
+                    .eq('session_id', session_id)
+                    .or('sheet_name.ilike.*suhu*,sheet_name.ilike.*temp*,sheet_name.ilike.*termo*,sheet_name.ilike.*hygro*,sheet_name.ilike.*lembab*,sheet_name.ilike.*lambab*,sheet_name.ilike.*humid*,sheet_name.ilike.*rh*')
+                    .order('id', { ascending: true })
+                    .range(roomFrom, roomFrom + roomPageSize - 1)
+                if (error) throw error
+                const rows = batch ?? []
+                roomRows.push(...rows)
+                if (rows.length < roomPageSize) break
+                roomFrom += roomPageSize
+            }
+            console.log('[raw-data] room-condition rows for session', session_id, roomRows.length)
+            return NextResponse.json({ data: roomRows })
         }
 
         const pageSize = 1000

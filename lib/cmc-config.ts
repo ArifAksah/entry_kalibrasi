@@ -119,6 +119,35 @@ export async function fetchCmc(input: CmcLookupInput): Promise<CmcResult | null>
   return resolveCmc(input)
 }
 
+/**
+ * Ambil CMC hanya dari Master CMC (tanpa fallback hard-coded).
+ * Dipakai workflow RR agar satu-satunya sumber nilai pelaporan adalah master
+ * yang terversi dan dapat diaudit.
+ */
+export async function fetchMasterCmc(
+  input: CmcLookupInput,
+): Promise<CmcResult | null> {
+  const params = new URLSearchParams()
+  params.set('resolve', 'true')
+  if (input.uutSensor?.name) params.set('sensorName', String(input.uutSensor.name))
+  if (input.uutSensor?.type) params.set('sensorType', String(input.uutSensor.type))
+  if (input.sheetName) params.set('sheetName', input.sheetName)
+  if (input.calibrationMethod) params.set('calibrationMethod', input.calibrationMethod)
+  if (input.unitStd) params.set('unitStd', input.unitStd)
+  if (input.unitUut) params.set('unitUut', input.unitUut)
+  if (input.measurementPoint != null && Number.isFinite(input.measurementPoint)) {
+    params.set('measurementPoint', String(input.measurementPoint))
+  }
+
+  const response = await fetch(`/api/cmc?${params.toString()}`)
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new Error(payload.error || 'Gagal mengambil Master CMC')
+  }
+  const payload = await response.json()
+  return payload?.data ? (payload.data as CmcResult) : null
+}
+
 export async function finalizeCertificateUncertaintyWithMaster(
   rawU95: number,
   input: CmcLookupInput

@@ -126,6 +126,7 @@ export interface Sensor {
   // New fields for sensor identity from schema
   instrument_id?: number
   sensor_name_id?: number
+  parameter_code?: string | null
   setpoint?: any
   tracebility?: string
 }
@@ -287,6 +288,9 @@ export interface Certificate {
   balai_id?: number | null
   // Apakah sertifikat ini untuk alat standar kalibrasi
   is_standard?: boolean
+  // Link ke booking kalibrasi (null untuk sertifikat legacy)
+  calibration_order_id?: number | null
+  calibration_order_item_id?: number | null
 }
 
 export type CertificateInsert = Omit<Certificate, 'id' | 'created_at' | 'version'>
@@ -396,3 +400,96 @@ export interface CalibrationResult {
 
 export type CalibrationResultInsert = Omit<CalibrationResult, 'id' | 'created_at'>
 export type CalibrationResultUpdate = Partial<CalibrationResultInsert>
+
+// Calibration Orders (booking nomor order sebelum keberangkatan)
+export type CalibrationOrderStatus =
+  | 'draft'
+  | 'booked'
+  | 'postponed'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled'
+
+export type CalibrationOrderItemStatus =
+  | 'identified'
+  | 'certificate_draft'
+  | 'completed'
+  | 'void'
+
+export interface CalibrationOrder {
+  id: number
+  numbering_year: number | null
+  order_number: number | null
+  no_order: string | null
+  station_id: number
+  station_address_snapshot: string | null
+  planned_date: string
+  planned_end_date: string
+  calibration_place: 'FC' | 'LC'
+  status: CalibrationOrderStatus
+  notes: string | null
+  created_by: string
+  confirmed_at: string | null
+  started_at: string | null
+  completed_at: string | null
+  postponed_at: string | null
+  cancelled_at: string | null
+  cancellation_reason: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CalibrationOrderPersonnel {
+  id: number
+  order_id: number
+  personel_id: string
+  assigned_by: string | null
+  created_at: string
+}
+
+export interface CalibrationOrderScheduleHistory {
+  id: number
+  order_id: number
+  old_planned_date: string | null
+  new_planned_date: string | null
+  old_planned_end_date: string | null
+  new_planned_end_date: string | null
+  reason: string | null
+  changed_by: string | null
+  changed_at: string
+}
+
+export interface CalibrationOrderItem {
+  id: number
+  order_id: number
+  identification_sequence: number
+  no_identification: string
+  instrument_id: number | null
+  instrument_code: string | null
+  status: CalibrationOrderItemStatus
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  voided_at: string | null
+  void_reason: string | null
+}
+
+export interface CalibrationOrderCounter {
+  numbering_year: number
+  calibration_place: 'FC' | 'LC'
+  last_value: number
+  updated_at: string
+  updated_by: string | null
+}
+
+export interface CalibrationOrderCounterLog {
+  id: number
+  numbering_year: number
+  calibration_place: 'FC' | 'LC'
+  previous_value: number | null
+  new_value: number | null
+  action: string
+  reason: string | null
+  performed_by: string | null
+  performed_at: string
+}

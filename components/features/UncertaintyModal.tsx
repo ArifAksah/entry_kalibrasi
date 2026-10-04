@@ -25,6 +25,11 @@ import {
   wrapWindDirectionCorrection,
 } from '../../lib/wind-direction'
 import { compareRawDataRows } from '../../lib/raw-data-order'
+import type { TippingBucketPanelEntry } from './TippingBucketPanel'
+import {
+  calculateTippingBucket,
+  type TippingBucketResult,
+} from '../../lib/tipping-bucket'
 import { DecimalPrecisionControl } from '../ui/DecimalPrecisionControl'
 import { LoadingOverlay } from '../ui/Loading'
 // RawDataRow defined locally to avoid circular imports
@@ -84,6 +89,30 @@ export default function UncertaintyModal({
 
   const tabKeys = Object.keys(groupedData)
 
+  // RR (Tipping Bucket) TIDAK punya raw_data — nilai & budget-nya disimpan di
+  // certificate.results[].setup.tipping_bucket. Tambahkan sebagai tab khusus di
+  // modal ini. Ini HANYA menambah tampilan untuk sensor RR dan tidak mengubah
+  // perhitungan uncertainty sensor lain.
+  const rrEntries = React.useMemo(() => {
+    const map = new Map<string, TippingBucketPanelEntry>()
+    const entries = resultsToLegacyView((certificate as any)?.results)
+    for (const entry of entries) {
+      if (!entry?.tippingBucket) continue
+      const key = entry.sensorId != null ? String(entry.sensorId) : 'unknown'
+      map.set(key, {
+        sensorId: entry.sensorId ?? null,
+        tippingBucket: entry.tippingBucket,
+      })
+    }
+    return map
+  }, [certificate])
+
+  // Gabungan tab raw-data + tab RR (RR di depan bila ada).
+  const allTabKeys = React.useMemo(
+    () => Array.from(new Set([...Array.from(rrEntries.keys()), ...tabKeys])),
+    [rrEntries, tabKeys],
+  )
+
   useEffect(() => {
     if (!isOpen) {
       setLoading(true)
@@ -91,16 +120,17 @@ export default function UncertaintyModal({
     }
 
     if (
-      tabKeys.length > 0 &&
+      allTabKeys.length > 0 &&
       (activeTab === 0 ||
         activeTab === 'unknown' ||
-        !tabKeys.includes(String(activeTab)))
+        !allTabKeys.includes(String(activeTab)))
     ) {
-      const firstKey = tabKeys[0] !== 'unknown' ? Number(tabKeys[0]) : 'unknown'
+      const firstKey =
+        allTabKeys[0] !== 'unknown' ? Number(allTabKeys[0]) : 'unknown'
       setActiveTab(firstKey)
     }
     setLoading(false)
-  }, [isOpen, tabKeys, activeTab])
+  }, [isOpen, allTabKeys, activeTab])
 
   if (!isOpen) return null
 
@@ -180,10 +210,17 @@ export default function UncertaintyModal({
                 Sensors Evaluated
               </h4>
               <div className="space-y-1">
-                {tabKeys.map((key) => {
+                {allTabKeys.map((key) => {
                   const tKey = key === 'unknown' ? 'unknown' : Number(key)
+                  const rrEntry = rrEntries.get(key)
                   let sensorName = 'Unknown Sensor'
-                  if (key !== 'unknown') {
+                  if (rrEntry) {
+                    const sensor =
+                      rrEntry.sensorId != null
+                        ? sensors.find((s) => s.id === rrEntry.sensorId)
+                        : undefined
+                    sensorName = `${resolveSensorName(sensor)} (RR)`
+                  } else if (key !== 'unknown') {
                     const storedSheetName = groupedData[key][0]?.sheet_name
                     if (
                       storedSheetName &&
@@ -210,12 +247,12 @@ export default function UncertaintyModal({
                       <span
                         className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === tKey ? 'bg-purple-200 text-purple-800' : 'bg-gray-200 text-gray-500'}`}
                       >
-                        {groupedData[key].length}
+                        {rrEntry ? 'RR' : groupedData[key].length}
                       </span>
                     </button>
                   )
                 })}
-                {tabKeys.length === 0 && (
+                {allTabKeys.length === 0 && (
                   <div className="text-sm text-gray-500 px-2 py-4 italic text-center">
                     Data mentah belum tersedia / belum lengkap.
                   </div>
@@ -225,16 +262,29 @@ export default function UncertaintyModal({
           </div>
 
           {/* Main Content */}
-          <div className="flex-1 overflow-y-auto bg-gray-50 p-6">
-            <UncertaintyContent
-              activeTab={activeTab}
-              currentData={currentData}
-              sensors={sensors}
-              instruments={instruments}
-              standardCerts={standardCerts}
-              certificate={certificate}
-              instrumentNames={instrumentNames}
-            />
+          <div className="flex-1 overflow-y-auto bg-gray-50">
+            {rrEntries.has(String(activeTab)) ? (
+              <TippingBucketUncertaintyContent
+                entry={
+                  rrEntries.get(String(activeTab)) as TippingBucketPanelEntry
+                }
+                certificate={certificate}
+                sensors={sensors}
+                instrumentNames={instrumentNames}
+              />
+            ) : (
+              <div className="p-6">
+                <UncertaintyContent
+                  activeTab={activeTab}
+                  currentData={currentData}
+                  sensors={sensors}
+                  instruments={instruments}
+                  standardCerts={standardCerts}
+                  certificate={certificate}
+                  instrumentNames={instrumentNames}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -261,7 +311,9 @@ function UncertaintyContent({
 }) {
   // Default display precision for uncertainty figures. Only presentation:
   // stored values and result certificate rows always keep full precision.
-  const [decimalPrecision, setDecimalPrecision] = useState(4)
+  // RR memiliki perbedaan kecil antar input meniskus; empat desimal dapat
+  // menyamarkan perubahan U95. Presisi awal 6 tetap dapat diubah petugas.
+  const [decimalPrecision, setDecimalPrecision] = useState(6)
   // 1. Preparation
   const uutSensor =
     activeTab !== 'unknown' ? sensors.find((s) => s.id === activeTab) : null
@@ -510,14 +562,18 @@ function UncertaintyContent({
 
   if (isPyranometerSensor) {
     // PYRANOMETER: Gunakan perhitungan CF (rasio) dalam %
-    const stdReadings = currentData
-      .map((row) => row.standard_data || 0)
-      .filter((v) => v > 0)
-    const uutReadingsForCF = currentData
-      .map((row) => row.uut_data || 0)
-      .filter((v) => v > 0)
+    const validPyranometerPairs = currentData
+      .map((row) => ({
+        std: Number(row.standard_data),
+        uut: Number(row.uut_data),
+      }))
+      .filter((pair) => Number.isFinite(pair.std) && Number.isFinite(pair.uut) && pair.std > 0 && pair.uut > 0)
+    const stdReadings = validPyranometerPairs.map((pair) => pair.std)
+    const uutReadingsForCF = validPyranometerPairs.map((pair) => pair.uut)
 
-    const cfResult = calculateCalibrationFactor(stdReadings, uutReadingsForCF)
+    const cfResult = calculateCalibrationFactor(stdReadings, uutReadingsForCF, {
+      filterOutliers: false,
+    })
 
     const range = parseFloat(uutSensor?.range_capacity || '2000') || 2000
     const stdMeanVal =
@@ -682,6 +738,28 @@ function UncertaintyContent({
         {!isPyranometerSensor && (
           <div className="mb-4 px-3 py-2 border text-xs bg-blue-50 border-blue-200 text-blue-900">
             <b>Satuan hasil (unit UUT):</b> {formatUnit(unitUut) || '-'}
+          </div>
+        )}
+        {isPyranometerSensor && pyranometerResult && (
+          <div className="mb-4 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-950">
+            <div className="font-semibold">Profil metode audit</div>
+            <div className="mt-1 grid gap-x-4 gap-y-1 md:grid-cols-2">
+              <div>
+                Metode: <b>{pyranometerResult.method_profile.code} v{pyranometerResult.method_profile.version}</b>
+              </div>
+              <div>
+                Pasangan valid: <b>{pyranometerResult.audit.valid_pair_count}</b>
+              </div>
+              <div>
+                Outlier statistik: <b>{pyranometerResult.audit.outlier_count}</b> (informasi saja)
+              </div>
+              <div>
+                Drift standar: <b>{pyranometerResult.audit.drift_class || '-'} / {pyranometerResult.audit.drift_value_percent}%</b>
+              </div>
+              <div className="md:col-span-2">
+                Acuan: <b>{pyranometerResult.method_profile.standardReferences.map((ref) => `${ref.code}:${ref.edition}`).join('; ')}</b>
+              </div>
+            </div>
           </div>
         )}
 
@@ -870,6 +948,377 @@ function UncertaintyContent({
                 <span className="border-b-[1.5px] border-black inline-block">
                   {formatDec(result.expanded_uncert_u95)}{' '}
                   {formatUnit(result.unit)}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Budget ketidakpastian khusus RR (Tipping Bucket). Sengaja DIPISAH dari
+ * UncertaintyContent karena komponen RR berbeda (8 komponen, peran Volume &
+ * Panjang). Tabel & formatnya dibuat SERAGAM dengan tabel uncertainty standar
+ * agar tampilannya seragam di modal yang sama.
+ */
+function TippingBucketUncertaintyContent({
+  entry,
+  certificate,
+  sensors,
+  instrumentNames,
+}: {
+  entry: TippingBucketPanelEntry
+  certificate: Certificate
+  sensors: Sensor[]
+  instrumentNames: Array<{ id: number; name: string }>
+}) {
+  const [decimalPrecision, setDecimalPrecision] = useState(4)
+
+  const formatDec = (n: number, d: number = decimalPrecision) =>
+    Number.isFinite(n) ? n.toFixed(d).replace('.', ',') : '-'
+  const formatSci = (n: number, d: number = 2) => {
+    if (!Number.isFinite(n)) return '-'
+    if (n === 0) return '0,0E+00'
+    return n.toExponential(d).replace('.', ',').toUpperCase()
+  }
+  const formatUnitSafe = (u: string | null | undefined) => {
+    if (!u) return '-'
+    try {
+      return formatUnit(u)
+    } catch {
+      return u
+    }
+  }
+  const renderSymbol = (sym: string) => {
+    if (sym.includes('_')) {
+      const [base, sub] = sym.split('_')
+      return (
+        <>
+          {base}
+          <sub>{sub}</sub>
+        </>
+      )
+    }
+    return sym
+  }
+  const symbolFor = (name: string) => {
+    if (/repeat/i.test(name)) return 'u_rep'
+    if (/sertifikat.*gelas/i.test(name)) return 'u_sertf.gl'
+    if (/drift.*gelas/i.test(name)) return 'u_drift.gl'
+    if (/meniskus/i.test(name)) return 'u_meniskus'
+    if (/sertifikat.*sorong/i.test(name)) return 'u_sertf.js'
+    if (/drift.*sorong/i.test(name)) return 'u_drift.js'
+    if (/pengukuran.*sorong/i.test(name)) return 'u_ukur.js'
+    if (/resolusi.*sorong/i.test(name)) return 'u_res.js'
+    return '-'
+  }
+
+  let result: TippingBucketResult | null = null
+  let error: string | null = null
+  try {
+    result = calculateTippingBucket(entry.tippingBucket)
+  } catch (e) {
+    error = e instanceof Error ? e.message : 'Perhitungan tidak dapat dilakukan'
+  }
+
+  const sensor =
+    entry.sensorId != null
+      ? sensors.find((s) => s.id === entry.sensorId)
+      : undefined
+  const fromLookup = (sensor as any)?.sensor_name_id
+    ? instrumentNames.find((n) => n.id === (sensor as any).sensor_name_id)?.name
+    : undefined
+  const sensorName = (
+    fromLookup ||
+    (sensor as any)?.name ||
+    (sensor as any)?.type ||
+    `Sensor ${entry.sensorId ?? '?'}`
+  )
+    .toString()
+    .toUpperCase()
+
+  if (error || !result) {
+    return (
+      <div className="p-6">
+        <div
+          className="bg-white mx-auto shadow-md border border-gray-300 p-8 text-center text-red-600"
+          style={{ maxWidth: '1000px' }}
+        >
+          {error || 'Data RR tidak lengkap.'}
+        </div>
+      </div>
+    )
+  }
+
+  const components = result.components
+  const sumSquares = components.reduce(
+    (sum, c) => sum + c.contributionSquared,
+    0,
+  )
+  const sumFourthOverDf = components.reduce(
+    (sum, c) => sum + c.contributionFourthOverDf,
+    0,
+  )
+
+  return (
+    <div className="space-y-6 p-6">
+      <div
+        className="bg-white mx-auto shadow-md border border-gray-300 overflow-x-auto p-8 font-sans text-black"
+        style={{ maxWidth: '1000px', minHeight: '600px' }}
+      >
+        {/* Header Information */}
+        <div className="flex justify-end mb-8 text-sm font-bold tracking-tight">
+          <div className="grid grid-cols-[100px_10px_1fr] gap-x-1">
+            <div>No Sertifikat</div>
+            <div>:</div>
+            <div>{certificate.no_certificate || '-'}</div>
+
+            <div>No Order</div>
+            <div>:</div>
+            <div>{(certificate as any).no_order || '-'}</div>
+          </div>
+        </div>
+
+        {/* Title */}
+        <div className="text-center font-bold text-lg mb-6">
+          <span className="border-b-2 border-black inline-block tracking-wide uppercase">
+            PERHITUNGAN KETIDAKPASTIAN {sensorName}
+          </span>
+        </div>
+
+        <div className="flex justify-end mb-2">
+          <DecimalPrecisionControl
+            value={decimalPrecision}
+            onChange={setDecimalPrecision}
+          />
+        </div>
+
+        {/* Set Point Indicator */}
+        <div className="flex gap-4 mb-1 text-[15px]">
+          <div>SET POINT RATA-RATA ALAT YANG DIKALIBRASI</div>
+          <div>
+            {formatDec(result.averageUut)} {formatUnitSafe('mm')}
+          </div>
+        </div>
+        <div className="mb-4 px-3 py-2 border text-xs bg-blue-50 border-blue-200 text-blue-900">
+          <b>Satuan hasil (unit UUT):</b> {formatUnitSafe('mm')}
+          <span className="ml-4">
+            <b>Meniskus:</b> {formatDec(entry.tippingBucket.meniscusUncertainty)} ml
+          </span>
+          <span className="ml-4">
+            <b>U95 hasil hitung:</b> {formatDec(result.rawU95Mm)} mm
+          </span>
+          {result.warnings.length > 0 && (
+            <div className="mt-2 border-t border-blue-200 pt-2 text-amber-800">
+              {result.warnings.map((warning) => (
+                <div key={warning}>• {warning}</div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Main Table — samakan kolom dengan tabel uncertainty standar */}
+        <table
+          className="w-full text-center border-collapse border border-black text-[12px] tabular-nums"
+          style={{ lineHeight: '1.2' }}
+        >
+          <thead>
+            <tr>
+              <th className="border border-black font-normal py-1 px-1">
+                Uncert source/
+                <br />
+                Komponen
+              </th>
+              <th className="border border-black font-normal py-1 px-1">
+                Unit Output/
+                <br />
+                Satuan UUT
+              </th>
+              <th className="border border-black font-normal py-1 px-1">
+                Distribusi
+              </th>
+              <th className="border border-black font-normal py-1 px-1">
+                Symbol
+              </th>
+              <th className="border border-black font-normal py-1 px-1">
+                U atau a
+              </th>
+              <th className="border border-black font-normal py-1 px-1">
+                Cov. Factor/
+                <br />
+                Pembagi
+              </th>
+              <th className="border border-black font-normal py-1 px-1">
+                Deg. of freedom/
+                <br />
+                vi
+              </th>
+              <th className="border border-black font-normal py-1 px-1">
+                Std. Uncert/
+                <br />
+                ui
+              </th>
+              <th className="border border-black font-normal py-1 px-1">
+                Sens. Coeff/
+                <br />
+                ci
+              </th>
+              <th className="border border-black font-normal py-1 px-1 w-[70px]">
+                c<sub>i</sub>.u<sub>i</sub>
+              </th>
+              <th className="border border-black font-normal py-1 px-1 w-[80px]">
+                (c<sub>i</sub>.u<sub>i</sub>)²
+              </th>
+              <th className="border border-black font-normal py-1 px-1 w-[80px]">
+                (c<sub>i</sub>.u<sub>i</sub>)⁴/v<sub>i</sub>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {components.map((c, i) => (
+              <tr key={i}>
+                <td className="border border-black px-2 py-0.5 text-left">
+                  {c.name}
+                </td>
+                <td className="border border-black px-1 py-0.5">
+                  {formatUnitSafe(c.unit)}
+                </td>
+                <td className="border border-black px-2 py-0.5 text-left">
+                  {c.distribution}
+                </td>
+                <td className="border border-black px-1 py-0.5">
+                  {renderSymbol(symbolFor(c.name))}
+                </td>
+                <td className="border border-black px-2 py-0.5">
+                  {Math.abs(c.uOrA) < 0.001 && c.uOrA !== 0
+                    ? formatSci(c.uOrA)
+                    : formatDec(c.uOrA)}
+                </td>
+                <td className="border border-black px-2 py-0.5">
+                  {formatDec(c.divisor, 3)}
+                </td>
+                <td className="border border-black px-2 py-0.5">
+                  {c.degreesOfFreedom}
+                </td>
+                <td className="border border-black px-2 py-0.5">
+                  {formatSci(c.standardUncertainty)}
+                </td>
+                <td className="border border-black px-2 py-0.5">
+                  {formatDec(c.sensitivityCoefficient, 4)}
+                </td>
+                <td className="border border-black px-2 py-0.5">
+                  {formatSci(c.contribution)}
+                </td>
+                <td className="border border-black px-2 py-0.5">
+                  {formatSci(c.contributionSquared)}
+                </td>
+                <td className="border border-black px-2 py-0.5">
+                  {formatSci(c.contributionFourthOverDf)}
+                </td>
+              </tr>
+            ))}
+
+            {/* Summary Rows */}
+            <tr>
+              <td colSpan={9} className="border-0 border-r border-black"></td>
+              <td
+                className="border border-black px-1 py-0.5 text-left font-normal"
+                style={{ fontSize: '11px' }}
+              >
+                Sums
+              </td>
+              <td className="border border-black px-1 py-0.5">
+                {formatSci(sumSquares)}
+              </td>
+              <td className="border border-black px-1 py-0.5">
+                {formatSci(sumFourthOverDf)}
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={9} className="border-0 border-r border-black"></td>
+              <td
+                className="border border-black px-1 py-0.5 text-left font-normal"
+                style={{ fontSize: '11px' }}
+              >
+                Comb. uncert, uc
+              </td>
+              <td
+                colSpan={2}
+                className="border border-black px-1 py-0.5 text-center"
+              >
+                {formatSci(result.combinedUncertaintyMm)}
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={9} className="border-0 border-r border-black"></td>
+              <td
+                className="border border-black px-1 py-0.5 text-left font-normal"
+                style={{ fontSize: '11px' }}
+              >
+                Eff. Deg of freedom, veff
+              </td>
+              <td
+                colSpan={2}
+                className="border border-black px-1 py-0.5 text-center"
+              >
+                {result.effectiveDegreesOfFreedom.toLocaleString('id-ID', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={9} className="border-0 border-r border-black"></td>
+              <td
+                className="border border-black px-1 py-0.5 text-left font-normal"
+                style={{ fontSize: '11px' }}
+              >
+                Cov. Factor for 95% CL
+              </td>
+              <td
+                colSpan={2}
+                className="border border-black px-1 py-0.5 text-center"
+              >
+                {result.coverageFactor.toLocaleString('id-ID', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={9} className="border-0 border-r border-black"></td>
+              <td
+                className="border border-black px-1 py-0.5 text-left font-normal"
+                style={{ fontSize: '11px' }}
+              >
+                Expanded uncertainty, U95
+              </td>
+              <td
+                colSpan={2}
+                className="border border-black px-1 py-0.5 text-right pr-4 font-bold"
+              >
+                <span className="border-b-[1.5px] border-black inline-block">
+                  {formatDec(result.reportedU95Mm)} {formatUnitSafe('mm')}
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td colSpan={9} className="border-0 border-r border-black"></td>
+              <td
+                className="border border-black px-1 py-0.5 text-left font-normal"
+                style={{ fontSize: '11px' }}
+              >
+                Expanded uncertainty, U95 (%)
+              </td>
+              <td
+                colSpan={2}
+                className="border border-black px-1 py-0.5 text-right pr-4 font-bold"
+              >
+                <span className="border-b-[1.5px] border-black inline-block">
+                  {formatDec(result.reportedU95Percent)} %
                 </span>
               </td>
             </tr>

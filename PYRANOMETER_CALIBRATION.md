@@ -74,7 +74,7 @@ CF_final = Σ(CF_i) / n
 dimana:
   CF_i     = Faktor kalibrasi setiap baris data
   CF_final = Faktor kalibrasi final (rata-rata)
-  n        = Jumlah data setelah filter outlier
+  n        = Jumlah pasangan data valid; outlier statistik hanya dilaporkan
 ```
 
 ### Formula Sensitivitas Baru (Pyranometer Analog)
@@ -99,6 +99,84 @@ dimana:
 ---
 
 ## 4. Arsitektur Implementasi
+
+## Catatan Audit Workbook `pyranometer.xlsx`
+
+> Catatan ini dibuat untuk ditindaklanjuti bersama petugas kalibrasi. Untuk
+> sementara, aplikasi memakai formula Pyranometer yang konsisten secara
+> statistik dan tidak menyalin referensi sel workbook yang terindikasi tidak
+> konsisten.
+
+### A. Jumlah Data dan Pembagi Repeatability
+
+| Area | Rujukan workbook | Temuan | Dampak | Konfirmasi petugas |
+|---|---|---|---|---|
+| Sheet `Data glolbal`, data pembacaan | Data berada pada baris `19:168`, total 150 pasangan STD-UUT | Formula pada `Hit U!G12` memakai `=SQRT('Data glolbal'!B154)`, sehingga pembagi menjadi `SQRT(136) = 11,66190379`, bukan `SQRT(150)` | Nilai `u_repeat` Global berbeda dari penggunaan jumlah data aktual | Apakah `B154` sengaja dipakai sebagai jumlah data efektif, atau seharusnya memakai jumlah pasangan valid 150? |
+| Sheet `Data glolbal`, derajat bebas | `Hit U!I12 = 'Data glolbal'!B168-1` | `B168 = 150`, sehingga `vi = 149`; jumlah data untuk pembagi dan derajat bebas tidak konsisten | Repeatability memakai `n=136`, tetapi `vi` memakai `n=150` | Tetapkan satu aturan: `n` pasangan valid atau jumlah efektif setelah pengecualian |
+| Sheet `Data diffuse`, data pembacaan | Data berada pada baris `18:167`, total 150 pasangan | `Hit U!H34 = SQRT('Data glolbal'!B168)` memakai referensi sheet Global untuk pembagi Diffuse | Referensi lintas sheet menyulitkan audit dan berisiko salah jika jumlah data berbeda | Apakah Diffuse harus memakai jumlah data pada `Data diffuse` sendiri? |
+
+### B. Derajat Kebebasan Sertifikat Standar
+
+| Area | Rujukan workbook | Temuan | Dampak | Konfirmasi petugas |
+|---|---|---|---|---|
+| Global | `Hit U!I13 = 60` | Komponen `Sertifikat Standar` memakai `vi=60` | Memengaruhi kontribusi `(ci.ui)^4/vi`, `veff`, `k`, dan U95 | Apakah `60` berasal dari sertifikat standar atau hanya angka manual workbook? |
+| Diffuse, budget utama | `Hit U!I35 = 150` | Komponen yang sama memakai `vi=150` | Tidak sama dengan Global | Apakah perbedaan `60` dan `150` disengaja berdasarkan sertifikat/metode, atau kesalahan template? |
+| Diffuse, budget salinan | `Salinan dari Hit U!I48 = 50` | Budget Diffuse kedua memakai `vi=50` | Satu workbook memiliki tiga nilai vi untuk komponen yang sama: 60, 150, dan 50 | Tentukan nilai vi resmi untuk sertifikat standar Pyranometer |
+
+### C. Resolusi Standar
+
+| Area | Rujukan workbook | Temuan | Dampak | Konfirmasi petugas |
+|---|---|---|---|---|
+| Global | `Hit U!G14 = ((0.5*'Input Data'!C45/2)/'Data glolbal'!C168)*100%` | Denominator `Data glolbal!C168` adalah nilai pembacaan baris terakhir, bukan rata-rata STD | Nilai resolusi standar bergantung pada satu baris data tertentu | Apakah denominator dimaksudkan sebagai rata-rata STD, nilai minimum, atau pembacaan tertentu? |
+| Diffuse | `Hit U!G36 = ((0.5*'Input Data'!C45)/'Data diffuse'!C168)*100%` | Denominator `Data diffuse!C168` berada pada baris ringkasan rata-rata, tetapi struktur formula berbeda dari Global | Global dan Diffuse tidak memakai basis yang sama | Tetapkan basis resolusi standar yang sama untuk kedua sensor |
+| Sumber input | `Input Data!C45 = 0,01 W/m²` | Resolusi standar berasal dari Input Data, sedangkan aplikasi mengambil `resolution` dari record sertifikat standar | Sumber nilai dapat berbeda saat data master/sertifikat berubah | Pastikan sumber resmi resolusi standar: Input Data, sertifikat standar, atau master instrumen |
+
+### D. Resolusi UUT
+
+| Area | Rujukan workbook | Temuan | Dampak | Konfirmasi petugas |
+|---|---|---|---|---|
+| Global | `Hit U!G16 = ((0.5*'Input Data'!C31)/'Data glolbal'!C157*100)` | Denominator `Data glolbal!C157` adalah pembacaan STD pada baris data tertentu, bukan rata-rata UUT | Nilai resolusi UUT tidak langsung memakai rata-rata UUT | Apakah denominator tersebut sengaja dipilih sebagai titik ukur tertentu? |
+| Diffuse | `Hit U!G38 = ((0.5*'Input Data'!C38)/'Data diffuse'!C170*100)` | Denominator `Data diffuse!C170` adalah nilai minimum STD, bukan mean UUT | Formula Diffuse berbeda dari Global dan dari interpretasi umum resolusi UUT | Tetapkan apakah resolusi UUT harus dibagi mean UUT, minimum UUT, atau nilai setpoint tertentu |
+| Sumber resolusi | `Input Data!C31` dan `Input Data!C38` | Global dan Diffuse memakai resolusi UUT dari input terpisah | Ini dapat benar jika kedua sensor berbeda, tetapi perlu jejak sumber | Pastikan nilai resolusi di master sensor sama dengan nilai Input Data saat sertifikat dibuat |
+
+### E. Faktor Cakupan
+
+| Area | Rujukan workbook | Temuan | Dampak | Konfirmasi petugas |
+|---|---|---|---|---|
+| Global | `Hit U!N20 = IF(N19>10000000000,1.96,TINV(0.05,N19))` | Excel memakai `veff` desimal langsung pada `TINV` | `k` sekitar `1,988609667` | Ini menjadi aturan resmi Pyranometer? |
+| Diffuse | `Hit U!N42 = IF(N41>10000000000,1.96,TINV(0.05,N41))` | Aturan sama, tetapi nilai `veff` berbeda karena komponen dan vi berbeda | U95 mengikuti kombinasi formula/vi yang berbeda | Konfirmasi penggunaan Student-t berbasis `veff` desimal |
+| Catatan sertifikat | Sheet `Global!38:39` dan `Diffuse!38:39` | Catatan menyatakan `k = 2`, sedangkan budget memakai `k` sekitar 1,99 | Pernyataan sertifikat adalah pembulatan, bukan angka kalkulasi persis | Apakah catatan tetap `k=2` atau perlu menyebut faktor aktual? |
+
+### F. Nilai CF pada Sertifikat
+
+| Area | Rujukan workbook | Temuan | Dampak | Konfirmasi petugas |
+|---|---|---|---|---|
+| Global | `Data glolbal!F169 = AVERAGE(F19:F168)` | CF sertifikat memakai rata-rata 150 CF, termasuk nilai ekstrem | CF Global `0,9896852593` | Sesuai metode aplikasi legacy saat ini |
+| Diffuse | `Data diffuse!E168 = AVERAGE(E18:E167)` | CF sertifikat juga memakai rata-rata 150 CF | CF Diffuse `0,9940407291` | Sesuai metode aplikasi legacy saat ini |
+| Filter outlier | Data ekstrem ada pada beberapa baris, tetapi workbook tetap memasukkan seluruh data pada rata-rata | Workbook tidak menghapus outlier secara otomatis | Perlu dibedakan antara data invalid dan outlier statistik | Jika petugas ingin mengecualikan data, catatan/alasan harus dibuat eksplisit |
+
+### Kebijakan Aplikasi Sementara
+
+Sebelum ada konfirmasi petugas, aplikasi menggunakan aturan berikut untuk
+Pyranometer:
+
+1. Pasangan STD-UUT yang tidak lengkap, non-numerik, atau tidak positif tidak dipakai.
+2. Pasangan valid dihitung sebagai `CF_i = STD_i / UUT_i`.
+3. `CF final` adalah rata-rata seluruh pasangan valid.
+4. Outlier statistik tidak otomatis dikeluarkan dari CF final; hanya ditandai sebagai informasi.
+5. Repeatability menggunakan standar deviasi dan mean CF seluruh pasangan valid.
+6. Drift standar mengikuti tipe standar yang terdeteksi melalui klasifikasi Pyranometer.
+7. Nilai `U95`, `veff`, `k`, dan derajat bebas tetap mengikuti fungsi aplikasi yang terdokumentasi; perbedaan workbook di atas menjadi bahan konfirmasi, bukan disalin otomatis.
+
+### Rujukan Workbook yang Perlu Dibawa Saat Follow-up
+
+- Sheet `Data glolbal`: baris data `19:168`, ringkasan `169:171`.
+- Sheet `Data diffuse`: baris data `18:167`, ringkasan `168:170`.
+- Sheet `Hit U`: budget Global pada baris `12:21`, budget Diffuse pada baris `34:43`.
+- Sheet `Salinan dari Hit U`: budget pembanding pada baris `12:21`, `24:33`, dan `37:46`.
+- Sheet `Input Data`: resolusi dan sensitivitas pada baris `30:45`.
+- Sheet `Global`: nilai sertifikat Global pada baris `23:25`, catatan faktor cakupan pada baris `38:39`.
+- Sheet `Diffuse`: nilai sertifikat Diffuse pada baris `23:25`, catatan faktor cakupan pada baris `38:39`.
 
 ### Prinsip Desain
 
@@ -293,12 +371,12 @@ export function getISO9060Drift(sensorType: string): number
 /**
  * Hitung Faktor Kalibrasi (CF) untuk pyranometer
  * CF_i = Std_i / UUT_i
- * CF_final = avg(CF_i) setelah filter outlier
+ * CF_final = avg(CF_i) dari semua pasangan valid
  * 
  * SAFEGUARD:
  * - Validasi input sebelum hitung
  * - Handle division by zero
- * - Filter outlier otomatis
+ * - Laporkan outlier statistik tanpa mengeluarkannya dari CF final secara otomatis
  * - Return empty result jika data tidak valid
  */
 export function calculateCalibrationFactor(

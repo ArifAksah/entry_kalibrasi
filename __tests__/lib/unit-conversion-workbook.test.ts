@@ -1,4 +1,4 @@
-import { canConvertUnit, convertDeltaUnit, convertUnit } from '../../lib/unitConversion';
+import { canConvertUnit, convertDeltaUnit, convertUnit, normaliseUnit } from '../../lib/unitConversion';
 
 describe('official workbook conversion constants', () => {
     it('matches the Barometer workbook hPa to inHg result', () => {
@@ -31,5 +31,11 @@ describe('official workbook conversion constants', () => {
     it('reports whether a conversion pair is supported', () => {
         expect(canConvertUnit('m/s', 'knot')).toBe(true);
         expect(canConvertUnit('unknown-a', 'unknown-b')).toBe(false);
+    });
+
+    it('treats %RH and % as equivalent relative-humidity units', () => {
+        expect(normaliseUnit('%RH')).toBe('%');
+        expect(canConvertUnit('%RH', '%')).toBe(true);
+        expect(convertDeltaUnit(1.1, '%RH', '%')).toBeCloseTo(1.1, 12);
     });
 });

@@ -13,6 +13,7 @@ import { CertCorrectionPoint } from './qc-utils';
 import { canConvertUnit, convertDeltaUnit, convertUnit, normaliseUnit } from './unitConversion';
 import { parseCertCorrectionPoints, interpolateCorrectionFromPoints } from './qc-utils';
 import { isWindDirectionSensor, wrapWindDirectionCorrection } from './wind-direction';
+import { LEGACY_METHOD_PROFILES } from './calibration-method-profiles';
 import { filterPairedMeasurementRows, parseFiniteMeasurement } from './measurement-rows';
 
 export interface UncertaintyComponent {
@@ -220,32 +221,23 @@ const coverageFactorCache = new Map<number, number>();
 /**
  * Get Coverage Factor (k) for 95% Confidence Level based on Effective Degrees of Freedom (veff).
  *
- * - df <= 30: exact tabulated Student-t values (t_{0.975, df}).
- * - df > 30 : exact inverse Student-t via regularized incomplete beta, matching
- *   Excel TINV(0.05, df) to ~1e-13. Results are cached per df because the QC
- *   calculation calls this repeatedly for the same veff.
+ * Returns the exact 0.975 quantile of Student's t (two-tailed 95% coverage
+ * factor), matching Excel TINV(0.05, df) to ~1e-13 for every df (small and
+ * large alike). Degrees of freedom are floored to an integer to replicate the
+ * way legacy Excel TINV truncates df. Results are cached per df because the QC
+ * calculation calls this repeatedly for the same veff.
  */
 export function getCoverageFactorFor95(veff: number): number {
     const v = Math.floor(veff);
 
     if (v <= 0) return 2.0; // Fallback
 
-    // T-distribution table for 95% CL (two-tailed p=0.05)
-    // Degrees of freedom 1 to 30.
-    const tTable: Record<number, number> = {
-        1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
-        6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
-        11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145, 15: 2.131,
-        16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086,
-        21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060,
-        26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042,
-    };
-
-    if (v <= 30 && tTable[v]) return tTable[v];
-
     const cached = coverageFactorCache.get(v);
     if (cached !== undefined) return cached;
 
+    // Exact inverse Student-t at the 0.975 quantile (two-tailed p=0.05),
+    // matching Excel TINV(0.05, v). For df=2 this yields 4.302652729749456
+    // (not the rounded 4.303 from a 3-decimal t-table).
     const k = studentTInverse(0.975, v);
     coverageFactorCache.set(v, k);
     return k;
@@ -423,7 +415,9 @@ export function calculateCalibrationResult(params: {
     });
 
     const globalStdCorrected = totalStdCorrected / currentData.length;
-    // Workbook uses AVERAGE for displayed STD/UUT headings, including Wind Direction.
+    // Workbook uses AVERAGE (aritmatika) for displayed STD/UUT headings,
+    // termasuk Wind Direction. Koreksi tetap di-wrap; hanya rata-rata heading
+    // yang ditampilkan memakai AVERAGE.
     const globalUutAvg = totalUut / currentData.length;
 
     const unitStd = currentData[0]?.unit_std || '';
@@ -542,6 +536,19 @@ export const PYRANOMETER_CONFIG = {
     DEFAULT_K_FACTOR: 2.01,
 };
 
+export const PYRANOMETER_METHOD_PROFILE = {
+    ...LEGACY_METHOD_PROFILES.pyranometer,
+    status: 'active' as const,
+    standardReferences: LEGACY_METHOD_PROFILES.pyranometer.source_documents,
+    cfRule: 'MEAN_ALL_VALID',
+    outlierRule: 'REPORT_ONLY',
+    driftRule: 'ISO_CLASSIFICATION',
+    coverageRule: 'STUDENT_T_95',
+    resolutionRule: 'RESOLUTION_OVER_MEAN',
+} as const;
+
+export type PyranometerMethodProfile = typeof PYRANOMETER_METHOD_PROFILE;
+
 /**
  * Interface untuk data sensor pyranometer
  */
@@ -567,6 +574,10 @@ export interface CalibrationFactorResult {
     std_dev_all?: number;    // Stdev dari semua data (untuk Repeat)
     mean_all?: number;       // Mean dari semua data (untuk Repeat - konsisten dengan std_dev_all)
     n_all?: number;          // Jumlah semua data (untuk Repeat)
+    /** Jumlah pasangan yang berada di luar batas statistik ±2 SD. */
+    outlier_count?: number;
+    /** Legacy workbook memakai seluruh pasangan valid untuk CF final. */
+    filter_applied?: boolean;
 }
 
 /**
@@ -590,6 +601,14 @@ export interface PyranometerUncertaintyResult {
     uc_percent: number;
     u95_percent: number;
     k_factor: number;
+    method_profile: PyranometerMethodProfile;
+    audit: {
+        valid_pair_count: number;
+        outlier_count: number;
+        outlier_indices: number[];
+        drift_class: 'A' | 'B' | 'C' | null;
+        drift_value_percent: number;
+    };
     certificate: {
         calibration_factor: number;
         correction_percent: number;
@@ -700,12 +719,13 @@ function createEmptyCFResult(): CalibrationFactorResult {
 /**
  * Hitung Faktor Kalibrasi (CF) untuk pyranometer
  * CF_i = Std_i / UUT_i
- * CF_final = avg(CF_i) setelah filter outlier
+ * CF_final = avg(CF_i) dari semua pasangan valid pada mode legacy workbook.
+ * Outlier statistik tetap dilaporkan; filtering hanya jika diminta eksplisit.
  * 
  * SAFEGUARD:
  * - Validasi input sebelum hitung
  * - Handle division by zero
- * - Filter outlier otomatis
+ * - Outlier statistik dihitung sebagai informasi
  * - Return empty result jika data tidak valid
  */
 export function calculateCalibrationFactor(
@@ -714,11 +734,14 @@ export function calculateCalibrationFactor(
     options: {
         outlierThreshold?: number;
         minReadings?: number;
+        /** Jika false, outlier hanya dilaporkan dan tidak dikeluarkan dari CF final. */
+        filterOutliers?: boolean;
     } = {}
 ): CalibrationFactorResult {
     const { 
         outlierThreshold = PYRANOMETER_CONFIG.DEFAULT_OUTLIER_THRESHOLD, 
-        minReadings = PYRANOMETER_CONFIG.MIN_READINGS 
+        minReadings = PYRANOMETER_CONFIG.MIN_READINGS,
+        filterOutliers = false,
     } = options;
     
     // SAFEGUARD 1: Validasi input
@@ -777,7 +800,7 @@ export function calculateCalibrationFactor(
     });
     
     // SAFEGUARD 4: Pastikan cukup data setelah filter
-    if (filteredCF.length < minReadings) {
+    if (filterOutliers && filteredCF.length < minReadings) {
         // Jika terlalu banyak outlier, gunakan semua data
         return {
             cf_i,
@@ -789,24 +812,33 @@ export function calculateCalibrationFactor(
             std_dev_all: sd_all,
             mean_all: mean_all,
             n_all: n
+            ,outlier_count: outlierIndices.length
+            ,filter_applied: false
         };
     }
     
-    // Hitung CF_final dari data bersih (untuk display/koreksi)
-    const cfFinal = filteredCF.reduce((a, b) => a + b, 0) / filteredCF.length;
-    const filteredVariance = filteredCF.reduce((a, b) => a + Math.pow(b - cfFinal, 2), 0) / (filteredCF.length - 1);
+    // RR/PYR-LEGACY menggunakan seluruh pasangan valid untuk CF final. Outlier
+    // tetap dicatat agar QC dapat menampilkannya; hanya mode eksplisit yang
+    // mengeluarkan outlier dari nilai final.
+    const acceptedCF = filterOutliers ? filteredCF : cf_i;
+    const cfFinal = acceptedCF.reduce((a, b) => a + b, 0) / acceptedCF.length;
+    const filteredVariance = acceptedCF.length > 1
+        ? acceptedCF.reduce((a, b) => a + Math.pow(b - cfFinal, 2), 0) / (acceptedCF.length - 1)
+        : 0;
     const filteredSD = Math.sqrt(filteredVariance);
     
     return {
         cf_i,
-        cf_final: cfFinal,         // Mean dari data filtered (untuk display)
+        cf_final: cfFinal,
         n_total: n,
-        n_filtered: filteredCF.length,
+        n_filtered: acceptedCF.length,
         outlier_indices: outlierIndices,
-        std_dev: filteredSD,       // Stdev dari data filtered
+        std_dev: filteredSD,
         std_dev_all: sd_all,       // Stdev dari SEMUA data (untuk Repeat)
         mean_all: mean_all,        // Mean dari SEMUA data (untuk Repeat)
-        n_all: n                   // Jumlah semua data (untuk Repeat)
+        n_all: n,                  // Jumlah semua data (untuk Repeat)
+        outlier_count: outlierIndices.length,
+        filter_applied: filterOutliers,
     };
 }
 
@@ -824,6 +856,14 @@ function createEmptyPyranometerResult(): PyranometerUncertaintyResult {
         uc_percent: 0,
         u95_percent: 0,
         k_factor: PYRANOMETER_CONFIG.DEFAULT_K_FACTOR,
+        method_profile: PYRANOMETER_METHOD_PROFILE,
+        audit: {
+            valid_pair_count: 0,
+            outlier_count: 0,
+            outlier_indices: [],
+            drift_class: null,
+            drift_value_percent: 0,
+        },
         certificate: {
             calibration_factor: 0,
             correction_percent: 0,
@@ -906,17 +946,20 @@ export function calculatePyranometerUncertainty(params: {
     
     // 3. Resolusi Std (dalam %)
     // Formula: U = 0.5 × resolusi_STD / mean_STD (TANPA × 100)
+    // Workbook's standard-resolution formula uses `*100%`, which Excel
+    // evaluates as a unitless factor of 1. Keep that legacy convention.
     const resStdPercent = effectiveStdMean > 0 ? (0.5 * effectiveResStd / effectiveStdMean) : 0;
     const u_res_std = resStdPercent / Math.sqrt(3);
     
     // 4. Drift Std (dalam %, dari ISO 9060:2018)
     const driftSensorType = stdSensorType || sensorType;
     const driftPercent = getISO9060Drift(driftSensorType);
+    const driftClass = getISO9060Class(driftSensorType);
     const u_drift = driftPercent / Math.sqrt(3);
     
     // 5. Resolusi UUT (dalam %)
     // Formula: U = 0.5 × resolusi_UUT / mean_UUT (TANPA × 100)
-    const resUutPercent = effectiveUutMean > 0 ? (0.5 * effectiveResUut / effectiveUutMean) : 0;
+    const resUutPercent = effectiveUutMean > 0 ? (0.5 * effectiveResUut / effectiveUutMean) * 100 : 0;
     const u_res_uut = resUutPercent / Math.sqrt(3);
     
     // Components array dengan formula yang sesuai Excel
@@ -949,6 +992,14 @@ export function calculatePyranometerUncertainty(params: {
         uc_percent: uc,
         u95_percent: u95,
         k_factor: k,
+        method_profile: PYRANOMETER_METHOD_PROFILE,
+        audit: {
+            valid_pair_count: cf_result.n_total,
+            outlier_count: cf_result.outlier_count ?? cf_result.outlier_indices.length,
+            outlier_indices: cf_result.outlier_indices,
+            drift_class: driftClass,
+            drift_value_percent: driftPercent,
+        },
         certificate: {
             calibration_factor: cf_result.cf_final,
             correction_percent: (1 - cf_result.cf_final) * 100,

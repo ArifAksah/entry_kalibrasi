@@ -251,7 +251,7 @@ const MasterNamesCRUD: React.FC = () => {
                 <tr>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
                     No
-                  </th>{' '}
+                  </th>
                   {activeTab === 'instrument_names' && (
                     <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Kode Alat
@@ -276,7 +276,7 @@ const MasterNamesCRUD: React.FC = () => {
                   >
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                       {(currentPage - 1) * pageSize + idx + 1}
-                    </td>{' '}
+                    </td>
                     {activeTab === 'instrument_names' && (
                       <td className="px-4 py-3 whitespace-nowrap">
                         {' '}

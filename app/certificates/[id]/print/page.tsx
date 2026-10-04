@@ -2539,6 +2539,18 @@ const PrintCertificatePage: React.FC = () => {
                                 value: `${type} / ${serial}`,
                                 bold: true,
                               },
+                              ...(res?.funnel_diameter != null
+                                ? [
+                                    {
+                                      label: 'Diameter Corong / ',
+                                      labelEng: 'Funnel Diameter',
+                                      value: `${Math.round(Number(res.funnel_diameter) * 10) / 10} ${
+                                        res.funnel_diameter_unit || 'mm'
+                                      }`,
+                                      bold: true,
+                                    },
+                                  ]
+                                : []),
                               {
                                 label: 'Tanggal Masuk / ',
                                 labelEng: 'Date of Entry',
@@ -2609,8 +2621,7 @@ const PrintCertificatePage: React.FC = () => {
                             const envRows: Array<{
                               label: string
                               labelEng: string
-                              initial: React.ReactNode
-                              final: React.ReactNode
+                              value: string
                             }> = envList.map((env: any) => {
                               const key = String(env?.key || '')
                               const lower = key.toLowerCase()
@@ -2620,9 +2631,9 @@ const PrintCertificatePage: React.FC = () => {
                                 lower.includes('rh')
 
                               const label = isSuhu
-                                ? 'Suhu / '
+                                ? 'Suhu Ruang / '
                                 : isHum
-                                  ? 'Kelembaban / '
+                                  ? 'Kelembapan / '
                                   : `${key} `
                               const eng = isSuhu
                                 ? 'Temperature'
@@ -2634,19 +2645,10 @@ const PrintCertificatePage: React.FC = () => {
                               return {
                                 label,
                                 labelEng: eng,
-                                initial: isSuhu
-                                  ? (suhuCondition?.initialDisplay ??
-                                    fallbackValue)
+                                value: isSuhu
+                                  ? (suhuCondition?.display ?? fallbackValue)
                                   : isHum
-                                    ? (humCondition?.initialDisplay ??
-                                      fallbackValue)
-                                    : fallbackValue,
-                                final: isSuhu
-                                  ? (suhuCondition?.finalDisplay ??
-                                    fallbackValue)
-                                  : isHum
-                                    ? (humCondition?.finalDisplay ??
-                                      fallbackValue)
+                                    ? (humCondition?.display ?? fallbackValue)
                                     : fallbackValue,
                               }
                             })
@@ -2691,34 +2693,23 @@ const PrintCertificatePage: React.FC = () => {
                                       <td className="w-[5%]" />
                                       <td className="align-top" colSpan={2}>
                                         <div className="text-sm font-bold mb-1">
-                                          Kondisi Lingkungan /{' '}
+                                          Kondisi Ruang /{' '}
                                           <span className="italic">
-                                            Environment condition
+                                            Room condition
                                           </span>
                                         </div>
-                                        <table className="w-full text-[10px]">
-                                          <thead>
-                                            <tr>
-                                              <th className="text-left"></th>
-                                              <th className="text-left">
-                                                Awal
-                                              </th>
-                                              <th className="text-left">
-                                                Akhir
-                                              </th>
-                                            </tr>
-                                          </thead>
+                                        <table className="w-full text-xs">
                                           <tbody>
                                             {envRows.map((er, idx) => (
                                               <tr key={idx}>
-                                                <td className="font-semibold">
+                                                <td className="font-semibold" style={{ width: '45%' }}>
                                                   {er.label}
                                                   <span className="italic">
                                                     {er.labelEng}
                                                   </span>
                                                 </td>
-                                                <td>{er.initial}</td>
-                                                <td>{er.final}</td>
+                                                <td style={{ width: '5%' }}>:</td>
+                                                <td>{er.value}</td>
                                               </tr>
                                             ))}
                                           </tbody>
@@ -2966,6 +2957,7 @@ const PrintCertificatePage: React.FC = () => {
                             Boolean(nf.others) &&
                             (shouldAlwaysShowDefaultOthers || othersEnabled)
                           const hasAny =
+                            res?.tippingBucket?.testVolume != null ||
                             nf.traceable_to_si_through ||
                             nf.reference_document ||
                             nf.calibration_methode ||
@@ -2981,6 +2973,25 @@ const PrintCertificatePage: React.FC = () => {
                               </div>
                               <table className="w-full text-xs mt-1">
                                 <tbody>
+                                  {res?.tippingBucket?.testVolume != null && (
+                                    <tr>
+                                      <td className="w-[40%] align-top text-left pr-2 py-0">
+                                        {' '}
+                                        <div className="font-bold leading-tight">
+                                          Volume Uji{' '}
+                                          <span className="italic text-[10px] text-gray-900">
+                                            / Volume of Standard
+                                          </span>
+                                        </div>
+                                      </td>
+                                      <td className="w-[5%] align-top py-0">
+                                        :
+                                      </td>
+                                      <td className="w-[55%] align-top whitespace-pre-line py-0">
+                                        {`${res.tippingBucket.testVolume} ml`}
+                                      </td>
+                                    </tr>
+                                  )}
                                   {Array.isArray(nf.standardInstruments) &&
                                     nf.standardInstruments.length > 0 && (
                                       <tr>

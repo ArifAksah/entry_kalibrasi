@@ -48,10 +48,13 @@ export async function GET(request: NextRequest) {
     // cache belum refresh), query retry memakai daftar kolom lama agar list
     // instrumen tidak 500 dan halaman print/edit tetap berfungsi.
     const sensorFields =
-      "id, name, type, serial_number, is_standard, sensor_name_id, " +
+      "id, name, type, manufacturer, serial_number, is_standard, sensor_name_id, instrument_id, parameter_code, " +
       "resolution, graduating, graduating_unit, range_capacity, range_capacity_unit";
+    // Fallback minimal: hanya kolom yang pasti ada di semua versi schema.
+    // Dipakai bila kolom baru (parameter_code / resolution / graduating) belum
+    // dimigrasi, agar daftar instrumen tetap tampil (bukan 500).
     const sensorFieldsLegacy =
-      "id, name, type, serial_number, is_standard, sensor_name_id";
+      "id, name, type, manufacturer, serial_number, is_standard, sensor_name_id, instrument_id";
 
     // Untuk filter 'uut': sembunyikan instrumen yang memiliki sensor standar
     // (mis. alat standar), sehingga daftar hanya menampilkan UUT murni.
@@ -163,7 +166,7 @@ export async function GET(request: NextRequest) {
 
     const isMissingSensorColumn =
       !!error &&
-      /could not find .*(resolution|graduating|range_capacity)/i.test(
+      /could not find .*(resolution|graduating|range_capacity|parameter_code)/i.test(
         String(error.message || ""),
       );
 

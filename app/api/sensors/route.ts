@@ -68,7 +68,8 @@ export async function POST(request: NextRequest) {
       funnel_area,
       funnel_area_unit,
       name,
-      is_standard
+      is_standard,
+      parameter_code
     } = body
 
     // Validation
@@ -95,7 +96,8 @@ export async function POST(request: NextRequest) {
         funnel_area: funnel_area || 0,
         funnel_area_unit: funnel_area_unit || '',
         name,
-        is_standard: !!is_standard
+        is_standard: !!is_standard,
+        parameter_code: parameter_code || null
       })
       .select()
       .single()

@@ -1301,10 +1301,10 @@ const RoleBasedDashboard: React.FC = () => {
             </div>
             <div className="flex flex-wrap gap-3">
               <a
-                href="/certificates?create=true"
+                href="/calibration-orders"
                 className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#10245b] transition hover:bg-blue-50"
               >
-                Buat Sertifikat
+                Buka Order Kalibrasi
               </a>
               <a
                 href="/certificates"

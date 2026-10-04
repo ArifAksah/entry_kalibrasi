@@ -5,7 +5,7 @@ import {
   normalizeResultsOnWrite,
   ResultsValidationError,
 } from '../../../lib/validators/certificate-results-normalize'
-import { authenticateRequest, filterCertificatesForUser, getUserRole } from '../../../lib/certificate-access'
+import { authenticateRequest, filterCertificatesForUser, getUserRole, getUserOrderTeamOrderIds, canEditCertificate } from '../../../lib/certificate-access'
 import { clientSafeMessage } from '../../../lib/api-error'
 
 // Using shared supabaseAdmin with env fallbacks for consistency
@@ -36,6 +36,11 @@ export async function GET(request: NextRequest) {
 
     const visibleCertificates = await filterCertificatesForUser(user.id, role, data || [])
 
+    // Order yang dikerjakan user (pembuat order / petugas di-assign) — dipakai
+    // untuk menandai sertifikat mana yang boleh dia ubah (draft), agar UI
+    // menyembunyikan aksi edit/hapus pada sertifikat orang lain.
+    const teamOrderIds = await getUserOrderTeamOrderIds(user.id)
+
     // Get verification status for each certificate (gracefully handle missing table)
     const certificateIds = visibleCertificates.map(c => c.id) || []
     let verifications: Array<{ certificate_id: number; verification_level: number; status: string; certificate_version?: number }> = []
@@ -65,6 +70,7 @@ export async function GET(request: NextRequest) {
       const certVersion = (cert as any).version ?? 1
       return {
         ...cert,
+        can_edit: canEditCertificate(user.id, role, cert, teamOrderIds),
         verifikator_1_status: verifMap.get(`${cert.id}-1-${certVersion}`) || 'pending',
         verifikator_2_status: verifMap.get(`${cert.id}-2-${certVersion}`) || 'pending',
         verifikator_3_status: verifMap.get(`${cert.id}-3-${certVersion}`) || 'pending',
@@ -126,27 +132,70 @@ export async function POST(request: NextRequest) {
       // Template fields
       balai_id,           // 1-5 or null (BMKG pusat)
       is_standard,        // boolean — sertifikat standar kalibrasi
+      calibration_order_item_id, // number — bila sertifikat dibuat dari booking order
     } = body
 
-    if (!no_identification) {
-      return NextResponse.json({
-        error: 'No. Identifikasi wajib diisi',
-      }, { status: 400 })
+    const orderItemId = calibration_order_item_id != null ? Number(calibration_order_item_id) : null
+    if (!Number.isFinite(orderItemId) || orderItemId! <= 0) {
+      return NextResponse.json(
+        { error: 'Sertifikat baru wajib dibuat dari Order Kalibrasi' },
+        { status: 400 },
+      )
     }
 
-    // Instrument code wajib untuk format nomor sesuai IKK.
-    if (!instrument_code || typeof instrument_code !== 'string') {
-      return NextResponse.json({
-        error: 'Kode alat (instrument_code) wajib diisi',
-      }, { status: 400 })
+    const { data: orderItem, error: orderItemError } = await supabaseAdmin
+      .from('calibration_order_items')
+      .select('id, order_id, status, no_identification, instrument_id, instrument_code')
+      .eq('id', orderItemId)
+      .maybeSingle()
+    if (orderItemError || !orderItem) {
+      return NextResponse.json({ error: 'Order item tidak ditemukan' }, { status: 404 })
     }
 
-    const normalizedPlace = (calibration_place || 'FC').toString().toUpperCase()
-    if (!['FC', 'LC'].includes(normalizedPlace)) {
-      return NextResponse.json({
-        error: 'calibration_place harus FC atau LC',
-      }, { status: 400 })
+    const { data: calibrationOrder, error: orderError } = await supabaseAdmin
+      .from('calibration_orders')
+      .select('id, status, station_id, station_address_snapshot, calibration_place, no_order, created_by')
+      .eq('id', orderItem.order_id)
+      .maybeSingle()
+    if (orderError || !calibrationOrder) {
+      return NextResponse.json({ error: 'Order Kalibrasi tidak ditemukan' }, { status: 404 })
     }
+    if (!['booked', 'in_progress'].includes(calibrationOrder.status)) {
+      return NextResponse.json(
+        { error: `Order berstatus ${calibrationOrder.status} tidak dapat membuat sertifikat` },
+        { status: 409 },
+      )
+    }
+    if (orderItem.status === 'void') {
+      return NextResponse.json({ error: 'Identifikasi sudah void' }, { status: 409 })
+    }
+
+    if (userRole.role !== 'admin' && calibrationOrder.created_by !== user.id) {
+      const { data: membership } = await supabaseAdmin
+        .from('calibration_order_personnel')
+        .select('id')
+        .eq('order_id', calibrationOrder.id)
+        .eq('personel_id', user.id)
+        .maybeSingle()
+      if (!membership) {
+        return NextResponse.json(
+          { error: 'Anda bukan petugas yang ditugaskan pada Order Kalibrasi ini' },
+          { status: 403 },
+        )
+      }
+    }
+
+    if (!orderItem.instrument_id || !orderItem.instrument_code) {
+      return NextResponse.json(
+        { error: 'Order item belum memiliki instrumen dan kode instrumen yang valid' },
+        { status: 409 },
+      )
+    }
+
+    const officialStation = Number(calibrationOrder.station_id)
+    const officialInstrument = Number(orderItem.instrument_id)
+    const officialInstrumentCode = String(orderItem.instrument_code)
+    const normalizedPlace = String(calibrationOrder.calibration_place).toUpperCase()
 
     const normalizedCertType = (certificate_type || 'sert').toString().toLowerCase()
     if (!['sert', 's_ket'].includes(normalizedCertType)) {
@@ -172,37 +221,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Certificate creator cannot verify or authorize their own certificate' }, { status: 400 })
     }
 
-    // Validate station foreign key if provided and fetch address
-    let resolvedStationAddress: string | null = null
-    if (station) {
-      const { data: stationData, error: stationError } = await supabaseAdmin
-        .from('station')
-        .select('id, address')
-        .eq('id', station)
-        .single()
-
-      if (stationError || !stationData) {
-        return NextResponse.json({
-          error: 'Station does not exist. Please select a valid station.',
-        }, { status: 400 })
-      }
-      resolvedStationAddress = stationData.address ?? null
-    }
-
-    // Validate instrument foreign key if provided
-    if (instrument) {
-      const { data: instrumentData, error: instrumentError } = await supabaseAdmin
-        .from('instrument')
-        .select('id')
-        .eq('id', instrument)
-        .single()
-
-      if (instrumentError || !instrumentData) {
-        return NextResponse.json({
-          error: 'Instrument does not exist. Please select a valid instrument.',
-        }, { status: 400 })
-      }
-    }
+    // Metadata resmi selalu berasal dari booking, bukan payload browser.
+    const resolvedStationAddress = calibrationOrder.station_address_snapshot ?? null
 
     const personelResult = await supabaseAdmin
       .from('personel')
@@ -286,54 +306,39 @@ export async function POST(request: NextRequest) {
       throw err
     }
 
-    const rpcPayload = {
-      no_identification,
+    const orderPayload = {
+      calibration_order_item_id: String(orderItemId),
       certificate_type: normalizedCertType,
-      calibration_place: normalizedPlace,
-      instrument_code,
+      instrument_code: officialInstrumentCode,
       authorized_by: authorizedPersonId,
       verifikator_1: v1,
       verifikator_2: v2,
       verifikator_3: v3,
       assignor: authorizedPersonId,
       issue_date,
-      station: station ? String(parseInt(station)) : '',
-      instrument: instrument ? String(parseInt(instrument)) : '',
-      station_address: (resolvedStationAddress ?? station_address) ?? '',
+      station: String(officialStation),
+      instrument: String(officialInstrument),
+      station_address: resolvedStationAddress ?? '',
       results: normalizedResults,
       sent_by: user.id,
       created_by: user.id,
       balai_id: balai_id ?? null,
       is_standard: is_standard ?? false,
     }
-
-    const MAX_RETRIES = 5
-    let data: any = null
-    let lastError: any = null
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      const { data: rows, error: rpcErr } = await supabaseAdmin
-        .rpc('create_certificate_with_auto_number', { p_data: rpcPayload })
-
-      if (!rpcErr && rows) {
-        // rpc returns SETOF certificate -> array with one element
-        data = Array.isArray(rows) ? rows[0] : rows
-        lastError = null
-        break
-      }
-
-      lastError = rpcErr
-      // 23505 = unique_violation pada Postgres. Retry dengan regenerate nomor.
-      const isUniqueViolation = rpcErr?.code === '23505' || /duplicate key/i.test(rpcErr?.message ?? '')
-      if (!isUniqueViolation) break
-
-      console.warn(`[certificates] unique_violation on attempt ${attempt}, retrying…`, rpcErr?.message)
-      // Small jitter before retry to reduce thundering herd on hot contention.
-      await new Promise(r => setTimeout(r, 25 + Math.floor(Math.random() * 50)))
+    const { data: rows, error: rpcErr } = await supabaseAdmin.rpc(
+      'create_certificate_from_order',
+      { p_data: orderPayload },
+    )
+    if (rpcErr) {
+      const status = rpcErr.code === '23505' ? 409 : 400
+      return NextResponse.json({ error: rpcErr.message }, { status })
     }
-
-    if (lastError || !data) {
-      console.error('[certificates] Failed to create certificate:', lastError)
-      return NextResponse.json({ error: lastError?.message || 'Failed to create certificate' }, { status: 500 })
+    const data: any = Array.isArray(rows) ? rows[0] : rows
+    if (!data) {
+      return NextResponse.json(
+        { error: 'Failed to create certificate from order' },
+        { status: 500 },
+      )
     }
 
     // Nomor definitif datang dari DB.

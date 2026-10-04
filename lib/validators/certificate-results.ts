@@ -84,6 +84,31 @@ export const ResultTableRowSchema = z.object({
     cmc_value_native: z.number().nullable().optional(),
     cmc_unit_native: z.string().nullable().optional(),
     cmc_value_output: z.number().nullable().optional(),
+    method_profile_code: z.string().optional(),
+    method_profile_version: z.number().optional(),
+    standard_references: z.array(z.object({
+      code: z.string(),
+      edition: z.string().optional(),
+    })).optional(),
+    cf_rule: z.string().optional(),
+    outlier_rule: z.string().optional(),
+    valid_pair_count: z.number().optional(),
+    outlier_count: z.number().optional(),
+    outlier_indices: z.array(z.number()).optional(),
+    drift_class: z.enum(['A', 'B', 'C']).nullable().optional(),
+    drift_value_percent: z.number().optional(),
+    coverage_rule: z.string().optional(),
+    resolution_rule: z.string().optional(),
+    calibration_method: z.string().nullable().optional(),
+    reference_document: z.string().nullable().optional(),
+    raw_row_count: z.number().optional(),
+    ignored_row_count: z.number().optional(),
+    unit_std: z.string().nullable().optional(),
+    unit_uut: z.string().nullable().optional(),
+    is_analog: z.boolean().optional(),
+    is_wind_direction: z.boolean().optional(),
+    calculation_rule: z.string().optional(),
+    uncertainty_rule: z.string().optional(),
   }).optional(),
 })
 
@@ -225,8 +250,46 @@ export const CalibrationSetupSchema = z.object({
     caliperResolution: z.number(),
     meniscusUncertainty: z.number(),
     cmcMm: z.number().nullable().optional(),
+    /** Daftar sertifikat standar dinamis (peran dari parameter_code VL/LN). */
+    standards: z
+      .array(
+        z.object({
+          role: z.enum(['volume', 'length']),
+          parameterCode: z.string().nullable().optional(),
+          certificateId: z.number().int().nullable().optional(),
+          sensorId: z.number().int().nullable().optional(),
+          instrumentId: z.number().int().nullable().optional(),
+          certificateNumber: z.string().nullable().optional(),
+          u95: z.number(),
+          drift: z.number(),
+          resolution: z.number(),
+        }),
+      )
+      .optional(),
+    cmcProfileId: z.number().int().nullable().optional(),
+    cmcProfileCode: z.string().nullable().optional(),
+    cmcVersion: z.number().int().nullable().optional(),
+    cmcSourceDocument: z.string().nullable().optional(),
     repeatabilityDivisor: z.number().optional(),
     diameterDivisor: z.number().optional(),
+    methodVersion: z.literal('RR-LEGACY-V1').optional(),
+    formulaVersion: z.literal(1).optional(),
+    calculationSnapshot: z
+      .object({
+        methodVersion: z.literal('RR-LEGACY-V1'),
+        formulaVersion: z.literal(1),
+        repeatabilityDivisor: z.number(),
+        diameterDivisor: z.number(),
+        coverageRule: z.literal('STUDENT_T_95_EFFECTIVE_DOF'),
+        coverageFactor: z.number(),
+        effectiveDegreesOfFreedom: z.number(),
+        combinedUncertaintyMm: z.number(),
+        rawU95Mm: z.number(),
+        reportedU95Mm: z.number(),
+        reportedU95Percent: z.number(),
+        cmcApplied: z.boolean(),
+      })
+      .optional(),
   }).optional(),
 })
 

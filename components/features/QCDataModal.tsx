@@ -43,6 +43,7 @@ import {
   parseFiniteMeasurement,
 } from '../../lib/measurement-rows'
 import { LoadingState, Spinner } from '../ui/Loading'
+import { resolveCalibrationMethodProfile } from '../../lib/calibration-method-profiles'
 import TippingBucketPanel, {
   type TippingBucketPanelEntry,
 } from './TippingBucketPanel'
@@ -794,6 +795,10 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
     try {
       const updates: Array<{ sensorId: number | string; table: any[] }> = []
       const calculationSnapshots: CalculationSnapshot[] = []
+      const [pyranometerMethodProfile, rawGeneralMethodProfile] = await Promise.all([
+        resolveCalibrationMethodProfile('pyranometer'),
+        resolveCalibrationMethodProfile('raw_general'),
+      ])
 
       for (const key of sensorKeys) {
         const groupData = groupedData[key] || []
@@ -847,6 +852,8 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
           )
         }
         const isWindDirectionGroup = isWindDirectionRow(rowsForCalc[0])
+        // Workbook memakai AVERAGE (aritmatika) untuk penunjukan heading UUT,
+        // termasuk wind direction.
         const uutAvg =
           rowsForCalc.reduce((sum, r) => sum + (r.uut_data as number), 0) /
           rowsForCalc.length
@@ -915,9 +922,9 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
 
           const cfPerRow = rowsForCalc
             .map((row, idx) => {
-              const std = parseFiniteMeasurement(row.standard_data)!
-              const uut = parseFiniteMeasurement(row.uut_data)!
-              if (std <= 0 || uut <= 0) return null
+              const std = parseFiniteMeasurement(row.standard_data)
+              const uut = parseFiniteMeasurement(row.uut_data)
+              if (std == null || uut == null || std <= 0 || uut <= 0) return null
               const cf = (std / uut - 1) * 100
               if (idx < 3)
                 console.log(
@@ -956,19 +963,27 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
         let uncertaintyDecision: FinalCertificateUncertainty | null = null
         let displayUutAvg = uutAvg
         let displayCorrection = correctionAvg
+        let pyranometerAuditMeta: Record<string, unknown> | null = null
+        let rawDataAuditMeta: Record<string, unknown> | null = null
 
         if (isPyranometerSensor && uutSensor) {
           // PYRANOMETER: Hitung CF (rasio) dalam %
-          const stdReadings = rowsForCalc
-            .map((r) => parseFiniteMeasurement(r.standard_data)!)
-            .filter((v) => v > 0)
-          const uutReadingsForCF = rowsForCalc
-            .map((r) => parseFiniteMeasurement(r.uut_data)!)
-            .filter((v) => v > 0)
+          const validPyranometerPairs = rowsForCalc
+            .map((row) => ({
+              std: parseFiniteMeasurement(row.standard_data),
+              uut: parseFiniteMeasurement(row.uut_data),
+            }))
+            .filter(
+              (pair): pair is { std: number; uut: number } =>
+                pair.std != null && pair.uut != null && pair.std > 0 && pair.uut > 0,
+            )
+          const stdReadings = validPyranometerPairs.map((pair) => pair.std)
+          const uutReadingsForCF = validPyranometerPairs.map((pair) => pair.uut)
 
           const cfResult = calculateCalibrationFactor(
             stdReadings,
             uutReadingsForCF,
+            { filterOutliers: false },
           )
 
           const range = parseFloat(uutSensor.range_capacity || '2000') || 2000
@@ -1009,6 +1024,21 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
               (standardCertRecord as any)?.sensitivity || undefined,
             sensitivityUut: (uutSensor as any)?.sensitivity || undefined,
           })
+          pyranometerAuditMeta = {
+            method_profile_code: pyranometerMethodProfile.code,
+            method_profile_version: pyranometerMethodProfile.version,
+            standard_references: pyranometerMethodProfile.source_documents,
+            configured_rules: pyranometerMethodProfile.rules,
+            cf_rule: String(pyranometerMethodProfile.rules.cfRule || pyrResult.method_profile.cfRule),
+            outlier_rule: String(pyranometerMethodProfile.rules.outlierRule || pyrResult.method_profile.outlierRule),
+            valid_pair_count: pyrResult.audit.valid_pair_count,
+            outlier_count: pyrResult.audit.outlier_count,
+            outlier_indices: pyrResult.audit.outlier_indices,
+            drift_class: pyrResult.audit.drift_class,
+            drift_value_percent: pyrResult.audit.drift_value_percent,
+            coverage_rule: String(pyranometerMethodProfile.rules.coverageRule || pyrResult.method_profile.coverageRule),
+            resolution_rule: String(pyranometerMethodProfile.rules.resolutionRule || pyrResult.method_profile.resolutionRule),
+          }
 
           // Untuk pyranometer:
           // - uutAvg = rata-rata UUT (W/m²) untuk "Penunjukkan Alat"
@@ -1019,6 +1049,9 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
           displayCorrection = cfResult.cf_final // Faktor Kalibrasi (CF)
         } else {
           // BIASA: Gunakan perhitungan standar (selisih absolut)
+          const activeEntry = resultEntries.find(
+            (entry) => entry.sensorId === groupData[0]?.sensor_id_uut,
+          )
           const isAnalog =
             (instruments.find((i) => i.id === certificateInstrumentId)
               ?.instrument_type_id ?? 1) === 2
@@ -1032,14 +1065,28 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
               (item) => item.correction,
             ),
           })
+          rawDataAuditMeta = {
+            method_profile_code: rawGeneralMethodProfile.code,
+            method_profile_version: rawGeneralMethodProfile.version,
+            standard_references: rawGeneralMethodProfile.source_documents,
+            configured_rules: rawGeneralMethodProfile.rules,
+            calibration_method: activeEntry?.calibrationMethod ?? null,
+            reference_document: (activeEntry as any)?.referenceDocument ?? null,
+            valid_pair_count: finalCorrectionPairs.length,
+            raw_row_count: groupData.length,
+            ignored_row_count: groupData.length - finalCorrectionPairs.length,
+            unit_std: groupData[0]?.unit_std ?? null,
+            unit_uut: groupData[0]?.unit_uut ?? null,
+            is_analog: isAnalog,
+            is_wind_direction: isWindDirectionGroup,
+            calculation_rule: 'STD_CORRECTED_IN_UUT_UNIT_MINUS_UUT',
+            uncertainty_rule: 'GENERAL_FIVE_COMPONENT_BUDGET',
+          }
           displayUutAvg = result.uutAvg
           displayCorrection = result.correction
           uncertainty = result.uncertainty
 
           // Aturan workbook: nilai masuk sertifikat = MAX(U95, CMC)
-          const activeEntry = resultEntries.find(
-            (entry) => entry.sensorId === groupData[0]?.sensor_id_uut,
-          )
           uncertaintyDecision = await finalizeCertificateUncertaintyWithMaster(
             uncertainty,
             {
@@ -1091,7 +1138,16 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                   ? String(displayCorrection)
                   : String(displayCorrection), // Pyranometer: CF, Biasa: Koreksi
                 value: String(uncertainty), // Pyranometer: U95%, Biasa: U95 absolut
-                ...(uncertaintyDecision
+                ...(isPyranometerSensor && pyranometerAuditMeta
+                  ? {
+                      uncertaintyMeta: {
+                        raw_u95: uncertainty,
+                        reported_u95: uncertainty,
+                        reporting_rule: 'PYR_METHOD_PROFILE',
+                        ...pyranometerAuditMeta,
+                      },
+                    }
+                  : uncertaintyDecision
                   ? {
                       uncertaintyMeta: {
                         raw_u95: uncertaintyDecision.rawU95,
@@ -1108,6 +1164,8 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                           uncertaintyDecision.cmc?.nativeUnit ?? null,
                         cmc_value_output:
                           uncertaintyDecision.cmc?.cmcOutput ?? null,
+                        ...(pyranometerAuditMeta || {}),
+                        ...(rawDataAuditMeta || {}),
                       },
                     }
                   : {}),
@@ -1573,8 +1631,25 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                           return { avg, std, max, min }
                         }
 
-                        const stdStats = calcStats(stdValues)
-                        const uutStats = calcStats(uutValues)
+                         const stdStats = calcStats(stdValues)
+                         const uutStats = calcStats(uutValues)
+                         const pairValues = currentData
+                           .map((r) => ({
+                             std: parseFiniteMeasurement(r.standard_data),
+                             uut: parseFiniteMeasurement(r.uut_data),
+                           }))
+                           .filter(
+                             (pair): pair is { std: number; uut: number } =>
+                               pair.std != null &&
+                               pair.uut != null &&
+                               pair.std > 0 &&
+                               pair.uut > 0,
+                           )
+                         const cfSummary = calculateCalibrationFactor(
+                           pairValues.map((pair) => pair.std),
+                           pairValues.map((pair) => pair.uut),
+                           { filterOutliers: false },
+                         )
 
                         return (
                           <div className="bg-gradient-to-r from-emerald-50 to-orange-50 p-2 rounded-lg border border-gray-200">
@@ -1634,13 +1709,25 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                                   {stdStats.min}
                                 </span>
                               </div>
-                              <div className="flex justify-between">
-                                <span className="text-orange-600">UUT Min</span>
+                               <div className="flex justify-between">
+                                 <span className="text-orange-600">UUT Min</span>
                                 <span className="font-bold tabular-nums">
                                   {uutStats.min}
-                                </span>
-                              </div>
-                            </div>
+                                 </span>
+                               </div>
+                               <div className="col-span-2 flex justify-between border-t border-gray-200 pt-1">
+                                 <span className="text-green-700">CF final (semua data valid)</span>
+                                 <span className="font-bold tabular-nums">
+                                   {cfSummary.cf_final.toFixed(6)}
+                                 </span>
+                               </div>
+                               <div className="col-span-2 flex justify-between">
+                                 <span className="text-amber-700">Outlier statistik (informasi)</span>
+                                 <span className="font-bold tabular-nums">
+                                   {cfSummary.outlier_count ?? 0}
+                                 </span>
+                               </div>
+                             </div>
                           </div>
                         )
                       })()}
@@ -1678,7 +1765,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                           </th>
                           <th className="px-4 py-3 text-left text-xs font-semibold uppercase">
                             Std Reading
-                          </th>{' '}
+                          </th>
                           {/* KOLOM FAKTOR KALIBRASI - KHUSUS PYRANOMETER */}
                           {isPyranometer(currentSensorForPyranometer) && (
                             <th className="px-4 py-3 text-left text-xs font-semibold uppercase bg-green-900/30">
@@ -1724,7 +1811,7 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
                             )}
                           <th className="px-4 py-3 text-left text-xs font-semibold uppercase">
                             UUT Reading
-                          </th>{' '}
+                          </th>
                           {/* KOLOM KOREKSI UUT, BATAS WMO, STATUS - HANYA untuk non-pyranometer */}
                           {!isPyranometer(currentSensorForPyranometer) && (
                             <>

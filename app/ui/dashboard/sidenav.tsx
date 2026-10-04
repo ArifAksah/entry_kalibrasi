@@ -169,6 +169,13 @@ const sections: NavSection[] = [
     ],
   },
   {
+    title: 'Kalibrasi Lapangan',
+    items: [
+      { name: 'Order Kalibrasi', href: '/calibration-orders', icon: Icon.check },
+      { name: 'Counter No. Order', href: '/admin/order-counter', icon: Icon.database },
+    ],
+  },
+  {
     title: 'Administrasi',
     items: [
       { name: 'Manajemen Personel', href: '/personel', icon: Icon.doc },
@@ -191,6 +198,7 @@ const sections: NavSection[] = [
       },
       { name: 'Master QC', href: '/master-qc', icon: Icon.beaker },
       { name: 'Master CMC', href: '/master-cmc', icon: Icon.beaker },
+      { name: 'Master Metode Kalibrasi', href: '/calibration-methods', icon: Icon.beaker },
       { name: 'Master Satuan', href: '/units', icon: Icon.beaker },
     ],
   },
@@ -224,6 +232,19 @@ const SideNav: React.FC = () => {
             return section
           }
           return { ...section, items: [] }
+        }
+
+        if (section.title === 'Kalibrasi Lapangan') {
+          const items = section.items.filter((item) => {
+            if (item.href === '/admin/order-counter') {
+              return role === 'admin'
+            }
+            if (item.href === '/calibration-orders') {
+              return role === 'admin' || role === 'calibrator'
+            }
+            return true
+          })
+          return { ...section, items }
         }
 
         if (section.title === 'Dokumen') {

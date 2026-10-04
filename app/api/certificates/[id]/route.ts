@@ -5,7 +5,7 @@ import {
   normalizeResultsOnWrite,
   ResultsValidationError,
 } from '../../../../lib/validators/certificate-results-normalize'
-import { authorizeCertificateAccess } from '../../../../lib/certificate-access'
+import { authorizeCertificateAccess, isUserInCalibrationOrderTeam } from '../../../../lib/certificate-access'
 import { clientSafeMessage } from '../../../../lib/api-error'
 import { forbidden, isAdminCaller, isRenderAuthorizedFor, requireCaller } from '../../../../lib/api-auth'
 
@@ -78,7 +78,7 @@ export async function PUT(
     // Get current certificate data before updating
     const { data: currentCertificate, error: currentError } = await supabaseAdmin
       .from('certificate')
-      .select('authorized_by, verifikator_1, verifikator_2, verifikator_3, version, status, rejection_history, no_certificate, no_order, no_identification, issue_date, station, instrument, station_address, results, calibration_place, calibration_kind, results_frozen_at, created_by, sent_by')
+      .select('authorized_by, verifikator_1, verifikator_2, verifikator_3, version, status, rejection_history, no_certificate, no_order, no_identification, issue_date, station, instrument, station_address, results, calibration_place, calibration_kind, instrument_code, calibration_order_id, calibration_order_item_id, results_frozen_at, created_by, sent_by')
       .eq('id', id)
       .single();
 
@@ -89,8 +89,14 @@ export async function PUT(
     if (!isAdminCaller(caller)) {
       const isOwner = [currentCertificate.created_by, currentCertificate.sent_by]
         .some(value => value != null && String(value) === caller.user.id)
-      if (!isOwner || currentCertificate.status !== 'draft') {
-        return forbidden('Kalibrator hanya dapat mengubah sertifikat draft miliknya')
+      const inOrderTeam =
+        currentCertificate.calibration_order_id != null &&
+        (await isUserInCalibrationOrderTeam(
+          caller.user.id,
+          currentCertificate.calibration_order_id,
+        ))
+      if ((!isOwner && !inOrderTeam) || currentCertificate.status !== 'draft') {
+        return forbidden('Kalibrator hanya dapat mengubah sertifikat draft miliknya atau tim order-nya')
       }
     }
 
@@ -111,19 +117,59 @@ export async function PUT(
       calibration_computed_at,
     } = body
 
+    const isOrderLinked = currentCertificate.calibration_order_item_id != null
+    if (isOrderLinked) {
+      const lockedMismatch =
+        (no_certificate != null && no_certificate !== currentCertificate.no_certificate) ||
+        (no_order != null && no_order !== currentCertificate.no_order) ||
+        (no_identification != null && no_identification !== currentCertificate.no_identification) ||
+        (station != null && Number(station) !== Number(currentCertificate.station)) ||
+        (instrument != null && Number(instrument) !== Number(currentCertificate.instrument)) ||
+        (body.calibration_place != null && body.calibration_place !== currentCertificate.calibration_place) ||
+        (body.instrument_code != null && body.instrument_code !== currentCertificate.instrument_code) ||
+        (body.calibration_order_id != null && Number(body.calibration_order_id) !== Number(currentCertificate.calibration_order_id)) ||
+        (body.calibration_order_item_id != null && Number(body.calibration_order_item_id) !== Number(currentCertificate.calibration_order_item_id))
+
+      if (lockedMismatch) {
+        return NextResponse.json(
+          { error: 'Metadata nomor, station, instrumen, dan order pada sertifikat booking tidak dapat diubah' },
+          { status: 409 },
+        )
+      }
+    }
+
     if (!no_certificate || !no_order || !no_identification) {
       return NextResponse.json({
         error: 'Certificate number, order number, and identification number are required',
       }, { status: 400 })
     }
 
+    const effectiveNoCertificate = isOrderLinked
+      ? currentCertificate.no_certificate
+      : no_certificate
+    const effectiveNoOrder = isOrderLinked
+      ? currentCertificate.no_order
+      : no_order
+    const effectiveNoIdentification = isOrderLinked
+      ? currentCertificate.no_identification
+      : no_identification
+    const effectiveStation = isOrderLinked
+      ? currentCertificate.station
+      : station
+    const effectiveInstrument = isOrderLinked
+      ? currentCertificate.instrument
+      : instrument
+    const effectiveStationAddress = isOrderLinked
+      ? currentCertificate.station_address
+      : station_address
+
     // Validate station foreign key if provided and fetch address
     let resolvedStationAddress: string | null = null
-    if (station) {
+    if (effectiveStation) {
       const { data: stationData, error: stationError } = await supabaseAdmin
         .from('station')
         .select('id, address')
-        .eq('id', station)
+        .eq('id', effectiveStation)
         .single()
 
       if (stationError || !stationData) {
@@ -135,11 +181,11 @@ export async function PUT(
     }
 
     // Validate instrument foreign key if provided
-    if (instrument) {
+    if (effectiveInstrument) {
       const { data: instrumentData, error: instrumentError } = await supabaseAdmin
         .from('instrument')
         .select('id')
-        .eq('id', instrument)
+        .eq('id', effectiveInstrument)
         .single()
 
       if (instrumentError || !instrumentData) {
@@ -250,13 +296,13 @@ export async function PUT(
     const nextVersion = (() => {
       const prev = currentCertificate?.version ?? 1
       const changed = !currentCertificate ||
-        currentCertificate.no_certificate !== no_certificate ||
-        currentCertificate.no_order !== no_order ||
-        currentCertificate.no_identification !== no_identification ||
+        currentCertificate.no_certificate !== effectiveNoCertificate ||
+        currentCertificate.no_order !== effectiveNoOrder ||
+        currentCertificate.no_identification !== effectiveNoIdentification ||
         currentCertificate.issue_date !== issue_date ||
-        (currentCertificate.station ?? null) !== (station ? parseInt(station) : null) ||
-        (currentCertificate.instrument ?? null) !== (instrument ? parseInt(instrument) : null) ||
-        (currentCertificate.station_address ?? null) !== ((resolvedStationAddress ?? station_address) ?? null) ||
+        (currentCertificate.station ?? null) !== (effectiveStation ? Number(effectiveStation) : null) ||
+        (currentCertificate.instrument ?? null) !== (effectiveInstrument ? Number(effectiveInstrument) : null) ||
+        (currentCertificate.station_address ?? null) !== ((resolvedStationAddress ?? effectiveStationAddress) ?? null) ||
         resultsChanged
       return changed ? (prev + 1) : prev
     })()
@@ -264,18 +310,18 @@ export async function PUT(
     const { data, error } = await supabaseAdmin
       .from('certificate')
       .update({
-        no_certificate,
-        no_order,
-        no_identification,
+        no_certificate: effectiveNoCertificate,
+        no_order: effectiveNoOrder,
+        no_identification: effectiveNoIdentification,
         authorized_by: authorizedPersonId,
         verifikator_1: v1,
         verifikator_2: v2,
         verifikator_3: v3,
         assignor: authorizedPersonId,
         issue_date,
-        station: station ? parseInt(station) : null,
-        instrument: instrument ? parseInt(instrument) : null,
-        station_address: (resolvedStationAddress ?? station_address) ?? null,
+        station: effectiveStation ? Number(effectiveStation) : null,
+        instrument: effectiveInstrument ? Number(effectiveInstrument) : null,
+        station_address: (resolvedStationAddress ?? effectiveStationAddress) ?? null,
         version: nextVersion,
         // Hanya overwrite results kalau client eksplisit mengirim key 'results'.
         // Update non-results (assign verifikator dsb.) tidak akan menyentuh kolom.
@@ -456,8 +502,14 @@ export async function DELETE(
     if (!isAdminCaller(caller)) {
       const isOwner = [certData.created_by, certData.sent_by]
         .some(value => value != null && String(value) === caller.user.id)
-      if (!isOwner || certData.status !== 'draft') {
-        return forbidden('Kalibrator hanya dapat menghapus sertifikat draft miliknya')
+      const inOrderTeam =
+        certData.calibration_order_id != null &&
+        (await isUserInCalibrationOrderTeam(
+          caller.user.id,
+          certData.calibration_order_id,
+        ))
+      if ((!isOwner && !inOrderTeam) || certData.status !== 'draft') {
+        return forbidden('Kalibrator hanya dapat menghapus sertifikat draft miliknya atau tim order-nya')
       }
     }
 
@@ -467,6 +519,17 @@ export async function DELETE(
       .eq('id', id)
 
     if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
+
+    if (certData.calibration_order_item_id) {
+      const { error: itemError } = await supabaseAdmin
+        .from('calibration_order_items')
+        .update({ status: 'identified' })
+        .eq('id', certData.calibration_order_item_id)
+        .neq('status', 'void')
+      if (itemError) {
+        console.error('Failed to release calibration order item after certificate deletion:', itemError)
+      }
+    }
 
     // Create log entry for certificate deletion
     try {

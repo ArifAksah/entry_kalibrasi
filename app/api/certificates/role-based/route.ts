@@ -166,13 +166,33 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    const allowedFields = [
+    const lockedFields = [
       'no_certificate',
       'no_order',
       'no_identification',
-      'issue_date',
       'station',
       'instrument',
+      'calibration_place',
+      'instrument_code',
+      'calibration_order_id',
+      'calibration_order_item_id',
+    ]
+    if (
+      existingCertificate.calibration_order_item_id != null &&
+      lockedFields.some(
+        (field) =>
+          Object.prototype.hasOwnProperty.call(body, field) &&
+          String(body[field] ?? '') !== String(existingCertificate[field] ?? ''),
+      )
+    ) {
+      return NextResponse.json(
+        { error: 'Metadata booking pada sertifikat tidak dapat diubah' },
+        { status: 409 },
+      )
+    }
+
+    const mutableWorkflowFields = [
+      'issue_date',
       'authorized_by',
       'verifikator_1',
       'verifikator_2',
@@ -181,6 +201,16 @@ export async function PUT(request: NextRequest) {
       'station_address',
       'calibration_computed_at',
     ] as const;
+    const legacyIdentityFields = [
+      'no_certificate',
+      'no_order',
+      'no_identification',
+      'station',
+      'instrument',
+    ] as const
+    const allowedFields = existingCertificate.calibration_order_item_id != null
+      ? mutableWorkflowFields
+      : [...legacyIdentityFields, ...mutableWorkflowFields]
     const updateData = Object.fromEntries(
       allowedFields
         .filter(field => Object.prototype.hasOwnProperty.call(body, field))

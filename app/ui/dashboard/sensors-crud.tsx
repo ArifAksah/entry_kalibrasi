@@ -8,6 +8,8 @@ import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
 import Loading from '../../../components/ui/Loading'
+import DecimalInput from '../../../components/ui/DecimalInput'
+import { parseDecimalInput } from '../../../components/ui/DecimalInput'
 import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
 import { Spinner } from '../../../components/ui/Loading'
 
@@ -118,6 +120,7 @@ const SensorsCRUD: React.FC = () => {
     funnel_area_unit: '',
     name: '',
     is_standard: false as any,
+    parameter_code: null,
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const pageSize = 10
@@ -176,6 +179,7 @@ const SensorsCRUD: React.FC = () => {
         funnel_area_unit: sensor.funnel_area_unit,
         name: sensor.name,
         is_standard: (sensor as any).is_standard || false,
+        parameter_code: (sensor as any).parameter_code ?? null,
       })
     } else {
       setEditingSensor(null)
@@ -195,6 +199,7 @@ const SensorsCRUD: React.FC = () => {
         funnel_area_unit: '',
         name: '',
         is_standard: false,
+        parameter_code: null,
       })
     }
     setIsModalOpen(true)
@@ -219,6 +224,7 @@ const SensorsCRUD: React.FC = () => {
       funnel_area_unit: '',
       name: '',
       is_standard: false,
+      parameter_code: null,
     })
   }
 
@@ -261,7 +267,7 @@ const SensorsCRUD: React.FC = () => {
         type === 'checkbox'
           ? checked
           : numericFields.has(name)
-            ? parseFloat(value) || 0
+            ? parseDecimalInput(value, 0)
             : value,
     }))
   }
@@ -637,8 +643,7 @@ const SensorsCRUD: React.FC = () => {
                         label: 'Funnel Diameter',
                         name: 'funnel_diameter',
                         value: formData.funnel_diameter,
-                        type: 'number',
-                        step: '0.01',
+                        type: 'decimal',
                         placeholder: '0.00',
                       },
                       {
@@ -657,8 +662,7 @@ const SensorsCRUD: React.FC = () => {
                         label: 'Funnel Area',
                         name: 'funnel_area',
                         value: formData.funnel_area,
-                        type: 'number',
-                        step: '0.01',
+                        type: 'decimal',
                         placeholder: '0.00',
                       },
                       {
@@ -691,10 +695,18 @@ const SensorsCRUD: React.FC = () => {
                               </option>
                             ))}
                           </select>
+                        ) : field.type === 'decimal' ? (
+                          <DecimalInput
+                            value={field.value as number}
+                            onChange={(val) =>
+                              setFormData((prev) => ({ ...prev, [field.name]: val }))
+                            }
+                            placeholder={field.placeholder}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] focus:border-transparent transition-all duration-200 bg-white text-sm"
+                          />
                         ) : (
                           <input
                             type={field.type}
-                            step={field.step}
                             name={field.name}
                             value={field.value}
                             onChange={handleInputChange}
@@ -820,6 +832,33 @@ const SensorsCRUD: React.FC = () => {
                     >
                       Standard Instrument?
                     </label>
+                  </div>
+                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <label
+                      htmlFor="parameter_code"
+                      className="mb-1 block text-sm font-semibold text-gray-700"
+                    >
+                      Parameter Code (Master CMC)
+                    </label>
+                    <select
+                      id="parameter_code"
+                      name="parameter_code"
+                      value={(formData as any).parameter_code ?? ''}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm"
+                    >
+                      <option value="">— pilih parameter —</option>
+                      <option value="VL">VL — Volume (Gelas Ukur)</option>
+                      <option value="LN">LN — Panjang (Jangka Sorong)</option>
+                      <option value="RR">RR — Curah Hujan</option>
+                      <option value="TT">TT — Suhu</option>
+                      <option value="RH">RH — Kelembapan</option>
+                      <option value="PP">PP — Tekanan</option>
+                      <option value="WS">WS — Kecepatan Angin</option>
+                      <option value="WD">WD — Arah Angin</option>
+                      <option value="WL">WL — Water Level</option>
+                      <option value="SR">SR — Radiasi Matahari</option>
+                    </select>
                   </div>
                 </div>
 

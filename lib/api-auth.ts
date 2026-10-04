@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from './supabase'
+import { isUserInCalibrationOrderTeam } from './certificate-access'
 import { verifyPdfRenderToken } from './pdf-render-token'
 import { resultsToLegacyView } from './validators/certificate-results-render-adapter'
 
@@ -192,7 +193,7 @@ export async function requireCertWorkflowAccess(
 
   const { data, error } = await supabaseAdmin
     .from('certificate')
-    .select(`id, ${columns.join(', ')}`)
+    .select(`id, calibration_order_id, ${columns.join(', ')}`)
     .eq('id', certificateId)
     .maybeSingle()
 
@@ -203,6 +204,17 @@ export async function requireCertWorkflowAccess(
 
   const matched = columns.some(col => String((data as any)[col] ?? '') === caller.user.id)
   if (matched) return caller
+
+  // Akses tim Order Kalibrasi: petugas yang di-assign ke order sertifikat ini
+  // boleh melakukan operasi workflow pada sertifikat milik order tersebut.
+  if (
+    await isUserInCalibrationOrderTeam(
+      caller.user.id,
+      (data as any).calibration_order_id,
+    )
+  ) {
+    return caller
+  }
 
   return forbidden(opts.message ?? 'Hanya admin atau petugas yang terlibat pada sertifikat ini yang dapat melakukan operasi tersebut')
 }

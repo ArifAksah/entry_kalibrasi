@@ -106,6 +106,7 @@ const Alert: React.FC<AlertProps> = ({
           </div>
           {onClose && (
             <button
+              type="button"
               onClick={onClose}
               className={`${styles.icon} ml-2 flex-shrink-0 hover:opacity-75 transition-opacity`}
               aria-label="Close alert"

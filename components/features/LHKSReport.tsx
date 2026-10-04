@@ -778,7 +778,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                   </tbody>
                 </table>
 
-                {/* Kondisi Ruang - mengikuti kolom Awal/Akhir workbook */}
+                {/* Kondisi Ruang - format (nilai ± deviasi) satuan */}
                 {(() => {
                   const tempCondition = calculateRoomCondition('suhu', rawData)
                   const humCondition = calculateRoomCondition(
@@ -806,60 +806,39 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                         e.key?.toLowerCase().includes('rh'),
                     )?.value || globalHum
 
-                  const tempInitial =
-                    tempCondition?.initialDisplay ?? fallbackTemp ?? '-'
-                  const tempFinal =
-                    tempCondition?.finalDisplay ?? fallbackTemp ?? '-'
-                  const humInitial =
-                    humCondition?.initialDisplay ?? fallbackHum ?? '-'
-                  const humFinal =
-                    humCondition?.finalDisplay ?? fallbackHum ?? '-'
+                  const tempDisplay =
+                    tempCondition?.display ?? fallbackTemp ?? '-'
+                  const humDisplay =
+                    humCondition?.display ?? fallbackHum ?? '-'
 
-                  if (tempInitial === '-' && humInitial === '-') return null
+                  if (tempDisplay === '-' && humDisplay === '-') return null
 
                   return (
                     <table className="w-full border-none text-left mt-1">
-                      <thead>
-                        <tr>
-                          <td
-                            className="border-none"
-                            style={{ width: '44%' }}
-                          ></td>
-                          <td className="border-none w-2"></td>
-                          <td
-                            className="border-none font-semibold"
-                            style={{ width: '18%' }}
-                          >
-                            Awal
-                          </td>
-                          <td
-                            className="border-none font-semibold"
-                            style={{ width: '18%' }}
-                          >
-                            Akhir
-                          </td>
-                        </tr>
-                      </thead>
                       <tbody>
                         <tr>
-                          <td className="border-none align-top pl-6">
-                            Temperatur
+                          <td
+                            className="border-none align-top pl-6 font-semibold"
+                            style={{ width: '44%' }}
+                          >
+                            Suhu Ruang / Temperature
                           </td>
-                          <td className="border-none align-top">:</td>
+                          <td className="border-none align-top w-2">:</td>
                           <td className="border-none align-top">
-                            {tempInitial}
+                            {tempDisplay}
                           </td>
-                          <td className="border-none align-top">{tempFinal}</td>
                         </tr>
                         <tr>
-                          <td className="border-none align-top pl-6">
-                            Kelembapan
+                          <td
+                            className="border-none align-top pl-6 font-semibold"
+                            style={{ width: '44%' }}
+                          >
+                            Kelembapan / Relative Humidity
                           </td>
-                          <td className="border-none align-top">:</td>
+                          <td className="border-none align-top w-2">:</td>
                           <td className="border-none align-top">
-                            {humInitial}
+                            {humDisplay}
                           </td>
-                          <td className="border-none align-top">{humFinal}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -1617,7 +1596,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                             <th className="border border-black">Koreksi</th>
                             <th className="border border-black">
                               Terkoreksi
-                            </th>{' '}
+                            </th>
                             {hasUnitMismatch && (
                               <th className="border border-black">
                                 Terkoreksi
@@ -1637,7 +1616,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                             </th>
                             <th className="border border-black bg-gray-50 italic">
                               {stdUnitDisplay}
-                            </th>{' '}
+                            </th>
                             {hasUnitMismatch && (
                               <th className="border border-black bg-blue-50 italic">
                                 {unitDisplay}

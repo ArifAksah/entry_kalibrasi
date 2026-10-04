@@ -18,7 +18,11 @@
  */
 export const normaliseUnit = (u: string): string => {
     const plain = formatUnit(u); // strip LaTeX first
-    return plain.trim().toLowerCase().replace(/\s/g, '');
+    const normalized = plain.trim().toLowerCase().replace(/\s/g, '');
+    // Relative humidity is represented as `%` in raw data and `%RH` in some
+    // CMC records; both denote the same measured quantity.
+    if (normalized === '%rh' || normalized === 'rh%' || normalized === 'percentrh') return '%';
+    return normalized;
 };
 
 // Conversion matrix: [from][to] = factor  (y = x * factor + offset)

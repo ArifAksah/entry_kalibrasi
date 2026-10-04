@@ -11,6 +11,7 @@ import { useAlert } from '../../../hooks/useAlert'
 import Loading from '../../../components/ui/Loading'
 import Breadcrumb from '../../../components/ui/Breadcrumb'
 import UnitSelect from '../../../components/ui/UnitSelect'
+import DecimalInput from '../../../components/ui/DecimalInput'
 import { EditButton, DeleteButton } from '../../../components/ui/ActionIcons'
 import { useUnits } from '../../../hooks/useUnits'
 import SearchableDropdown from '../../../components/ui/SearchableDropdown'
@@ -399,7 +400,9 @@ const InstrumentsCRUD: React.FC = () => {
           : filterType === 'all'
             ? undefined
             : filterType,
-      userId: role !== 'admin' ? user?.id : undefined,
+      // Petugas Kalibrasi mengelola master instrumen lintas station.
+      // Pembatasan station hanya berlaku untuk role user_station.
+      userId: role === 'user_station' ? user?.id : undefined,
     })
   }, [
     debouncedSearch,
@@ -540,8 +543,12 @@ const InstrumentsCRUD: React.FC = () => {
       if (!role) return
 
       try {
-        if (role === 'admin' || can('station', 'delete')) {
-          // Admin sees all stations
+        if (
+          role === 'admin' ||
+          role === 'calibrator' ||
+          can('station', 'delete')
+        ) {
+          // Admin dan Petugas Kalibrasi melihat semua station.
           fetchStations({ pageSize: 1000 })
         } else {
           // Restricted user: fetch only assigned stations
@@ -600,7 +607,7 @@ const InstrumentsCRUD: React.FC = () => {
     // 2. Exact 1 station is available
     // 3. Not editing (creating new implementation) OR editing but no station set yet (rare)
     // 4. No station is currently selected in form
-    const isRestricted = role !== 'admin' && !can('station', 'delete')
+    const isRestricted = role === 'user_station'
     if (isRestricted && stations.length === 1 && !form.station_id) {
       const station = stations[0]
       setForm((prev) => ({ ...prev, station_id: station.id }))
@@ -627,9 +634,21 @@ const InstrumentsCRUD: React.FC = () => {
   const firstRowNumber = serverTotal === 0 ? 0 : (currentPage - 1) * pageSize + 1
   const lastRowNumber = Math.min(currentPage * pageSize, serverTotal)
 
+  // Bersihkan form "+ Tambah Sertifikat Baru" (dipakai saat buka/tutup modal).
+  const resetNewGlobalCert = () => {
+    setNewGlobalCert({ no_certificate: '', calibration_date: '' })
+    setNewGlobalCertError('')
+  }
+
   const openModal = async (item?: Instrument) => {
     if (item) {
       setEditing(item)
+      // Buang sertifikat dari instrumen yang dibuka sebelumnya agar tidak
+      // terbawa/tersimpan ke instrumen ini (load di bawah mengisinya ulang).
+      setGlobalCertificates([])
+      // Reset juga form "+ Tambah Sertifikat Baru" agar nomor yang diketik di
+      // instrumen lain tidak muncul di sini.
+      resetNewGlobalCert()
       // Resolve instrument_code_id: prefer explicit field on item, fall back to lookup via names FK
       const existingCodeId: number | null =
         (item as any).instrument_code_id ||
@@ -793,6 +812,8 @@ const InstrumentsCRUD: React.FC = () => {
         instrument_code_id: null,
       })
       setSensorForms([])
+      setGlobalCertificates([])
+      resetNewGlobalCert()
       setSelectedInstrumentCodeId(null)
     }
     setIsModalOpen(true)
@@ -816,6 +837,10 @@ const InstrumentsCRUD: React.FC = () => {
     setSensorForms([])
     setIsLoadingSensors(false)
     setSelectedInstrumentCodeId(null)
+    // Jangan tinggalkan sertifikat instrumen sebelumnya di state.
+    setGlobalCertificates([])
+    setIsStandardInstrument(false)
+    resetNewGlobalCert()
   }
 
   // Helper function untuk restore scroll position
@@ -1028,30 +1053,32 @@ const InstrumentsCRUD: React.FC = () => {
         effectiveSensors = [syncedSensor as any] // Cast to any to match type signature if needed
       }
 
-      // MERGE GLOBAL CERTIFICATES — each cert × each sensor has its own drift/u95/correction_data
-      if (isStandardInstrument && globalCertificates.length > 0) {
+      // MERGE GLOBAL CERTIFICATES — each cert × each sensor has its own drift/u95/correction_data.
+      // HANYA sertifikat yang memang memuat sensor ini yang dikirim. Sebelumnya setiap sensor
+      // ikut membawa seluruh sertifikat instrumen (id sertifikat asing → undefined), sehingga
+      // saat disimpan sertifikat sensor/instrumen lain ikut dipindah atau terduplikasi
+      // ("edit satu nomor sertifikat, nomor yang lain ikut berubah").
+      if (isStandardInstrument) {
         effectiveSensors = effectiveSensors.map((sensor) => {
-          const mergedCerts = globalCertificates.map((gc) => {
-            // Find this sensor's specific data within the cert
-            const sd = gc.sensorData?.find(
-              (d: any) => d.sensorLocalId === sensor.id,
-            ) || {
-              drift: 0,
-              u95_general: 0,
-              correction_data: [],
-              dbCertId: undefined,
-            }
-            return {
-              id: sd.dbCertId,
-              no_certificate: gc.no_certificate,
-              calibration_date: gc.calibration_date,
-              drift: Number(sd.drift) || 0,
-              range: sensor.range_capacity || '',
-              resolution: parseDecimal(sensor.resolution),
-              u95_general: Number(sd.u95_general) || 0,
-              correction_data: sd.correction_data || [],
-            }
-          })
+          const mergedCerts = globalCertificates
+            .map((gc) => {
+              // Ambil data khusus sensor ini di dalam sertifikat; lewati bila tidak ada.
+              const sd = gc.sensorData?.find(
+                (d: any) => d.sensorLocalId === sensor.id,
+              )
+              if (!sd) return null
+              return {
+                id: sd.dbCertId,
+                no_certificate: gc.no_certificate,
+                calibration_date: gc.calibration_date,
+                drift: Number(sd.drift) || 0,
+                range: sensor.range_capacity || '',
+                resolution: parseDecimal(sensor.resolution),
+                u95_general: Number(sd.u95_general) || 0,
+                correction_data: sd.correction_data || [],
+              }
+            })
+            .filter(Boolean)
           return { ...sensor, certificates: mergedCerts }
         })
       }
@@ -1148,7 +1175,7 @@ const InstrumentsCRUD: React.FC = () => {
             : filterType === 'all'
               ? undefined
               : filterType,
-        userId: role !== 'admin' ? user?.id : undefined,
+        userId: role === 'user_station' ? user?.id : undefined,
       })
 
       closeModal()
@@ -2785,18 +2812,14 @@ const InstrumentsCRUD: React.FC = () => {
                                                             Funnel Diameter
                                                           </label>
                                                           <div className="flex gap-2">
-                                                            <input
-                                                              type="text"
+                                                            <DecimalInput
                                                               value={
                                                                 sensor.funnel_diameter
                                                               }
-                                                              onChange={(e) =>
+                                                              onChange={(val) =>
                                                                 updateSensorIdentity(
                                                                   'funnel_diameter',
-                                                                  parseFloat(
-                                                                    e.target
-                                                                      .value,
-                                                                  ) || 0,
+                                                                  val,
                                                                 )
                                                               }
                                                               className="flex-1 text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg bg-white"
@@ -2865,18 +2888,14 @@ const InstrumentsCRUD: React.FC = () => {
                                                             Funnel Area
                                                           </label>
                                                           <div className="flex gap-2">
-                                                            <input
-                                                              type="text"
+                                                            <DecimalInput
                                                               value={
                                                                 sensor.funnel_area
                                                               }
-                                                              onChange={(e) =>
+                                                              onChange={(val) =>
                                                                 updateSensorIdentity(
                                                                   'funnel_area',
-                                                                  parseFloat(
-                                                                    e.target
-                                                                      .value,
-                                                                  ) || 0,
+                                                                  val,
                                                                 )
                                                               }
                                                               className="flex-1 text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg bg-white"
@@ -3793,14 +3812,13 @@ const InstrumentsCRUD: React.FC = () => {
                                         Funnel Diameter
                                       </label>
                                       <div className="flex gap-2">
-                                        <input
-                                          type="text"
+                                        <DecimalInput
                                           value={sensor.funnel_diameter}
-                                          onChange={(e) =>
+                                          onChange={(val) =>
                                             updateSensor(
                                               sensor.id,
                                               'funnel_diameter',
-                                              parseFloat(e.target.value) || 0,
+                                              val,
                                             )
                                           }
                                           className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -3861,14 +3879,13 @@ const InstrumentsCRUD: React.FC = () => {
                                         Funnel Area
                                       </label>
                                       <div className="flex gap-2">
-                                        <input
-                                          type="text"
+                                        <DecimalInput
                                           value={sensor.funnel_area}
-                                          onChange={(e) =>
+                                          onChange={(val) =>
                                             updateSensor(
                                               sensor.id,
                                               'funnel_area',
-                                              parseFloat(e.target.value) || 0,
+                                              val,
                                             )
                                           }
                                           className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"

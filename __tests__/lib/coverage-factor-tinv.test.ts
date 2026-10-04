@@ -13,12 +13,16 @@ const excelTInv = [
     { df: 10000, value: 1.960201239891639 },
 ]
 
+// Nilai referensi = kuantil ke-97.5% Student-t yang tepat (df kecil).
+// Sebelumnya tabel membulatkan ke 3 desimal (df=2 -> 4.303); kini harus eksak
+// agar cocok dengan Excel TINV(0.05, df) seperti dipakai workbook (df=2 ->
+// 4.302652729749456).
 const exactTable = [
-    { df: 1, value: 12.706 },
-    { df: 2, value: 4.303 },
-    { df: 5, value: 2.571 },
-    { df: 10, value: 2.228 },
-    { df: 30, value: 2.042 },
+    { df: 1, value: 12.706204736174659 },
+    { df: 2, value: 4.302652729749456 },
+    { df: 5, value: 2.570581835636313 },
+    { df: 10, value: 2.228138851986274 },
+    { df: 30, value: 2.042272456301233 },
 ]
 
 describe('coverage factor Student-t', () => {
@@ -30,9 +34,9 @@ describe('coverage factor Student-t', () => {
     )
 
     it.each(exactTable)(
-        'keeps the exact tabulated value for df = $df',
+        'matches the exact Student-t quantile for df = $df',
         ({ df, value }) => {
-            expect(getCoverageFactorFor95(df)).toBe(value)
+            expect(Math.abs(getCoverageFactorFor95(df) - value)).toBeLessThan(1e-10)
         },
     )
 

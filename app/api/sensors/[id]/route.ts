@@ -56,7 +56,8 @@ export async function PUT(
       funnel_area,
       funnel_area_unit,
       name,
-      is_standard
+      is_standard,
+      parameter_code
     } = body
 
     if (!manufacturer || !type || !serial_number || !name) {
@@ -82,7 +83,8 @@ export async function PUT(
         funnel_area: funnel_area || 0,
         funnel_area_unit: funnel_area_unit || '',
         name,
-        is_standard: !!is_standard
+        is_standard: !!is_standard,
+        parameter_code: parameter_code || null
       })
       .eq('id', id)
       .select()

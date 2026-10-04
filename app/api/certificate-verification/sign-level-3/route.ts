@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
     // Load certificate and verify user is Authorized By (level 3)
     const { data: cert, error: certErr } = await supabaseAdmin
       .from('certificate')
-      .select('id, no_certificate, authorized_by, version, status, public_id, results')
+      .select('id, no_certificate, authorized_by, version, status, public_id, results, calibration_order_item_id')
       .eq('id', documentId)
       .single()
 
@@ -509,6 +509,15 @@ export async function POST(request: NextRequest) {
       // Non-fatal: verification record is already saved, just log the error
     } else {
       console.log('[sign-level-3] ✅ Certificate status updated to completed')
+      if ((cert as any).calibration_order_item_id) {
+        const { error: itemUpdateErr } = await supabaseAdmin
+          .from('calibration_order_items')
+          .update({ status: 'completed' })
+          .eq('id', (cert as any).calibration_order_item_id)
+        if (itemUpdateErr) {
+          console.error('[sign-level-3] Failed to complete calibration order item:', itemUpdateErr)
+        }
+      }
     }
 
     // Fire-and-forget: send signer notification email (no await)

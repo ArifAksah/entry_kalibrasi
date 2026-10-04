@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuth } from '../../../contexts/AuthContext'
 import { useCertificates } from '../../../hooks/useCertificates'
 import { useCertificateVerification } from '../../../hooks/useCertificateVerification'
@@ -27,7 +28,7 @@ import { read, utils } from 'xlsx'
 import QCDataModal from '../../../components/features/QCDataModal'
 import UncertaintyModal from '../../../components/features/UncertaintyModal'
 import LHKSReport from '../../../components/features/LHKSReport'
-import TippingBucketForm from '../../../components/features/TippingBucketForm'
+import TippingBucketCalibration from '../../../components/features/TippingBucketCalibration'
 import {
   calculateCalibrationResult,
   isPyranometer,
@@ -58,7 +59,7 @@ import {
   isStandardCertificateSelectionValid,
 } from '../../../lib/standard-certificate-filter'
 import {
-  isTippingBucketSensor,
+  isRainGaugeSensor,
   type TippingBucketFormData,
 } from '../../../lib/tipping-bucket'
 
@@ -533,6 +534,13 @@ const SearchableDropdown = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({})
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => setMounted(true), [])
+
+  const MENU_MAX = 320
 
   const filteredOptions = options.filter((option) => {
     const searchLower = search.toLowerCase()
@@ -548,9 +556,110 @@ const SearchableDropdown = ({
 
   const selectedOption = options.find((opt) => opt.id === value)
 
+  // Hitung posisi menu relatif viewport + auto-flip (buka ke atas kalau ruang
+  // bawah kurang). Dirender lewat portal agar tidak terpotong `overflow`
+  // container induk dan tanpa perlu scroll.
+  const updatePosition = () => {
+    const el = triggerRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    const openUp = spaceBelow < 240 && rect.top > spaceBelow
+    const width = rect.width
+    const left = Math.max(
+      8,
+      Math.min(rect.left, window.innerWidth - width - 8),
+    )
+    const style: React.CSSProperties = {
+      position: 'fixed',
+      left,
+      width,
+      zIndex: 9999,
+    }
+    if (openUp) {
+      style.bottom = window.innerHeight - rect.top + 4
+      style.maxHeight = Math.min(MENU_MAX, Math.max(160, rect.top - 8))
+    } else {
+      style.top = rect.bottom + 4
+      style.maxHeight = Math.min(MENU_MAX, Math.max(160, spaceBelow - 8))
+    }
+    setMenuStyle(style)
+  }
+
+  useEffect(() => {
+    if (!isOpen) return
+    updatePosition()
+    const handler = () => updatePosition()
+    window.addEventListener('scroll', handler, true)
+    window.addEventListener('resize', handler)
+    return () => {
+      window.removeEventListener('scroll', handler, true)
+      window.removeEventListener('resize', handler)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen])
+
+  const menu = isOpen ? (
+    <>
+      <div className="fixed inset-0 z-[9998]" onClick={() => setIsOpen(false)} />
+      <div
+        style={menuStyle}
+        className="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl"
+      >
+        <div className="border-b border-gray-100 bg-white p-3">
+          <div className="relative">
+            <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder={searchPlaceholder}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm bg-gray-50"
+              autoFocus
+            />
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {filteredOptions.length > 0 ? (
+            <div className="flex flex-col">
+              {filteredOptions.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => {
+                    onChange(option.id)
+                    setIsOpen(false)
+                    setSearch('')
+                  }}
+                  className="w-full px-3 py-2 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0 text-sm"
+                >
+                  <div className="font-medium text-gray-900">
+                    {renderOptionName
+                      ? renderOptionName(option.name)
+                      : option.name}
+                  </div>
+                  {option.station_id ? (
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {option.station_id}
+                    </div>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="px-3 py-4 text-center text-gray-500 text-sm">
+              Tidak ada data ditemukan
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  ) : null
+
   return (
     <div className={`relative ${className}`} id={id}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className="w-full px-3 py-2 text-left border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-[#1e377c] focus:border-transparent text-sm"
@@ -570,64 +679,7 @@ const SearchableDropdown = ({
         </span>
       </button>
 
-      {isOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          />
-          <div className="absolute z-50 w-full top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-hidden">
-            <div className="flex flex-col h-auto max-h-60">
-              <div className="p-3 border-b border-gray-100 bg-white sticky top-0 z-10">
-                <div className="relative">
-                  <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder={searchPlaceholder}
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1e377c] text-sm bg-gray-50"
-                    autoFocus
-                  />
-                </div>
-              </div>
-              <div className="overflow-y-auto flex-1">
-                {filteredOptions.length > 0 ? (
-                  <div className="flex flex-col">
-                    {filteredOptions.map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        onClick={() => {
-                          onChange(option.id)
-                          setIsOpen(false)
-                          setSearch('')
-                        }}
-                        className="w-full px-3 py-2 text-left hover:bg-blue-50 border-b border-gray-100 last:border-b-0 text-sm"
-                      >
-                        <div className="font-medium text-gray-900">
-                          {renderOptionName
-                            ? renderOptionName(option.name)
-                            : option.name}
-                        </div>
-                        {option.station_id ? (
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            {option.station_id}
-                          </div>
-                        ) : null}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="px-3 py-4 text-center text-gray-500 text-sm">
-                    Tidak ada data ditemukan
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+      {mounted && menu ? createPortal(menu, document.body) : null}
     </div>
   )
 }
@@ -648,6 +700,11 @@ const CertificatesCRUD: React.FC = () => {
   const { alert, showSuccess, showError, showWarning, hideAlert } = useAlert()
   const router = useRouter()
   const handledDashboardLinkRef = useRef(false)
+  const pendingOrderPrefillRef = useRef<{
+    stationId: number
+    orderId: number
+    itemId: number
+  } | null>(null)
 
   const fetchSignedPdf = async (item: Certificate, download = false) => {
     const {
@@ -815,6 +872,24 @@ const CertificatesCRUD: React.FC = () => {
   >([])
   const [units, setUnits] = useState<{ id: number; unit: string }[]>([])
 
+  // Booking order (kalibrasi lapangan): bila dipilih, no_order & no_identification
+  // berasal dari order item (read-only), bukan dari generator preview.
+  const [activeOrders, setActiveOrders] = useState<
+    Array<{ id: number; no_order: string; calibration_place: string; planned_date: string; planned_end_date: string; items: Array<{ id: number; no_identification: string; instrument_id: number | null; instrument_code: string | null; status: string; has_certificate: boolean }> }>
+  >([])
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null)
+  const [selectedOrderItemId, setSelectedOrderItemId] = useState<number | null>(null)
+  // Nama Tim Order (petugas pada order terpilih) — read-only di form.
+  const [orderTeamNames, setOrderTeamNames] = useState<string[]>([])
+  // Rentang tanggal rencana order — jadi acuan "Detail Sesi Kalibrasi".
+  const [orderPlan, setOrderPlan] = useState<{ start: string; end: string }>({
+    start: '',
+    end: '',
+  })
+  const isOrderBackedForm = Boolean(
+    selectedOrderItemId || (editing as any)?.calibration_order_item_id,
+  )
+
   // QC Modal State
   const [showQCModal, setShowQCModal] = useState(false)
   const [qcModalCertificate, setQcModalCertificate] =
@@ -864,6 +939,53 @@ const CertificatesCRUD: React.FC = () => {
       full.push({ ...s, ...(dbSensor || {}) })
     }
     return full
+  }
+
+  /** Cocokkan nama sheet Excel dengan sensor instrumen.
+   *  Strategi: exact → contains → fallback urutan.
+   *  Return sensorId atau null jika tidak ditemukan. */
+  const matchSheetToSensor = (
+    sheetName: string,
+    instrumentSensors: any[],
+    usedSensorIds: Set<number>,
+    sheetIndex: number,
+  ): number | null => {
+    if (!sheetName || instrumentSensors.length === 0) return null
+    const normalize = (s: string) => s.toLowerCase().trim().replace(/[_\-\s]+/g, ' ')
+    const target = normalize(sheetName)
+
+    const resolveName = (s: any): string => {
+      const fromLookup = s.sensor_name_id
+        ? instrumentNames.find((n: any) => n.id === s.sensor_name_id)?.name
+        : undefined
+      return String(fromLookup || s.name || s.type || '')
+    }
+
+    // Level 1: exact match (case-insensitive, normalized)
+    for (const s of instrumentSensors) {
+      const id = s?.id ?? s?.sensor_id
+      if (id == null || usedSensorIds.has(id)) continue
+      if (normalize(resolveName(s)) === target) return id
+    }
+
+    // Level 2: contains match
+    for (const s of instrumentSensors) {
+      const id = s?.id ?? s?.sensor_id
+      if (id == null || usedSensorIds.has(id)) continue
+      const name = normalize(resolveName(s))
+      if (name && (target.includes(name) || name.includes(target))) return id
+    }
+
+    // Level 3: fallback urutan (hanya jika jumlah sheet = jumlah sensor)
+    const available = instrumentSensors.filter((s) => {
+      const id = s?.id ?? s?.sensor_id
+      return id != null && !usedSensorIds.has(id)
+    })
+    if (available.length > 0 && sheetIndex < available.length) {
+      return available[sheetIndex].id ?? available[sheetIndex].sensor_id
+    }
+
+    return null
   }
 
   /** Opsi dropdown personel yg difilter by role; pastikan nilai terpilih
@@ -1053,6 +1175,7 @@ const CertificatesCRUD: React.FC = () => {
     unitUut?: string | null // unit override for UUT data on this sheet
     unitStd?: string | null // unit override for STD data on this sheet
     tippingBucket?: TippingBucketFormData
+    autoSensor?: boolean // true jika sensorId di-assign otomatis dari nama sheet
   }
 
   const createDefaultNotesForm = () => ({
@@ -1220,6 +1343,7 @@ const CertificatesCRUD: React.FC = () => {
       Sensor | undefined
     updateResult(idx, {
       sensorId: sensorId ?? null,
+      autoSensor: false,
       sensorDetails: sensor
         ? {
             id: sensor.id,
@@ -1278,9 +1402,6 @@ const CertificatesCRUD: React.FC = () => {
   const [envDraft, setEnvDraft] = useState<KV[]>([])
   const [tableEditIndex, setTableEditIndex] = useState<number | null>(null)
   const [tableDraft, setTableDraft] = useState<TableSection[]>([])
-  const [tippingBucketIndex, setTippingBucketIndex] = useState<number | null>(
-    null,
-  )
 
   // Raw Data State
   const [rawData, setRawData] = useState<{ name: string; data: any[][] }[]>([])
@@ -1480,6 +1601,62 @@ const CertificatesCRUD: React.FC = () => {
     return rows
   }
 
+  /** Apakah blok hasil pada idx mengacu ke sensor RR (Tipping Bucket)? */
+  const isRainResult = (idx: number): boolean => {
+    const result = results[idx]
+    const sensor = sensors.find((s: any) => s.id === result?.sensorId)
+    const canonicalName = sensor?.sensor_name_id
+      ? instrumentNames.find((n) => n.id === sensor.sensor_name_id)?.name
+      : null
+    return isRainGaugeSensor(
+      sensor,
+      (form as any).instrument_code,
+      canonicalName,
+      result?.notesForm?.calibration_methode,
+    )
+  }
+
+  /**
+   * Tulis balik rata-rata diameter corong ke master sensor (menu Instrumen),
+   * sesuai workbook yang menyimpannya di blok "Informasi Alat yang Dikalibrasi".
+   * Nilai spec lain (volume/tip, resolusi, dll) ikut dikirim agar tidak terhapus.
+   */
+  const syncMasterFunnelDiameter = (
+    masterSensor: any,
+    calculation: { averageFunnelDiameter: number; funnelAreaMm2: number },
+  ) => {
+    const id = masterSensor?.id
+    if (!id) return
+    // API PUT mensyaratkan identitas lengkap; lewati bila belum lengkap.
+    if (!masterSensor.manufacturer || !masterSensor.type || !masterSensor.serial_number || !masterSensor.name) {
+      return
+    }
+    fetch(`/api/sensors/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        manufacturer: masterSensor.manufacturer,
+        type: masterSensor.type,
+        serial_number: masterSensor.serial_number,
+        name: masterSensor.name,
+        range_capacity: masterSensor.range_capacity ?? '',
+        range_capacity_unit: masterSensor.range_capacity_unit ?? '',
+        graduating: masterSensor.graduating ?? '',
+        graduating_unit: masterSensor.graduating_unit ?? '',
+        funnel_diameter: calculation.averageFunnelDiameter,
+        funnel_diameter_unit: masterSensor.funnel_diameter_unit || 'mm',
+        funnel_area: calculation.funnelAreaMm2,
+        funnel_area_unit: masterSensor.funnel_area_unit || 'mm2',
+        volume_per_tip: masterSensor.volume_per_tip ?? '',
+        volume_per_tip_unit: masterSensor.volume_per_tip_unit ?? '',
+        is_standard: masterSensor.is_standard ?? false,
+        parameter_code: masterSensor.parameter_code ?? null,
+      }),
+    }).catch(() => {
+      // Non-fatal: kegagalan sinkron master tidak boleh menggagalkan penyimpanan sertifikat.
+    })
+  }
+
   // Auto-Generate Table Result from QC Data
   const handleAutoGenerate = async (sectionIndex: number) => {
     if (tableEditIndex === null) return
@@ -1487,28 +1664,6 @@ const CertificatesCRUD: React.FC = () => {
 
     try {
       const currentResult = results[tableEditIndex]
-      const selectedUutSensor = sensors.find(
-        (sensor) => sensor.id === currentResult.sensorId,
-      )
-      const selectedCanonicalName = selectedUutSensor?.sensor_name_id
-        ? instrumentNames.find(
-            (name) => name.id === selectedUutSensor.sensor_name_id,
-          )?.name
-        : null
-      if (
-        isTippingBucketSensor(
-          {
-            ...selectedUutSensor,
-            instrument_code: (form as any).instrument_code,
-          },
-          selectedCanonicalName,
-          currentResult.notesForm?.calibration_methode,
-        )
-      ) {
-        setTableEditIndex(null)
-        setTippingBucketIndex(tableEditIndex)
-        return
-      }
       const sessionId = (currentResult as any)?.session_id
 
       if (!sessionId) {
@@ -1584,19 +1739,26 @@ const CertificatesCRUD: React.FC = () => {
       let uncertainty: number
       let uncertaintyDecision: FinalCertificateUncertainty | null = null
       let headers: string[]
+      let pyranometerAuditMeta: Record<string, unknown> | null = null
 
       if (isPyranometerSensor && activeUutSensor) {
         // PYRANOMETER: Hitung CF (rasio) dalam %
-        const stdReadings = currentData.map(
-          (row: any) => parseFiniteMeasurement(row.standard_data)!,
-        )
-        const uutReadingsForCF = currentData.map(
-          (row: any) => parseFiniteMeasurement(row.uut_data)!,
-        )
+        const validPairs = currentData
+          .map((row: any) => ({
+            std: parseFiniteMeasurement(row.standard_data),
+            uut: parseFiniteMeasurement(row.uut_data),
+          }))
+          .filter(
+            (pair): pair is { std: number; uut: number } =>
+              pair.std != null && pair.uut != null && pair.std > 0 && pair.uut > 0,
+          )
+        const stdReadings = validPairs.map((pair) => pair.std)
+        const uutReadingsForCF = validPairs.map((pair) => pair.uut)
 
         const cfResult = calculateCalibrationFactor(
           stdReadings,
           uutReadingsForCF,
+          { filterOutliers: false },
         )
 
         const range =
@@ -1618,6 +1780,20 @@ const CertificatesCRUD: React.FC = () => {
           sensitivityStd: (standardCertRecord as any)?.sensitivity || undefined,
           sensitivityUut: (activeUutSensor as any)?.sensitivity || undefined,
         })
+        pyranometerAuditMeta = {
+          method_profile_code: pyrResult.method_profile.code,
+          method_profile_version: pyrResult.method_profile.version,
+          standard_references: [...pyrResult.method_profile.standardReferences],
+          cf_rule: pyrResult.method_profile.cfRule,
+          outlier_rule: pyrResult.method_profile.outlierRule,
+          valid_pair_count: pyrResult.audit.valid_pair_count,
+          outlier_count: pyrResult.audit.outlier_count,
+          outlier_indices: pyrResult.audit.outlier_indices,
+          drift_class: pyrResult.audit.drift_class,
+          drift_value_percent: pyrResult.audit.drift_value_percent,
+          coverage_rule: pyrResult.method_profile.coverageRule,
+          resolution_rule: pyrResult.method_profile.resolutionRule,
+        }
 
         // Ambil unit dari data raw (unit_uut)
         const rawUnit =
@@ -1681,7 +1857,16 @@ const CertificatesCRUD: React.FC = () => {
         key: String(uutAvg),
         unit: String(correction),
         value: String(uncertainty),
-        ...(uncertaintyDecision
+        ...(pyranometerAuditMeta
+          ? {
+              uncertaintyMeta: {
+                raw_u95: uncertainty,
+                reported_u95: uncertainty,
+                reporting_rule: 'PYR_METHOD_PROFILE',
+                ...pyranometerAuditMeta,
+              },
+            }
+          : uncertaintyDecision
           ? {
               uncertaintyMeta: {
                 raw_u95: uncertaintyDecision.rawU95,
@@ -2052,7 +2237,46 @@ const CertificatesCRUD: React.FC = () => {
         if (shouldProceed) {
           // ... proceed
 
-          const newResults: ResultItem[] = sheetsData.map((sheet) => {
+          // Auto-assign: cocokkan nama sheet dengan sensor instrumen
+          const instrumentSensors = form.instrument
+            ? getFullSensorsForInstrument(form.instrument)
+            : []
+          const usedSensorIds = new Set<number>()
+          const sheetSensorMap = new Map<number, { sensorId: number; sensorDetails: any }>()
+          if (instrumentSensors.length > 0) {
+            sheetsData.forEach((sheet, si) => {
+              const matchedId = matchSheetToSensor(
+                sheet.name,
+                instrumentSensors,
+                usedSensorIds,
+                si,
+              )
+              if (matchedId != null) {
+                usedSensorIds.add(matchedId)
+                const s = instrumentSensors.find(
+                  (x: any) => (x.id ?? x.sensor_id) === matchedId,
+                )
+                sheetSensorMap.set(si, {
+                  sensorId: matchedId,
+                  sensorDetails: s
+                    ? {
+                        id: s.id ?? s.sensor_id,
+                        manufacturer: s.manufacturer,
+                        type: s.type,
+                        serial_number: s.serial_number,
+                        range_capacity: s.range_capacity,
+                        range_capacity_unit: s.range_capacity_unit,
+                        graduating: s.graduating,
+                        graduating_unit: s.graduating_unit,
+                        name: s.name,
+                      }
+                    : undefined,
+                })
+              }
+            })
+          }
+
+          const newResults: ResultItem[] = sheetsData.map((sheet, si) => {
             // Helper to clean and parse float
             const parseVal = (val: any) => {
               if (typeof val === 'number') return val
@@ -2122,7 +2346,9 @@ const CertificatesCRUD: React.FC = () => {
             }
 
             return {
-              sensorId: null,
+              sensorId: sheetSensorMap.get(si)?.sensorId ?? null,
+              autoSensor: sheetSensorMap.has(si),
+              sensorDetails: sheetSensorMap.get(si)?.sensorDetails,
               startDate: sessionDetails.start_date || '',
               endDate: sessionDetails.end_date || '',
               place: sessionDetails.place || '',
@@ -2130,13 +2356,17 @@ const CertificatesCRUD: React.FC = () => {
               table: [],
               images: [],
               notesForm: createDefaultNotesForm(),
-              unitUut: null,
+              unitUut:
+                sheetSensorMap.get(si)?.sensorDetails?.graduating_unit ||
+                sheetSensorMap.get(si)?.sensorDetails?.range_capacity_unit ||
+                null,
               unitStd: null,
             }
           })
           setResults(newResults)
+          const autoCount = sheetSensorMap.size
           showSuccess(
-            `Dibuat ${sheetsData.length} slot sensor berdasarkan sheet valid. Kondisi lingkungan ${sheetsData[0].data[0].some((h: any) => String(h).toLowerCase().includes('suhu')) ? 'dihitung otomatis' : 'disiapkan'}.`,
+            `Dibuat ${sheetsData.length} slot sensor berdasarkan sheet valid.${autoCount > 0 ? ` ${autoCount} sensor ter-assign otomatis dari nama sheet.` : ''} Kondisi lingkungan ${sheetsData[0].data[0].some((h: any) => String(h).toLowerCase().includes('suhu')) ? 'dihitung otomatis' : 'disiapkan'}.`,
           )
         }
       } else if (invalidSheets.length > 0) {
@@ -2164,8 +2394,27 @@ const CertificatesCRUD: React.FC = () => {
     try {
       const params = new URLSearchParams(window.location.search)
       if (params.get('create') === 'true') {
+        const stationId = Number(params.get('station'))
+        const orderId = Number(params.get('order'))
+        const itemId = Number(params.get('item'))
+        if (!(stationId > 0 && orderId > 0 && itemId > 0)) {
+          handledDashboardLinkRef.current = true
+          showError('Sertifikat baru wajib dibuat dari item pada Order Kalibrasi')
+          router.replace('/calibration-orders')
+          return
+        }
         handledDashboardLinkRef.current = true
+        pendingOrderPrefillRef.current = { stationId, orderId, itemId }
         openModal()
+        if (stationId > 0) {
+          setForm((prev) => ({
+            ...prev,
+            station: stationId,
+            station_address:
+              stations.find((station) => station.id === stationId)?.address ??
+              null,
+          }))
+        }
         return
       }
       const editId = params.get('edit')
@@ -2180,7 +2429,7 @@ const CertificatesCRUD: React.FC = () => {
         }
       }
     } catch {}
-  }, [certificates])
+  }, [certificates, router, showError, stations])
 
   // Check if edit came from certificate verification page
   const isEditFromVerification = () => {
@@ -2231,7 +2480,10 @@ const CertificatesCRUD: React.FC = () => {
           if (!role) return { data: [], total: 0, pageSize: 100, totalPages: 0 } // Wait for role
 
           let baseUrl = '/api/stations?pageSize=100'
-          if (role !== 'admin' && user?.id) {
+          // Pembatasan station hanya untuk role user_station (sama seperti
+          // fetchAllInstruments). Kalibrator/admin butuh seluruh daftar station
+          // agar nama station bisa diresolusi & dipilih.
+          if (role === 'user_station' && user?.id) {
             baseUrl += `&user_id=${user.id}`
           }
 
@@ -2471,13 +2723,120 @@ const CertificatesCRUD: React.FC = () => {
   }, [selectedStdSensorId])
   */
 
+  // Ambil Tim Order (petugas) dari order yang dipilih/diedit — read-only di form.
+  useEffect(() => {
+    const orderId =
+      selectedOrderId ?? (editing as any)?.calibration_order_id ?? null
+    if (!orderId) {
+      setOrderTeamNames([])
+      setOrderPlan({ start: '', end: '' })
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/calibration-orders/${orderId}`)
+        if (!res.ok) return
+        const json = await res.json()
+        const team = json?.data?.personnel || json?.personnel || []
+        const order = json?.data || json
+        if (cancelled) return
+        setOrderTeamNames(
+          (Array.isArray(team) ? team : []).map(
+            (row: any) => row.personel?.name || row.personel_id,
+          ),
+        )
+        setOrderPlan({
+          start: order?.planned_date || '',
+          end: order?.planned_end_date || order?.planned_date || '',
+        })
+      } catch (e) {
+        console.error('Failed to fetch order team', e)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedOrderId, editing])
+
+  // Order-backed: Tanggal Sesi Kalibrasi mengikuti rentang rencana order
+  // (single source of truth = Order Kalibrasi).
+  useEffect(() => {
+    if (!isOrderBackedForm || !orderPlan.start) return
+    const start_date = `${orderPlan.start}T00:00`
+    const end_date = `${orderPlan.end || orderPlan.start}T23:59`
+    // Prefill sebagai DEFAULT saja. Kalau petugas sudah mengisi/mengubah,
+    // biarkan (jangan ditimpa) — mereka bisa lanjut mengisi yang lain.
+    setSessionDetails((prev) =>
+      prev.start_date ? prev : { ...prev, start_date, end_date },
+    )
+    setResults((prev) =>
+      prev.map((r) =>
+        r.startDate ? r : { ...r, startDate: start_date, endDate: end_date },
+      ),
+    )
+  }, [isOrderBackedForm, orderPlan])
+
+  // Fetch order kalibrasi aktif saat stasiun dipilih (mode create).
+  useEffect(() => {
+    if (editing || !form.station) {
+      setActiveOrders([])
+      setSelectedOrderId(null)
+      setSelectedOrderItemId(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/stations/${form.station}/calibration-orders?status=active`)
+        if (!res.ok) return
+        const json = await res.json()
+        if (!cancelled) setActiveOrders(json.data || [])
+      } catch (e) {
+        console.error('Failed to fetch active orders', e)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [form.station, editing])
+
+  // Selesaikan deep-link dari detail order setelah daftar order aktif tersedia.
+  useEffect(() => {
+    const pending = pendingOrderPrefillRef.current
+    if (!pending || !isModalOpen || editing || activeOrders.length === 0) return
+
+    const order = activeOrders.find((row) => row.id === pending.orderId)
+    const item = order?.items.find((row) => row.id === pending.itemId)
+    if (!order || !item) return
+
+    if (item.has_certificate) {
+      pendingOrderPrefillRef.current = null
+      showError('Identifikasi ini sudah memiliki sertifikat')
+      return
+    }
+
+    setSelectedOrderId(order.id)
+    setSelectedOrderItemId(item.id)
+    setForm((prev) => ({
+      ...prev,
+      station: pending.stationId,
+      no_order: order.no_order,
+      no_identification: item.no_identification,
+      calibration_place: order.calibration_place as 'FC' | 'LC',
+      instrument: item.instrument_id ?? prev.instrument,
+      instrument_code: item.instrument_code ?? prev.instrument_code,
+      no_certificate: 'Nomor sertifikat akan dibuat dari booking saat disimpan',
+    }))
+    pendingOrderPrefillRef.current = null
+  }, [activeOrders, editing, isModalOpen, showError])
+
   // When instrument changes, update preview fields
   useEffect(() => {
     if (!form.instrument) {
       setInstrumentPreview({})
       return
     }
-
     // Priority: check sensors list first (since dropdown uses sensors), then instruments
     const sensor = sensors.find((s) => s.id === form.instrument)
     if (sensor) {
@@ -2561,84 +2920,12 @@ const CertificatesCRUD: React.FC = () => {
   }, [form.instrument, instruments.length, instrumentNames.length, editing])
 
   // Pagination + personalization
-  const isUserAssigned = (item: Certificate) => {
-    const uid = user?.id ? String(user.id) : null
-    if (!uid) return false
-
-    if (role === 'user_station') {
-      const stationIds = new Set(stations.map((station) => String(station.id)))
-      const instrumentIds = new Set(
-        instruments.map((instrument) => String(instrument.id)),
-      )
-      const itemStationId =
-        item.station !== undefined && item.station !== null
-          ? String(item.station)
-          : null
-      const itemInstrumentId =
-        item.instrument !== undefined && item.instrument !== null
-          ? String(item.instrument)
-          : null
-      const directAssignedFields = [
-        (item as any).authorized_by,
-        (item as any).verifikator_1,
-        (item as any).verifikator_2,
-        (item as any).verifikator_3,
-        (item as any).assignor,
-        (item as any).sent_by,
-        (item as any).created_by,
-        (item as any).creator_id,
-        (item as any).owner,
-        (item as any).owner_id,
-      ]
-
-      if (itemStationId && stationIds.has(itemStationId)) return true
-      if (itemInstrumentId && instrumentIds.has(itemInstrumentId)) return true
-      if (
-        directAssignedFields.some(
-          (field) =>
-            field !== undefined && field !== null && String(field) === uid,
-        )
-      )
-        return true
-      return false
-    }
-
-    const directFields = [
-      (item as any).authorized_by,
-      (item as any).verifikator_1,
-      (item as any).verifikator_2,
-      (item as any).verifikator_3,
-    ]
-    if (
-      directFields.some(
-        (f) => f !== undefined && f !== null && String(f) === uid,
-      )
-    )
-      return true
-
-    // Support multiple possible creator field names coming from API/DB
-    const creatorFieldCandidates = [
-      'created_by',
-      'creator_id',
-      'creator',
-      'createdBy',
-      'user_id',
-      'owner',
-      'owner_id',
-      'sent_by',
-      'assignor',
-    ] as const
-    for (const key of creatorFieldCandidates) {
-      const val = (item as any)[key]
-      if (val !== undefined && val !== null && String(val) === uid) return true
-    }
-    return false
-  }
-
   const normalizedSearchQuery = searchQuery.trim().toLowerCase()
 
   const allowedCertificates = certificates
-    .filter(isUserAssigned)
+    // Daftar sudah discope di server: pihak sertifikat ATAU anggota tim order
+    // (pembuat/assignee). Jangan filter lagi di klien — itu membuang sertifikat
+    // milik tim order.
     // Role user_station hanya boleh melihat sertifikat yang sudah selesai (ditandatangani).
     .filter(
       (item) =>
@@ -3050,6 +3337,8 @@ const CertificatesCRUD: React.FC = () => {
       }
     } else {
       setEditing(null)
+      setSelectedOrderId(null)
+      setSelectedOrderItemId(null)
       setSessionDetails({
         start_date: '',
         end_date: '',
@@ -3104,7 +3393,9 @@ const CertificatesCRUD: React.FC = () => {
   const closeModal = () => {
     setIsModalOpen(false)
     setEditing(null)
-    setTippingBucketIndex(null)
+    setSelectedOrderId(null)
+    setSelectedOrderItemId(null)
+    pendingOrderPrefillRef.current = null
     setRawData([])
     setRawDataFilename(null)
   }
@@ -3116,6 +3407,7 @@ const CertificatesCRUD: React.FC = () => {
   useEffect(() => {
     if (!isModalOpen) return
     if (editing) return // mode edit: pakai nomor existing
+    if (selectedOrderItemId) return // booking: nomor ditentukan dari order item
     const code = (form as any).instrument_code
     const noIdent = form.no_identification
     const place = (form as any).calibration_place || 'FC'
@@ -3170,6 +3462,7 @@ const CertificatesCRUD: React.FC = () => {
     form.no_identification,
     (form as any).calibration_place,
     (form as any).certificate_type,
+    selectedOrderItemId,
   ])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -3185,8 +3478,12 @@ const CertificatesCRUD: React.FC = () => {
       showError('Nomor sertifikat dan nomor order wajib diisi')
       return
     }
+    if (!editing && !selectedOrderItemId) {
+      showError('Sertifikat baru wajib dibuat dari item pada Order Kalibrasi')
+      return
+    }
     if (!form.no_identification) {
-      showError('No. Identifikasi wajib diisi')
+      showError('No. Identifikasi dari Order Kalibrasi belum tersedia')
       return
     }
 
@@ -3243,15 +3540,38 @@ const CertificatesCRUD: React.FC = () => {
       return
     }
 
+    const invalidRainIndex = results.findIndex((result, index) => {
+      if (!isRainResult(index)) return false
+      const standards = result.tippingBucket?.standards || []
+      const hasVolume = standards.some(
+        (row) => row.role === 'volume' && row.certificateId != null,
+      )
+      const hasLength = standards.some(
+        (row) => row.role === 'length' && row.certificateId != null,
+      )
+      return !result.tippingBucket || !hasVolume || !hasLength
+    })
+
+    if (invalidRainIndex !== -1) {
+      showError(
+        `Kalibrasi Tipping Bucket pada sheet ${invalidRainIndex + 1} belum lengkap. Hitung RR dan pilih minimal satu sertifikat VL serta satu LN.`,
+      )
+      return
+    }
+
     const hasStandardSelection = results.some(
-        (result) =>
+        (result, index) =>
+          !isRainResult(index) &&
+          (
           result.standardInstrumentId != null ||
           result.standardCertificateNumber != null ||
-          result.standardCertificateId != null,
+          result.standardCertificateId != null
+          ),
       )
 
     if (hasStandardSelection) {
-      const invalidStandardIndex = results.findIndex((result) => {
+      const invalidStandardIndex = results.findIndex((result, index) => {
+        if (isRainResult(index)) return false
         return !isStandardCertificateSelectionValid(
           standardCerts,
           standardInstruments.length > 0 ? standardInstruments : instruments,
@@ -3274,6 +3594,11 @@ const CertificatesCRUD: React.FC = () => {
 
     try {
       const payload: any = { ...form, results }
+      // Bila pembuatan sertifikat dari booking order, kirim order item id.
+      // Nomor (no_order/no_identification) ditentukan oleh DB dari item tsb.
+      if (!editing && selectedOrderItemId) {
+        payload.calibration_order_item_id = selectedOrderItemId
+      }
       // Ensure creator is tracked so the creator can see their own certificates
       if (user?.id) {
         if (payload.sent_by == null) payload.sent_by = String(user.id)
@@ -3640,30 +3965,16 @@ const CertificatesCRUD: React.FC = () => {
               ]}
             />
           </div>
-          {can('certificate', 'create') && (
-            <button
-              onClick={() => openModal()}
-              id="btn-add-certificate"
-              disabled={isSubmitting}
-              className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 text-sm ${
-                isSubmitting
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] hover:from-[#2a4a9d] hover:to-[#1e377c]'
-              }`}
-            >
-              {isSubmitting ? (
-                <>
-                  <Spinner size="sm" tone="blue" className="border-white" />
-                  <span className="font-semibold">Processing...</span>
-                </>
-              ) : (
-                <>
-                  <PlusIcon className="w-4 h-4" />
-                  <span className="font-semibold">Create New</span>
-                </>
-              )}
-            </button>
-          )}
+           {can('certificate', 'create') && (
+             <button
+               onClick={() => router.push('/calibration-orders')}
+               id="btn-add-certificate"
+               className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#1e377c] to-[#2a4a9d] px-4 py-2 text-sm text-white shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:from-[#2a4a9d] hover:to-[#1e377c] hover:shadow-lg"
+             >
+               <PlusIcon className="w-4 h-4" />
+               <span className="font-semibold">Buka Order Kalibrasi</span>
+             </button>
+           )}
         </div>
       </div>
 
@@ -3896,9 +4207,9 @@ const CertificatesCRUD: React.FC = () => {
                             Belum ada sertifikat
                           </p>
                           <p className="mt-1 text-xs text-gray-500 max-w-md">
-                            Sistem belum memiliki sertifikat. Gunakan tombol
-                            &quot;Create New&quot; untuk membuat sertifikat
-                            baru.
+                            Sistem belum memiliki sertifikat. Buka Order
+                            Kalibrasi, pilih identifikasi alat, lalu gunakan
+                            tombol &quot;Buat Sertifikat&quot;.
                           </p>
                         </>
                       ) : (
@@ -4404,6 +4715,7 @@ const CertificatesCRUD: React.FC = () => {
                               )}
 
                               {item.status === 'draft' &&
+                                (item as any).can_edit !== false &&
                                 can('certificate', 'update') && (
                                   <button
                                     onClick={() => {
@@ -4464,6 +4776,7 @@ const CertificatesCRUD: React.FC = () => {
                               )}
 
                               {can('certificate', 'delete') &&
+                                (item as any).can_edit !== false &&
                                 canEndpoint(
                                   'DELETE',
                                   `/api/certificates/${item.id}`,
@@ -4610,41 +4923,36 @@ const CertificatesCRUD: React.FC = () => {
                       <label className="block text-xs font-semibold text-gray-700">
                         Stasiun
                       </label>
-                      <SearchableDropdown
-                        id="form-station"
-                        value={form.station}
-                        onChange={(value) => {
-                          const selectedId = value as number | null
-                          const st = stations.find((s) => s.id === selectedId)
-                          const stationAddress = st
-                            ? String((st as any).address ?? '')
-                            : ''
-                          setForm({
-                            ...form,
-                            station: selectedId,
-                            station_address: stationAddress || null,
-                          })
-                          if (useStationAddressForPlace) {
-                            setSessionDetails((prev) => ({
-                              ...prev,
-                              place: stationAddress,
-                            }))
-                            setResults((prev) =>
-                              prev.map((result) => ({
-                                ...result,
-                                place: stationAddress,
-                              })),
-                            )
-                          }
-                        }}
-                        options={stations.map((s) => ({
-                          id: s.id,
-                          name: s.name,
-                          station_id: s.station_id,
-                        }))}
-                        placeholder="Pilih Stasiun"
-                        searchPlaceholder="Cari stasiun..."
-                      />
+                      {isOrderBackedForm ? (
+                        <div className="w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-950">
+                          {stations.find((station) => station.id === form.station)?.name ||
+                            `Stasiun #${form.station ?? '-'}`}
+                        </div>
+                      ) : (
+                        <SearchableDropdown
+                          id="form-station"
+                          value={form.station}
+                          onChange={(value) => {
+                            const selectedId = value as number | null
+                            const st = stations.find((s) => s.id === selectedId)
+                            const stationAddress = st
+                              ? String((st as any).address ?? '')
+                              : ''
+                            setForm({
+                              ...form,
+                              station: selectedId,
+                              station_address: stationAddress || null,
+                            })
+                          }}
+                          options={stations.map((s) => ({
+                            id: s.id,
+                            name: s.name,
+                            station_id: s.station_id,
+                          }))}
+                          placeholder="Pilih Stasiun"
+                          searchPlaceholder="Cari stasiun..."
+                        />
+                      )}
                     </div>
                     <div className="md:col-span-2 space-y-1">
                       <label className="block text-xs font-semibold text-gray-700">
@@ -4664,6 +4972,15 @@ const CertificatesCRUD: React.FC = () => {
                       />
                     </div>
 
+                    {isOrderBackedForm && orderTeamNames.length > 0 && (
+                      <div className="md:col-span-2 text-xs text-gray-600">
+                        <span className="font-semibold text-gray-700">
+                          Tim Order:
+                        </span>{' '}
+                        {orderTeamNames.join(', ')}
+                      </div>
+                    )}
+
                     {/* Komponen format nomor sertifikat sesuai IKK BMKG.
                         Hanya ditampilkan saat CREATE; saat EDIT nomor sudah ada.
                         - Jenis Kalibrasi: FC (Field) saat ini; LC disiapkan untuk tahap berikut.
@@ -4675,19 +4992,11 @@ const CertificatesCRUD: React.FC = () => {
                           <label className="block text-xs font-semibold text-gray-700">
                             Jenis Kalibrasi *
                           </label>
-                          <select
-                            value={(form as any).calibration_place || 'FC'}
-                            onChange={(e) =>
-                              setForm({
-                                ...form,
-                                calibration_place: e.target.value as any,
-                              })
-                            }
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
-                          >
-                            <option value="FC">Field Calibration (FC)</option>
-                            <option value="LC">Lab Calibration (LC)</option>
-                          </select>
+                          <div className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-700">
+                            {(form as any).calibration_place === 'LC'
+                              ? 'Lab Calibration (LC)'
+                              : 'Field Calibration (FC)'}
+                          </div>
                         </div>
                         <div className="space-y-1">
                           <label className="block text-xs font-semibold text-gray-700">
@@ -4797,14 +5106,14 @@ const CertificatesCRUD: React.FC = () => {
                       </label>
                       <input
                         required={!!editing}
-                        readOnly={!editing}
+                        readOnly={!editing || isOrderBackedForm}
                         type="text"
                         value={form.no_certificate}
                         onChange={(e) =>
                           setForm({ ...form, no_certificate: e.target.value })
                         }
                         className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] ${
-                          editing
+                          editing && !isOrderBackedForm
                             ? 'border-gray-300'
                             : 'border-gray-200 bg-gray-50 text-gray-700 cursor-not-allowed'
                         }`}
@@ -4822,14 +5131,14 @@ const CertificatesCRUD: React.FC = () => {
                       </label>
                       <input
                         required={!!editing}
-                        readOnly={!editing}
+                        readOnly={!editing || isOrderBackedForm}
                         type="text"
                         value={form.no_order}
                         onChange={(e) =>
                           setForm({ ...form, no_order: e.target.value })
                         }
                         className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] ${
-                          editing
+                          editing && !isOrderBackedForm
                             ? 'border-gray-300'
                             : 'border-gray-200 bg-gray-50 text-gray-700 cursor-not-allowed'
                         }`}
@@ -4854,10 +5163,15 @@ const CertificatesCRUD: React.FC = () => {
                         </label>
                         <input
                           required={field.required}
+                          readOnly={isOrderBackedForm}
                           type={field.type}
                           value={field.value}
                           onChange={field.onChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c]"
+                          className={`w-full rounded-lg border px-3 py-2 text-sm focus:ring-1 focus:ring-[#1e377c] ${
+                            isOrderBackedForm
+                              ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-700'
+                              : 'border-gray-300'
+                          }`}
                         />
                       </div>
                     ))}
@@ -5125,7 +5439,18 @@ const CertificatesCRUD: React.FC = () => {
                         <label className="text-xs font-semibold text-gray-600">
                           Instrument *
                         </label>
-                        <SearchableDropdown
+                        {isOrderBackedForm ? (
+                          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-950">
+                            {(() => {
+                              const selected = instruments.find(
+                                (instrument) => instrument.id === form.instrument,
+                              )
+                              if (!selected) return `Instrumen #${form.instrument ?? '-'}`
+                              return `${(selected as any).name_alias || selected.type || (selected as any).name || 'Instrumen'} — ${selected.manufacturer || '-'} ${selected.type || ''} • SN: ${(selected as any).serial_number || '-'}`
+                            })()}
+                          </div>
+                        ) : (
+                          <SearchableDropdown
                           value={form.instrument}
                           onChange={(val) => {
                             setForm({ ...form, instrument: val as number })
@@ -5185,7 +5510,8 @@ const CertificatesCRUD: React.FC = () => {
                             })}
                           placeholder="Pilih Instrument..."
                           searchPlaceholder="Cari Instrument..."
-                        />
+                          />
+                        )}
                       </div>
                     </div>
 
@@ -5455,7 +5781,12 @@ const CertificatesCRUD: React.FC = () => {
                             <div className="space-y-3">
                               <div className="space-y-1">
                                 <label className="text-xs font-semibold text-gray-600">
-                                  Pilih Sensor UUT *
+                                  Pilih Sensor UUT *{' '}
+                                  {result.autoSensor && result.sensorId && (
+                                    <span className="ml-1 inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                                      auto
+                                    </span>
+                                  )}
                                 </label>
                                 <SearchableDropdown
                                   value={result.sensorId || null}
@@ -5640,53 +5971,217 @@ const CertificatesCRUD: React.FC = () => {
                                       (name) => name.id === activeSensor.sensor_name_id,
                                     )?.name
                                   : null
-                                const isRainGauge = isTippingBucketSensor(
-                                  {
-                                    ...activeSensor,
-                                    instrument_code:
-                                      (form as any).instrument_code,
-                                  },
-                                  canonicalName,
-                                  result.notesForm?.calibration_methode,
+                                const allStandardSensors = standardInstruments.flatMap(
+                                  (item: any) => item.sensor || [],
                                 )
-                                if (!isRainGauge) return null
 
                                 return (
-                                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
-                                    <div className="flex flex-wrap items-center justify-between gap-3">
-                                      <div>
-                                        <p className="text-sm font-bold text-blue-950">
-                                          Kalibrasi Tipping Bucket / RR
-                                        </p>
-                                        <p className="text-xs text-blue-700">
-                                          Input diameter corong dan pembacaan UUT tanpa upload raw data.
-                                        </p>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          setTippingBucketIndex(resultIndex)
-                                        }
-                                        className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-800"
-                                      >
-                                        {result.tippingBucket
-                                          ? 'Edit Input RR'
-                                          : 'Input Kalibrasi RR'}
-                                      </button>
-                                    </div>
-                                    {result.tippingBucket &&
-                                      result.table?.length > 0 && (
-                                        <p className="mt-2 text-xs font-semibold text-emerald-700">
-                                          Hasil RR sudah dihitung dan siap disimpan ke sertifikat.
-                                        </p>
-                                      )}
-                                  </div>
+                                  <TippingBucketCalibration
+                                    sensor={activeSensor}
+                                    instrumentCode={(form as any).instrument_code}
+                                    canonicalName={canonicalName}
+                                    calibrationMethod={
+                                      result.notesForm?.calibration_methode
+                                    }
+                                    initialData={result?.tippingBucket}
+                                    standardCerts={standardCerts}
+                                    standardSensors={allStandardSensors}
+                                    onCalculated={(data, calculation) => {
+                                      const standardRows = data.standards || []
+                                      const volumeRow =
+                                        standardRows.find(
+                                          (row) => row.role === 'volume',
+                                        ) || standardRows[0]
+                                      const standardSensorIds = standardRows
+                                        .map((row) => row.sensorId)
+                                        .filter(
+                                          (id): id is number =>
+                                            typeof id === 'number' && id > 0,
+                                        )
+                                      const uncertaintyMeta = {
+                                        raw_u95: calculation.rawU95Mm,
+                                        reported_u95: calculation.reportedU95Mm,
+                                        reporting_rule: 'MAX_U95_CMC',
+                                        cmc_profile_id: data.cmcProfileId ?? null,
+                                        cmc_profile_code:
+                                          data.cmcProfileCode ?? null,
+                                        cmc_version: data.cmcVersion ?? null,
+                                        cmc_value_native: data.cmcMm ?? null,
+                                        cmc_unit_native: 'mm',
+                                        cmc_value_output: data.cmcMm ?? null,
+                                        method_version: calculation.methodVersion,
+                                        formula_version: calculation.formulaVersion,
+                                        coverage_rule: calculation.coverageRule,
+                                        coverage_factor: calculation.coverageFactor,
+                                        effective_degrees_of_freedom:
+                                          calculation.effectiveDegreesOfFreedom,
+                                        combined_uncertainty_mm:
+                                          calculation.combinedUncertaintyMm,
+                                        raw_u95_mm: calculation.rawU95Mm,
+                                        reported_u95_mm: calculation.reportedU95Mm,
+                                        reported_u95_percent:
+                                          calculation.reportedU95Percent,
+                                        cmc_applied: calculation.cmcApplied,
+                                        warnings: calculation.warnings,
+                                      }
+
+                                      // RR memakai DUA standar (Volume + Panjang).
+                                      // Sertifikat harus tertelusur ke keduanya, jadi
+                                      // gabungkan keterangan ketertelusuran tiap standar
+                                      // (satu baris per standar).
+                                      const traceLines = standardRows
+                                        .map((row) => {
+                                          const stdSensor = sensors.find(
+                                            (s: any) =>
+                                              Number(s.id) ===
+                                              Number(row.sensorId),
+                                          ) as any
+                                          const org =
+                                            stdSensor?.tracebility ||
+                                            stdSensor?.traceability ||
+                                            ''
+                                          if (!org) return null
+                                          const label =
+                                            row.role === 'volume'
+                                              ? 'Gelas Ukur'
+                                              : row.role === 'length'
+                                                ? 'Jangka Sorong'
+                                                : 'Standar'
+                                          const certNo = row.certificateNumber
+                                            ? ` (${row.certificateNumber})`
+                                            : ''
+                                          return `${label}${certNo}: ${org}`
+                                        })
+                                        .filter(
+                                          (line): line is string =>
+                                            Boolean(line),
+                                        )
+
+                                      updateResult(resultIndex, {
+                                         tippingBucket: {
+                                           ...data,
+                                           calculationSnapshot: {
+                                             methodVersion: calculation.methodVersion,
+                                             formulaVersion: calculation.formulaVersion,
+                                             repeatabilityDivisor:
+                                               calculation.components.find(
+                                                 (component) =>
+                                                   component.name === 'Repeatibilitas',
+                                               )?.divisor ?? Math.sqrt(5),
+                                             diameterDivisor:
+                                               calculation.components.find(
+                                                 (component) =>
+                                                   component.name ===
+                                                   'Pengukuran Jangka Sorong',
+                                               )?.divisor ?? Math.sqrt(5),
+                                             coverageRule: calculation.coverageRule,
+                                             coverageFactor: calculation.coverageFactor,
+                                             effectiveDegreesOfFreedom:
+                                               calculation.effectiveDegreesOfFreedom,
+                                             combinedUncertaintyMm:
+                                               calculation.combinedUncertaintyMm,
+                                             rawU95Mm: calculation.rawU95Mm,
+                                             reportedU95Mm:
+                                               calculation.reportedU95Mm,
+                                             reportedU95Percent:
+                                               calculation.reportedU95Percent,
+                                             cmcApplied: calculation.cmcApplied,
+                                             methodReferences: [
+                                               { code: 'WMO-No. 8', edition: '2018' },
+                                               { code: 'MK 06', edition: 'current' },
+                                             ],
+                                             calculationRule:
+                                               'standardRainfall=resolutionUut*testVolume/volumePerTip; correction=standardRainfall-UUT',
+                                             validDiameterCount:
+                                               data.funnelDiameterReadings.length,
+                                             validRainReadingCount:
+                                               data.rainUutReadings.length,
+                                             meniscusValueUsed:
+                                               data.meniscusUncertainty,
+                                             standardsSummary: standardRows.map((row) => ({
+                                               role: row.role,
+                                               certificateId: row.certificateId ?? null,
+                                               u95: row.u95,
+                                               drift: row.drift,
+                                               resolution: row.resolution,
+                                             })),
+                                           },
+                                           methodVersion: calculation.methodVersion,
+                                           formulaVersion: calculation.formulaVersion,
+                                         },
+                                        standardInstrumentId:
+                                          volumeRow?.instrumentId ??
+                                          result.standardInstrumentId ??
+                                          null,
+                                        standardCertificateId:
+                                          volumeRow?.certificateId ?? null,
+                                        standardCertificateNumber:
+                                          volumeRow?.certificateNumber ?? null,
+                                        unitUut: 'mm',
+                                        unitStd: 'mm',
+                                        notesForm: {
+                                          ...result.notesForm,
+                                          standardInstruments: standardSensorIds,
+                                          ...(traceLines.length > 0
+                                            ? {
+                                                traceable_to_si_through:
+                                                  traceLines.join('\n'),
+                                              }
+                                            : {}),
+                                        },
+                                        sensorDetails: {
+                                          ...result?.sensorDetails,
+                                          funnel_diameter:
+                                            calculation.averageFunnelDiameter,
+                                          funnel_diameter_unit: 'mm',
+                                          funnel_area: calculation.funnelAreaMm2,
+                                          funnel_area_unit: 'mm2',
+                                          volume_per_tip: String(data.volumePerTip),
+                                          volume_per_tip_unit: 'ml',
+                                        },
+                                        table: [
+                                          {
+                                            title:
+                                              'Hasil Kalibrasi / Calibration Result',
+                                            headers: [
+                                              'Penunjukan Alat / Instrument Reading (mm)',
+                                              'Koreksi / Correction (%)',
+                                              'Ketidakpastian / Uncertainty (%)',
+                                            ],
+                                            rows: [
+                                              {
+                                                key: String(calculation.averageUut),
+                                                unit: String(
+                                                  calculation.averageCorrectionPercent,
+                                                ),
+                                                value: String(
+                                                  calculation.reportedU95Percent,
+                                                ),
+                                                uncertaintyMeta,
+                                                extraValues: [],
+                                              },
+                                            ],
+                                          },
+                                        ],
+                                      })
+                                      // Tulis balik rata-rata diameter ke master sensor
+                                      // (menu Instrumen), sesuai workbook.
+                                      syncMasterFunnelDiameter(
+                                        activeSensor,
+                                        calculation,
+                                      )
+                                      showSuccess(
+                                        'Perhitungan Tipping Bucket berhasil diisi ke tabel sertifikat.',
+                                      )
+                                    }}
+                                  />
                                 )
                               })()}
                             </div>
                           </div>
 
                           {/* 2. Alat Standar */}
+                          {!isRainResult(resultIndex) ? (
                           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 relative overflow-hidden group hover:border-[#1e377c]/30 transition-all">
                             <div className="absolute top-0 right-0 w-1 h-full bg-green-600"></div>
                             <div className="flex items-center justify-between mb-4 pr-2">
@@ -6016,6 +6511,76 @@ const CertificatesCRUD: React.FC = () => {
                               })()}
                             </div>
                           </div>
+                          ) : (
+                            <div className="relative overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 shadow-sm">
+                              <div className="absolute right-0 top-0 h-full w-1 bg-emerald-600" />
+                              <div className="mb-3 flex items-start justify-between gap-3 pr-2">
+                                <div>
+                                  <h3 className="flex items-center gap-2 text-lg font-bold text-emerald-950">
+                                    <CertificateIcon className="h-5 w-5 text-emerald-700" />
+                                    Standar Kalibrasi RR
+                                  </h3>
+                                  <p className="mt-1 text-xs text-emerald-800">
+                                    Khusus Tipping Bucket: standar Volume (VL) dan Panjang (LN)
+                                    dipilih hanya melalui Form Tipping Bucket di atas.
+                                  </p>
+                                </div>
+                                {(() => {
+                                  const rows = result.tippingBucket?.standards || []
+                                  const hasVolume = rows.some((row) => row.role === 'volume')
+                                  const hasLength = rows.some((row) => row.role === 'length')
+                                  return (
+                                    <span
+                                      className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                                        hasVolume && hasLength
+                                          ? 'bg-emerald-100 text-emerald-800'
+                                          : 'bg-amber-100 text-amber-800'
+                                      }`}
+                                    >
+                                      {hasVolume && hasLength ? 'Lengkap' : 'Belum Lengkap'}
+                                    </span>
+                                  )
+                                })()}
+                              </div>
+                              {(() => {
+                                const rows = result.tippingBucket?.standards || []
+                                if (rows.length === 0) {
+                                  return (
+                                    <div className="rounded-lg border border-dashed border-amber-300 bg-white px-3 py-4 text-center text-xs text-amber-700">
+                                      Belum ada standar RR. Klik “Hitung Kalibrasi Tipping Bucket”
+                                      untuk memilih minimal satu sertifikat VL dan satu LN.
+                                    </div>
+                                  )
+                                }
+                                return (
+                                  <div className="space-y-2">
+                                    {rows.map((row, index) => (
+                                      <div
+                                        key={`${row.certificateId || index}-${row.role}`}
+                                        className="grid grid-cols-[90px_1fr_auto] items-center gap-3 rounded-lg border border-emerald-100 bg-white px-3 py-2 text-xs"
+                                      >
+                                        <span
+                                          className={`rounded-full px-2 py-1 text-center font-bold ${
+                                            row.role === 'volume'
+                                              ? 'bg-blue-100 text-blue-700'
+                                              : 'bg-amber-100 text-amber-700'
+                                          }`}
+                                        >
+                                          {row.role === 'volume' ? 'Volume [VL]' : 'Panjang [LN]'}
+                                        </span>
+                                        <span className="truncate font-semibold text-slate-800">
+                                          {row.certificateNumber || `Sertifikat #${row.certificateId || '-'}`}
+                                        </span>
+                                        <span className="font-mono text-[10px] text-slate-500">
+                                          U95 {row.u95}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )
+                              })()}
+                            </div>
+                          )}
                         </div>
                         {/* 3. Kondisi Lingkungan & Catatan (Per Sensor) */}
                         <div className="mt-6 border-t border-gray-200 pt-6 col-span-1 lg:col-span-2">
@@ -6123,97 +6688,178 @@ const CertificatesCRUD: React.FC = () => {
                                 Catatan & Referensi
                               </h5>
 
-                              {/* Standard Calibration Info - Auto Populated */}
+                              {/* Standard Calibration Info - Auto Populated.
+                                  RR memakai DUA standar (Volume + Panjang) → tampilkan
+                                  semuanya; non-RR tetap satu standar. */}
                               <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
                                 <h5 className="text-[10px] font-bold text-blue-800 mb-2 uppercase">
                                   Standar Kalibrasi (Auto)
                                 </h5>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                                  <div>
-                                    <span className="block text-gray-500 text-[10px]">
-                                      Nama
-                                    </span>
-                                    <span className="font-semibold text-gray-700">
-                                      {(() => {
-                                        const stdId = result.standardInstrumentId
-                                        if (!stdId) return '-'
-                                        const inst = instruments.find(
-                                          (i) => i.id === stdId,
-                                        )
-                                        const sensor = inst?.sensor?.find(
-                                          (s: any) => s.is_standard,
-                                        )
-                                        return sensor?.name || inst?.name || '-'
-                                      })()}
-                                    </span>
-                                  </div>
-                                  <div>
-                                    <span className="block text-gray-500 text-[10px]">
-                                      Merk/Manufaktur
-                                    </span>
-                                    <span className="font-semibold text-gray-700">
-                                      {(() => {
-                                        const stdId = result.standardInstrumentId
-                                        const inst = instruments.find(
-                                          (i) => i.id === stdId,
-                                        )
-                                        const sensor = inst?.sensor?.find(
-                                          (s: any) => s.is_standard,
-                                        )
-                                        return (
-                                          sensor?.manufacturer ||
-                                          (inst as any)?.manufacturer ||
-                                          '-'
-                                        )
-                                      })()}
-                                    </span>
-                                  </div>
-                                  <div>
-                                    <span className="block text-gray-500 text-[10px]">
-                                      Tipe
-                                    </span>
-                                    <span className="font-semibold text-gray-700">
-                                      {(() => {
-                                        const stdId = result.standardInstrumentId
-                                        const inst = instruments.find(
-                                          (i) => i.id === stdId,
-                                        )
-                                        const sensor = inst?.sensor?.find(
-                                          (s: any) => s.is_standard,
-                                        )
-                                        return (
-                                          sensor?.type ||
-                                          (inst as any)?.type ||
-                                          '-'
-                                        )
-                                      })()}
-                                    </span>
-                                  </div>
-                                  <div>
-                                    <span className="block text-gray-500 text-[10px]">
-                                      No. Seri
-                                    </span>
-                                    <span className="font-semibold text-gray-700">
-                                      {(() => {
-                                        const stdId = result.standardInstrumentId
-                                        const inst = instruments.find(
-                                          (i) => i.id === stdId,
-                                        )
-                                        const sensor = inst?.sensor?.find(
-                                          (s: any) => s.is_standard,
-                                        )
-                                        return (
-                                          sensor?.serial_number ||
-                                          (inst as any)?.serial_number ||
-                                          '-'
-                                        )
-                                      })()}
-                                    </span>
-                                  </div>
-                                </div>
+                                {(() => {
+                                  const rrRows =
+                                    result.tippingBucket?.standards || []
+
+                                  const resolveSensor = (sensorId: unknown) => {
+                                    if (sensorId == null) return null
+                                    const fromStd = standardInstruments
+                                      .flatMap((item: any) => item.sensor || [])
+                                      .find(
+                                        (s: any) =>
+                                          Number(s.id) === Number(sensorId),
+                                      )
+                                    if (fromStd) return fromStd
+                                    return (
+                                      sensors.find(
+                                        (s: any) =>
+                                          Number(s.id) === Number(sensorId),
+                                      ) || null
+                                    )
+                                  }
+
+                                  const entries: Array<{
+                                    label: string | null
+                                    entity: any
+                                    traceableTo: string
+                                    certificateNo: string
+                                  }> = []
+
+                                  if (rrRows.length > 0) {
+                                    for (const row of rrRows) {
+                                      const sensor = resolveSensor(row.sensorId)
+                                      if (!sensor) continue
+                                      entries.push({
+                                        label:
+                                          row.role === 'volume'
+                                            ? 'Volume [VL]'
+                                            : row.role === 'length'
+                                              ? 'Panjang [LN]'
+                                              : null,
+                                        entity: sensor,
+                                        traceableTo:
+                                          sensor?.tracebility ||
+                                          sensor?.traceability ||
+                                          '',
+                                        certificateNo:
+                                          row.certificateNumber || '',
+                                      })
+                                    }
+                                  } else {
+                                    const inst = instruments.find(
+                                      (i) => i.id === result.standardInstrumentId,
+                                    )
+                                    const sensor = inst?.sensor?.find(
+                                      (s: any) => s.is_standard,
+                                    )
+                                    const entity = sensor || inst
+                                    if (entity) {
+                                      entries.push({
+                                        label: null,
+                                        entity,
+                                        traceableTo:
+                                          (entity as any)?.tracebility ||
+                                          (entity as any)?.traceability ||
+                                          result.notesForm
+                                            ?.traceable_to_si_through ||
+                                          '',
+                                        certificateNo:
+                                          result.standardCertificateNumber || '',
+                                      })
+                                    }
+                                  }
+
+                                  if (entries.length === 0) {
+                                    return (
+                                      <p className="text-xs italic text-gray-400">
+                                        Belum ada standar terpilih
+                                      </p>
+                                    )
+                                  }
+
+                                  const nameOf = (entity: any) => {
+                                    const nameId = entity?.sensor_name_id
+                                    const fromNames = nameId
+                                      ? instrumentNames.find(
+                                          (n: any) => n.id === nameId,
+                                        )?.name
+                                      : undefined
+                                    return (
+                                      fromNames ||
+                                      entity?.name ||
+                                      entity?.type ||
+                                      '-'
+                                    )
+                                  }
+
+                                  return (
+                                    <div className="space-y-3">
+                                      {entries.map((entry, idx) => (
+                                        <div key={idx}>
+                                          {entry.label && (
+                                            <span className="mb-1 inline-block rounded-full border border-blue-200 bg-white px-2 py-0.5 text-[10px] font-bold text-blue-800">
+                                              {entry.label}
+                                            </span>
+                                          )}
+                                          <div className="grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
+                                            <div>
+                                              <span className="block text-[10px] text-gray-500">
+                                                Nama
+                                              </span>
+                                              <span className="font-semibold text-gray-700">
+                                                {nameOf(entry.entity)}
+                                              </span>
+                                            </div>
+                                            <div>
+                                              <span className="block text-[10px] text-gray-500">
+                                                Merk/Manufaktur
+                                              </span>
+                                              <span className="font-semibold text-gray-700">
+                                                {entry.entity?.manufacturer || '-'}
+                                              </span>
+                                            </div>
+                                            <div>
+                                              <span className="block text-[10px] text-gray-500">
+                                                Tipe
+                                              </span>
+                                              <span className="font-semibold text-gray-700">
+                                                {entry.entity?.type || '-'}
+                                              </span>
+                                            </div>
+                                            <div>
+                                              <span className="block text-[10px] text-gray-500">
+                                                No. Seri
+                                              </span>
+                                              <span className="font-semibold text-gray-700">
+                                                {entry.entity?.serial_number || '-'}
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <div className="mt-2 grid grid-cols-1 gap-1 text-xs md:grid-cols-2">
+                                            <div>
+                                              <span className="block text-[10px] text-gray-500">
+                                                Tertelusur Ke SI melalui
+                                              </span>
+                                              <span className="font-semibold text-gray-700">
+                                                {entry.traceableTo || '-'}
+                                              </span>
+                                            </div>
+                                            <div>
+                                              <span className="block text-[10px] text-gray-500">
+                                                Dokumen Acuan (No. Sertifikat Standar)
+                                              </span>
+                                              <span className="font-semibold text-gray-700">
+                                                {entry.certificateNo || '-'}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )
+                                })()}
                               </div>
 
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {!isRainResult(resultIndex) && (
                                 <div className="space-y-1">
                                   <label className="block text-xs font-semibold text-gray-700">
                                     Tertelusur Ke SI melalui
@@ -6243,6 +6889,7 @@ const CertificatesCRUD: React.FC = () => {
                                     <option value="SNSU-BSN" />
                                   </datalist>
                                 </div>
+                                )}
                                 <div className="space-y-1">
                                   <label className="block text-xs font-semibold text-gray-700">
                                     Metode Kalibrasi
@@ -6278,6 +6925,7 @@ const CertificatesCRUD: React.FC = () => {
                                     searchPlaceholder="Cari metode kalibrasi..."
                                   />
                                 </div>
+                                {!isRainResult(resultIndex) && (
                                 <div className="space-y-1">
                                   <label className="block text-xs font-semibold text-gray-700">
                                     Dokumen Acuan
@@ -6305,6 +6953,7 @@ const CertificatesCRUD: React.FC = () => {
                                     <option value="ISO/IEC 17025:2017" />
                                   </datalist>
                                 </div>
+                                )}
                                 <div className="space-y-1 md:col-span-2">
                                   <div className="flex items-center justify-between">
                                     <label
@@ -6557,8 +7206,39 @@ const CertificatesCRUD: React.FC = () => {
               </div>
             </div>
 
+            {isRainResult(tableEditIndex) && (
+              <div className="max-h-[60vh] overflow-y-auto bg-gradient-to-br from-white to-gray-50/30 p-6">
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                  <h3 className="font-bold text-blue-950">
+                    Tabel RR dibuat otomatis dari Form Tipping Bucket
+                  </h3>
+                  <p className="mt-1 text-xs text-blue-800">
+                    Editor tabel umum dan impor Excel tidak digunakan untuk RR.
+                    Tutup dialog ini lalu gunakan “Edit Kalibrasi RR” untuk mengubah
+                    standar, pembacaan, atau hasil.
+                  </p>
+                </div>
+                <div className="mt-4 space-y-3">
+                  {(results[tableEditIndex]?.table || []).map((section, sectionIndex) => (
+                    <div key={sectionIndex} className="rounded-lg border border-gray-200 bg-white p-4">
+                      <div className="mb-2 text-sm font-bold text-gray-800">
+                        {section.title || 'Hasil Kalibrasi RR'}
+                      </div>
+                      {section.rows.map((row, rowIndex) => (
+                        <div key={rowIndex} className="grid grid-cols-3 gap-3 border-t border-gray-100 py-2 text-xs first:border-t-0">
+                          <div><span className="block text-gray-400">Penunjukan</span>{row.key || '-'}</div>
+                          <div><span className="block text-gray-400">Koreksi</span>{row.unit || '-'}</div>
+                          <div><span className="block text-gray-400">Ketidakpastian</span>{row.value || '-'}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Content */}
-            <div className="max-h-[60vh] overflow-y-auto p-4 bg-gradient-to-br from-white to-gray-50/30">
+            <div className={`max-h-[60vh] overflow-y-auto p-4 bg-gradient-to-br from-white to-gray-50/30 ${isRainResult(tableEditIndex) ? 'hidden' : ''}`}>
               <div className="space-y-4">
                 {tableDraft.map((section, si) => (
                   <div
@@ -6610,43 +7290,47 @@ const CertificatesCRUD: React.FC = () => {
                         <TrashIcon className="w-4 h-4" />
                       </button>
 
-                      {/* Auto-Generate Button */}
-                      <div className="ml-auto relative mr-2">
-                        <button
-                          type="button"
-                          onClick={() => handleAutoGenerate(si)}
-                          disabled={isGenerating}
-                          className={`inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 border border-transparent shadow-sm ${
-                            isGenerating
-                              ? 'bg-gray-100 text-gray-400 cursor-wait'
-                              : 'text-white bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700'
-                          }`}
-                          title="Generate dari Data QC"
-                        >
-                          {isGenerating ? (
-                            <Spinner
-                              size="xs"
-                              tone="white"
-                              className="mr-1.5"
-                            />
-                          ) : (
-                            <svg
-                              className="w-3 h-3 mr-1.5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M13 10V3L4 14h7v7l9-11h-7z"
+                      {/* Auto-Generate Button — hanya untuk sensor non-RR
+                          (sensor RR memakai aksi tunggal "Hitung Kalibrasi
+                          Tipping Bucket", tanpa raw data). */}
+                      {!isRainResult(tableEditIndex) && (
+                        <div className="ml-auto relative mr-2">
+                          <button
+                            type="button"
+                            onClick={() => handleAutoGenerate(si)}
+                            disabled={isGenerating}
+                            className={`inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 border border-transparent shadow-sm ${
+                              isGenerating
+                                ? 'bg-gray-100 text-gray-400 cursor-wait'
+                                : 'text-white bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700'
+                            }`}
+                            title="Generate dari Data QC"
+                          >
+                            {isGenerating ? (
+                              <Spinner
+                                size="xs"
+                                tone="white"
+                                className="mr-1.5"
                               />
-                            </svg>
-                          )}
-                          Auto-Generate QC
-                        </button>
-                      </div>
+                            ) : (
+                              <svg
+                                className="w-3 h-3 mr-1.5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                                />
+                              </svg>
+                            )}
+                            Auto-Generate QC
+                          </button>
+                        </div>
+                      )}
 
                       {/* Import Excel Button */}
                       <div className="relative">
@@ -7211,7 +7895,7 @@ const CertificatesCRUD: React.FC = () => {
             </div>
 
             {/* Footer */}
-            <div className="flex justify-end space-x-2 p-4 border-t border-gray-200 bg-gray-50/50">
+            <div className={`${isRainResult(tableEditIndex) ? 'hidden' : 'flex'} justify-end space-x-2 p-4 border-t border-gray-200 bg-gray-50/50`}>
               <button
                 onClick={() => setTableEditIndex(null)}
                 className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all duration-200 border border-gray-300"
@@ -7523,7 +8207,7 @@ const CertificatesCRUD: React.FC = () => {
                         >
                           <td className="p-2 text-gray-400 select-none w-10 text-right border-r border-gray-100 bg-gray-50">
                             {ri + 1}
-                          </td>{' '}
+                          </td>
                           {row.map((cell, ci) => (
                             <td
                               key={ci}
@@ -7915,87 +8599,6 @@ const CertificatesCRUD: React.FC = () => {
           </div>
         </div>
       )}
-
-      {tippingBucketIndex !== null &&
-        (() => {
-          const result = results[tippingBucketIndex]
-          const activeSensor = sensors.find(
-            (sensor) => sensor.id === result?.sensorId,
-          )
-          const selectedStandard = standardCerts.find(
-            (certificate) => certificate.id === result?.standardCertificateId,
-          )
-          const instrument = instruments.find(
-            (item) => item.id === form.instrument,
-          )
-          const isAnalog = (instrument?.instrument_type_id ?? 1) === 2
-          const defaultCmcMm = isAnalog ? 0.29 : 0.19
-
-          return (
-            <TippingBucketForm
-              isOpen
-              onClose={() => setTippingBucketIndex(null)}
-              sensor={{ ...activeSensor, ...result?.sensorDetails }}
-              standardCertificate={selectedStandard}
-              initialData={result?.tippingBucket}
-              defaultCmcMm={defaultCmcMm}
-              onSubmit={(data, calculation) => {
-                if (!result) return
-                const uncertaintyMeta = {
-                  raw_u95: calculation.rawU95Mm,
-                  reported_u95: calculation.reportedU95Mm,
-                  reporting_rule: 'MAX_U95_CMC',
-                  cmc_profile_id: null,
-                  cmc_profile_code: isAnalog
-                    ? 'CMC-RR-ANALOG'
-                    : 'CMC-RR-DIGITAL',
-                  cmc_version: null,
-                  cmc_value_native: data.cmcMm ?? null,
-                  cmc_unit_native: 'mm',
-                  cmc_value_output: data.cmcMm ?? null,
-                }
-
-                updateResult(tippingBucketIndex, {
-                  tippingBucket: data,
-                  unitUut: 'mm',
-                  unitStd: 'mm',
-                  sensorDetails: {
-                    ...result.sensorDetails,
-                    funnel_diameter: calculation.averageFunnelDiameter,
-                    funnel_diameter_unit: 'mm',
-                    funnel_area: calculation.funnelAreaMm2,
-                    funnel_area_unit: 'mm2',
-                    volume_per_tip: String(data.volumePerTip),
-                    volume_per_tip_unit: 'ml',
-                  },
-                  table: [
-                    {
-                      title: 'Hasil Kalibrasi / Calibration Result',
-                      headers: [
-                        'Penunjukan Alat / Instrument Reading (mm)',
-                        'Koreksi / Correction (%)',
-                        'Ketidakpastian / Uncertainty (%)',
-                      ],
-                      rows: [
-                        {
-                          key: String(calculation.averageUut),
-                          unit: String(calculation.averageCorrectionPercent),
-                          value: String(calculation.reportedU95Percent),
-                          uncertaintyMeta,
-                          extraValues: [],
-                        },
-                      ],
-                    },
-                  ],
-                })
-                setTippingBucketIndex(null)
-                showSuccess(
-                  'Perhitungan Tipping Bucket berhasil diisi ke tabel sertifikat.',
-                )
-              }}
-            />
-          )
-        })()}
 
       {/* QC Modal */}
       {qcModalCertificate && (
