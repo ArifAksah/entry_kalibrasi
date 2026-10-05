@@ -394,6 +394,7 @@ const CalibrationOrdersCRUD: React.FC = () => {
             <tr>
               <th className="px-4 py-3">No. Order</th>
               <th className="px-4 py-3">Stasiun</th>
+              <th className="px-4 py-3">Alat UUT</th>
               <th className="px-4 py-3">Jenis</th>
               <th className="px-4 py-3">Tanggal Rencana</th>
               <th className="px-4 py-3">Status</th>
@@ -402,14 +403,37 @@ const CalibrationOrdersCRUD: React.FC = () => {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan={6} className="px-4 py-10 text-center"><Spinner /></td></tr>
+              <tr><td colSpan={7} className="px-4 py-10 text-center"><Spinner /></td></tr>
             ) : orders.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-500">Belum ada order</td></tr>
+              <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-500">Belum ada order</td></tr>
             ) : (
               orders.map((o) => (
                 <tr key={o.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-mono font-semibold">{o.no_order || 'Belum dialokasikan'}</td>
                   <td className="px-4 py-3">{stationName(o.station_id)}</td>
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const items = ((o as any).calibration_order_items || []) as any[]
+                      if (items.length === 0) return '-'
+                      const labels = Array.from(
+                        new Set(
+                          items.map((it) => {
+                            const inst = instruments.find(
+                              (row) => row.id === it.instrument_id,
+                            )
+                            return (
+                              inst?.name_alias ||
+                              inst?.type ||
+                              (it.instrument_id
+                                ? `Instrumen #${it.instrument_id}`
+                                : it.instrument_code || 'Alat')
+                            )
+                          }),
+                        ),
+                      )
+                      return labels.join(', ')
+                    })()}
+                  </td>
                   <td className="px-4 py-3">{o.calibration_place}</td>
                   <td className="px-4 py-3">
                     {o.planned_date === o.planned_end_date
@@ -762,6 +786,7 @@ const CalibrationOrdersCRUD: React.FC = () => {
                     <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
                       <tr>
                         <th className="px-3 py-2">Identifikasi</th>
+                        <th className="px-3 py-2">Alat UUT</th>
                         <th className="px-3 py-2">Sertifikat</th>
                         <th className="px-3 py-2">Status</th>
                         <th className="px-3 py-2 text-right">Aksi</th>
@@ -772,6 +797,38 @@ const CalibrationOrdersCRUD: React.FC = () => {
                         detail.items.map((it) => (
                           <tr key={it.id}>
                             <td className="px-3 py-2 font-mono">{it.no_identification}</td>
+                            <td className="px-3 py-2">
+                              {(() => {
+                                const inst = instruments.find(
+                                  (row) => row.id === it.instrument_id,
+                                )
+                                const name =
+                                  inst?.name_alias ||
+                                  inst?.type ||
+                                  (it.instrument_id
+                                    ? `Instrumen #${it.instrument_id}`
+                                    : '-')
+                                const code =
+                                  it.instrument_code ||
+                                  (inst
+                                    ? instrumentCodes.find(
+                                        (c) => c.id === inst.instrument_code_id,
+                                      )?.code_alat ?? null
+                                    : null)
+                                return (
+                                  <div>
+                                    <div className="font-medium text-gray-800">
+                                      {name}
+                                    </div>
+                                    {code ? (
+                                      <div className="text-xs text-gray-500">
+                                        Kode: {code}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                )
+                              })()}
+                            </td>
                             <td className="px-3 py-2">{it.certificate?.no_certificate || '-'}</td>
                             <td className="px-3 py-2">{ITEM_STATUS_LABEL[it.status] || it.status}</td>
                             <td className="px-3 py-2 text-right">
@@ -819,7 +876,7 @@ const CalibrationOrdersCRUD: React.FC = () => {
                           </tr>
                         ))
                       ) : (
-                        <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-400">Belum ada alat</td></tr>
+                        <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-400">Belum ada alat</td></tr>
                       )}
                     </tbody>
                   </table>

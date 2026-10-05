@@ -7,7 +7,8 @@ export const dynamic = 'force-dynamic'
 const ORDER_SELECT =
   'id, numbering_year, order_number, no_order, station_id, station_address_snapshot, ' +
   'planned_date, planned_end_date, calibration_place, status, notes, created_by, confirmed_at, started_at, ' +
-  'completed_at, postponed_at, cancelled_at, cancellation_reason, created_at, updated_at'
+  'completed_at, postponed_at, cancelled_at, cancellation_reason, created_at, updated_at, ' +
+  'calibration_order_items(id, no_identification, instrument_id, instrument_code, status)'
 
 /**
  * GET /api/calibration-orders
