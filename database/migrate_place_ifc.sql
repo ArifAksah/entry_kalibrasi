@@ -13,6 +13,13 @@
 
 BEGIN;
 
+-- 0) Lebarkan kolom: 'IFC' = 3 karakter (sebelumnya varchar(2)) --------------
+ALTER TABLE public.calibration_orders             ALTER COLUMN calibration_place TYPE varchar(3);
+ALTER TABLE public.calibration_order_counters     ALTER COLUMN calibration_place TYPE varchar(3);
+ALTER TABLE public.calibration_order_counter_logs ALTER COLUMN calibration_place TYPE varchar(3);
+ALTER TABLE public.certificate                    ALTER COLUMN calibration_place TYPE varchar(3);
+ALTER TABLE public.certificate                    ALTER COLUMN calibration_kind  TYPE varchar(3);
+
 -- 1) Constraint: izinkan IFC ------------------------------------------------
 ALTER TABLE public.certificate DROP CONSTRAINT IF EXISTS certificate_place_check;
 ALTER TABLE public.certificate ADD CONSTRAINT certificate_place_check
