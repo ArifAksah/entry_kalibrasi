@@ -1922,9 +1922,7 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                     ? rr.setup.funnelDiameterReadings
                     : []
                   const env = Array.isArray(rr.setup?.environment) ? rr.setup.environment : []
-                  const table = Array.isArray(rr.displayTables) ? rr.displayTables[0] : null
-                  const headers = Array.isArray(table?.headers) ? table.headers : []
-                  const rows = Array.isArray(table?.rows) ? table.rows : []
+                  const displayTables = Array.isArray(rr.displayTables) ? rr.displayTables : []
                   const fmt = (v: any) => {
                     if (v === null || v === undefined || v === '') return '-'
                     const n = Number(v)
@@ -1936,7 +1934,6 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                       : role === 'length'
                         ? 'Jangka Sorong (Panjang)'
                         : role || 'Standar'
-                  const colCount = headers.length || 3
                   return (
                     <div key={`rr-${rrIdx}`} className="no-break mb-6 text-[11px]">
                       <div className="mb-1 text-center text-[12px] font-bold">
@@ -2038,58 +2035,70 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                         </table>
                       </div>
 
-                      <table className="w-full border-collapse border border-black text-center text-[11px]">
-                        <thead>
-                          <tr>
-                            {headers.length > 0 ? (
-                              headers.map((h: string, i: number) => (
-                                <th key={`h-${i}`} className="border border-black px-1 py-1 font-bold">
-                                  {h}
-                                </th>
-                              ))
-                            ) : (
-                              <>
-                                <th className="border border-black px-1 py-1">
-                                  Penunjukan Alat / Reading
-                                </th>
-                                <th className="border border-black px-1 py-1">
-                                  Koreksi / Correction
-                                </th>
-                                <th className="border border-black px-1 py-1">
-                                  Ketidakpastian / Uncertainty
-                                </th>
-                              </>
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rows.length > 0 ? (
-                            rows.map((r: any, i: number) => {
-                              const vals = [
-                                r?.key,
-                                r?.unit,
-                                r?.value,
-                                ...(Array.isArray(r?.extraValues) ? r.extraValues : []),
-                              ]
-                              return (
-                                <tr key={`r-${i}`}>
-                                  {Array.from({ length: colCount }).map((_, ci) => (
-                                    <td key={ci} className="border border-black px-1 py-1">
-                                      {fmt(vals[ci])}
-                                    </td>
-                                  ))}
-                                </tr>
-                              )
-                            })
-                          ) : (
+                      {displayTables.length > 0 ? (
+                        displayTables.map((t: any, ti: number) => {
+                          const th = Array.isArray(t?.headers) ? t.headers : []
+                          const tr = Array.isArray(t?.rows) ? t.rows : []
+                          const cc = th.length || 3
+                          return (
+                            <div key={`tbl-${ti}`} className="mb-3">
+                              {t?.title ? (
+                                <div className="mb-1 text-center font-bold">{t.title}</div>
+                              ) : null}
+                              <table className="w-full border-collapse border border-black text-center text-[11px]">
+                                <thead>
+                                  <tr>
+                                    {th.length > 0 ? (
+                                      th.map((h: string, i: number) => (
+                                        <th key={`h-${i}`} className="border border-black px-1 py-1 font-bold">
+                                          {h}
+                                        </th>
+                                      ))
+                                    ) : (
+                                      <th className="border border-black px-1 py-1">-</th>
+                                    )}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {tr.length > 0 ? (
+                                    tr.map((r: any, i: number) => {
+                                      const vals = [
+                                        r?.key,
+                                        r?.unit,
+                                        r?.value,
+                                        ...(Array.isArray(r?.extraValues) ? r.extraValues : []),
+                                      ]
+                                      return (
+                                        <tr key={`r-${i}`}>
+                                          {Array.from({ length: cc }).map((_, ci) => (
+                                            <td key={ci} className="border border-black px-1 py-1">
+                                              {fmt(vals[ci])}
+                                            </td>
+                                          ))}
+                                        </tr>
+                                      )
+                                    })
+                                  ) : (
+                                    <tr>
+                                      <td colSpan={cc} className="border border-black px-1 py-1">
+                                        -
+                                      </td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          )
+                        })
+                      ) : (
+                        <table className="w-full border-collapse border border-black text-center text-[11px]">
+                          <tbody>
                             <tr>
-                              <td colSpan={colCount} className="border border-black px-1 py-1">
-                                -
-                              </td>
+                              <td className="border border-black px-1 py-1">-</td>
                             </tr>
-                          )}
-                        </tbody>
-                      </table>
+                          </tbody>
+                        </table>
+                      )}
                     </div>
                   )
                 })}

@@ -200,6 +200,24 @@ describe('LHKSReport renderer smoke', () => {
                 ],
                 rows: [{ key: '6.133333', unit: '2.9772126', value: '3.6405279' }],
               },
+              {
+                title: 'Data Curah Hujan / Rainfall Data',
+                headers: [
+                  'Set Point (Volume Uji) / Test Volume (mL)',
+                  'Curah Hujan Standar / Standard Rainfall (mm)',
+                  'Curah Hujan UUT / UUT Rainfall (mm)',
+                  'Deviasi / Deviation (mm)',
+                  'Deviasi / Deviation (%)',
+                ],
+                rows: [
+                  {
+                    key: '200',
+                    unit: '6.3',
+                    value: '6.2',
+                    extraValues: ['0.1', '1.6'],
+                  },
+                ],
+              },
             ],
           },
         },
@@ -216,6 +234,8 @@ describe('LHKSReport renderer smoke', () => {
     expect(screen.getByText('Gelas Ukur (Volume)')).toBeInTheDocument()
     expect(screen.getByText('Jangka Sorong (Panjang)')).toBeInTheDocument()
     expect(screen.getByText(/DUMMY-VN-001/)).toBeInTheDocument()
+    expect(screen.getByText(/Curah Hujan UUT/)).toBeInTheDocument()
+    expect(screen.getByText('Data Curah Hujan / Rainfall Data')).toBeInTheDocument()
     // Data yang tidak ada → '-'
     expect(screen.getAllByText('-').length).toBeGreaterThan(0)
   })

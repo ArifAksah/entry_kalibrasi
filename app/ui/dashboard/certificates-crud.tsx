@@ -6213,6 +6213,25 @@ const CertificatesCRUD: React.FC = () => {
                                               },
                                             ],
                                           },
+                                          {
+                                            title: 'Data Curah Hujan / Rainfall Data',
+                                            headers: [
+                                              'Set Point (Volume Uji) / Test Volume (mL)',
+                                              'Curah Hujan Standar / Standard Rainfall (mm)',
+                                              'Curah Hujan UUT / UUT Rainfall (mm)',
+                                              'Deviasi / Deviation (mm)',
+                                              'Deviasi / Deviation (%)',
+                                            ],
+                                            rows: calculation.rows.map((row) => ({
+                                              key: String(data.testVolume),
+                                              unit: String(calculation.standardRainfall),
+                                              value: String(row.uut),
+                                              extraValues: [
+                                                String(row.correctionMm),
+                                                String(row.correctionPercent),
+                                              ],
+                                            })),
+                                          },
                                         ],
                                       })
                                       // Tulis balik rata-rata diameter ke master sensor
