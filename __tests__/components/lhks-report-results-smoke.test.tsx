@@ -172,4 +172,52 @@ describe('LHKSReport renderer smoke', () => {
     expect(screen.getAllByText('0.25')).toHaveLength(2)
   })
 
+  it('menampilkan halaman Tipping Bucket (RR) dari certificate.results', () => {
+    const rrResults = {
+      schema_version: 1,
+      sensors: [
+        {
+          links: { sensor_id: 214 },
+          snapshot: { name: 'Tipping Bucket' },
+          setup: {
+            tipping_bucket: {
+              testVolume: 200,
+              standards: [
+                { role: 'volume', certificateNumber: 'DUMMY-VN-001', u95: 0.2 },
+                { role: 'length', certificateNumber: 'DUMMY-LN-001', u95: 0.0018 },
+              ],
+              funnelDiameterReadings: [201.2, 200.93],
+              environment: [{ key: 'Suhu', value: '', unit: '' }],
+            },
+          },
+          display: {
+            tables: [
+              {
+                headers: [
+                  'Penunjukan Alat / Instrument Reading (mm)',
+                  'Koreksi / Correction (%)',
+                  'Ketidakpastian / Uncertainty (%)',
+                ],
+                rows: [{ key: '6.133333', unit: '2.9772126', value: '3.6405279' }],
+              },
+            ],
+          },
+        },
+      ],
+    }
+
+    render(
+      <LHKSReport
+        {...(baseProps as any)}
+        certificate={{ ...baseProps.certificate, results: rrResults }}
+      />
+    )
+
+    expect(screen.getByText('Gelas Ukur (Volume)')).toBeInTheDocument()
+    expect(screen.getByText('Jangka Sorong (Panjang)')).toBeInTheDocument()
+    expect(screen.getByText(/DUMMY-VN-001/)).toBeInTheDocument()
+    // Data yang tidak ada → '-'
+    expect(screen.getAllByText('-').length).toBeGreaterThan(0)
+  })
+
 })

@@ -140,6 +140,17 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
   const resultSetup = firstResultSensor?.setup
   const resultDisplay = firstResultSensor?.display
 
+  // Tipping Bucket (RR): hasil tersimpan di results[].setup.tipping_bucket
+  // (tidak lewat raw data). Dipakai untuk halaman khusus RR.
+  const rrEntries = (Array.isArray(resultSensors) ? resultSensors : [])
+    .filter((rs: any) => rs?.setup?.tipping_bucket)
+    .map((rs: any) => ({
+      sensorId: rs?.links?.sensor_id ?? null,
+      name: rs?.snapshot?.name || null,
+      setup: rs.setup.tipping_bucket,
+      displayTables: Array.isArray(rs?.display?.tables) ? rs.display.tables : [],
+    }))
+
   // Fallback instrument from snapshot
   const effectiveInstrument =
     instrument ||
@@ -1901,6 +1912,189 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                 </div>
               )
             })}
+
+            {/* --- TIPPING BUCKET (RR) PAGES: dari certificate.results --- */}
+            {rrEntries.length > 0 && (
+              <div className="mt-6">
+                {rrEntries.map((rr: any, rrIdx: number) => {
+                  const standards = Array.isArray(rr.setup?.standards) ? rr.setup.standards : []
+                  const funnels = Array.isArray(rr.setup?.funnelDiameterReadings)
+                    ? rr.setup.funnelDiameterReadings
+                    : []
+                  const env = Array.isArray(rr.setup?.environment) ? rr.setup.environment : []
+                  const table = Array.isArray(rr.displayTables) ? rr.displayTables[0] : null
+                  const headers = Array.isArray(table?.headers) ? table.headers : []
+                  const rows = Array.isArray(table?.rows) ? table.rows : []
+                  const fmt = (v: any) => {
+                    if (v === null || v === undefined || v === '') return '-'
+                    const n = Number(v)
+                    return Number.isFinite(n) ? n.toFixed(4).replace(/\.?0+$/, '') : String(v)
+                  }
+                  const roleLabel = (role: string) =>
+                    role === 'volume'
+                      ? 'Gelas Ukur (Volume)'
+                      : role === 'length'
+                        ? 'Jangka Sorong (Panjang)'
+                        : role || 'Standar'
+                  const colCount = headers.length || 3
+                  return (
+                    <div key={`rr-${rrIdx}`} className="no-break mb-6 text-[11px]">
+                      <div className="mb-1 text-center text-[12px] font-bold">
+                        HASIL KALIBRASI TIPPING BUCKET /{' '}
+                        <span className="italic font-normal">
+                          Tipping Bucket Calibration Result
+                        </span>
+                      </div>
+                      <div className="mb-2 text-center font-semibold">
+                        {rr.name || (rr.sensorId ? `Sensor #${rr.sensorId}` : '-')}
+                      </div>
+
+                      <div className="mb-3">
+                        <h4 className="mb-1 font-bold underline">
+                          ALAT STANDAR /{' '}
+                          <span className="italic font-normal">Standard Equipment</span>
+                        </h4>
+                        <table className="w-full border-none text-left">
+                          <tbody>
+                            {standards.length > 0 ? (
+                              standards.map((st: any, i: number) => (
+                                <tr key={`std-${i}`}>
+                                  <td className="border-none align-top" style={{ width: '44%' }}>
+                                    {roleLabel(st?.role)}
+                                  </td>
+                                  <td className="border-none align-top w-2">:</td>
+                                  <td className="border-none align-top">
+                                    {st?.certificateNumber || '-'}
+                                    {st?.u95 != null ? ` (U95 ${fmt(st.u95)})` : ''}
+                                  </td>
+                                </tr>
+                              ))
+                            ) : (
+                              <tr>
+                                <td className="border-none" style={{ width: '44%' }}>Standar</td>
+                                <td className="border-none">:</td>
+                                <td className="border-none">-</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="mb-3">
+                        <h4 className="mb-1 font-bold underline">
+                          PERHITUNGAN DIAMETER CORONG /{' '}
+                          <span className="italic font-normal">Funnel Diameter</span>
+                        </h4>
+                        <table className="w-full border-none text-left">
+                          <tbody>
+                            {funnels.length > 0 ? (
+                              funnels.map((v: any, i: number) => (
+                                <tr key={`fn-${i}`}>
+                                  <td className="border-none align-top" style={{ width: '44%' }}>
+                                    Pengukuran {i + 1}
+                                  </td>
+                                  <td className="border-none align-top w-2">:</td>
+                                  <td className="border-none align-top">{fmt(v)} mm</td>
+                                </tr>
+                              ))
+                            ) : (
+                              <tr>
+                                <td className="border-none" style={{ width: '44%' }}>Diameter</td>
+                                <td className="border-none">:</td>
+                                <td className="border-none">-</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="mb-3">
+                        <h4 className="mb-1 font-bold underline">
+                          KONDISI LINGKUNGAN /{' '}
+                          <span className="italic font-normal">Environment</span>
+                        </h4>
+                        <table className="w-full border-none text-left">
+                          <tbody>
+                            {env.length > 0 ? (
+                              env.map((e: any, i: number) => (
+                                <tr key={`env-${i}`}>
+                                  <td className="border-none align-top" style={{ width: '44%' }}>
+                                    {e?.key || '-'}
+                                  </td>
+                                  <td className="border-none align-top w-2">:</td>
+                                  <td className="border-none align-top">
+                                    {e?.value ? `${e.value}${e?.unit ? ' ' + e.unit : ''}` : '-'}
+                                  </td>
+                                </tr>
+                              ))
+                            ) : (
+                              <tr>
+                                <td className="border-none" style={{ width: '44%' }}>Kondisi</td>
+                                <td className="border-none">:</td>
+                                <td className="border-none">-</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <table className="w-full border-collapse border border-black text-center text-[11px]">
+                        <thead>
+                          <tr>
+                            {headers.length > 0 ? (
+                              headers.map((h: string, i: number) => (
+                                <th key={`h-${i}`} className="border border-black px-1 py-1 font-bold">
+                                  {h}
+                                </th>
+                              ))
+                            ) : (
+                              <>
+                                <th className="border border-black px-1 py-1">
+                                  Penunjukan Alat / Reading
+                                </th>
+                                <th className="border border-black px-1 py-1">
+                                  Koreksi / Correction
+                                </th>
+                                <th className="border border-black px-1 py-1">
+                                  Ketidakpastian / Uncertainty
+                                </th>
+                              </>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.length > 0 ? (
+                            rows.map((r: any, i: number) => {
+                              const vals = [
+                                r?.key,
+                                r?.unit,
+                                r?.value,
+                                ...(Array.isArray(r?.extraValues) ? r.extraValues : []),
+                              ]
+                              return (
+                                <tr key={`r-${i}`}>
+                                  {Array.from({ length: colCount }).map((_, ci) => (
+                                    <td key={ci} className="border border-black px-1 py-1">
+                                      {fmt(vals[ci])}
+                                    </td>
+                                  ))}
+                                </tr>
+                              )
+                            })
+                          ) : (
+                            <tr>
+                              <td colSpan={colCount} className="border border-black px-1 py-1">
+                                -
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
