@@ -251,7 +251,11 @@ const SideNav: React.FC = () => {
         if (section.title === 'Dokumen') {
           const filteredItems = section.items.filter((item) => {
             if (item.href === '/letters') {
-              return role === 'admin' || role === 'assignor'
+              return (
+                role === 'admin' ||
+                role === 'assignor' ||
+                role === 'calibrator'
+              )
             }
             if (item.href === '/certificate-logs') {
               return role === 'admin' || role === 'assignor'
