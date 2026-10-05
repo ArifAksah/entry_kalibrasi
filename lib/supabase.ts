@@ -259,10 +259,10 @@ export interface Certificate {
   results?: any
   version?: number
   // Komponen format nomor sesuai IKK BMKG
-  // 'sert' → "Sert.", 's_ket' → "S.Ket."
+  // 'sert' → "Sert." (surat keterangan mengikuti format nomor sertifikat)
   certificate_type?: 'sert' | 's_ket'
-  // 'FC' = Field Calibration, 'LC' = Lab Calibration
-  calibration_place?: 'FC' | 'LC'
+  // 'FC' = lapang eksternal (PTSP), 'IFC' = lapang internal BMKG, 'LC' = laboratorium
+  calibration_place?: 'FC' | 'IFC' | 'LC'
   // Kode alat (AWS, TT, PP, ...), dari master instrument_names.code_alat
   instrument_code?: string | null
   // New draft workflow fields
@@ -282,7 +282,7 @@ export interface Certificate {
   // Audit versi kontrak JSONB certificate.results.
   results_schema_version?: number | null
   // Alias audit untuk FC/LC; dibackfill dari calibration_place.
-  calibration_kind?: 'FC' | 'LC' | null
+  calibration_kind?: 'FC' | 'IFC' | 'LC' | null
   public_id?: string | null
   // Balai penerbit sertifikat (null = BMKG Pusat)
   balai_id?: number | null
@@ -331,15 +331,47 @@ export type InspectionPersonUpdate = Partial<InspectionPersonInsert>
 export interface Letter {
   id: number
   created_at: string
-  no_letter: string
+  no_letter: string | null
+  no_order?: string | null
+  no_identification?: string | null
+  certificate_id?: number | null
+  calibration_order_id?: number | null
+  calibration_order_item_id?: number | null
   instrument: number | null
   owner: number | null
+  sensor?: number | null
   issue_date: string | null
+  inspection_date?: string | null
+  inspection_place?: string | null
+  reference_document?: string | null
+  notes?: string | null
   inspection_result: number | null
   authorized_by: string | null
-  approver_name?: string | null
-  inspection_payload?: any | null
-  verification?: any[] | null
+  verifikator_1?: string | null
+  verifikator_2?: string | null
+  verifikator_3?: string | null
+  status?: string | null
+  created_by?: string | null
+}
+
+export interface LetterInspectionResult {
+  id: number
+  letter_id: number
+  inspection_item_id: number | null
+  parameter: string
+  hasil: string | null
+  sort_order: number
+  created_at?: string
+}
+
+export interface InspectionItem {
+  id: number
+  instrument_name_id: number | null
+  section: string | null
+  parameter: string
+  sort_order: number
+  is_active: boolean
+  created_at?: string
 }
 
 export type LetterInsert = Omit<Letter, 'id' | 'created_at'>
@@ -425,7 +457,7 @@ export interface CalibrationOrder {
   station_address_snapshot: string | null
   planned_date: string
   planned_end_date: string
-  calibration_place: 'FC' | 'LC'
+  calibration_place: 'FC' | 'IFC' | 'LC'
   status: CalibrationOrderStatus
   notes: string | null
   created_by: string
@@ -476,7 +508,7 @@ export interface CalibrationOrderItem {
 
 export interface CalibrationOrderCounter {
   numbering_year: number
-  calibration_place: 'FC' | 'LC'
+  calibration_place: 'FC' | 'IFC' | 'LC'
   last_value: number
   updated_at: string
   updated_by: string | null
@@ -485,7 +517,7 @@ export interface CalibrationOrderCounter {
 export interface CalibrationOrderCounterLog {
   id: number
   numbering_year: number
-  calibration_place: 'FC' | 'LC'
+  calibration_place: 'FC' | 'IFC' | 'LC'
   previous_value: number | null
   new_value: number | null
   action: string

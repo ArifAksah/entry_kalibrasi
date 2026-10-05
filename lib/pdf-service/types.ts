@@ -33,8 +33,8 @@ export type CertificateType =
  * Fields come from the certificate database record.
  */
 export interface CertificateTypeInput {
-  calibration_place?: 'FC' | 'LC' | null
-  calibration_kind?: 'FC' | 'LC' | null
+  calibration_place?: 'FC' | 'IFC' | 'LC' | null
+  calibration_kind?: 'FC' | 'IFC' | 'LC' | null
   balai_id?: number | null
   is_standard?: boolean | null
   certificate_type?: 'sert' | 's_ket' | null

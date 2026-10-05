@@ -87,8 +87,8 @@ type Cert = {
   results?: ResultItem[] // Menambahkan results di sini
   version?: number
   public_id?: string // Added for public verification
-  calibration_place?: 'FC' | 'LC' | null
-  calibration_kind?: 'FC' | 'LC' | null
+  calibration_place?: 'FC' | 'IFC' | 'LC' | null
+  calibration_kind?: 'FC' | 'IFC' | 'LC' | null
   balai_id?: number | null
   is_standard?: boolean | null
   certificate_type?: 'sert' | 's_ket' | null
@@ -394,10 +394,11 @@ const PrintCertificatePage: React.FC = () => {
     [cert, station],
   )
   const instrument = useMemo(() => {
-    // Resolve display name: 'names' is a FK id into instrument_names; name_alias is the text.
+    // Resolve display name: name_alias adalah nama detail (mis. "AWOS Runway 30");
+    // 'names' (FK id ke instrument_names) hanya dipakai sebagai fallback.
     const resolveInstrumentName = (row: any): string | null => {
       let name: string | null = row?.name_alias || row?.name || null
-      if (row?.names != null) {
+      if (!name && row?.names != null) {
         const rec = instrumentNames.find(
           (n: any) => Number(n.id) === Number(row.names),
         )
@@ -1972,7 +1973,7 @@ const PrintCertificatePage: React.FC = () => {
                   Elektronik (BSrE), Badan Siber dan Sandi Negara (BSSN)
                 </div>
               </td>
-              <td className="results-footer-meta-cell"> Edisi/Revisi : 11/1</td>
+              <td className="results-footer-meta-cell"> Edisi/Revisi : 12/1</td>
             </tr>
           </tbody>
         </table>
@@ -2313,7 +2314,7 @@ const PrintCertificatePage: React.FC = () => {
                   className="align-top text-right text-[10px] font-bold"
                   style={{ width: '25%' }}
                 >
-                  Edisi/Revisi : 11/1
+                  Edisi/Revisi : 12/1
                 </td>
               </tr>
             </tbody>
@@ -2513,7 +2514,7 @@ const PrintCertificatePage: React.FC = () => {
                             const end = res?.endDate
                               ? new Date(res.endDate).toISOString().slice(0, 10)
                               : '-'
-                            const place = res?.place || '-'
+                            const place = station?.name || res?.place || '-'
                             const sensorInfo: Array<{
                               label: string
                               labelEng: string

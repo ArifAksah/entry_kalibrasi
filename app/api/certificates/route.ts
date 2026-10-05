@@ -5,7 +5,7 @@ import {
   normalizeResultsOnWrite,
   ResultsValidationError,
 } from '../../../lib/validators/certificate-results-normalize'
-import { authenticateRequest, filterCertificatesForUser, getUserRole, getUserOrderTeamOrderIds, canEditCertificate } from '../../../lib/certificate-access'
+import { authenticateRequest, filterCertificatesForUser, getUserRole, getUserOrderTeamOrderIds, canEditCertificate, isCertificateParty } from '../../../lib/certificate-access'
 import { clientSafeMessage } from '../../../lib/api-error'
 
 // Using shared supabaseAdmin with env fallbacks for consistency
@@ -71,6 +71,13 @@ export async function GET(request: NextRequest) {
       return {
         ...cert,
         can_edit: canEditCertificate(user.id, role, cert, teamOrderIds),
+        // Boleh dipakai sebagai sumber Surat Keterangan: pihak terkait atau tim
+        // order (tanpa syarat status draft, tidak seperti can_edit).
+        can_reference:
+          role === 'admin' ||
+          isCertificateParty(user.id, cert) ||
+          ((cert as any).calibration_order_id != null &&
+            teamOrderIds.has(Number((cert as any).calibration_order_id))),
         verifikator_1_status: verifMap.get(`${cert.id}-1-${certVersion}`) || 'pending',
         verifikator_2_status: verifMap.get(`${cert.id}-2-${certVersion}`) || 'pending',
         verifikator_3_status: verifMap.get(`${cert.id}-3-${certVersion}`) || 'pending',
@@ -292,7 +299,7 @@ export async function POST(request: NextRequest) {
     let normalizedResults: unknown = null
     try {
       const outcome = normalizeResultsOnWrite(results, {
-        calibration_kind: normalizedPlace as 'FC' | 'LC',
+        calibration_kind: normalizedPlace as 'FC' | 'IFC' | 'LC',
         certificate_id: 'NEW',
       })
       if (outcome.kind === 'ok') normalizedResults = outcome.value

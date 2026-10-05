@@ -195,9 +195,6 @@ const LettersCRUD: React.FC = () => {
         issue_date: form.issue_date || null,
         inspection_result: form.inspection_result,
         authorized_by: form.authorized_by,
-        approver_name: form.approver_name || null,
-        inspection_payload,
-        verification: form.verification || [],
       }
 
       if (editing) await updateItem(editing.id, payload)
@@ -356,7 +353,7 @@ const LettersCRUD: React.FC = () => {
                     </label>
                     <input
                       placeholder="Contoh: F.M.2025.032.002"
-                      value={form.no_letter}
+                      value={form.no_letter ?? ''}
                       onChange={(e) =>
                         setForm({ ...form, no_letter: e.target.value })
                       }

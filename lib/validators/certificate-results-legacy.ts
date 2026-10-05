@@ -31,7 +31,7 @@ import {
 } from './certificate-results'
 
 /** Kind kalibrasi diambil dari kolom `certificate.calibration_place`. */
-export type CalibrationKind = 'FC' | 'LC'
+export type CalibrationKind = 'FC' | 'IFC' | 'LC'
 
 /**
  * Input legacy bisa berupa:

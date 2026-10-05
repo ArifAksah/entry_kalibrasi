@@ -400,8 +400,9 @@ const CertificatePreview: React.FC<{
   certificate: Certificate
   stations: Station[]
   instruments: Instrument[]
+  instrumentNames: any[]
   personel: Personel[]
-}> = ({ certificate, stations, instruments, personel }) => {
+}> = ({ certificate, stations, instruments, instrumentNames, personel }) => {
   // Deterministic date formatter to avoid SSR/CSR locale mismatch
   const formatDateIndo = (ymd: string | null | undefined) => {
     if (!ymd) return '-'
@@ -425,6 +426,14 @@ const CertificatePreview: React.FC<{
   }
   const station = stations.find((s) => s.id === certificate.station)
   const instrument = instruments.find((i) => i.id === certificate.instrument)
+  // Nama detail alat dari name_alias; nama kanonik instrument_names sebagai fallback.
+  const instrumentName =
+    (instrument as any)?.name_alias ||
+    (instrumentNames || []).find(
+      (n: any) => Number(n.id) === Number((instrument as any)?.names),
+    )?.name ||
+    instrument?.name ||
+    '-'
   const authorized = personel.find((p) => p.id === certificate.authorized_by)
   const verifikator1 = personel.find((p) => p.id === certificate.verifikator_1)
   const verifikator2 = personel.find((p) => p.id === certificate.verifikator_2)
@@ -680,7 +689,7 @@ const CertificatePreview: React.FC<{
                         {' '}
                         <div className="inline-flex items-start w-full">
                           <div className="flex-1 font-semibold">
-                            {instrument?.name || '-'}
+                            {instrumentName}
                           </div>
                         </div>
                       </td>
@@ -989,7 +998,7 @@ const CertificatePreview: React.FC<{
                             year: 'numeric',
                           })
                         : '-'
-                      const place = res?.place || '-'
+                      const place = station?.name || res?.place || '-'
                       const sensorInfo: Array<{
                         label: string
                         labelEng: string
@@ -1698,7 +1707,7 @@ const CertificatePreview: React.FC<{
                   className="align-top text-right text-[10px] font-bold"
                   style={{ width: '25%' }}
                 >
-                  Edisi/Revisi : 11/1
+                  Edisi/Revisi : 12/1
                 </td>
               </tr>
             </tbody>
@@ -2389,6 +2398,7 @@ const DraftView: React.FC<{
             certificate={certificate}
             stations={stations}
             instruments={instruments}
+            instrumentNames={instrumentNames}
             personel={personel}
           />
         </div>

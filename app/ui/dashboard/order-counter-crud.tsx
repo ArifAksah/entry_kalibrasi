@@ -7,7 +7,7 @@ import { Spinner } from '../../../components/ui/Loading'
 
 interface CounterRow {
   numbering_year: number
-  calibration_place: 'FC' | 'LC'
+  calibration_place: 'FC' | 'IFC' | 'LC'
   last_value: number
   next_order_number: string
   max_used: number
@@ -167,6 +167,7 @@ const OrderCounterCRUD: React.FC = () => {
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             >
               <option value="FC">FC</option>
+              <option value="IFC">IFC</option>
               <option value="LC">LC</option>
             </select>
           </div>

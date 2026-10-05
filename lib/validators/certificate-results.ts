@@ -331,7 +331,7 @@ export const SensorResultV1Schema = z.object({
 export const CertificateResultsV1Schema = z.object({
   schema_version: z.literal(RESULTS_SCHEMA_VERSION),
   /** Discriminator FC (Field) vs LC (Laboratory). */
-  calibration_kind: z.enum(['FC', 'LC']),
+  calibration_kind: z.enum(['FC', 'IFC', 'LC']),
   /** Daftar sensor yang dikalibrasi — satu entri = satu halaman PDF. */
   sensors: z.array(SensorResultV1Schema).min(1, 'Minimal satu sensor'),
 })

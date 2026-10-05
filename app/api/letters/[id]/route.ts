@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { clientSafeMessage } from '../../../../lib/api-error'
+import { requireCaller } from '../../../../lib/api-auth'
+import { fetchLetterResults, canAccessLetter, saveLetterResults } from '../../../../lib/letter-service'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,6 +14,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const caller = await requireCaller(request)
+  if (caller instanceof NextResponse) return caller
   try {
     const { id } = await params
     const { data, error } = await supabaseAdmin
@@ -20,7 +24,11 @@ export async function GET(
       .eq('id', id)
       .single()
     if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
-    return NextResponse.json(data)
+    if (!(await canAccessLetter(caller.user.id, caller.role, data))) {
+      return NextResponse.json({ error: 'Tidak memiliki akses' }, { status: 403 })
+    }
+    const results = await fetchLetterResults(Number(id))
+    return NextResponse.json({ ...data, results })
   } catch (e) {
     return NextResponse.json({ error: 'Failed to fetch letter' }, { status: 500 })
   }
@@ -30,10 +38,20 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const caller = await requireCaller(request)
+  if (caller instanceof NextResponse) return caller
   try {
     const { id } = await params
+    const { data: existingLetter } = await supabaseAdmin
+      .from('letter')
+      .select('created_by, calibration_order_id')
+      .eq('id', Number(id))
+      .maybeSingle()
+    if (!(await canAccessLetter(caller.user.id, caller.role, existingLetter))) {
+      return NextResponse.json({ error: 'Tidak memiliki akses' }, { status: 403 })
+    }
     const body = await request.json()
-    const { no_letter, instrument, owner, issue_date, inspection_result, authorized_by, approver_name, inspection_payload, verification } = body
+    const { no_letter, instrument, owner, issue_date, inspection_result, authorized_by } = body
 
     if (instrument) {
       const { data: inst, error: instErr } = await supabaseAdmin
@@ -68,24 +86,33 @@ export async function PUT(
       if (pErr || !p) return NextResponse.json({ error: 'Invalid authorized_by (personel) id' }, { status: 400 })
     }
 
+    const update = {
+      no_letter: no_letter ?? null,
+      instrument: instrument != null ? Number(instrument) : null,
+      owner: owner != null ? Number(owner) : null,
+      issue_date: issue_date || null,
+      inspection_result: inspection_result || null,
+      authorized_by: authorized_by || null,
+      ...(body.inspection_date !== undefined ? { inspection_date: body.inspection_date || null } : {}),
+      ...(body.inspection_place !== undefined ? { inspection_place: body.inspection_place || null } : {}),
+      ...(body.reference_document !== undefined ? { reference_document: body.reference_document || null } : {}),
+      ...(body.notes !== undefined ? { notes: body.notes || null } : {}),
+      ...(body.verifikator_1 !== undefined ? { verifikator_1: body.verifikator_1 || null } : {}),
+      ...(body.verifikator_2 !== undefined ? { verifikator_2: body.verifikator_2 || null } : {}),
+      ...(body.verifikator_3 !== undefined ? { verifikator_3: body.verifikator_3 || null } : {}),
+      ...(body.status !== undefined ? { status: body.status || 'draft' } : {}),
+    }
+
     const { data, error } = await supabaseAdmin
       .from('letter')
-      .update({ 
-        no_letter, 
-        instrument: instrument || null, 
-        owner: owner || null, 
-        issue_date: issue_date || null, 
-        inspection_result: inspection_result || null, 
-        authorized_by: authorized_by || null,
-        approver_name: approver_name || null,
-        inspection_payload: inspection_payload || null,
-        verification: verification || null
-      })
+      .update(update)
       .eq('id', id)
       .select()
       .single()
     if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
-    return NextResponse.json(data)
+
+    await saveLetterResults(Number(id), body.results)
+    return NextResponse.json({ ...data, results: await fetchLetterResults(Number(id)) })
   } catch (e) {
     return NextResponse.json({ error: 'Failed to update letter' }, { status: 500 })
   }
@@ -95,8 +122,18 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const caller = await requireCaller(request)
+  if (caller instanceof NextResponse) return caller
   try {
     const { id } = await params
+    const { data: existingLetter } = await supabaseAdmin
+      .from('letter')
+      .select('created_by, calibration_order_id')
+      .eq('id', Number(id))
+      .maybeSingle()
+    if (!(await canAccessLetter(caller.user.id, caller.role, existingLetter))) {
+      return NextResponse.json({ error: 'Tidak memiliki akses' }, { status: 403 })
+    }
     const { error } = await supabaseAdmin
       .from('letter')
       .delete()

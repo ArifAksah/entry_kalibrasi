@@ -188,7 +188,7 @@ const CERT_PARTY_KEYS = [
   'assignor',
 ] as const
 
-function isCertificateParty(userId: string, certificate: any): boolean {
+export function isCertificateParty(userId: string, certificate: any): boolean {
   return CERT_PARTY_KEYS.some(
     (key) => certificate?.[key] != null && String(certificate[key]) === userId,
   )

@@ -130,8 +130,8 @@ export async function POST(request: NextRequest) {
   if (plannedEndDate < plannedDate) {
     return NextResponse.json({ error: 'Tanggal selesai tidak boleh sebelum tanggal mulai' }, { status: 400 })
   }
-  if (!['FC', 'LC'].includes(place)) {
-    return NextResponse.json({ error: 'calibration_place harus FC atau LC' }, { status: 400 })
+  if (!['FC', 'IFC', 'LC'].includes(place)) {
+    return NextResponse.json({ error: 'calibration_place harus FC, IFC, atau LC' }, { status: 400 })
   }
 
   const personnelIds: string[] = Array.isArray(body?.personnel_ids)

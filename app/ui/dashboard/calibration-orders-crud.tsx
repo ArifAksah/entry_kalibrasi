@@ -354,6 +354,7 @@ const CalibrationOrdersCRUD: React.FC = () => {
           >
             <option value="">Semua</option>
             <option value="FC">FC</option>
+            <option value="IFC">IFC</option>
             <option value="LC">LC</option>
           </select>
         </div>
@@ -486,8 +487,9 @@ const CalibrationOrdersCRUD: React.FC = () => {
                     onChange={(e) => setForm({ ...form, calibration_place: e.target.value })}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                   >
-                    <option value="FC">FC (Field Calibration)</option>
-                    <option value="LC">LC (Lab Calibration)</option>
+                    <option value="FC">FC — Lapang Eksternal (via PTSP)</option>
+                    <option value="IFC">IFC — Lapang Internal BMKG</option>
+                    <option value="LC">LC — Laboratorium</option>
                   </select>
               </div>
               <div className="md:col-span-2">

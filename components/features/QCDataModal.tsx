@@ -1023,12 +1023,14 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
             sensitivityStd:
               (standardCertRecord as any)?.sensitivity || undefined,
             sensitivityUut: (uutSensor as any)?.sensitivity || undefined,
+            rules: pyranometerMethodProfile?.rules,
           })
           pyranometerAuditMeta = {
             method_profile_code: pyranometerMethodProfile.code,
             method_profile_version: pyranometerMethodProfile.version,
             standard_references: pyranometerMethodProfile.source_documents,
             configured_rules: pyranometerMethodProfile.rules,
+            rules_snapshot: pyrResult.rules_used,
             cf_rule: String(pyranometerMethodProfile.rules.cfRule || pyrResult.method_profile.cfRule),
             outlier_rule: String(pyranometerMethodProfile.rules.outlierRule || pyrResult.method_profile.outlierRule),
             valid_pair_count: pyrResult.audit.valid_pair_count,

@@ -13,7 +13,7 @@ import { CertCorrectionPoint } from './qc-utils';
 import { canConvertUnit, convertDeltaUnit, convertUnit, normaliseUnit } from './unitConversion';
 import { parseCertCorrectionPoints, interpolateCorrectionFromPoints } from './qc-utils';
 import { isWindDirectionSensor, wrapWindDirectionCorrection } from './wind-direction';
-import { LEGACY_METHOD_PROFILES } from './calibration-method-profiles';
+import { LEGACY_METHOD_PROFILES, normalizePyranometerRules, type PyranometerMethodRules, type PyranometerComponentRule, type PyranometerComponentKey } from './calibration-method-profiles';
 import { filterPairedMeasurementRows, parseFiniteMeasurement } from './measurement-rows';
 
 export interface UncertaintyComponent {
@@ -602,6 +602,8 @@ export interface PyranometerUncertaintyResult {
     u95_percent: number;
     k_factor: number;
     method_profile: PyranometerMethodProfile;
+    /** Kontrak metode yang benar-benar dipakai (untuk snapshot audit). */
+    rules_used?: PyranometerMethodRules;
     audit: {
         valid_pair_count: number;
         outlier_count: number;
@@ -905,6 +907,8 @@ export function calculatePyranometerUncertainty(params: {
     sensitivityStd?: number;
     /** Sensitivitas UUT (µV/Wm⁻²) — untuk hitung resolusi dari sensitivitas */
     sensitivityUut?: number;
+    /** Kontrak metode pyranometer (dari profil aktif). Default = perilaku sistem saat ini. */
+    rules?: unknown;
 }): PyranometerUncertaintyResult {
     const { cf_result, certU95_percent, resolutionStd, resolutionUut, range, sensorType, stdMean, uutMean, stdMin, stdSensorType, sensitivityStd, sensitivityUut } = params;
     
@@ -913,63 +917,81 @@ export function calculatePyranometerUncertainty(params: {
         return createEmptyPyranometerResult();
     }
     
-    // Hitung rata-rata pembacaan untuk perhitungan resolusi
+    // ── Kontrak metode (rules) — default = perilaku sistem saat ini ──
+    const rules = normalizePyranometerRules(params.rules);
+    const ruleOf = (key: PyranometerComponentKey): PyranometerComponentRule =>
+        rules.components.find((c) => c.key === key)!;
+    const divisorOf = (rule: PyranometerComponentRule, n: number): number => {
+        if (rule.divisor === 'sqrt_n') return Math.sqrt(Math.max(1, n));
+        if (rule.divisor === 'sqrt3') return Math.sqrt(3);
+        if (rule.divisor === '2') return 2;
+        const num = Number(rule.divisor);
+        return Number.isFinite(num) && num > 0 ? num : 1;
+    };
+    const viOf = (rule: PyranometerComponentRule, n: number): number => {
+        if (rule.vi?.type === 'n_minus_1') return Math.max(1, n - 1);
+        if (rule.vi?.type === 'infinite') return Infinity;
+        return typeof rule.vi?.value === 'number' ? rule.vi.value : 50;
+    };
+    const distOf = (rule: PyranometerComponentRule): 'Normal' | 'Rectangular' =>
+        rule.distribution === 'normal' ? 'Normal' : 'Rectangular';
+
+    // Rata-rata pembacaan (untuk pembagi resolusi)
     const effectiveStdMean = stdMean && stdMean > 0 ? stdMean : range;
     const effectiveUutMean = uutMean && uutMean > 0 ? uutMean : range;
-    
-    // Hitung resolusi efektif
-    // Gunakan resolusi dari sensor
     const effectiveResStd = resolutionStd;
     const effectiveResUut = resolutionUut;
-    
-    // 1. Repeat (dalam %)
-    // Formula Excel: =stdev_CF / mean_CF * 100%
-    // HARUS pakai mean dan stdev dari SEMUA data (konsisten, tanpa filter outlier)
+
     const repeatStdDev = cf_result.std_dev_all || cf_result.std_dev;
     const repeatMean = cf_result.mean_all || cf_result.cf_final; // mean SEMUA data, konsisten dengan std_dev_all
     const repeatN = cf_result.n_all || cf_result.n_total;
-    const repeatDegFreedom = repeatN - 1;
-    const repeatU = repeatStdDev / repeatMean;
-    const u_repeat = repeatU / Math.sqrt(repeatN);
-    
-    console.log('[PYRANO REPEAT]', {
-        std_dev_all: repeatStdDev,
-        mean_all: repeatMean,
-        cf_final: cf_result.cf_final,
-        n: repeatN,
-        repeatU: repeatU,
-    });
-    
-    // 2. Sertifikat Std (dalam %)
-    const certStdPercent = certU95_percent;
-    const u_cert = certStdPercent / 2;
-    
-    // 3. Resolusi Std (dalam %)
-    // Formula: U = 0.5 × resolusi_STD / mean_STD (TANPA × 100)
-    // Workbook's standard-resolution formula uses `*100%`, which Excel
-    // evaluates as a unitless factor of 1. Keep that legacy convention.
-    const resStdPercent = effectiveStdMean > 0 ? (0.5 * effectiveResStd / effectiveStdMean) : 0;
-    const u_res_std = resStdPercent / Math.sqrt(3);
-    
-    // 4. Drift Std (dalam %, dari ISO 9060:2018)
+
+    const repeatRule = ruleOf('repeat');
+    const certRule = ruleOf('cert_std');
+    const resStdRule = ruleOf('res_std');
+    const driftRule = ruleOf('drift_std');
+    const resUutRule = ruleOf('res_uut');
+
+    // 1. Repeatability (variabel: dari raw data)
+    const repeatA = (repeatMean > 0 ? repeatStdDev / repeatMean : 0) * repeatRule.factor;
+    const u_repeat = repeatA / divisorOf(repeatRule, repeatN);
+
+    // 2. Sertifikat standar (spesifikasi: U sertifikat standar)
+    const certA = certU95_percent * certRule.factor;
+    const u_cert = certA / divisorOf(certRule, repeatN);
+
+    // 3. Resolusi standar (konvensi workbook: faktor ×1)
+    const resStdA = (effectiveStdMean > 0 ? (0.5 * effectiveResStd / effectiveStdMean) : 0) * resStdRule.factor;
+    const u_res_std = resStdA / divisorOf(resStdRule, repeatN);
+
+    // 4. Drift standar (konstanta: ISO 9060)
     const driftSensorType = stdSensorType || sensorType;
     const driftPercent = getISO9060Drift(driftSensorType);
     const driftClass = getISO9060Class(driftSensorType);
-    const u_drift = driftPercent / Math.sqrt(3);
-    
-    // 5. Resolusi UUT (dalam %)
-    // Formula: U = 0.5 × resolusi_UUT / mean_UUT (TANPA × 100)
-    const resUutPercent = effectiveUutMean > 0 ? (0.5 * effectiveResUut / effectiveUutMean) * 100 : 0;
-    const u_res_uut = resUutPercent / Math.sqrt(3);
-    
-    // Components array dengan formula yang sesuai Excel
-    const components: PyranometerUncertaintyComponent[] = [
-        { name: 'Repeat', value_percent: repeatU, u_percent: u_repeat, distribution: 'Normal', divisor: Math.sqrt(repeatN), deg_freedom: repeatDegFreedom },
-        { name: 'Sertifikat Std', value_percent: certStdPercent, u_percent: u_cert, distribution: 'Normal', divisor: 2, deg_freedom: 50 },
-        { name: 'Resolusi Std', value_percent: resStdPercent, u_percent: u_res_std, distribution: 'Rectangular', divisor: Math.sqrt(3), deg_freedom: 50 },
-        { name: 'Drift Std', value_percent: driftPercent, u_percent: u_drift, distribution: 'Rectangular', divisor: Math.sqrt(3), deg_freedom: 50 },
-        { name: 'Resolusi UUT', value_percent: resUutPercent, u_percent: u_res_uut, distribution: 'Rectangular', divisor: Math.sqrt(3), deg_freedom: 50 },
+    const driftA = driftPercent * driftRule.factor;
+    const u_drift = driftA / divisorOf(driftRule, repeatN);
+
+    // 5. Resolusi UUT (konvensi workbook: faktor ×100)
+    const resUutA = (effectiveUutMean > 0 ? (0.5 * effectiveResUut / effectiveUutMean) : 0) * resUutRule.factor;
+    const u_res_uut = resUutA / divisorOf(resUutRule, repeatN);
+
+    const budgetRules: Array<[PyranometerComponentRule, number, number]> = [
+        [repeatRule, repeatA, u_repeat],
+        [certRule, certA, u_cert],
+        [resStdRule, resStdA, u_res_std],
+        [driftRule, driftA, u_drift],
+        [resUutRule, resUutA, u_res_uut],
     ];
+    const components: PyranometerUncertaintyComponent[] = budgetRules
+        .filter(([rule]) => rule.enabled)
+        .map(([rule, a, ui]) => ({
+            name: rule.label,
+            value_percent: a,
+            u_percent: ui,
+            distribution: distOf(rule),
+            divisor: divisorOf(rule, repeatN),
+            deg_freedom: viOf(rule, repeatN),
+        }));
     
     // Combined uncertainty
     const sumSq = components.reduce((a, c) => a + Math.pow(c.u_percent, 2), 0);
@@ -978,12 +1000,12 @@ export function calculatePyranometerUncertainty(params: {
     // Effective degrees of freedom (Welch-Satterthwaite)
     const sumCiUiQuadVi = components.reduce((a, c) => {
         const vi = c.deg_freedom === Infinity ? 1e9 : c.deg_freedom;
-        return a + Math.pow(c.u_percent, 4) / vi;
+        return a + Math.pow(c.u_percent, 4) / (vi || 1);
     }, 0);
     const veff = sumCiUiQuadVi > 0 ? Math.pow(uc, 4) / sumCiUiQuadVi : Infinity;
     
-    // Coverage factor (dihitung dari veff, bukan hardcoded)
-    const k = getCoverageFactorFor95(Math.floor(veff));
+    // Coverage factor (aturan dari kontrak metode)
+    const k = rules.coverageFactorRule === 'k2' ? 2 : getCoverageFactorFor95(Math.floor(veff));
     const u95 = k * uc;
     
     return {
@@ -993,6 +1015,7 @@ export function calculatePyranometerUncertainty(params: {
         u95_percent: u95,
         k_factor: k,
         method_profile: PYRANOMETER_METHOD_PROFILE,
+        rules_used: rules,
         audit: {
             valid_pair_count: cf_result.n_total,
             outlier_count: cf_result.outlier_count ?? cf_result.outlier_indices.length,
@@ -1029,8 +1052,11 @@ export function calculatePyranometerCertificate(params: {
     sensorType: string;
     stdSensorType?: string;
     outlierThreshold?: number;
+    /** Kontrak metode pyranometer (dari profil aktif). */
+    rules?: unknown;
 }): PyranometerUncertaintyResult | null {
     const { stdReadings, uutReadings, outlierThreshold, ...rest } = params;
+    const rules = normalizePyranometerRules(params.rules);
     
     // SAFEGUARD: Validasi input
     if (!stdReadings?.length || !uutReadings?.length) {
@@ -1043,8 +1069,9 @@ export function calculatePyranometerCertificate(params: {
     
     // Hitung CF
     const cf_result = calculateCalibrationFactor(stdReadings, uutReadings, {
-        outlierThreshold,
-        minReadings: PYRANOMETER_CONFIG.MIN_READINGS
+        outlierThreshold: outlierThreshold ?? rules.outlierThreshold,
+        minReadings: PYRANOMETER_CONFIG.MIN_READINGS,
+        filterOutliers: rules.cfRule === 'EXCLUDE_OUTLIERS',
     });
     
     if (cf_result.n_filtered === 0) {

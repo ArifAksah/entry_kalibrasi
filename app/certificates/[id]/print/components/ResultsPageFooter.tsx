@@ -47,7 +47,7 @@ export const ResultsPageFooter: React.FC<ResultsPageFooterProps> = ({
                 </div>
               )}
             </td>
-            <td className="results-footer-meta-cell"> Edisi/Revisi : 11/1</td>
+            <td className="results-footer-meta-cell"> Edisi/Revisi : 12/1</td>
           </tr>
         </tbody>
       </table>

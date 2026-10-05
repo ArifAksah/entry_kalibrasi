@@ -347,10 +347,6 @@ const ViewCertificatePage: React.FC = () => {
   const [stations, setStations] = useState<Station[]>([])
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [personel, setPersonel] = useState<Personel[]>([])
-  // Tim Order (petugas pada order sertifikat ini) — read-only, dari order.
-  const [orderTeam, setOrderTeam] = useState<
-    Array<{ id: any; name: string; nip?: string }>
-  >([])
   const [sensors, setSensors] = useState<any[]>([])
   const [instrumentNames, setInstrumentNames] = useState<any[]>([])
   const [isSigned, setIsSigned] = useState<boolean>(false)
@@ -413,8 +409,10 @@ const ViewCertificatePage: React.FC = () => {
     const instrumentData = (cert as any)?.instrument_data
     if (instrumentData) {
       // Resolve instrument name from instrumentNames array using 'names' column (FK to instrument_names)
+      // Nama detail alat diprioritaskan dari name_alias (mis. "AWOS Runway 30");
+      // nama kanonik instrument_names hanya dipakai sebagai fallback.
       let instrumentName = instrumentData.name_alias || null
-      if (instrumentData.names) {
+      if (!instrumentName && instrumentData.names) {
         const nameRecord = instrumentNames.find(
           (n: any) =>
             n.id != null && Number(n.id) === Number(instrumentData.names),
@@ -446,8 +444,9 @@ const ViewCertificatePage: React.FC = () => {
     if (!foundInstrument) return null
 
     // Resolve name from 'names' column (FK to instrument_names)
+    // Nama detail alat dari name_alias; nama kanonik hanya fallback.
     let instrumentName = (foundInstrument as any).name_alias || null
-    if ((foundInstrument as any).names) {
+    if (!instrumentName && (foundInstrument as any).names) {
       const nameRecord = instrumentNames.find(
         (n: any) =>
           n.id != null &&
@@ -571,30 +570,6 @@ const ViewCertificatePage: React.FC = () => {
 
         if (!cRes.ok) throw new Error(c?.error || 'Failed to load certificate')
         setCert(c)
-
-        // Tim Order: ambil petugas dari Order Kalibrasi terkait (bila ada).
-        const orderId = (c as any)?.calibration_order_id
-        if (orderId != null) {
-          try {
-            const orderRes = await fetch(`/api/calibration-orders/${orderId}`, {
-              headers: authHeaders,
-            })
-            if (orderRes.ok) {
-              const orderJson = await orderRes.json()
-              const team =
-                orderJson?.data?.personnel || orderJson?.personnel || []
-              setOrderTeam(
-                (Array.isArray(team) ? team : []).map((row: any) => ({
-                  id: row.id ?? row.personel_id,
-                  name: row.personel?.name || row.personel_id,
-                  nip: row.personel?.nip || '',
-                })),
-              )
-            }
-          } catch (e) {
-            console.error('Failed to fetch order team', e)
-          }
-        }
 
         if (c?.results) {
           try {
@@ -2265,7 +2240,7 @@ const ViewCertificatePage: React.FC = () => {
                         className="align-top text-right text-[10px] font-bold"
                         style={{ width: '25%' }}
                       >
-                        Edisi/Revisi : 11/1
+                        Edisi/Revisi : 12/1
                       </td>
                     </tr>
                   </tbody>
@@ -2415,7 +2390,7 @@ const ViewCertificatePage: React.FC = () => {
                                   style={{ width: '25%' }}
                                 >
                                   {' '}
-                                  Edisi/Revisi : 11/1
+                                  Edisi/Revisi : 12/1
                                 </td>
                               </tr>
                             </tbody>
@@ -2531,7 +2506,7 @@ const ViewCertificatePage: React.FC = () => {
                                         .toISOString()
                                         .slice(0, 10)
                                     : '-'
-                                  const place = res?.place || '-'
+                                  const place = station?.name || res?.place || '-'
                                   const sensorInfo: Array<{
                                     label: string
                                     labelEng: string
@@ -3225,22 +3200,6 @@ const ViewCertificatePage: React.FC = () => {
                                             </td>
                                           </tr>
                                         )}
-                                        {orderTeam.length > 0 && (
-                                          <tr>
-                                            <td className="align-top text-left pr-2 py-0">
-                                              <div className="font-bold leading-tight">
-                                                Tim Order{' '}
-                                                <span className="italic text-[10px] text-gray-900">
-                                                  / Order Team
-                                                </span>
-                                              </div>
-                                            </td>
-                                            <td className="align-top py-0">:</td>
-                                            <td className="align-top whitespace-pre-line py-0">
-                                              {orderTeam.map((t) => t.name).join(', ')}
-                                            </td>
-                                          </tr>
-                                        )}
                                         {showOthers && (
                                           <tr>
                                             <td
@@ -3377,7 +3336,7 @@ const ViewCertificatePage: React.FC = () => {
                                     style={{ width: '25%' }}
                                   >
                                     {' '}
-                                    Edisi/Revisi : 11/1
+                                    Edisi/Revisi : 12/1
                                   </td>
                                 </tr>
                               </tbody>

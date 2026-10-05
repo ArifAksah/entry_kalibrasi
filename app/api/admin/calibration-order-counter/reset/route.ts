@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
   const mode = String(body?.mode || '')
 
   if (!Number.isFinite(year)) return NextResponse.json({ error: 'numbering_year wajib' }, { status: 400 })
-  if (!['FC', 'LC'].includes(place)) return NextResponse.json({ error: 'calibration_place harus FC/LC' }, { status: 400 })
+  if (!['FC', 'IFC', 'LC'].includes(place)) return NextResponse.json({ error: 'calibration_place harus FC/IFC/LC' }, { status: 400 })
   if (!['reset_unused_scope', 'set_next_value', 'skip_range'].includes(mode)) {
     return NextResponse.json({ error: 'mode tidak valid' }, { status: 400 })
   }

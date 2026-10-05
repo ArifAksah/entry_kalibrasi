@@ -25,6 +25,7 @@ import {
   wrapWindDirectionCorrection,
 } from '../../lib/wind-direction'
 import { compareRawDataRows } from '../../lib/raw-data-order'
+import { findPyranometerAudit } from '../../lib/calibration-method-profiles'
 import type { TippingBucketPanelEntry } from './TippingBucketPanel'
 import {
   calculateTippingBucket,
@@ -394,6 +395,14 @@ function UncertaintyContent({
 
   const isPyranometerSensor = isPyranometer(pyranometerSensor)
 
+  // Kontrak metode yang tersimpan di sertifikat (snapshot). Bila tidak ada
+  // (sertifikat lama), perhitungan memakai default sistem.
+  const pyranometerAudit = React.useMemo(
+    () => findPyranometerAudit((certificate as any)?.results),
+    [certificate],
+  )
+  const storedPyranometerRules = pyranometerAudit?.rules_snapshot
+
   // Advanced unit resolution: Row -> Sensor -> Instrument (Certificate)
   let unitUut = currentData[0]?.unit_uut
   if (!unitUut) {
@@ -598,6 +607,7 @@ function UncertaintyContent({
       stdMean: stdMeanVal,
       uutMean: uutMeanVal,
       stdSensorType: stdSensorType,
+      rules: storedPyranometerRules,
     })
 
     // Convert ke format UncertaintyResult untuk rendering
@@ -742,7 +752,12 @@ function UncertaintyContent({
         )}
         {isPyranometerSensor && pyranometerResult && (
           <div className="mb-4 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-950">
-            <div className="font-semibold">Profil metode audit</div>
+            <div className="flex items-center justify-between">
+              <div className="font-semibold">Profil metode audit</div>
+              <div className="text-[10px] opacity-80">
+                Kontrak: {pyranometerAudit?.rules_snapshot ? 'snapshot sertifikat' : 'default sistem'}
+              </div>
+            </div>
             <div className="mt-1 grid gap-x-4 gap-y-1 md:grid-cols-2">
               <div>
                 Metode: <b>{pyranometerResult.method_profile.code} v{pyranometerResult.method_profile.version}</b>
@@ -756,10 +771,69 @@ function UncertaintyContent({
               <div>
                 Drift standar: <b>{pyranometerResult.audit.drift_class || '-'} / {pyranometerResult.audit.drift_value_percent}%</b>
               </div>
+              <div>
+                Rumus CF: <b>{pyranometerResult.rules_used?.cfRule || '-'}</b>
+              </div>
+              <div>
+                Faktor cakupan: <b>{pyranometerResult.rules_used?.coverageFactorRule === 'k2' ? 'k = 2' : 'Student-t 95% (dari veff)'}</b>
+              </div>
               <div className="md:col-span-2">
                 Acuan: <b>{pyranometerResult.method_profile.standardReferences.map((ref) => `${ref.code}:${ref.edition}`).join('; ')}</b>
               </div>
             </div>
+
+            {/* Variabel kontrak per komponen (gabungan aturan + hasil) */}
+            {pyranometerResult.rules_used && (
+              <div className="mt-2 overflow-x-auto">
+                <table className="min-w-full text-[10px]">
+                  <thead className="text-left uppercase opacity-70">
+                    <tr>
+                      <th className="pr-2">Komponen</th>
+                      <th className="pr-2">Nilai a</th>
+                      <th className="pr-2">Pembagi</th>
+                      <th className="pr-2">vi</th>
+                      <th className="pr-2">Klasifikasi</th>
+                      <th className="pr-2">Sumber</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pyranometerResult.rules_used.components.map((rule) => {
+                      const computed = pyranometerResult!.components.find(
+                        (c) => c.name === rule.label,
+                      )
+                      const divisorLabel =
+                        rule.divisor === 'sqrt_n'
+                          ? '√n'
+                          : rule.divisor === 'sqrt3'
+                            ? '√3'
+                            : String(rule.divisor)
+                      const viLabel =
+                        rule.vi.type === 'n_minus_1'
+                          ? 'n−1'
+                          : rule.vi.type === 'infinite'
+                            ? '∞'
+                            : String(rule.vi.value ?? 50)
+                      return (
+                        <tr key={rule.key} className="border-t border-emerald-200/60">
+                          <td className="pr-2 py-0.5 font-medium">
+                            {rule.label}
+                            {!rule.enabled ? ' (nonaktif)' : ''}
+                          </td>
+                          <td className="pr-2 py-0.5">{computed ? computed.value_percent.toPrecision(4) : '—'}</td>
+                          <td className="pr-2 py-0.5">{divisorLabel}</td>
+                          <td className="pr-2 py-0.5">{viLabel}</td>
+                          <td className="pr-2 py-0.5">{rule.source.classification}</td>
+                          <td className="pr-2 py-0.5">
+                            {rule.source.doc}
+                            {rule.source.ref ? ` — ${rule.source.ref}` : ''}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 

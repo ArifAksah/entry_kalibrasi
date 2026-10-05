@@ -166,6 +166,7 @@ const sections: NavSection[] = [
       { name: 'Sertifikat', href: '/certificates', icon: Icon.doc },
       { name: 'Log Sertifikat', href: '/certificate-logs', icon: Icon.clock },
       { name: 'Surat', href: '/letters', icon: Icon.mail },
+      { name: 'Item Pemeriksaan', href: '/inspection-items', icon: Icon.check },
     ],
   },
   {

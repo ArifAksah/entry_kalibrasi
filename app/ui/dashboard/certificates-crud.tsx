@@ -36,6 +36,7 @@ import {
   calculatePyranometerUncertainty,
   PyranometerSensorData,
 } from '../../../lib/uncertainty-utils'
+import { resolveCalibrationMethodProfile } from '../../../lib/calibration-method-profiles'
 import DateRangePicker from '../../../components/ui/DateRangePicker'
 import RichTextEditor from '../../../components/ui/RichTextEditor'
 import { DEFAULT_NOTES_OTHERS_HTML } from '../../../lib/rich-text'
@@ -522,6 +523,7 @@ const SearchableDropdown = ({
   className = '',
   id = '',
   renderOptionName,
+  allowCustom = false,
 }: {
   value: string | number | null
   onChange: (value: string | number | null) => void
@@ -531,6 +533,7 @@ const SearchableDropdown = ({
   className?: string
   id?: string
   renderOptionName?: (name: string) => React.ReactNode
+  allowCustom?: boolean
 }) => {
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -554,7 +557,11 @@ const SearchableDropdown = ({
     )
   })
 
-  const selectedOption = options.find((opt) => opt.id === value)
+  const selectedOption =
+    options.find((opt) => opt.id === value) ||
+    (allowCustom && value != null && String(value).trim() !== ''
+      ? { id: value, name: String(value) }
+      : undefined)
 
   // Hitung posisi menu relatif viewport + auto-flip (buka ke atas kalau ruang
   // bawah kurang). Dirender lewat portal agar tidak terpotong `overflow`
@@ -620,6 +627,25 @@ const SearchableDropdown = ({
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
+          {allowCustom &&
+            search.trim() !== '' &&
+            !options.some(
+              (opt) => opt.name.toLowerCase() === search.trim().toLowerCase(),
+            ) && (
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(search.trim())
+                  setIsOpen(false)
+                  setSearch('')
+                }}
+                className="w-full px-3 py-2 text-left hover:bg-blue-50 border-b border-gray-100 text-sm"
+              >
+                <div className="font-medium text-[#1e377c]">
+                  Gunakan “{search.trim()}”
+                </div>
+              </button>
+            )}
           {filteredOptions.length > 0 ? (
             <div className="flex flex-col">
               {filteredOptions.map((option) => (
@@ -705,6 +731,20 @@ const CertificatesCRUD: React.FC = () => {
     orderId: number
     itemId: number
   } | null>(null)
+
+  // Kontrak metode pyranometer dari profil aktif (default = perilaku sistem).
+  const [pyranometerRules, setPyranometerRules] = useState<unknown>(undefined)
+  useEffect(() => {
+    let active = true
+    resolveCalibrationMethodProfile('pyranometer')
+      .then((profile) => {
+        if (active) setPyranometerRules(profile?.rules)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
 
   const fetchSignedPdf = async (item: Certificate, download = false) => {
     const {
@@ -1779,6 +1819,7 @@ const CertificatesCRUD: React.FC = () => {
           stdMin: stdMinVal,
           sensitivityStd: (standardCertRecord as any)?.sensitivity || undefined,
           sensitivityUut: (activeUutSensor as any)?.sensitivity || undefined,
+          rules: pyranometerRules,
         })
         pyranometerAuditMeta = {
           method_profile_code: pyrResult.method_profile.code,
@@ -1786,6 +1827,7 @@ const CertificatesCRUD: React.FC = () => {
           standard_references: [...pyrResult.method_profile.standardReferences],
           cf_rule: pyrResult.method_profile.cfRule,
           outlier_rule: pyrResult.method_profile.outlierRule,
+          rules_snapshot: pyrResult.rules_used,
           valid_pair_count: pyrResult.audit.valid_pair_count,
           outlier_count: pyrResult.audit.outlier_count,
           outlier_indices: pyrResult.audit.outlier_indices,
@@ -2823,7 +2865,7 @@ const CertificatesCRUD: React.FC = () => {
       station: pending.stationId,
       no_order: order.no_order,
       no_identification: item.no_identification,
-      calibration_place: order.calibration_place as 'FC' | 'LC',
+      calibration_place: order.calibration_place as 'FC' | 'IFC' | 'LC',
       instrument: item.instrument_id ?? prev.instrument,
       instrument_code: item.instrument_code ?? prev.instrument_code,
       no_certificate: 'Nomor sertifikat akan dibuat dari booking saat disimpan',
@@ -5644,7 +5686,14 @@ const CertificatesCRUD: React.FC = () => {
                                           Unit kolom UUT
                                         </label>
                                         <SearchableDropdown
-                                          value={results[i]?.unitUut || ''}
+                                          value={
+                                            results[i]?.unitUut ||
+                                            results[i]?.sensorDetails
+                                              ?.graduating_unit ||
+                                            results[i]?.sensorDetails
+                                              ?.range_capacity_unit ||
+                                            ''
+                                          }
                                           onChange={(val) =>
                                             updateResult(i, {
                                               unitUut: val ? String(val) : null,
@@ -5654,9 +5703,10 @@ const CertificatesCRUD: React.FC = () => {
                                             id: u.unit,
                                             name: u.unit,
                                           }))}
-                                          placeholder="Pilih unit"
-                                          searchPlaceholder="Cari unit..."
+                                          placeholder="Pilih / isi unit"
+                                          searchPlaceholder="Cari atau ketik unit..."
                                           className="mt-0.5"
+                                          allowCustom
                                           renderOptionName={(name) => (
                                             <SmartUnit value={name} />
                                           )}
@@ -5677,9 +5727,10 @@ const CertificatesCRUD: React.FC = () => {
                                             id: u.unit,
                                             name: u.unit,
                                           }))}
-                                          placeholder="Pilih unit"
-                                          searchPlaceholder="Cari unit..."
+                                          placeholder="Pilih / isi unit"
+                                          searchPlaceholder="Cari atau ketik unit..."
                                           className="mt-0.5"
+                                          allowCustom
                                           renderOptionName={(name) => (
                                             <SmartUnit value={name} />
                                           )}

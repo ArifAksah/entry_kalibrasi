@@ -263,8 +263,9 @@ export async function PUT(
         const outcome = normalizeResultsOnWrite(results, {
           calibration_kind:
             ((currentCertificate as any)?.calibration_kind ||
-             ((currentCertificate as any)?.calibration_place === 'LC' ? 'LC' : 'FC')
-            ) as 'FC' | 'LC',
+             (currentCertificate as any)?.calibration_place ||
+             'FC'
+            ) as 'FC' | 'IFC' | 'LC',
           certificate_id: id,
         })
         // `not_provided` berarti body mengirim results=null/undefined → simpan null
