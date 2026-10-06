@@ -11,6 +11,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useCertificates } from '../../hooks/useCertificates'
 import { Certificate, Station, Instrument, Personel } from '../../lib/supabase'
 import { useAlert } from '../../hooks/useAlert'
+import { usePermissions } from '../../hooks/usePermissions'
 import { supabase } from '../../lib/supabase'
 import QCDataModal from '../../components/features/QCDataModal'
 import {
@@ -1732,6 +1733,10 @@ const DraftView: React.FC<{
     certificateId: number,
     updates: Partial<Certificate>,
   ) => Promise<void>
+  /** Apakah user boleh mengirim konsep (pembuat draft / admin). */
+  canSendConcept?: boolean
+  /** Dipanggil saat user bukan pembuat draft mencoba mengirim konsep. */
+  onBlockedSend?: () => void
 }> = ({
   certificate,
   stations,
@@ -1742,6 +1747,8 @@ const DraftView: React.FC<{
   onSendToVerifiers,
   onBack,
   onUpdateCertificate,
+  canSendConcept = true,
+  onBlockedSend,
 }) => {
   const [showModal, setShowModal] = useState(false)
   const [isSending, setIsSending] = useState(false)
@@ -1939,22 +1946,30 @@ const DraftView: React.FC<{
           )}
           <button
             onClick={() => {
+              if (!canSendConcept) {
+                onBlockedSend?.()
+                return
+              }
               if (!(isSending || hasSent)) setShowModal(true)
             }}
-            disabled={isSending || hasSent || !isReadyToSend}
+            disabled={isSending || hasSent || (canSendConcept && !isReadyToSend)}
             title={
-              hasSent
-                ? 'Naskah sudah terkirim ke Verifikator'
-                : !hasVerifikators
-                  ? 'Tentukan dulu Verifikator 1, 2, dan 3 sebelum kirim konsep'
-                  : !hasComputedQC
-                    ? 'Buka QC CHECK dan klik "Hitung & Input ke Tabel Sertifikat" terlebih dahulu'
-                    : 'Kirim konsep ke verifikator'
+              !canSendConcept
+                ? 'Hanya pembuat draft yang dapat mengirim konsep'
+                : hasSent
+                  ? 'Naskah sudah terkirim ke Verifikator'
+                  : !hasVerifikators
+                    ? 'Tentukan dulu Verifikator 1, 2, dan 3 sebelum kirim konsep'
+                    : !hasComputedQC
+                      ? 'Buka QC CHECK dan klik "Hitung & Input ke Tabel Sertifikat" terlebih dahulu'
+                      : 'Kirim konsep ke verifikator'
             }
             className={`flex items-center px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 ${
-              isReadyToSend && !(isSending || hasSent)
-                ? 'bg-green-600 hover:bg-green-700'
-                : 'bg-gray-400 cursor-not-allowed'
+              !canSendConcept
+                ? 'bg-gray-400 hover:bg-gray-500'
+                : isReadyToSend && !(isSending || hasSent)
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-gray-400 cursor-not-allowed'
             }`}
           >
             <svg
@@ -2426,6 +2441,7 @@ const DraftViewPage: React.FC = () => {
   const { user } = useAuth()
   const { certificates, loading, error } = useCertificates()
   const { showAlert } = useAlert()
+  const { role } = usePermissions()
   const [stations, setStations] = useState<Station[]>([])
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [instrumentNames, setInstrumentNames] = useState<any[]>([])
@@ -2697,6 +2713,19 @@ const DraftViewPage: React.FC = () => {
                     onSendToVerifiers={handleSendToVerifiers}
                     onBack={handleBack}
                     onUpdateCertificate={handleUpdateCertificate}
+                    canSendConcept={
+                      role === 'admin' ||
+                      (!!user?.id &&
+                        (String(certificate.created_by) === user.id ||
+                          String(certificate.sent_by) === user.id))
+                    }
+                    onBlockedSend={() =>
+                      showAlert({
+                        type: 'warning',
+                        message:
+                          'Hanya pembuat draft yang dapat mengirim konsep. Silakan minta pembuat draft untuk mengirimkan konsep sertifikat ini.',
+                      })
+                    }
                   />
                 ))}
               </div>
