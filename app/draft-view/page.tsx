@@ -2716,8 +2716,8 @@ const DraftViewPage: React.FC = () => {
                     canSendConcept={
                       role === 'admin' ||
                       (!!user?.id &&
-                        (String(certificate.created_by) === user.id ||
-                          String(certificate.sent_by) === user.id))
+                        (String((certificate as any).created_by) === user.id ||
+                          String((certificate as any).sent_by) === user.id))
                     }
                     onBlockedSend={() =>
                       showAlert({
