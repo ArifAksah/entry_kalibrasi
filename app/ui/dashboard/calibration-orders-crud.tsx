@@ -131,7 +131,7 @@ const CalibrationOrdersCRUD: React.FC = () => {
   const [confirmModalValues, setConfirmModalValues] = useState<Record<string, string>>({})
 
   const canManage = role === 'admin' || role === 'calibrator'
-  const canCreate = role === 'calibrator'
+  const canCreate = role === 'admin' || role === 'calibrator'
 
   // ── Fetch master options ────────────────────────────────────────────────
   useEffect(() => {
@@ -663,7 +663,7 @@ const CalibrationOrdersCRUD: React.FC = () => {
 
               {/* Lifecycle actions */}
               <div className="flex flex-wrap gap-2 border-y border-gray-100 py-3">
-                {detail.status === 'draft' && role === 'calibrator' && (
+                {detail.status === 'draft' && (role === 'admin' || role === 'calibrator') && (
                   <button onClick={() => runAction('confirm')} className="rounded-lg bg-[#1e377c] px-3 py-1.5 text-xs font-semibold text-white">Konfirmasi Booking</button>
                 )}
                 {detail.status === 'booked' && (

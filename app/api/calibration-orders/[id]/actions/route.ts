@@ -48,8 +48,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // Wewenang: admin, atau calibrator pembuat order.
   const isOwner = caller.role === 'calibrator' && order.created_by === caller.user.id
   if (action === 'confirm') {
-    if (!isOwner) {
-      return forbidden('Hanya Petugas Kalibrasi pembuat draft yang dapat mengonfirmasi booking')
+    if (!isOwner && !isAdminCaller(caller)) {
+      return forbidden('Hanya Petugas Kalibrasi pembuat draft atau admin yang dapat mengonfirmasi booking')
     }
     const { data, error } = await supabase.rpc('confirm_calibration_order', {
       p_order_id: orderId,

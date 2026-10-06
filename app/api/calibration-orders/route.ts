@@ -109,8 +109,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const caller = await requireCaller(request)
   if (caller instanceof NextResponse) return caller
-  if (caller.role !== 'calibrator') {
-    return forbidden('Hanya Petugas Kalibrasi yang dapat membuat order')
+  if (caller.role !== 'calibrator' && !isAdminCaller(caller)) {
+    return forbidden('Hanya Petugas Kalibrasi atau admin yang dapat membuat order')
   }
 
   let body: any
