@@ -741,27 +741,28 @@ const CalibrationOrdersCRUD: React.FC = () => {
                       <SearchableDropdown
                         value={selectedInstrumentId}
                         onChange={(value) => setSelectedInstrumentId(value as number | null)}
-                        options={instruments.map((instrument) => {
-                          const instrumentStationId =
-                            instrument.station_id ?? instrument.station?.id ?? null
-                          const available =
-                            Number(instrumentStationId) === Number(detail.station_id)
-                          const serial = instrument.serial_number
-                            ? `SN ${instrument.serial_number}`
-                            : 'SN -'
-                          const stationInfo = available
-                            ? instrument.station?.name || 'Station sesuai order'
-                            : instrumentStationId == null
-                              ? 'Belum ditautkan ke station — tidak dapat dipilih'
-                              : `${instrument.station?.name || `Station #${instrumentStationId}`} — station berbeda`
-
-                          return {
+                        options={instruments
+                          .filter((instrument) => {
+                            const instrumentStationId =
+                              instrument.station_id ??
+                              instrument.station?.id ??
+                              null
+                            return (
+                              instrumentStationId != null &&
+                              Number(instrumentStationId) ===
+                                Number(detail.station_id)
+                            )
+                          })
+                          .map((instrument) => ({
                             id: instrument.id,
-                            name: instrument.name_alias || instrument.type || `Instrumen #${instrument.id}`,
-                            description: `${serial} • ${stationInfo}`,
-                            disabled: !available,
-                          }
-                        })}
+                            name:
+                              instrument.name_alias ||
+                              instrument.type ||
+                              `Instrumen #${instrument.id}`,
+                            description: instrument.serial_number
+                              ? `SN ${instrument.serial_number}`
+                              : 'SN -',
+                          }))}
                         placeholder="Pilih Alat UUT..."
                         searchPlaceholder="Cari alat UUT..."
                         emptyLabel="Tidak ada alat UUT di stasiun ini"
