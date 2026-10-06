@@ -99,9 +99,12 @@ export const useCertificateVerification = () => {
     }
   }
 
-  const fetchPendingCertificates = async () => {
+  const fetchPendingCertificates = async (options?: { silent?: boolean }) => {
+    const silent = options?.silent === true
     try {
-      setLoading(true)
+      // Refresh senyap (mis. saat tab kembali aktif) tidak menyalakan loading
+      // global agar daftar tidak collapse / scroll melompat ke atas.
+      if (!silent) setLoading(true)
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) throw new Error('Not authenticated')
       
@@ -120,7 +123,7 @@ export const useCertificateVerification = () => {
       const msg = e instanceof Error ? e.message : 'An error occurred'
       setError(msg)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
@@ -347,7 +350,7 @@ export const useCertificateVerification = () => {
   // sehingga status lama "completed" tetap tampil dan tombol TTE tidak muncul.
   useEffect(() => {
     const refreshWhenVisible = () => {
-      if (document.visibilityState === 'visible') fetchPendingCertificates()
+      if (document.visibilityState === 'visible') fetchPendingCertificates({ silent: true })
     }
     window.addEventListener('focus', refreshWhenVisible)
     document.addEventListener('visibilitychange', refreshWhenVisible)
