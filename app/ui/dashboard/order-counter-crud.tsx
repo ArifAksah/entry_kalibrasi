@@ -25,6 +25,19 @@ interface CounterLog {
   performed_at: string
 }
 
+// Label sederhana untuk tiap mode.
+const ACTION_LABEL: Record<string, string> = {
+  set_next_value: 'Ubah nomor berikutnya',
+  skip_range: 'Lewati beberapa nomor',
+  reset_unused_scope: 'Mulai dari 001',
+}
+
+const MODE_HINT: Record<string, string> = {
+  set_next_value: 'Isi nomor order berikutnya yang Anda inginkan.',
+  skip_range: 'Lewati N nomor. Contoh isi 4 → nomor 3–6 dilewati.',
+  reset_unused_scope: 'Kembali ke 001. Hanya bisa bila belum ada nomor terpakai.',
+}
+
 const OrderCounterCRUD: React.FC = () => {
   const { alert, showSuccess, showError, hideAlert } = useAlert()
   const [counters, setCounters] = useState<CounterRow[]>([])
@@ -144,10 +157,9 @@ const OrderCounterCRUD: React.FC = () => {
 
       {/* Reset form */}
       <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <h3 className="mb-1 text-lg font-bold text-gray-900">Hard Reset / Repair Counter</h3>
+        <h3 className="mb-1 text-lg font-bold text-gray-900">Reset / Perbaikan Counter</h3>
         <p className="mb-4 text-xs text-gray-500">
-          Reset ke awal hanya boleh pada scope yang belum pernah memiliki nomor. Menurunkan counter
-          di bawah nomor terpakai akan ditolak sistem.
+          Ubah nomor order berikutnya. Nomor yang sudah terpakai tidak bisa dipakai ulang.
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div>
@@ -178,15 +190,16 @@ const OrderCounterCRUD: React.FC = () => {
               onChange={(e) => setForm({ ...form, mode: e.target.value })}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             >
-              <option value="set_next_value">Set Nomor Berikutnya</option>
-              <option value="reset_unused_scope">Reset Scope Kosong</option>
-              <option value="skip_range">Lewati Sejumlah Nomor</option>
+              <option value="set_next_value">Ubah nomor berikutnya</option>
+              <option value="skip_range">Lewati beberapa nomor</option>
+              <option value="reset_unused_scope">Mulai dari 001 (bila masih kosong)</option>
             </select>
+            <p className="mt-1 text-[11px] text-gray-500">{MODE_HINT[form.mode]}</p>
           </div>
           {form.mode !== 'reset_unused_scope' && (
             <div>
               <label className="block text-xs font-semibold text-gray-600">
-                {form.mode === 'set_next_value' ? 'Nomor Berikutnya' : 'Jumlah Dilewati'}
+                {form.mode === 'set_next_value' ? 'Nomor berikutnya' : 'Jumlah nomor yang dilewati'}
               </label>
               <input
                 type="number"
@@ -229,8 +242,8 @@ const OrderCounterCRUD: React.FC = () => {
               <th className="px-4 py-3">Waktu</th>
               <th className="px-4 py-3">Scope</th>
               <th className="px-4 py-3">Aksi</th>
-              <th className="px-4 py-3">Dari</th>
-              <th className="px-4 py-3">Ke</th>
+              <th className="px-4 py-3">Counter Sebelum</th>
+              <th className="px-4 py-3">Counter Sesudah</th>
               <th className="px-4 py-3">Alasan</th>
             </tr>
           </thead>
@@ -242,7 +255,7 @@ const OrderCounterCRUD: React.FC = () => {
                 <tr key={l.id}>
                   <td className="px-4 py-3 text-xs">{new Date(l.performed_at).toLocaleString('id-ID')}</td>
                   <td className="px-4 py-3">{l.numbering_year} / {l.calibration_place}</td>
-                  <td className="px-4 py-3">{l.action}</td>
+                  <td className="px-4 py-3">{ACTION_LABEL[l.action] || l.action}</td>
                   <td className="px-4 py-3 font-mono">{l.previous_value ?? '-'}</td>
                   <td className="px-4 py-3 font-mono">{l.new_value ?? '-'}</td>
                   <td className="px-4 py-3 text-xs">{l.reason || '-'}</td>
