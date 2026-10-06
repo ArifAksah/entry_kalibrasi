@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
@@ -34,10 +34,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     getInitialSession();
 
-    // Listen for auth changes
+    // Listen for auth changes.
+    // PENTING: hanya perbarui `user` bila id-nya benar-benar berubah. Supabase
+    // memicu TOKEN_REFRESHED (mis. saat tab kembali aktif) dengan objek user
+    // baru; tanpa guard ini, referensi `user` berubah → effect ber-dep [user]
+    // ikut jalan ulang → data refetch & daftar reset (scroll ke atas).
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setUser(session?.user ?? null);
+      (_event, session) => {
+        const nextUser = session?.user ?? null;
+        setUser((prev) => (prev?.id === nextUser?.id ? prev : nextUser));
         setLoading(false);
       }
     );
@@ -45,17 +50,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     setLoading(true);
     await supabase.auth.signOut();
     setLoading(false);
-  };
+  }, []);
 
-  const value = {
-    user,
-    loading,
-    signOut,
-  };
+  const value = useMemo(
+    () => ({ user, loading, signOut }),
+    [user, loading, signOut],
+  );
 
   return (
     <AuthContext.Provider value={value}>
@@ -63,12 +67,3 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     </AuthContext.Provider>
   );
 };
-
-
-
-
-
-
-
-
-
