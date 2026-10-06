@@ -36,8 +36,8 @@ next-env.d.ts
 ehthumbs.db
 Thumbs.db
 
-# Logs
-logs
+# Logs (hanya folder log di root; jangan abaikan folder sumber bernama "logs")
+/logs
 *.log
 
 # Runtime data
