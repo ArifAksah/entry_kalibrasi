@@ -1,4 +1,4 @@
-# Laporan Bulanan Kegiatan Pembangunan Sistem Informasi Layanan Kalibrasi (SILK) MKG
+# Laporan Bulanan Kegiatan Pembangunan Sistem Informasi Manajemen Kalibrasi (SIMKAL) MKG
 
 ## Periode: Juli 2026
 
@@ -6,7 +6,7 @@
 
 ## Pendahuluan
 
-Pada bulan Juli 2026, pengembangan SILK berfokus pada implementasi fitur kalibrasi pyranometer, termasuk deteksi otomatis, perhitungan Faktor Kalibrasi (CF), dan integrasi ke seluruh modul sistem.
+Pada bulan Juli 2026, pengembangan SIMKAL berfokus pada implementasi fitur kalibrasi pyranometer, termasuk deteksi otomatis, perhitungan Faktor Kalibrasi (CF), dan integrasi ke seluruh modul sistem.
 
 ## Tujuan
 
@@ -16,7 +16,7 @@ Pada bulan Juli 2026, pengembangan SILK berfokus pada implementasi fitur kalibra
 
 ## Hasil Kegiatan
 
-Progres pembangunan sistem Informasi layanan kalibrasi (SILK) telah membuat beberapa fitur selama bulan Juli 2026 sebagai berikut:
+Progres pembangunan sistem Informasi layanan kalibrasi (SIMKAL) telah membuat beberapa fitur selama bulan Juli 2026 sebagai berikut:
 
 ### 1. Implementasi Deteksi Otomatis Pyranometer
 
@@ -153,5 +153,5 @@ Progres pembangunan sistem Informasi layanan kalibrasi (SILK) telah membuat bebe
 
 ---
 
-*Dokumen ini disusun oleh Tim Pengembangan SILK MKG*
+*Dokumen ini disusun oleh Tim Pengembangan SIMKAL MKG*
 *Terakhir diperbarui: Juli 2026*

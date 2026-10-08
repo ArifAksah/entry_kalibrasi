@@ -1844,6 +1844,27 @@ const CertificatesCRUD: React.FC = () => {
   }
 
   // Auto-Generate Table Result from QC Data
+  /**
+   * Ambil data sensor standar: dari daftar yang dimuat lebih dulu, dan bila tidak
+   * ada ambil langsung dari API. Daftar sensor di aplikasi bisa belum memuat sensor
+   * standar tertentu sehingga tipe alat tidak terbaca dan drift ISO 9060 jatuh 0.
+   */
+  const resolveStdSensor = async (id: number | string | null | undefined) => {
+    if (id == null) return null
+    const found = (sensors as any[])?.find(
+      (sn: any) => String(sn?.id) === String(id),
+    )
+    if (found) return found
+    try {
+      const res = await fetch(`/api/sensors/${id}`)
+      if (!res.ok) return null
+      const payload = await res.json()
+      return (payload as any)?.data ?? payload ?? null
+    } catch {
+      return null
+    }
+  }
+
   const handleAutoGenerate = async (sectionIndex: number) => {
     if (tableEditIndex === null) return
     setIsGenerating(true)
@@ -1953,10 +1974,9 @@ const CertificatesCRUD: React.FC = () => {
           rows: currentData,
           standardCertRecord,
           uutSensor: activeUutSensor,
-          stdSensor:
-            (sensors as any[])?.find(
-              (sn: any) => sn.id === (standardCertRecord as any)?.sensor_id,
-            ) ?? null,
+          stdSensor: await resolveStdSensor(
+            (standardCertRecord as any)?.sensor_id ?? null,
+          ),
           rules: pyranometerRules,
         })
         const pyrResult = calculatePyranometerUncertainty(

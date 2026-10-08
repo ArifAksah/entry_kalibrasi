@@ -1,4 +1,4 @@
-# Laporan Bulanan Kegiatan Pembangunan Sistem Informasi Layanan Kalibrasi (SILK) MKG
+# Laporan Bulanan Kegiatan Pembangunan Sistem Informasi Manajemen Kalibrasi (SIMKAL) MKG
 
 ## Periode: September 2026
 
@@ -6,9 +6,11 @@
 
 ## Pendahuluan
 
-Pengembangan Sistem Informasi Layanan Kalibrasi MKG pada bulan September 2026 melanjutkan proses penyamaan hasil pengolahan data antara sistem dan workbook acuan. Setelah formula dasar, faktor konversi, dan koreksi arah angin distandarkan pada periode sebelumnya, pekerjaan difokuskan pada konsistensi hasil antarfitur, perhitungan ketidakpastian lintas satuan, penyimpanan snapshot hasil kalkulasi, dan peningkatan keterlacakan data mentah.
+Pengembangan Sistem Informasi Manajemen Kalibrasi MKG pada bulan September 2026 melanjutkan proses penyamaan hasil pengolahan data antara sistem dan workbook acuan. Setelah formula dasar, faktor konversi, dan koreksi arah angin distandarkan pada periode sebelumnya, pekerjaan difokuskan pada konsistensi hasil antarfitur, perhitungan ketidakpastian lintas satuan, penyimpanan snapshot hasil kalkulasi, dan peningkatan keterlacakan data mentah.
 
 Kegiatan ini diperlukan agar nilai yang ditampilkan pada QC Check, Preview LHKS, Uncertainty Budget, dan hasil sertifikat berasal dari sumber data serta formula yang sama. Dengan demikian, hasil perhitungan dapat ditelusuri kembali hingga ke baris spreadsheet dan sertifikat standar yang digunakan.
+
+Pada paruh kedua bulan September, fokus bergeser ke kesiapan operasional dan keamanan: penyelesaian temuan pengujian penetrasi, penguatan jaringan dan proxy, penyesuaian aplikasi terhadap skema database produksi, penyesuaian tanda tangan elektronik (TTE) BSrE, serta penyiapan formulir kalibrasi Tipping Bucket.
 
 ## Tujuan
 
@@ -18,6 +20,9 @@ Kegiatan ini diperlukan agar nilai yang ditampilkan pada QC Check, Preview LHKS,
 - Menjaga urutan data sesuai posisi asli pada spreadsheet.
 - Mengunci sertifikat standar yang digunakan pada setiap sesi kalibrasi.
 - Mencegah perubahan sertifikat terbaru mengubah hasil sesi lama.
+- Menutup temuan keamanan hasil pengujian penetrasi pada API, RLS, dan penyimpanan data.
+- Menyesuaikan aplikasi dan migrasi agar berjalan pada skema database produksi.
+- Menyediakan formulir kalibrasi Tipping Bucket pada sistem.
 
 ## Hasil Kegiatan
 
@@ -176,7 +181,58 @@ raw_data.standard_certificate_id
   - Backfill source row data historis berdasarkan urutan ID.
 - Menyempurnakan trigger koreksi arah angin agar kompatibel dengan variasi schema nama sensor.
 
-### 10. Pengujian dan Validasi
+### 10. Kesetaraan Kalkulasi dengan Workbook
+
+- Mengganti perhitungan faktor cakupan (coverage factor) menjadi invers Student-t eksak, termasuk untuk derajat kebebasan kecil, agar setara dengan fungsi `TINV` pada workbook.
+- Menyamakan kalkulasi dan jumlah digit pada sertifikat dengan workbook `AWOS`, termasuk pembulatan angka penting.
+- Menyesuaikan Master QC agar mengikuti satuan UUT dan memperbaiki kunci unik Master QC.
+- Menjadikan trigger kalibrasi unit-aware serta menghormati sertifikat standar yang terkunci pada setiap sesi.
+- Menyempurnakan script backfill agar memicu trigger koreksi unit-aware, sehingga data historis tidak dihitung dengan asumsi satuan yang salah.
+
+### 11. Tanda Tangan Elektronik (TTE) BSrE
+
+- Memulihkan generator PDF TTE agar kembali stabil setelah gangguan pada proses penandatanganan.
+- Menambahkan fingerprint (ciri) input TTE untuk mempercepat diagnosis bila terjadi kegagalan.
+- Memperjelas pesan diagnosis ketika terjadi gangguan pada layanan upstream BSrE.
+- Menyesuaikan endpoint BSrE pada konfigurasi produksi.
+
+### 12. Penguatan Keamanan (Remediasi Pentest)
+
+- Memperketat otorisasi API, kebijakan Row Level Security (RLS), serta konfigurasi deployment.
+- Menutup akses tabel bagi peran anonim dan mencabut hak `execute` fungsi RPC dari peran anon/authenticated.
+- Menutup tabel-tabel baru yang sebelumnya belum memiliki kebijakan akses.
+- Menyediakan script SQL siap-tempel untuk menutup akses anon melalui SQL Editor.
+- Menghilangkan kebocoran data pribadi (PII) pada akses publik, serta memperkuat layanan WhatsApp, penyimpanan secret, dan Content Security Policy (CSP).
+- Menambahkan panduan langkah remediasi temuan pentest yang dijalankan di server.
+
+### 13. Penguatan Jaringan dan Proxy
+
+- Menambahkan modul `harden-network` dengan dukungan `dry-run`, allowlist multi-CIDR, dan sifat idempoten
+  agar aman dijalankan berulang.
+- Menjaga agar URL Supabase tidak dapat diakses langsung (guard), dengan pengecualian loopback untuk
+  kebutuhan internal.
+- Memperbaiki matcher proxy Supabase pada Caddy agar permintaan internal dan publik terpisah dengan benar.
+- Memastikan containment jaringan tetap aktif setelah Docker dijalankan ulang.
+- Menyusun runbook pelaksanaan penguatan jaringan di server.
+
+### 14. Kesiapan Migrasi dan Skema Produksi
+
+- Menyesuaikan kode aplikasi terhadap skema database produksi, termasuk kompatibilitas dua ragam
+  schema pada tabel `instrument_names` (`name` dan `names`).
+- Menambahkan runner migrasi keamanan serta bootstrap untuk environment staging.
+- Menambahkan dukungan eksekusi migrasi melalui `DATABASE_URL` atau Management API.
+- Memperbaiki pagination daftar instrumen agar memakai nilai `total`/`totalPages` dari server.
+- Menyiapkan dan menjalankan migrasi ke production.
+- Mencegah duplikasi stasiun berdasarkan kode WMO, memperbaiki proses import, serta menyediakan
+  opsi override manual untuk grup WMO yang ambigu.
+
+### 15. Formulir Kalibrasi Tipping Bucket
+
+- Menambahkan formulir kalibrasi Tipping Bucket pada sistem, mencakup input simulasi hujan,
+  parameter standar (gelas ukur dan jangka sorong), serta perhitungan koreksi dan ketidakpastian
+  sesuai format workbook.
+
+### 16. Pengujian dan Validasi
 
 - Menambahkan pengujian untuk:
   - Konversi delta uncertainty.
@@ -189,6 +245,8 @@ raw_data.standard_certificate_id
   - Preview LHKS menggunakan snapshot final.
   - Cache koreksi dan retry.
 - Menjalankan production build untuk memeriksa kompatibilitas Next.js dan TypeScript.
+- Menguji ulang seluruh alur setelah aplikasi disesuaikan dengan skema produksi, termasuk
+  daftar instrumen, master QC, dan Tipping Bucket.
 
 ## Tantangan dan Solusi
 
@@ -201,6 +259,12 @@ raw_data.standard_certificate_id
 | Sequence angka berubah menjadi tanggal 1970 | Menyimpan sequence sebagai indeks, bukan timestamp |
 | Sesi lama berubah saat sertifikat baru dibuat | Menyimpan dan menggunakan `standard_certificate_id` |
 | Fallback koreksi menyebabkan statistik campuran | Memblokir penyimpanan sampai fallback bernilai nol |
+| Faktor cakupan sistem sedikit berbeda dengan workbook | Memakai invers Student-t eksak |
+| Penandatanganan TTE gagal terputus-putus | Memulihkan generator PDF TTE dan menambahkan fingerprint input untuk diagnosis |
+| Ditemukan temuan keamanan pada API dan RLS | Remidiasi otorisasi API, RLS, penutupan akses anon, serta penguatan secret dan CSP |
+| Supabase dapat diakses langsung dari jaringan | Containment jaringan, guard URL Supabase, dan perbaikan proxy Caddy |
+| Skema nama tabel berbeda antara database pengembangan dan produksi | Dukungan dua ragam schema dan penyesuaian endpoint |
+| Stasiun terduplikasi karena kode WMO | Deduplikasi berbasis WMO dengan opsi override manual |
 
 ## Ringkasan Capaian
 
@@ -215,19 +279,27 @@ raw_data.standard_certificate_id
 | 7 | Traceability urutan spreadsheet | Selesai |
 | 8 | Penguncian sertifikat standar | Selesai |
 | 9 | Migrasi database traceability | Selesai |
-| 10 | Pengujian regresi dan build | Selesai |
+| 10 | Kesetaraan kalkulasi dengan workbook | Selesai |
+| 11 | Penguatan TTE BSrE | Selesai |
+| 12 | Remediasi temuan pentest | Selesai |
+| 13 | Penguatan jaringan dan proxy | Selesai |
+| 14 | Kesiapan migrasi dan skema produksi | Selesai |
+| 15 | Formulir kalibrasi Tipping Bucket | Selesai |
+| 16 | Pengujian dan validasi | Selesai |
 
 ## Rencana Selanjutnya
 
+- Memastikan konvensi penulisan Kondisi Ruang pada sertifikat mengikuti workbook per jenis sertifikat
+  (AWOS/AWS, Pyranometer, dan Tipping Bucket).
+- Menyamakan perhitungan pyranometer antara QC Check dan Uncertainty Budget dalam satu sumber input.
+- Menambahkan kolom sensitivitas alat pada master sensor beserta perhitungan sensitivitas baru.
 - Melakukan validasi bersama tim kalibrasi menggunakan golden dataset seluruh parameter.
 - Menetapkan toleransi numerik resmi antara sistem dan workbook.
-- Menambahkan hash atau versi algoritma kalkulasi pada snapshot hasil.
-- Meningkatkan validasi integritas jumlah baris setelah upload.
 - Menyusun panduan operasional penggunaan Audit ON, Refresh, Hitung, LHKS, dan Uncertainty.
-- Melakukan deployment bertahap ke server produksi setelah validasi pengguna.
+- Melanjutkan pemantauan keamanan setelah remediasi pentest.
 
 ---
 
-*Dokumen ini disusun oleh Tim Pengembangan SILK MKG.*
+*Dokumen ini disusun oleh Tim Pengembangan SIMKAL MKG.*
 
 *Terakhir diperbarui: September 2026.*

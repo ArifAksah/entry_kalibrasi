@@ -1,4 +1,4 @@
-# Laporan Bulanan Kegiatan Pembangunan Sistem Informasi Layanan Kalibrasi (SILK) MKG
+# Laporan Bulanan Kegiatan Pembangunan Sistem Informasi Manajemen Kalibrasi (SIMKAL) MKG
 
 ## Periode: Agustus 2026
 
@@ -8,13 +8,13 @@
 
 Sistem pengolahan data dan penerbitan sertifikat kalibrasi sebelumnya masih bergantung pada file Excel yang dikelola secara manual oleh tim kalibrasi. Workbook tersebut memuat formula pengolahan data, interpolasi koreksi standar, konversi satuan, perhitungan statistik, dan penyusunan hasil kalibrasi. Walaupun telah digunakan sebagai acuan operasional, pengelolaan berbasis Excel memiliki keterbatasan dari sisi konsistensi formula, integrasi antarproses, keterlacakan data, dan keamanan penyimpanan.
 
-Untuk menjawab kebutuhan tersebut, Direktorat Data dan Komputasi bersama Direktorat Instrumentasi dan Kalibrasi melanjutkan pengembangan Sistem Informasi Layanan Kalibrasi MKG. Sistem ini berfungsi sebagai aplikasi terintegrasi untuk entri data kalibrasi, pengolahan data, pemeriksaan mutu, perhitungan ketidakpastian, penyusunan LHKS, dan penerbitan sertifikat kalibrasi.
+Untuk menjawab kebutuhan tersebut, Direktorat Data dan Komputasi bersama Direktorat Instrumentasi dan Kalibrasi melanjutkan pengembangan Sistem Informasi Manajemen Kalibrasi MKG. Sistem ini berfungsi sebagai aplikasi terintegrasi untuk entri data kalibrasi, pengolahan data, pemeriksaan mutu, perhitungan ketidakpastian, penyusunan LHKS, dan penerbitan sertifikat kalibrasi.
 
 Pengembangan pada bulan Agustus 2026 berfokus pada penyamaan formula sistem dengan workbook acuan, penerapan perhitungan khusus arah angin, standardisasi konversi satuan, serta penyediaan fitur audit untuk membandingkan hasil perhitungan Sistem dan Excel.
 
 ## Tujuan
 
-- Meningkatkan konsistensi hasil pengolahan data antara SILK dan workbook acuan tim kalibrasi.
+- Meningkatkan konsistensi hasil pengolahan data antara SIMKAL dan workbook acuan tim kalibrasi.
 - Memastikan koreksi arah angin dihitung berdasarkan jarak sudut terpendek.
 - Menstandarkan faktor konversi satuan sesuai konstanta yang digunakan pada workbook.
 - Menyediakan fasilitas audit untuk menelusuri sumber perbedaan hasil perhitungan.
@@ -189,6 +189,6 @@ Percobaan 3
 
 ---
 
-*Dokumen ini disusun oleh Tim Pengembangan SILK MKG.*
+*Dokumen ini disusun oleh Tim Pengembangan SIMKAL MKG.*
 
 *Terakhir diperbarui: Agustus 2026.*

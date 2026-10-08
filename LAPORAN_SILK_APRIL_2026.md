@@ -1,4 +1,4 @@
-# Laporan Bulanan Kegiatan Pembangunan Sistem Informasi Layanan Kalibrasi (SILK) MKG
+# Laporan Bulanan Kegiatan Pembangunan Sistem Informasi Manajemen Kalibrasi (SIMKAL) MKG
 
 ## Periode: April 2026
 
@@ -6,7 +6,7 @@
 
 ## Pendahuluan
 
-Sistem Informasi Layanan Kalibrasi (SILK) MKG terus dikembangkan untuk mendukung transformasi digital layanan kalibrasi. Pada bulan April 2026, pengembangan berfokus pada perbaikan fitur sertifikat, manajemen data instrumen, dan peningkatan用户体验 pengguna.
+Sistem Informasi Manajemen Kalibrasi (SIMKAL) MKG terus dikembangkan untuk mendukung transformasi digital layanan kalibrasi. Pada bulan April 2026, pengembangan berfokus pada perbaikan fitur sertifikat, manajemen data instrumen, dan peningkatan用户体验 pengguna.
 
 ## Tujuan
 
@@ -16,7 +16,7 @@ Sistem Informasi Layanan Kalibrasi (SILK) MKG terus dikembangkan untuk mendukung
 
 ## Hasil Kegiatan
 
-Progres pembangunan sistem Informasi layanan kalibrasi (SILK) telah membuat beberapa fitur selama bulan April 2026 sebagai berikut:
+Progres pembangunan sistem Informasi layanan kalibrasi (SIMKAL) telah membuat beberapa fitur selama bulan April 2026 sebagai berikut:
 
 ### 1. Perbaikan dan Penyempurnaan Sertifikat Kalibrasi
 
@@ -92,5 +92,5 @@ Progres pembangunan sistem Informasi layanan kalibrasi (SILK) telah membuat bebe
 
 ---
 
-*Dokumen ini disusun oleh Tim Pengembangan SILK MKG*
+*Dokumen ini disusun oleh Tim Pengembangan SIMKAL MKG*
 *Terakhir diperbarui: April 2026*

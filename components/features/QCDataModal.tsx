@@ -773,6 +773,27 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
    * Calculate UUT Avg, Correction, and Uncertainty for ALL sensor tabs (bulk)
    * then call onCalculateSaved to update the certificate table.
    */
+  /**
+   * Ambil data sensor standar: dari daftar yang dimuat lebih dulu, dan bila tidak
+   * ada ambil langsung dari API. Daftar sensor di aplikasi bisa belum memuat sensor
+   * standar tertentu sehingga tipe alat tidak terbaca dan drift ISO 9060 jatuh 0.
+   */
+  const resolveStdSensor = async (id: number | string | null | undefined) => {
+    if (id == null) return null
+    const found = (sensors as any[])?.find(
+      (sn: any) => String(sn?.id) === String(id),
+    )
+    if (found) return found
+    try {
+      const res = await fetch(`/api/sensors/${id}`)
+      if (!res.ok) return null
+      const payload = await res.json()
+      return (payload as any)?.data ?? payload ?? null
+    } catch {
+      return null
+    }
+  }
+
   const handleSaveToTable = async () => {
     if (sensorKeys.length === 0) return
     if (correctionLoading) return
@@ -992,9 +1013,11 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
           )
 
           // Tipe alat standar (untuk ISO 9060 Drift lookup)
-          const stdSensorForPyr = rowsForCalc[0]?.sensor_id_std
-            ? sensors.find((s: any) => s.id === rowsForCalc[0].sensor_id_std)
-            : null
+          const stdSensorForPyr = await resolveStdSensor(
+            rowsForCalc[0]?.sensor_id_std ??
+              (standardCertRecord as any)?.sensor_id ??
+              null,
+          )
 
           // Input dirakit lewat helper bersama supaya IDENTIK dengan UncertaintyModal
           // (temuan petugas kalibrasi: nilai sertifikat sempat menyimpang dari modal).

@@ -1,4 +1,4 @@
-# Laporan Bulanan Kegiatan Pembangunan Sistem Informasi Layanan Kalibrasi (SILK) MKG
+# Laporan Bulanan Kegiatan Pembangunan Sistem Informasi Manajemen Kalibrasi (SIMKAL) MKG
 
 ## Periode: Mei 2026
 
@@ -6,7 +6,7 @@
 
 ## Pendahuluan
 
-Pada bulan Mei 2026, pengembangan SILK berfokus pada integrasi layanan komunikasi (WhatsApp dan Email), penyempurnaan template sertifikat, dan perbaikan stabilitas sistem.
+Pada bulan Mei 2026, pengembangan SIMKAL berfokus pada integrasi layanan komunikasi (WhatsApp dan Email), penyempurnaan template sertifikat, dan perbaikan stabilitas sistem.
 
 ## Tujuan
 
@@ -16,7 +16,7 @@ Pada bulan Mei 2026, pengembangan SILK berfokus pada integrasi layanan komunikas
 
 ## Hasil Kegiatan
 
-Progres pembangunan sistem Informasi layanan kalibrasi (SILK) telah membuat beberapa fitur selama bulan Mei 2026 sebagai berikut:
+Progres pembangunan sistem Informasi layanan kalibrasi (SIMKAL) telah membuat beberapa fitur selama bulan Mei 2026 sebagai berikut:
 
 ### 1. Integrasi Layanan WhatsApp (WA Service)
 
@@ -84,5 +84,5 @@ Progres pembangunan sistem Informasi layanan kalibrasi (SILK) telah membuat bebe
 
 ---
 
-*Dokumen ini disusun oleh Tim Pengembangan SILK MKG*
+*Dokumen ini disusun oleh Tim Pengembangan SIMKAL MKG*
 *Terakhir diperbarui: Mei 2026*
