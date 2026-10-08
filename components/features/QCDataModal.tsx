@@ -19,8 +19,10 @@ import {
   PyranometerSensorData,
 } from '../../lib/uncertainty-utils'
 import {
+  buildMissingDriftMessage,
   buildPyranometerInputs,
   calculateNewSensitivity,
+  hasMissingDrift,
   isAnalogPyranometer,
   resolveStdSensor,
 } from '../../lib/pyranometer-inputs'
@@ -1024,6 +1026,16 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
               rules: pyranometerMethodProfile?.rules,
             },
           )
+          // Drift adalah komponen wajib: tanpa nilainya U95 tidak sah, jadi
+          // perhitungan dihentikan dan pengguna diminta mengisi drift dulu.
+          if (hasMissingDrift(pyrResult.audit)) {
+            throw new Error(
+              buildMissingDriftMessage({
+                stdSensor: stdSensorForPyr,
+                standardCertRecord,
+              }),
+            )
+          }
           const sensitivityOldValue =
             (uutSensor as any)?.sensitivity != null
               ? Number((uutSensor as any).sensitivity)

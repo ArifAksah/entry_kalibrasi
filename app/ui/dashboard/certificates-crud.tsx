@@ -38,8 +38,10 @@ import {
 } from '../../../lib/uncertainty-utils'
 import { resolveCalibrationMethodProfile } from '../../../lib/calibration-method-profiles'
 import {
+  buildMissingDriftMessage,
   buildPyranometerInputs,
   calculateNewSensitivity,
+  hasMissingDrift,
   isAnalogPyranometer,
   resolveStdSensor,
 } from '../../../lib/pyranometer-inputs'
@@ -1984,11 +1986,26 @@ const CertificatesCRUD: React.FC = () => {
             rules: pyranometerRules,
           },
         )
+        // Drift adalah komponen wajib pada budget ketidakpastian. Bila nilainya
+        // belum ada — atau pasangan pembacaan STD/UUT tidak valid sehingga input
+        // tidak bisa dirakit — perhitungan dihentikan dan pengguna diminta
+        // melengkapi data dulu, bukan menulis U95 yang belum sah.
         if (!pyrInputs) {
-          console.warn(
-            '[pyranometer] pasangan (std, uut) tidak valid → memakai parameter cadangan; sumber drift: ' +
-              pyrResult.audit.drift_source,
+          showError(
+            'Pasangan pembacaan STD dan UUT tidak valid, jadi hasil kalibrasi pyranometer belum bisa dihitung. Periksa kembali data mentah sesi ini.',
           )
+          setIsGenerating(false)
+          return
+        }
+        if (hasMissingDrift(pyrResult.audit)) {
+          showError(
+            buildMissingDriftMessage({
+              stdSensor: stdSensorForPyr,
+              standardCertRecord,
+            }),
+          )
+          setIsGenerating(false)
+          return
         }
         const sensitivityOldValue =
           (activeUutSensor as any)?.sensitivity != null

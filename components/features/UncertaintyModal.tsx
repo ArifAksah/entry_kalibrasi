@@ -828,9 +828,10 @@ function UncertaintyContent({
               <div>
                 Drift standar: <b>{pyranometerResult.audit.drift_class || '-'} / {pyranometerResult.audit.drift_value_percent}%</b>
                 {pyranometerResult.audit.drift_source === 'missing' && (
-                  <span className="ml-1 text-amber-700">
-                    (tipe alat standar tidak terbaca — drift dianggap 0, U95 belum
-                    dapat dipercaya)
+                  <span className="ml-1 font-semibold text-red-700">
+                    (tipe alat standar tidak terbaca dan nilai Drift belum ada — U95
+                    ini BELUM SAH; isi kolom Drift pada data alat standar lalu
+                    hitung ulang)
                   </span>
                 )}
               </div>

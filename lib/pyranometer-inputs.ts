@@ -76,6 +76,49 @@ export async function resolveStdSensor(
 }
 
 /**
+ * Pesan saat komponen drift belum diketahui.
+ *
+ * Drift ISO 9060 adalah komponen WAJIB pada budget ketidakpastian: bila tipe alat
+ * standar tidak dikenali dan record sertifikat standar belum punya nilai drift,
+ * hasil U95 tidak sah (drift tidak boleh dianggap 0). Kedua jalur penulis
+ * sertifikat memakai pesan ini dan MENGhentikan perhitungan.
+ */
+export function buildMissingDriftMessage(args: {
+    stdSensor?: any
+    standardCertRecord?: any
+}): string {
+    const sensorName = args.stdSensor?.name || args.stdSensor?.sensor_name || ''
+    const serial = args.stdSensor?.serial_number
+        ? ` (S/N ${args.stdSensor.serial_number})`
+        : ''
+    const sensorLabel = sensorName ? `alat standar ${sensorName}${serial}` : 'alat standar'
+    const certNumber = args.standardCertRecord?.no_certificate
+    const certLabel = certNumber
+        ? `sertifikat standar ${certNumber}`
+        : 'sertifikat standar yang dipakai'
+
+    return (
+        `Komponen drift ${sensorLabel} belum diketahui, jadi U95 belum sah dihitung ` +
+        `(drift tidak boleh dianggap 0).\n\n` +
+        `Penyebab: tipe ${sensorLabel} tidak dikenali sebagai kelas ISO 9060 dan ` +
+        `nilai Drift pada ${certLabel} masih kosong atau 0.\n\n` +
+        `Perbaikan: isi kolom "Drift" pada data kalibrasi ${sensorLabel} ` +
+        `(menu Instrumen), atau lengkapi tipe sensor standarnya ` +
+        `(mis. CMP3 = Kelas C = 3 %, CMP6 = Kelas B = 1,5 %, CMP11/CMP21/CMP22 = Kelas A = 0,8 %).\n\n` +
+        `Setelah drift tersedia, ulangi perhitungan. Nilai U95 yang lama belum dapat ` +
+        `dipakai sebagai hasil sertifikat.`
+    )
+}
+
+/**
+ * Apakah hasil perhitungan pyranometer kehilangan komponen drift sehingga TIDAK
+ * boleh dijadikan hasil sertifikat.
+ */
+export function hasMissingDrift(audit: { drift_source?: string } | null | undefined): boolean {
+    return audit?.drift_source === 'missing'
+}
+
+/**
  * U95 sertifikat standar (dalam %): interpolasi dari titik setpoint, kalau
  * tidak ada titik baru pakai `u95_general`, kalau tidak ada sama sekali → 0.
  * Ini yang membedakan dari perilaku lama `u95_general || 2.1`.

@@ -1,6 +1,8 @@
 import {
+    buildMissingDriftMessage,
     buildPyranometerInputs,
     calculateNewSensitivity,
+    hasMissingDrift,
     isAnalogPyranometer,
     resolveCertU95Percent,
     resolveStdSensor,
@@ -152,5 +154,39 @@ describe('buildPyranometerInputs — sumber drift tercatat', () => {
         const result = calculatePyranometerUncertainty(inputs.params)
         expect(result.audit.drift_source).toBe('missing')
         expect(result.audit.drift_value_percent).toBe(0)
+    })
+})
+
+/**
+ * Drift adalah komponen WAJIB. Perhitungan harus berhenti (bukan menulis U95)
+ * ketika nilainya belum ada, dan pengguna diberi tahu cara melengkapinya.
+ */
+describe('gerbang drift wajib — buildMissingDriftMessage / hasMissingDrift', () => {
+    it('hasMissingDrift hanya true untuk sumber `missing`', () => {
+        expect(hasMissingDrift({ drift_source: 'missing' })).toBe(true)
+        expect(hasMissingDrift({ drift_source: 'type' })).toBe(false)
+        expect(hasMissingDrift({ drift_source: 'certificate' })).toBe(false)
+        expect(hasMissingDrift({})).toBe(false)
+        expect(hasMissingDrift(null)).toBe(false)
+        expect(hasMissingDrift(undefined)).toBe(false)
+    })
+
+    it('pesan menyebut alat standar, sertifikat standar, dan cara perbaikan', () => {
+        const message = buildMissingDriftMessage({
+            stdSensor: { name: 'CMP3-ASRS', serial_number: '164097' },
+            standardCertRecord: { no_certificate: '001/STD/2025' },
+        })
+        expect(message).toContain('CMP3-ASRS')
+        expect(message).toContain('164097')
+        expect(message).toContain('001/STD/2025')
+        expect(message).toContain('Drift')
+        expect(message).toContain('CMP3')
+    })
+
+    it('tetap dapat ditindaklanjuti tanpa detail sensor/sertifikat', () => {
+        const message = buildMissingDriftMessage({})
+        expect(message).toContain('alat standar')
+        expect(message).toContain('Drift')
+        expect(message).toContain('sertifikat standar')
     })
 })
