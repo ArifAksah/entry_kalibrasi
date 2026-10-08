@@ -1019,7 +1019,15 @@ const InstrumentsCRUD: React.FC = () => {
         missing.push(`${certLabel}: Tanggal Kalibrasi`)
       }
       ;(cert?.sensorData || []).forEach((sd: any) => {
-        if (isBlank(sd?.tracebility)) missing.push(`${certLabel}: Traceability`)
+        // Traceability disimpan per SENSOR (`sensorForms[].tracebility` → kolom
+        // `sensor.tracebility`), bukan di data sertifikat. Isian di form pun
+        // menyunting objek sensor, jadi validasi harus membaca sumber yang sama
+        // agar tidak menuduh kosong padahal sudah diisi.
+        const sensorForCert = sensorForms.find(
+          (item) => item.id === sd?.sensorLocalId,
+        )
+        const traceability = sd?.tracebility || sensorForCert?.tracebility
+        if (isBlank(traceability)) missing.push(`${certLabel}: Traceability`)
         if (isBlankOrZero(sd?.drift)) missing.push(`${certLabel}: Drift`)
         if (isBlankOrZero(sd?.u95_general)) {
           missing.push(`${certLabel}: U95 General`)
