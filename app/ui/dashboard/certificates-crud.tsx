@@ -6234,8 +6234,37 @@ const CertificatesCRUD: React.FC = () => {
                                       (name) => name.id === activeSensor.sensor_name_id,
                                     )?.name
                                   : null
-                                const allStandardSensors = standardInstruments.flatMap(
-                                  (item: any) => item.sensor || [],
+                                // Sensor standar untuk Tipping Bucket.
+                                // `/api/instruments?type=standard` hanya mengirim sensor
+                                // ber-`is_standard = true`, sehingga alat standar yang
+                                // sensornya belum ditandai standar (mis. gelas ukur/jangka
+                                // sorong TB) tidak pernah muncul di daftar ini walau
+                                // sertifikatnya ada. Daftar dilengkapi dari: sensor
+                                // bersarang, sensor yang dirujuk sertifikat standar, dan
+                                // daftar sensor lengkap aplikasi.
+                                const nestedStandardSensors =
+                                  standardInstruments.flatMap(
+                                    (item: any) => item.sensor || [],
+                                  )
+                                const standardSensorIds = Array.from(
+                                  new Set([
+                                    ...nestedStandardSensors.map((s: any) =>
+                                      Number(s?.id),
+                                    ),
+                                    ...standardCerts.map((c: any) =>
+                                      Number((c as any)?.sensor_id),
+                                    ),
+                                  ]),
+                                ).filter((id) => Number.isFinite(id) && id > 0)
+                                const allStandardSensors = standardSensorIds.map(
+                                  (id) =>
+                                    nestedStandardSensors.find(
+                                      (s: any) => Number(s?.id) === id,
+                                    ) ??
+                                    (sensors as any[]).find(
+                                      (s: any) => Number(s?.id) === id,
+                                    ) ??
+                                    { id },
                                 )
 
                                 return (
