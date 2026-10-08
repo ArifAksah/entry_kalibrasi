@@ -141,3 +141,6 @@ tsbuildinfo
 
 # Script administratif manual (destruktif, bukan untuk deploy)
 /database/dev_hard_reset_for_resign.sql
+
+# state lokal CommandCode (setelan/preferensi mesin, bukan bagian proyek)
+.commandcode/
