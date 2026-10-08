@@ -53,7 +53,16 @@ export interface LegacyResultEntry {
   endDate: string
   table: Array<{ title: string; headers?: string[]; rows: Array<{ key: string; value: string; unit: string; extraValues?: string[] }> }>
   images: Array<{ url: string; caption: string }>
-  environment: Array<{ key: string; value: string; unit: string }>
+  environment: Array<{
+    key: string
+    value: string
+    unit: string
+    type?: string
+    awal?: string
+    akhir?: string
+    u95?: string
+    enabled?: boolean
+  }>
   notesForm: {
     calibration_methode: string
     reference_document: string
@@ -117,7 +126,16 @@ function sensorV1ToLegacyEntry(s: SensorResultV1): LegacyResultEntry {
       })),
     })),
     images: s.display.images.map((img) => ({ url: img.url, caption: img.caption })),
-    environment: s.setup.environment.map((c) => ({ key: c.key, value: c.value, unit: c.unit })),
+    environment: s.setup.environment.map((c) => ({
+      key: c.key,
+      value: c.value,
+      unit: c.unit,
+      type: c.type,
+      awal: c.awal,
+      akhir: c.akhir,
+      u95: c.u95,
+      ...(typeof c.enabled === 'boolean' ? { enabled: c.enabled } : {}),
+    })),
     notesForm: {
       calibration_methode: s.setup.calibration_method,
       reference_document: s.setup.reference_document,

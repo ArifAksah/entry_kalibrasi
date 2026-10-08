@@ -29,7 +29,7 @@ import {
   wrapWindDirectionCorrection,
 } from '../../lib/wind-direction'
 import { compareRawDataRows } from '../../lib/raw-data-order'
-import { calculateRoomCondition } from '../../lib/room-condition'
+import { resolveRoomCondition } from '../../lib/room-condition'
 import { LoadingOverlay } from '../ui/Loading'
 
 // Define RawDataRow interface locally if not exported, or match what's used in QCDataModal
@@ -252,6 +252,26 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
     groupedData[key].sort(compareRawDataRows)
   })
 
+  /**
+   * Daftar halaman hasil (satu halaman per sensor).
+   * Sumber utama = sensor yang punya data mentah, DITAMBAH sensor yang tercatat
+   * di hasil sertifikat. Ini penting untuk pyranometer: Global & Diffuse harus
+   * selalu tampil dua halaman walau salah satu sesinya belum punya data mentah.
+   */
+  const pageSensorKeys = (() => {
+    const keys = Object.keys(groupedData)
+    const extra: string[] = []
+    if (Array.isArray(sessionResults)) {
+      sessionResults.forEach((result: any) => {
+        const id = result?.sensorId ?? result?.sensor_id
+        if (id == null) return
+        const key = String(id)
+        if (!keys.includes(key) && !extra.includes(key)) extra.push(key)
+      })
+    }
+    return [...keys, ...extra]
+  })()
+
   // Helper: Sample Data (Top 15 + Bottom 15)
   const getSampledData = (rows: RawDataRow[]) => {
     if (!rows || rows.length <= 30) return rows
@@ -352,10 +372,6 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
       )
     }
     return null
-  }
-
-  const computeEnvCondition = (type: 'suhu' | 'kelembaban'): string => {
-    return calculateRoomCondition(type, rawData)?.display ?? '-'
   }
 
   return (
@@ -613,6 +629,83 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                           </tr>
                         )
                       })}
+
+                    {/* Khusus pyranometer — mengikuti desain LHK workbook:
+                        Kapasitas & Sensitivitas Alat per sensor */}
+                    {effectiveSensors
+                      .filter((s: Sensor) => !s.is_standard)
+                      .some((s: Sensor) =>
+                        isPyranometer({
+                          name: s.name,
+                          type: s.type,
+                          resolution: s.resolution ?? undefined,
+                          range_capacity: s.range_capacity,
+                        } as any),
+                      ) && (
+                      <>
+                        <tr>
+                          <td className="border-none align-top pt-1">
+                            Kapasitas / <span className="italic">Capacity</span>
+                          </td>
+                          <td className="border-none align-top pt-1"></td>
+                          <td className="border-none align-top pt-1"></td>
+                        </tr>
+                        {effectiveSensors
+                          .filter((s: Sensor) => !s.is_standard)
+                          .map((s: Sensor) => {
+                            const master = allSensors?.find((x) => x.id === s.id)
+                            const value = (
+                              s.range_capacity ||
+                              master?.range_capacity ||
+                              ''
+                            ).toString()
+                            const unit =
+                              s.range_capacity_unit ||
+                              master?.range_capacity_unit ||
+                              ''
+                            return (
+                              <tr key={`cap-${s.id}`}>
+                                <td className="border-none align-top pl-6">
+                                  {getSensorDisplayName(s)}
+                                </td>
+                                <td className="border-none align-top">:</td>
+                                <td className="border-none align-top">
+                                  {value ? `${value} ${unit}`.trim() : '-'}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        <tr>
+                          <td className="border-none align-top pt-1">
+                            Sensitivitas Alat /{' '}
+                            <span className="italic">Sensitivity</span>
+                          </td>
+                          <td className="border-none align-top pt-1"></td>
+                          <td className="border-none align-top pt-1"></td>
+                        </tr>
+                        {effectiveSensors
+                          .filter((s: Sensor) => !s.is_standard)
+                          .map((s: Sensor) => {
+                            const master = allSensors?.find((x) => x.id === s.id)
+                            const raw =
+                              (s as any).sensitivity ?? (master as any)?.sensitivity
+                            const sens = Number(raw)
+                            return (
+                              <tr key={`sens-${s.id}`}>
+                                <td className="border-none align-top pl-6">
+                                  {getSensorDisplayName(s)}
+                                </td>
+                                <td className="border-none align-top">:</td>
+                                <td className="border-none align-top">
+                                  {raw != null && Number.isFinite(sens)
+                                    ? `${sens} µV/Wm-2`
+                                    : '-'}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                      </>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -791,11 +884,6 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
 
                 {/* Kondisi Ruang - format (nilai ± deviasi) satuan */}
                 {(() => {
-                  const tempCondition = calculateRoomCondition('suhu', rawData)
-                  const humCondition = calculateRoomCondition(
-                    'kelembaban',
-                    rawData,
-                  )
 
                   // Fallback: sessionResults.environment or environmentConditions
                   const globalTemp = effectiveEnvironmentConditions?.temperature
@@ -817,10 +905,27 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                         e.key?.toLowerCase().includes('rh'),
                     )?.value || globalHum
 
+                  // Sumber kondisi ruang = entry Awal & Akhir dari sertifikat
+                  // (sama dengan halaman cetak). Data mentah TIDAK dipakai lagi.
+                  const tempEntry = allEnvs.find(
+                    (e: any) =>
+                      e.key?.toLowerCase().includes('suhu') ||
+                      e.key?.toLowerCase().includes('temp'),
+                  )
+                  const humEntry = allEnvs.find(
+                    (e: any) =>
+                      e.key?.toLowerCase().includes('kelemba') ||
+                      e.key?.toLowerCase().includes('hum') ||
+                      e.key?.toLowerCase().includes('rh'),
+                  )
                   const tempDisplay =
-                    tempCondition?.display ?? fallbackTemp ?? '-'
+                    resolveRoomCondition(tempEntry)?.display ??
+                    fallbackTemp ??
+                    '-'
                   const humDisplay =
-                    humCondition?.display ?? fallbackHum ?? '-'
+                    resolveRoomCondition(humEntry)?.display ??
+                    fallbackHum ??
+                    '-'
 
                   if (tempDisplay === '-' && humDisplay === '-') return null
 
@@ -968,16 +1073,41 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                           }
                         }
 
+                        const stdSensitivity = (stdSensor as any)?.sensitivity
+                        const isPyranoSensor = isPyranometer({
+                          name: s.name,
+                          type: s.type,
+                          resolution: s.resolution ?? undefined,
+                          range_capacity: s.range_capacity,
+                        } as any)
+
                         return (
-                          <tr key={`std-${s.id}`}>
-                            <td className="border-none align-top pl-6">
-                              {getSensorDisplayName(s)}
-                            </td>
-                            <td className="border-none align-top">:</td>
-                            <td className="border-none align-top">
-                              {displayStr}
-                            </td>
-                          </tr>
+                          <React.Fragment key={`std-${s.id}`}>
+                            <tr>
+                              <td className="border-none align-top pl-6">
+                                {getSensorDisplayName(s)}
+                              </td>
+                              <td className="border-none align-top">:</td>
+                              <td className="border-none align-top">
+                                {displayStr}
+                              </td>
+                            </tr>
+                            {isPyranoSensor && (
+                              <tr>
+                                <td className="border-none align-top pl-6">
+                                  Sensitivitas Standar /{' '}
+                                  <span className="italic">Standard Sensitivity</span>
+                                </td>
+                                <td className="border-none align-top">:</td>
+                                <td className="border-none align-top">
+                                  {stdSensitivity != null &&
+                                  Number.isFinite(Number(stdSensitivity))
+                                    ? `${Number(stdSensitivity)} µV/Wm-2`
+                                    : '-'}
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
                         )
                       })}
                     {standardCerts.length === 0 && (
@@ -1040,9 +1170,34 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
             <div className="page-break"></div>
 
             {/* --- DATA PAGES: one section per sensor --- */}
-            {Object.keys(groupedData).map((sensorKey, pageIdx) => {
-              const data = groupedData[sensorKey]
+            {pageSensorKeys.map((sensorKey, pageIdx) => {
+              const data = groupedData[sensorKey] ?? []
               const sampled = getSampledData(data)
+
+              // Sensor tercatat di sertifikat tetapi belum punya data mentah
+              // (biasanya karena sesi/sheet salah atau tertukar). Halamannya tetap
+              // ditampilkan supaya tidak terlihat "hanya satu sensor".
+              if (data.length === 0) {
+                const emptySensor = sensors.find(
+                  (item) => String(item.id) === sensorKey,
+                )
+                const emptyName = emptySensor
+                  ? getSensorDisplayName(emptySensor)
+                  : `Sensor #${sensorKey}`
+                return (
+                  <div key={sensorKey} className="mb-6">
+                    <div className="text-sm font-bold underline mb-1">
+                      {emptyName}
+                    </div>
+                    <div className="text-xs italic text-gray-600">
+                      Data mentah belum tersedia untuk sensor ini. Periksa kembali
+                      pemetaan sheet/sesi pada sertifikat — setiap sensor
+                      pyranometer (Global dan Diffuse) harus punya sesi datanya
+                      sendiri.
+                    </div>
+                  </div>
+                )
+              }
 
               const sensor = sensors.find((s) => String(s.id) === sensorKey)
               const sensorName = sensor
@@ -1144,6 +1299,13 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
               let stdDevCf = 0
               let stdDevStd = 0
               let stdDevUut = 0
+              // Ringkasan ala workbook pyranometer: Rata-rata / Max / Min
+              let maxCf = 0
+              let minCf = 0
+              let maxStd = 0
+              let minStd = 0
+              let maxUut = 0
+              let minUut = 0
 
               if (isPyranoForAvg) {
                 // PYRANOMETER: Hitung CF dan statistik
@@ -1201,6 +1363,14 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                       (uutValues.length - 1)
                     : 0
                 stdDevUut = Math.sqrt(varianceUut)
+
+                // Max / Min (mengikuti tabel ringkasan LHK workbook)
+                maxCf = cfValues.length > 0 ? Math.max(...cfValues) : 0
+                minCf = cfValues.length > 0 ? Math.min(...cfValues) : 0
+                maxStd = stdValues.length > 0 ? Math.max(...stdValues) : 0
+                minStd = stdValues.length > 0 ? Math.min(...stdValues) : 0
+                maxUut = uutValues.length > 0 ? Math.max(...uutValues) : 0
+                minUut = uutValues.length > 0 ? Math.min(...uutValues) : 0
 
                 // Koreksi dalam %
                 const corrections = cfValues.map((cf) => (cf - 1) * 100)
@@ -1318,19 +1488,23 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                   )
                 : null
               const envs = sessionRes?.environment || []
-              const temp =
-                envs.find(
-                  (e: any) =>
-                    e.key?.toLowerCase().includes('suhu') ||
-                    e.key?.toLowerCase().includes('temp'),
-                )?.value || globalTemp
-              const hum =
-                envs.find(
-                  (e: any) =>
-                    e.key?.toLowerCase().includes('kelemba') ||
-                    e.key?.toLowerCase().includes('humidity') ||
-                    e.key?.toLowerCase().includes('rh'),
-                )?.value || globalHum
+              // Kondisi ruang per sensor: ambil ENTRY (Awal & Akhir) dari sertifikat,
+              // bukan data mentah kalibrasi — supaya sama dengan halaman cetak.
+              const tempEntry = envs.find(
+                (e: any) =>
+                  e.key?.toLowerCase().includes('suhu') ||
+                  e.key?.toLowerCase().includes('temp'),
+              )
+              const humEntry = envs.find(
+                (e: any) =>
+                  e.key?.toLowerCase().includes('kelemba') ||
+                  e.key?.toLowerCase().includes('humidity') ||
+                  e.key?.toLowerCase().includes('rh'),
+              )
+              const tempResolved = resolveRoomCondition(tempEntry)
+              const humResolved = resolveRoomCondition(humEntry)
+              const temp = tempResolved?.display || globalTemp
+              const hum = humResolved?.display || globalHum
               // For lack of start/end, just put same value in both columns
               const tempAwal = temp,
                 tempAkhir = temp
@@ -1443,16 +1617,10 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                         <td className="border-none px-1">
                                           {' '}
                                           <span className="inline-block w-1/2">
-                                            {calculateRoomCondition(
-                                              'suhu',
-                                              rawData,
-                                            )?.initialDisplay ?? tempAwal}
+                                            {tempResolved?.initialDisplay ?? tempAwal}
                                           </span>
                                           <span className="inline-block w-1/2">
-                                            {calculateRoomCondition(
-                                              'suhu',
-                                              rawData,
-                                            )?.finalDisplay ?? tempAkhir}
+                                            {tempResolved?.finalDisplay ?? tempAkhir}
                                           </span>
                                         </td>
                                       </tr>
@@ -1463,16 +1631,10 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                                         <td className="border-none px-1">
                                           {' '}
                                           <span className="inline-block w-1/2">
-                                            {calculateRoomCondition(
-                                              'kelembaban',
-                                              rawData,
-                                            )?.initialDisplay ?? humAwal}
+                                            {humResolved?.initialDisplay ?? humAwal}
                                           </span>
                                           <span className="inline-block w-1/2">
-                                            {calculateRoomCondition(
-                                              'kelembaban',
-                                              rawData,
-                                            )?.finalDisplay ?? humAkhir}
+                                            {humResolved?.finalDisplay ?? humAkhir}
                                           </span>
                                         </td>
                                       </tr>
@@ -1825,19 +1987,36 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                           </tr>
                           <tr>
                             <td className="border border-black text-left font-bold px-1 pl-2">
-                              Std Dev
+                              Max
                             </td>
                             <td className="border border-black px-1">
                               {' '}
-                              {stdDevStd.toFixed(2)}
+                              {maxStd.toFixed(2)}
                             </td>
                             <td className="border border-black px-1">
                               {' '}
-                              {stdDevUut.toFixed(2)}
+                              {maxUut.toFixed(2)}
                             </td>
                             <td className="border border-black px-1 text-green-700">
                               {' '}
-                              {stdDevCf.toFixed(2)}
+                              {maxCf.toFixed(2)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="border border-black text-left font-bold px-1 pl-2">
+                              Min
+                            </td>
+                            <td className="border border-black px-1">
+                              {' '}
+                              {minStd.toFixed(2)}
+                            </td>
+                            <td className="border border-black px-1">
+                              {' '}
+                              {minUut.toFixed(2)}
+                            </td>
+                            <td className="border border-black px-1 text-green-700">
+                              {' '}
+                              {minCf.toFixed(2)}
                             </td>
                           </tr>
                         </>

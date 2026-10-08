@@ -20,6 +20,17 @@ function canManage(callerRole: string | null, callerId: string, order: any): boo
   return false
 }
 
+async function canAccessOrder(callerRole: string | null, callerId: string, order: any) {
+  if (callerRole === 'admin' || order.created_by === callerId) return true
+  const { data } = await supabase
+    .from('calibration_order_personnel')
+    .select('id')
+    .eq('order_id', order.id)
+    .eq('personel_id', callerId)
+    .maybeSingle()
+  return Boolean(data)
+}
+
 /** GET /api/calibration-orders/[id] — detail + personnel + items */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const caller = await requireCaller(request)
@@ -31,6 +42,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const order = await loadOrder(orderId)
   if (!order) return notFound('Order tidak ditemukan')
+  if (!(await canAccessOrder(caller.role, caller.user.id, order))) return forbidden()
 
   const [personnel, items, history] = await Promise.all([
     supabase
@@ -39,7 +51,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .eq('order_id', orderId),
     supabase
       .from('calibration_order_items')
-      .select('id, order_id, identification_sequence, no_identification, instrument_id, instrument_code, status, created_at, voided_at, void_reason, certificate(id, no_certificate, status)')
+      .select('id, order_id, identification_sequence, no_identification, instrument_id, instrument_code, status, created_at, voided_at, void_reason, certificate(id, no_certificate, status), letter(id, no_letter, status, issue_date)')
       .eq('order_id', orderId)
       .order('identification_sequence', { ascending: true }),
     supabase
@@ -58,6 +70,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         certificate: Array.isArray(item.certificate)
           ? item.certificate[0] ?? null
           : item.certificate ?? null,
+        letter: Array.isArray(item.letter)
+          ? item.letter[0] ?? null
+          : item.letter ?? null,
+        can_create_letter:
+          (caller.role === 'admin' || caller.role === 'calibrator') &&
+          ['booked', 'postponed', 'in_progress'].includes(order.status),
       })),
       schedule_history: history.data || [],
     },

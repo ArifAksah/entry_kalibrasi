@@ -22,6 +22,7 @@ const SensorsCRUD: React.FC = () => {
     range_capacity: '',
     range_capacity_unit: '',
     graduating: '',
+    sensitivity: '',
     graduating_unit: '',
     funnel_diameter: 0,
     funnel_diameter_unit: '',
@@ -48,6 +49,7 @@ const SensorsCRUD: React.FC = () => {
         range_capacity: sensor.range_capacity,
         range_capacity_unit: sensor.range_capacity_unit,
         graduating: sensor.graduating,
+        sensitivity: (sensor as any).sensitivity ?? '',
         graduating_unit: sensor.graduating_unit,
         funnel_diameter: sensor.funnel_diameter,
         funnel_diameter_unit: sensor.funnel_diameter_unit,
@@ -67,6 +69,7 @@ const SensorsCRUD: React.FC = () => {
         range_capacity: '',
         range_capacity_unit: '',
         graduating: '',
+        sensitivity: '',
         graduating_unit: '',
         funnel_diameter: 0,
         funnel_diameter_unit: '',
@@ -436,41 +439,21 @@ const SensorsCRUD: React.FC = () => {
                         <option value="m">m</option>
                       </select>
                     </div>
-
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Graduating
+                        Sensitivitas
                       </label>
                       <input
                         type="text"
-                        name="graduating"
-                        value={formData.graduating}
+                        name="sensitivity"
+                        value={formData.sensitivity ?? ''}
                         onChange={handleInputChange}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                        placeholder="Graduating value"
+                        placeholder="Ex: 7.22 (µV/Wm-2)"
                       />
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Graduating Unit
-                      </label>
-                      <select
-                        name="graduating_unit"
-                        value={formData.graduating_unit}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                      >
-                        <option value="">Select unit</option>
-                        <option value="ml">ml</option>
-                        <option value="l">l</option>
-                        <option value="g">g</option>
-                        <option value="kg">kg</option>
-                        <option value="mm">mm</option>
-                        <option value="cm">cm</option>
-                        <option value="m">m</option>
-                      </select>
-                    </div>
+
                   </div>
 
                   {/* Kolom 3: Funnel & Volume */}

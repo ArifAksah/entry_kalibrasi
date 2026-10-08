@@ -23,6 +23,8 @@ jest.mock('next/server', () => {
 let callerRole = 'calibrator'
 const mockPersonelSelect = jest.fn()
 const mockRoleSelect = jest.fn()
+const mockStationSelect = jest.fn()
+const mockUserStationSelect = jest.fn()
 
 jest.mock('../../lib/api-auth', () => ({
   getCaller: jest.fn(async () => ({ user: { id: 'caller' }, role: callerRole })),
@@ -36,6 +38,8 @@ jest.mock('../../lib/supabase', () => ({
   supabaseAdmin: {
     from: (table: string) => {
       if (table === 'user_roles') return { select: mockRoleSelect }
+      if (table === 'station') return { select: mockStationSelect }
+      if (table === 'user_stations') return { select: mockUserStationSelect }
       return { select: mockPersonelSelect }
     },
   },
@@ -69,6 +73,9 @@ function mockQueries() {
     data: [{ user_id: 'person-1', role: 'assignor', station_id: 7 }],
     error: null,
   })
+  // Stasiun 7 valid; user_stations kosong (sumber utama tetap user_roles).
+  mockStationSelect.mockResolvedValue({ data: [{ id: 7 }], error: null })
+  mockUserStationSelect.mockResolvedValue({ data: [], error: null })
 }
 
 describe('GET /api/personel data minimization', () => {
@@ -99,6 +106,46 @@ describe('GET /api/personel data minimization', () => {
       ...personelRows[0],
       role: 'assignor',
       station_id: 7,
+    }])
+  })
+
+  it('tidak meneruskan station_id lama yang sudah tidak ada di tabel station', async () => {
+    callerRole = 'admin'
+    // station_id lama (mis. 151) tidak ada di tabel station → jangan diteruskan,
+    // supaya penyimpanan tidak melanggar foreign key user_stations.
+    mockRoleSelect.mockResolvedValue({
+      data: [{ user_id: 'person-1', role: 'user_station', station_id: 151 }],
+      error: null,
+    })
+    mockStationSelect.mockResolvedValue({ data: [{ id: 7 }], error: null })
+
+    const response = await GET(request())
+
+    expect(await response.json()).toEqual([{
+      ...personelRows[0],
+      role: 'user_station',
+      station_id: null,
+    }])
+  })
+
+  it('memakai stasiun dari user_stations bila tersedia', async () => {
+    callerRole = 'admin'
+    mockRoleSelect.mockResolvedValue({
+      data: [{ user_id: 'person-1', role: 'user_station', station_id: 151 }],
+      error: null,
+    })
+    mockStationSelect.mockResolvedValue({ data: [{ id: 7 }, { id: 553 }], error: null })
+    mockUserStationSelect.mockResolvedValue({
+      data: [{ user_id: 'person-1', station_id: 553 }],
+      error: null,
+    })
+
+    const response = await GET(request())
+
+    expect(await response.json()).toEqual([{
+      ...personelRows[0],
+      role: 'user_station',
+      station_id: 553,
     }])
   })
 })

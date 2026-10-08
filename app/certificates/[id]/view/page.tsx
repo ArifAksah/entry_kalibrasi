@@ -6,18 +6,24 @@ import Image from 'next/image'
 import QRCodeStyling from 'qr-code-styling'
 import QRCode from 'react-qr-code'
 import bmkgLogo from '../../../bmkg.png' // Pastikan path logo ini benar
-import { formatUnit, needsConversion } from '../../../../lib/unitConversion'
+import { formatUnit } from '../../../../lib/unitConversion'
 import {
   isDefaultNotesOthersValue,
   normalizeRichTextValue,
   richTextContentClassName,
+  isKnownDefaultNotesOthersValue,
+  resolveNotesOthersHtml,
 } from '../../../../lib/rich-text'
 import { resultsToLegacyView } from '../../../../lib/validators/certificate-results-render-adapter'
-import { calculateRoomCondition } from '../../../../lib/room-condition'
+import {
+  resolveRoomCondition,
+  roomConditionDefinition,
+} from '../../../../lib/room-condition'
 import {
   classifyCalibrationParameter,
   formatCalibrationResultRow,
   formatCalibrationResultValue,
+  decimalsFromResolution,
 } from '../../../../lib/result-display-format'
 import { supabase } from '../../../../lib/supabase'
 import {
@@ -77,6 +83,7 @@ type Cert = {
   results?: ResultItem[] // Menambahkan results di sini
   version?: number
   public_id?: string // Added for public verification
+  calibration_place?: 'FC' | 'IFC' | 'LC' | null
 }
 
 type Station = {
@@ -355,13 +362,6 @@ const ViewCertificatePage: React.FC = () => {
   const qrRenderedCountRef = useRef<number>(0)
   const expectedQRCodesRef = useRef<number>(0)
   const [allRawData, setAllRawData] = useState<any[]>([])
-
-  const computeEnvCondition = useCallback(
-    (type: 'suhu' | 'kelembaban', sensorRawData: any[]): string => {
-      return calculateRoomCondition(type, sensorRawData)?.display ?? '-'
-    },
-    [],
-  )
 
   // Helper to resolve canonical sensor name
   const resolveSensorName = useCallback(
@@ -2507,6 +2507,10 @@ const ViewCertificatePage: React.FC = () => {
                                         .slice(0, 10)
                                     : '-'
                                   const place = station?.name || res?.place || '-'
+                                  // Lapang (FC/IFC): tanpa baris Tanggal Masuk, tanggal kalibrasi = mulai kegiatan.
+                                  const isLapang =
+                                    cert?.calibration_place === 'FC' ||
+                                    cert?.calibration_place === 'IFC'
                                   const sensorInfo: Array<{
                                     label: string
                                     labelEng: string
@@ -2544,16 +2548,22 @@ const ViewCertificatePage: React.FC = () => {
                                         },
                                       ]
                                       : []),
-                                    {
-                                      label: 'Tanggal Masuk / ',
-                                      labelEng: 'Date of Entry',
-                                      value: start,
-                                      topGap: true,
-                                    },
+                                    ...(isLapang
+                                      ? []
+                                      : [
+                                          {
+                                            label: 'Tanggal Masuk / ',
+                                            labelEng: 'Date of Entry',
+                                            value: start,
+                                            topGap: true,
+                                          },
+                                        ]),
                                     {
                                       label: 'Tanggal Kalibrasi / ',
                                       labelEng: 'Calibration Date',
-                                      value: end,
+                                      // Sertifikat lapang: tanggal kalibrasi = tanggal mulai kegiatan.
+                                      value: isLapang ? start : end,
+                                      topGap: isLapang,
                                     },
                                     {
                                       label: 'Tempat Kalibrasi / ',
@@ -2569,90 +2579,59 @@ const ViewCertificatePage: React.FC = () => {
                                           String(sensorSessionId),
                                       )
                                     : []
-                                  const rawSuhu = computeEnvCondition(
-                                    'suhu',
-                                    sensorRawData,
-                                  )
-                                  const rawHum = computeEnvCondition(
-                                    'kelembaban',
-                                    sensorRawData,
-                                  )
-                                  const suhuCondition = calculateRoomCondition(
-                                    'suhu',
-                                    sensorRawData,
-                                  )
-                                  const humCondition = calculateRoomCondition(
-                                    'kelembaban',
-                                    sensorRawData,
-                                  )
 
                                   let envList = Array.isArray(res?.environment)
                                     ? [...res.environment]
                                     : []
 
-                                  // Ensure Suhu and Kelembaban exist in envList if they have raw values
-                                  if (envList.length === 0) {
-                                    if (rawSuhu !== '-')
-                                      envList.push({ key: 'Suhu', value: '-' })
-                                    if (rawHum !== '-')
-                                      envList.push({
-                                        key: 'Kelembaban',
-                                        value: '-',
-                                      })
-                                  } else {
-                                    const hasSuhu = envList.some((e) =>
-                                      e.key.toLowerCase().includes('suhu'),
-                                    )
-                                    const hasHum = envList.some(
-                                      (e) =>
-                                        e.key
-                                          .toLowerCase()
-                                          .includes('kelembaban') ||
-                                        e.key.toLowerCase().includes('rh'),
-                                    )
-                                    if (!hasSuhu && rawSuhu !== '-')
-                                      envList.push({ key: 'Suhu', value: '-' })
-                                    if (!hasHum && rawHum !== '-')
-                                      envList.push({
-                                        key: 'Kelembaban',
-                                        value: '-',
-                                      })
-                                  }
 
-                                  const envRows: Array<{
+                                  envList = envList.filter(
+                                      (env: any) =>
+                                        env?.enabled !== false ||
+                                        String(env?.value ?? '').trim() !== '' ||
+                                        String(env?.awal ?? '').trim() !== '' ||
+                                        String(env?.akhir ?? '').trim() !== '',
+                                    )
+
+                                    const envRows: Array<{
                                     label: string
                                     labelEng: string
                                     value: string
                                   }> = envList.map((env: any) => {
                                     const key = String(env?.key || '')
-                                    const lower = key.toLowerCase()
-                                    const isSuhu = lower.includes('suhu')
-                                    const isHum =
-                                      lower.includes('kelembaban') ||
-                                      lower.includes('rh')
-
-                                    const label = isSuhu
-                                      ? 'Suhu Ruang / '
-                                      : isHum
-                                        ? 'Kelembapan / '
-                                        : `${key} `
-                                    const eng = isSuhu
-                                      ? 'Temperature'
-                                      : isHum
-                                        ? 'Relative Humidity'
-                                        : ''
+                                    // Jenis sertifikat menentukan konvensi blok Kondisi Ruang:
+                                    //  • pyranometer -> (Awal ± ½ rentang)   • Tipping Bucket -> (Awal ± U95)
+                                    //  • lainnya (AWOS/AWS) -> (rata-rata ± ½ rentang)
+                                    const envIsPyrano = isPyranometer({
+                                      name: (res as any)?.sensorDetails?.name,
+                                      type: (res as any)?.sensorDetails?.type,
+                                      resolution: (res as any)?.sensorDetails?.resolution ?? undefined,
+                                      range_capacity: (res as any)?.sensorDetails?.range_capacity,
+                                    } as any)
+                                    const envIsTippingBucket =
+                                      (res as any)?.tippingBucket?.testVolume != null ||
+                                      (res as any)?.setup?.tipping_bucket?.testVolume != null
+                                    const resolvedEnv = resolveRoomCondition(env)
+                                    const definition = roomConditionDefinition(
+                                      String(env?.type || key || ''),
+                                    )
 
                                     const fallbackValue = env?.value || '-'
                                     return {
-                                      label,
-                                      labelEng: eng,
-                                      value: isSuhu
-                                        ? (suhuCondition?.display ?? fallbackValue)
-                                        : isHum
-                                          ? (humCondition?.display ?? fallbackValue)
-                                          : fallbackValue,
+                                    label: definition
+                                      ? `${definition.labelId} / `
+                                      : `${key} `,
+                                    labelEng: definition ? definition.labelEn : '',
+                                      value:
+                (envIsTippingBucket
+                  ? (resolvedEnv?.initialU95Display ??
+                    resolvedEnv?.initialHalfDisplay)
+                  : envIsPyrano
+                    ? resolvedEnv?.initialHalfDisplay
+                    : resolvedEnv?.display) ?? fallbackValue,
                                     }
                                   })
+  .filter((row) => row.value && row.value !== '-')
 
                                   return (
                                     <table className="w-full text-xs avoid-break">
@@ -2829,8 +2808,10 @@ const ViewCertificatePage: React.FC = () => {
                                                       <br />
                                                       {isPyrano && i === 0
                                                         ? `(${resultUnit})`
-                                                        : isPyrano && i === 2
-                                                          ? '(%)'
+                                                        : isPyrano && i === 1
+                                                          ? ''            // Faktor Kalibrasi: rasio, TANPA satuan
+                                                          : isPyrano && i === 2
+                                                            ? '(± %)'
                                                           : resultUnit
                                                             ? `(${resultUnit})`
                                                             : ''}
@@ -2848,6 +2829,16 @@ const ViewCertificatePage: React.FC = () => {
                                                       row.unit,
                                                       row.value,
                                                       calibrationParameter,
+                                                      {
+                                                        readingDecimals: decimalsFromResolution(
+                                                          (res as any)?.sensorDetails?.resolution ??
+                                                            (Array.isArray(sensors) ? sensors : []).find(
+                                                              (s: any) =>
+                                                                String(s?.id) ===
+                                                                String((res as any)?.sensorId ?? (res as any)?.sensor_id),
+                                                            )?.resolution,
+                                                        ),
+                                                      },
                                                     )
                                                   const isBlank = (val: any) =>
                                                     !val ||
@@ -2951,25 +2942,6 @@ const ViewCertificatePage: React.FC = () => {
                                         </div>
                                       )
                                     })}
-                                    {res?.unitStd &&
-                                      res?.unitUut &&
-                                      needsConversion(
-                                        res.unitStd,
-                                        res.unitUut,
-                                      ) && (
-                                        <div className="mt-1 text-[10px] text-gray-500 italic text-right">
-                                          * Nilai Pembacaan Standar telah
-                                          dikonversi dari{' '}
-                                          <strong>
-                                            {formatUnit(res.unitStd)}
-                                          </strong>{' '}
-                                          ke{' '}
-                                          <strong>
-                                            {formatUnit(res.unitUut)}
-                                          </strong>{' '}
-                                          sebelum penghitungan koreksi.
-                                        </div>
-                                      )}
                                   </div>
                                 )}
                               {(!Array.isArray(res?.table) ||
@@ -3028,7 +3000,7 @@ const ViewCertificatePage: React.FC = () => {
                                 if (!nf) return null
                                 const othersEnabled = isOthersEnabled(nf)
                                 const shouldAlwaysShowDefaultOthers =
-                                  isDefaultNotesOthersValue(nf.others)
+                                  isKnownDefaultNotesOthersValue(nf.others)
                                 const showOthers =
                                   Boolean(nf.others) &&
                                   (shouldAlwaysShowDefaultOthers ||
@@ -3208,7 +3180,7 @@ const ViewCertificatePage: React.FC = () => {
                                             >
                                               {' '}
                                               <RichTextCell
-                                                value={nf.others}
+                                                value={resolveNotesOthersHtml(nf.others)}
                                                 className="leading-tight text-[11px] [&_p]:m-0 [&_p+*]:mt-0.5 [&_ul]:mt-0 [&_ol]:mt-0 [&_li]:my-0"
                                               />
                                             </td>

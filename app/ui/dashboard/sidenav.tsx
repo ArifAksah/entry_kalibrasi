@@ -166,7 +166,6 @@ const sections: NavSection[] = [
       { name: 'Sertifikat', href: '/certificates', icon: Icon.doc },
       { name: 'Log Sertifikat', href: '/certificate-logs', icon: Icon.clock },
       { name: 'Surat', href: '/letters', icon: Icon.mail },
-      { name: 'Item Pemeriksaan', href: '/inspection-items', icon: Icon.check },
     ],
   },
   {
@@ -266,11 +265,33 @@ const SideNav: React.FC = () => {
             return true
           })
 
-          if (role === 'verifikator' || role === 'assignor') {
+          // Verifikasi = tugas Verifikator yang ditugaskan.
+          // Penandatanganan = tugas Assignor yang ditugaskan.
+          // Admin tidak diikutkan: verifikasi & tanda tangan harus berasal dari
+          // orang yang ditugaskan (untuk TTE, tanda tangan terikat pada
+          // sertifikat elektronik orang yang menekan tombol).
+          if (role === 'verifikator') {
             filteredItems.push({
               name: 'Verifikasi Sertifikat',
               href: '/certificate-verification',
               icon: Icon.check,
+            })
+            filteredItems.push({
+              name: 'Verifikasi Surat',
+              href: '/verifikasi-surat',
+              icon: Icon.mail,
+            })
+          }
+          if (role === 'assignor') {
+            filteredItems.push({
+              name: 'Penandatanganan Sertifikat',
+              href: '/penandatanganan-sertifikat',
+              icon: Icon.check,
+            })
+            filteredItems.push({
+              name: 'Penandatanganan Surat',
+              href: '/penandatanganan-surat',
+              icon: Icon.mail,
             })
           }
 

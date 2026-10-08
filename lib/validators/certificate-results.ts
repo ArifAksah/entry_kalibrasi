@@ -109,6 +109,15 @@ export const ResultTableRowSchema = z.object({
     is_wind_direction: z.boolean().optional(),
     calculation_rule: z.string().optional(),
     uncertainty_rule: z.string().optional(),
+    /** Sensitivitas alat yang dipakai saat kalibrasi (Slama), µV/Wm-2. */
+    sensitivity_old: z.number().nullable().optional(),
+    /** Faktor kalibrasi final (CF) hasil hitung saat itu. */
+    cf_final: z.number().nullable().optional(),
+    /** Sensitivitas baru (Sbaru = Slama × CF final) — pyranometer analog. */
+    sensitivity_new: z.number().nullable().optional(),
+    sensitivity_unit: z.string().optional(),
+    /** True bila Sbaru sudah diterapkan ke master sensor. */
+    sensitivity_applied_to_master: z.boolean().optional(),
   }).optional(),
 })
 
@@ -130,6 +139,16 @@ export const EnvironmentConditionSchema = z.object({
   key: z.string(),
   value: z.string(),
   unit: z.string().default(''),
+  /** Tipe parameter: suhu | kelembaban | tekanan | suhu_air. */
+  type: z.string().default(''),
+  /** Pembacaan Awal yang diisi operator (cara workbook). */
+  awal: z.string().default(''),
+  /** Pembacaan Akhir yang diisi operator (cara workbook). */
+  akhir: z.string().default(''),
+  /** U95 kondisi ruang (khusus sertifikat Tipping Bucket — input tersendiri). */
+  u95: z.string().default(''),
+  /** Toggle apakah baris ditampilkan di sertifikat. */
+  enabled: z.boolean().optional(),
 })
 
 /** Instrumen standar yang dipakai untuk traceability. */

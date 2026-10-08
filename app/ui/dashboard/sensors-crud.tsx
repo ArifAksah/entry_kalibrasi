@@ -111,6 +111,7 @@ const SensorsCRUD: React.FC = () => {
     range_capacity: '',
     range_capacity_unit: '',
     graduating: '',
+    sensitivity: '',
     graduating_unit: '',
     funnel_diameter: 0,
     funnel_diameter_unit: '',
@@ -170,6 +171,7 @@ const SensorsCRUD: React.FC = () => {
         range_capacity: sensor.range_capacity,
         range_capacity_unit: sensor.range_capacity_unit,
         graduating: sensor.graduating,
+        sensitivity: (sensor as any).sensitivity ?? '',
         graduating_unit: sensor.graduating_unit,
         funnel_diameter: sensor.funnel_diameter,
         funnel_diameter_unit: sensor.funnel_diameter_unit,
@@ -190,6 +192,7 @@ const SensorsCRUD: React.FC = () => {
         range_capacity: '',
         range_capacity_unit: '',
         graduating: '',
+        sensitivity: '',
         graduating_unit: '',
         funnel_diameter: 0,
         funnel_diameter_unit: '',
@@ -558,29 +561,6 @@ const SensorsCRUD: React.FC = () => {
                           { value: 'm', label: 'm' },
                         ],
                       },
-                      {
-                        label: 'Graduating',
-                        name: 'graduating',
-                        value: formData.graduating,
-                        type: 'text',
-                        placeholder: 'Graduating value',
-                      },
-                      {
-                        label: 'Graduating Unit',
-                        name: 'graduating_unit',
-                        value: formData.graduating_unit,
-                        type: 'select',
-                        options: [
-                          { value: '', label: 'Select unit' },
-                          { value: 'ml', label: 'ml' },
-                          { value: 'l', label: 'l' },
-                          { value: 'g', label: 'g' },
-                          { value: 'kg', label: 'kg' },
-                          { value: 'mm', label: 'mm' },
-                          { value: 'cm', label: 'cm' },
-                          { value: 'm', label: 'm' },
-                        ],
-                      },
                     ].map((field, index) => (
                       <div key={index} className="space-y-1">
                         <label className="block text-xs font-semibold text-gray-700">
@@ -639,6 +619,13 @@ const SensorsCRUD: React.FC = () => {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {[
+                      {
+                        label: 'Sensitivitas',
+                        name: 'sensitivity',
+                        value: formData.sensitivity ?? '',
+                        type: 'text',
+                        placeholder: 'Ex: 7.22 (µV/Wm-2)',
+                      },
                       {
                         label: 'Funnel Diameter',
                         name: 'funnel_diameter',

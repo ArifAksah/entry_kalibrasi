@@ -115,6 +115,7 @@ export interface Sensor {
   graduating: string
   graduating_unit: string
   resolution?: number | null  // resolution dari kolom sensor (field baru, float8)
+  sensitivity?: number | string | null // sensitivitas alat, µV/Wm-2 (khusus pyranometer)
   funnel_diameter: number
   funnel_diameter_unit: string
   volume_per_tip: string

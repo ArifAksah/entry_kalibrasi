@@ -239,6 +239,7 @@ const InstrumentsCRUD: React.FC = () => {
       graduating: string
       graduating_unit: string
       resolution?: number | string | null
+      sensitivity?: number | string | null
       funnel_diameter: number
       funnel_diameter_unit: string
       volume_per_tip: string
@@ -318,6 +319,7 @@ const InstrumentsCRUD: React.FC = () => {
     drift: 0 as number,
     range: '',
     resolution: 0 as number,
+    sensitivity: null as number | null,
     u95_general: 0 as number,
     correction_data: [] as Array<{
       setpoint: string
@@ -1074,6 +1076,7 @@ const InstrumentsCRUD: React.FC = () => {
                 drift: Number(sd.drift) || 0,
                 range: sensor.range_capacity || '',
                 resolution: parseDecimal(sensor.resolution),
+                sensitivity: parseDecimal(sensor.sensitivity),
                 u95_general: Number(sd.u95_general) || 0,
                 correction_data: sd.correction_data || [],
               }
@@ -2003,7 +2006,7 @@ const InstrumentsCRUD: React.FC = () => {
                               </div>
                             </div>
 
-                            {/* Range Capacity, Graduating, Resolution */}
+                            {/* Range Capacity, Resolution */}
                             {sensorForms.map((sensor, index) => (
                               <div key={sensor.id}>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -2040,39 +2043,6 @@ const InstrumentsCRUD: React.FC = () => {
                                       </div>
                                     </div>
                                   </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                      Graduating
-                                    </label>
-                                    <div className="flex gap-2">
-                                      <input
-                                        value={sensor.graduating}
-                                        onChange={(e) =>
-                                          updateSensor(
-                                            sensor.id,
-                                            'graduating',
-                                            e.target.value,
-                                          )
-                                        }
-                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="Ex: 0.01"
-                                      />
-                                      <div className="w-28">
-                                        <UnitSelect
-                                          units={units}
-                                          value={sensor.graduating_unit}
-                                          onChange={(val) =>
-                                            updateSensor(
-                                              sensor.id,
-                                              'graduating_unit',
-                                              val,
-                                            )
-                                          }
-                                          placeholder="Unit"
-                                        />
-                                      </div>
-                                    </div>
-                                  </div>
                                   <div className="md:col-span-2">
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
                                       Resolution{' '}
@@ -2093,6 +2063,20 @@ const InstrumentsCRUD: React.FC = () => {
                                       }
                                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                                       placeholder="Ex: 0.01"
+                                    />
+                                  </div>
+                                  <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                      Sensitivitas 
+                                      <span className="text-gray-400 text-xs font-normal">(µV/Wm⁻²)</span>
+                                    </label>
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={sensor.sensitivity ?? ''}
+                                    onChange={(e) => updateSensor(sensor.id, 'sensitivity', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                      placeholder="Ex: 7.22"
                                     />
                                   </div>
                                 </div>
@@ -2342,6 +2326,7 @@ const InstrumentsCRUD: React.FC = () => {
                                               graduating: '',
                                               graduating_unit: '',
                                               resolution: null,
+                                              sensitivity: null,
                                               funnel_diameter: 0,
                                               funnel_diameter_unit: '',
                                               volume_per_tip: '',
@@ -2743,42 +2728,6 @@ const InstrumentsCRUD: React.FC = () => {
                                                           </div>
                                                         </div>
                                                       </div>
-                                                      <div>
-                                                        <label className="block text-xs font-medium text-gray-600 mb-1">
-                                                          Graduating
-                                                        </label>
-                                                        <div className="flex gap-2">
-                                                          <input
-                                                            type="text"
-                                                            value={
-                                                              sensor.graduating
-                                                            }
-                                                            onChange={(e) =>
-                                                              updateSensorIdentity(
-                                                                'graduating',
-                                                                e.target.value,
-                                                              )
-                                                            }
-                                                            className="flex-1 text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
-                                                            placeholder="Ex: 0.01"
-                                                          />
-                                                          <div className="w-24">
-                                                            <UnitSelect
-                                                              units={units}
-                                                              value={
-                                                                sensor.graduating_unit
-                                                              }
-                                                              onChange={(val) =>
-                                                                updateSensorIdentity(
-                                                                  'graduating_unit',
-                                                                  val,
-                                                                )
-                                                              }
-                                                              placeholder="Unit"
-                                                            />
-                                                          </div>
-                                                        </div>
-                                                      </div>
                                                       <div className="sm:col-span-1">
                                                         <label className="block text-xs font-medium text-gray-600 mb-1">
                                                           Resolution{' '}
@@ -2802,6 +2751,20 @@ const InstrumentsCRUD: React.FC = () => {
                                                           }
                                                           className="w-full text-sm px-2.5 py-1.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
                                                           placeholder="Ex: 0.01"
+                                                        />
+                                                      </div>
+                                                      <div className="sm:col-span-1">
+                                                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                                                          Sensitivitas 
+                                                          <span className="text-gray-400 text-xs font-normal">(µV/Wm⁻²)</span>
+                                                        </label>
+                                                        <input
+                                                          type="text"
+                                                          inputMode="decimal"
+                                                          value={(sensor as any).sensitivity ?? ''}
+                                                        onChange={(e) => updateSensorIdentity('sensitivity', e.target.value)}
+                                                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                                          placeholder="Ex: 7.22"
                                                         />
                                                       </div>
                                                     </div>
@@ -3745,40 +3708,6 @@ const InstrumentsCRUD: React.FC = () => {
                                       </div>
                                     </div>
                                   </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                      Graduating
-                                    </label>
-                                    <div className="flex gap-2">
-                                      <input
-                                        type="text"
-                                        value={sensor.graduating}
-                                        onChange={(e) =>
-                                          updateSensor(
-                                            sensor.id,
-                                            'graduating',
-                                            e.target.value,
-                                          )
-                                        }
-                                        className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                        placeholder="Ex: 0.01"
-                                      />
-                                      <div className="w-28">
-                                        <UnitSelect
-                                          units={units}
-                                          value={sensor.graduating_unit}
-                                          onChange={(val) =>
-                                            updateSensor(
-                                              sensor.id,
-                                              'graduating_unit',
-                                              val,
-                                            )
-                                          }
-                                          placeholder="Unit"
-                                        />
-                                      </div>
-                                    </div>
-                                  </div>
                                   <div className="sm:col-span-2">
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
                                       Resolution{' '}
@@ -3799,6 +3728,20 @@ const InstrumentsCRUD: React.FC = () => {
                                       }
                                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                                       placeholder="Ex: 0.01"
+                                    />
+                                  </div>
+                                  <div className="sm:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Sensitivitas 
+                                      <span className="text-gray-400 text-xs font-normal">(µV/Wm⁻²)</span>
+                                    </label>
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={sensor.sensitivity ?? ''}
+                                    onChange={(e) => updateSensor(sensor.id, 'sensitivity', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                      placeholder="Ex: 7.22"
                                     />
                                   </div>
                                 </div>
@@ -4036,39 +3979,6 @@ const InstrumentsCRUD: React.FC = () => {
                                   </div>
                                 </div>
                               </div>
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                  Graduating
-                                </label>
-                                <div className="flex gap-2">
-                                  <input
-                                    value={sensor.graduating}
-                                    onChange={(e) =>
-                                      updateSensor(
-                                        sensor.id,
-                                        'graduating',
-                                        e.target.value,
-                                      )
-                                    }
-                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                    placeholder="Ex: 0.01"
-                                  />
-                                  <div className="w-28">
-                                    <UnitSelect
-                                      units={units}
-                                      value={sensor.graduating_unit}
-                                      onChange={(val) =>
-                                        updateSensor(
-                                          sensor.id,
-                                          'graduating_unit',
-                                          val,
-                                        )
-                                      }
-                                      placeholder="Unit"
-                                    />
-                                  </div>
-                                </div>
-                              </div>
                               <div className="md:col-span-2">
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
                                   Resolution{' '}
@@ -4089,6 +3999,20 @@ const InstrumentsCRUD: React.FC = () => {
                                   }
                                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                                   placeholder="Ex: 0.01"
+                                />
+                              </div>
+                              <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                  Sensitivitas 
+                                  <span className="text-gray-400 text-xs font-normal">(µV/Wm⁻²)</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={sensor.sensitivity ?? ''}
+                                onChange={(e) => updateSensor(sensor.id, 'sensitivity', e.target.value)}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                  placeholder="Ex: 7.22"
                                 />
                               </div>
                             </div>

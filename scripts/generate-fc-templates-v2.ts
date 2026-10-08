@@ -262,11 +262,11 @@ const resultsDoc = new Document({
 
       // ─── DISCLAIMER ──────────────────────────────────────────────────
       new Paragraph({ children: [new TextRun({ text: 'Penunjukan nilai sebenarnya didapat dari penunjukan alat ditambah koreksi.', size: 18, font: 'Arial' })], spacing: { before: 160, after: 20 } }),
-      new Paragraph({ children: [new TextRun({ text: 'The true value is determined from the instrument reading added by its correction.', italic: true, size: 16, font: 'Arial', color: '555555' })], spacing: { after: 40 } }),
-      new Paragraph({ children: [new TextRun({ text: 'Sertifikat ini hanya berlaku untuk peralatan dengan identitas yang dinyatakan di atas.', size: 18, font: 'Arial' })], spacing: { after: 20 } }),
-      new Paragraph({ children: [new TextRun({ text: 'This certificate only applies to equipment with the identity stated above.', italic: true, size: 16, font: 'Arial', color: '555555' })], spacing: { after: 40 } }),
+      new Paragraph({ children: [new TextRun({ text: 'The true value is determined from the instrument added by its correction.', italic: true, size: 16, font: 'Arial', color: '555555' })], spacing: { after: 40 } }),
       new Paragraph({ children: [new TextRun({ text: 'Ketidakpastian pengukuran dinyatakan pada tingkat kepercayaan tidak kurang dari 95 % dengan faktor cakupan k = 2', size: 18, font: 'Arial' })], spacing: { after: 20 } }),
-      new Paragraph({ children: [new TextRun({ text: 'Uncertainty of measurement is expressed at a confidence level of no less than 95 % with coverage factor k = 2', italic: true, size: 16, font: 'Arial', color: '555555' })], spacing: { after: 120 } }),
+      new Paragraph({ children: [new TextRun({ text: 'Uncertainty of measurement is expressed at a confidence level of no less than 95 % with coverage factor k = 2', italic: true, size: 16, font: 'Arial', color: '555555' })], spacing: { after: 40 } }),
+      new Paragraph({ children: [new TextRun({ text: 'Sertifikat ini hanya berlaku untuk peralatan dengan identitas yang dinyatakan di atas dan tidak boleh digandakan secara parsial. Penggandaan parsial hanya dapat dilakukan dengan izin dari laboratorium.', size: 18, font: 'Arial' })], spacing: { after: 20 } }),
+      new Paragraph({ children: [new TextRun({ text: 'This certificate only applies to equipment with the identity stated above and may not be reproduced partially. Partial reproduction is subject from the laboratory.', italic: true, size: 16, font: 'Arial', color: '555555' })], spacing: { after: 120 } }),
 
       new Paragraph({ children: [new TextRun({ text: 'Diverifikasi Oleh / Verified by : ${nama_verifikator}', bold: true, size: 20, font: 'Arial' })], spacing: { before: 120, after: 80 } }),
 

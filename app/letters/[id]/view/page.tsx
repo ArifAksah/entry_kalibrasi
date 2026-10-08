@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { SuratKeteranganDocument } from '../../../../components/features/SuratKeteranganDocument'
+import { assignmentDisplay } from '@/lib/document-assignment-display'
 
 export default function ViewLetterPage() {
   const params = useParams<{ id: string }>()
@@ -12,8 +13,7 @@ export default function ViewLetterPage() {
   const [letter, setLetter] = useState<any>(null)
   const [instruments, setInstruments] = useState<any[]>([])
   const [stations, setStations] = useState<any[]>([])
-  const [personel, setPersonel] = useState<any[]>([])
-  const [orderPersonnel, setOrderPersonnel] = useState<any[]>([])
+  const [sensors, setSensors] = useState<any[]>([])
 
   useEffect(() => {
     const run = async () => {
@@ -26,26 +26,28 @@ export default function ViewLetterPage() {
         if (!lRes.ok) throw new Error(l.error || 'Failed to load letter')
         setLetter(l)
 
-        const [iRes, sRes, pRes] = await Promise.all([
+        const [iRes, sRes] = await Promise.all([
           fetch('/api/instruments?page=1&pageSize=1000'),
           fetch('/api/stations?page=1&pageSize=1000'),
-          fetch('/api/personel'),
         ])
-        const [iData, sData, pData] = await Promise.all([
-          iRes.json(),
-          sRes.json(),
-          pRes.json(),
-        ])
+        const [iData, sData] = await Promise.all([iRes.json(), sRes.json()])
         setInstruments(Array.isArray(iData) ? iData : (iData?.data ?? []))
         setStations(Array.isArray(sData) ? sData : (sData?.data ?? []))
-        setPersonel(Array.isArray(pData) ? pData : [])
 
-        if (l.calibration_order_id) {
-          const oRes = await fetch(`/api/calibration-orders/${l.calibration_order_id}`)
-          if (oRes.ok) {
-            const o = await oRes.json()
-            const team = o?.data?.personnel || o?.personnel || []
-            setOrderPersonnel(Array.isArray(team) ? team : [])
+        if (l.instrument) {
+          const sensorRes = await fetch(`/api/instruments/${l.instrument}/sensors`)
+          if (sensorRes.ok) {
+            const sensorData = await sensorRes.json()
+            const list = Array.isArray(sensorData) ? sensorData : (sensorData?.data ?? [])
+            setSensors(
+              list.map((sensor: any) => ({
+                id: Number(sensor.id),
+                name: sensor.nama_sensor ?? sensor.name ?? null,
+                manufacturer: sensor.merk_sensor ?? sensor.manufacturer ?? null,
+                type: sensor.tipe_sensor ?? sensor.type ?? null,
+                serial_number: sensor.serial_number_sensor ?? sensor.serial_number ?? null,
+              })),
+            )
           }
         }
         setError(null)
@@ -58,22 +60,54 @@ export default function ViewLetterPage() {
     run()
   }, [params?.id])
 
-  const instrument = useMemo(
-    () => instruments.find((i) => Number(i.id) === Number(letter?.instrument)) || null,
-    [instruments, letter],
-  )
+  const instrument = useMemo(() => {
+    const source =
+      letter?.instrument_data ?? instruments.find((i) => Number(i.id) === Number(letter?.instrument))
+    if (!source) return null
+    return {
+      name: source.name_alias || source.name || source.type || null,
+      manufacturer: source.manufacturer || null,
+      type: source.type || null,
+      serial_number: source.serial_number || null,
+      others: source.others || null,
+    }
+  }, [instruments, letter])
   const owner = useMemo(
-    () => stations.find((s) => Number(s.id) === Number(letter?.owner)) || null,
+    () => letter?.owner_data ?? stations.find((s) => Number(s.id) === Number(letter?.owner)) ?? null,
     [stations, letter],
   )
-  const findPerson = (uid?: string | null) => personel.find((p) => p.id === uid) || null
-  const authorizedPerson = findPerson(letter?.authorized_by)
-  const verifiedBy = [letter?.verifikator_1, letter?.verifikator_2, letter?.verifikator_3]
-    .map((uid) => findPerson(uid)?.name)
-    .filter(Boolean) as string[]
-  const checkedBy = (orderPersonnel.length
-    ? orderPersonnel.map((r: any) => r.personel?.name || r.name).filter(Boolean)
-    : [authorizedPerson?.name].filter(Boolean)) as string[]
+  const assignment = assignmentDisplay(letter?.document_assignment)
+  const sensorSheets = useMemo(() => {
+    const allResults = Array.isArray(letter?.results) ? letter.results : []
+    const sensorList =
+      Array.isArray(letter?.sensor_data_list) && letter.sensor_data_list.length
+        ? letter.sensor_data_list
+        : sensors
+    const grouped = new Map<number, any[]>()
+    for (const row of allResults) {
+      if (row?.sensor_id == null) continue
+      const sensorId = Number(row.sensor_id)
+      if (!grouped.has(sensorId)) grouped.set(sensorId, [])
+      grouped.get(sensorId)!.push(row)
+    }
+    return Array.from(grouped.entries()).map(([sensorId, sheetRows]) => ({
+      sensor:
+        sensorList.find((sensor: any) => Number(sensor.id) === sensorId) || {
+          id: sensorId,
+          name: `Sensor #${sensorId}`,
+        },
+      rows: sheetRows,
+    }))
+  }, [letter, sensors])
+  const authorizedPerson = assignment.authorized || letter?.authorized_data || null
+  const verifiedBy = assignment.verifiedBy.map((person: any) => person?.name).filter(Boolean) as string[]
+  const checkedBy = assignment.checkedBy.map((person: any) => person?.name).filter(Boolean) as string[]
+  const verifyUrl = useMemo(() => {
+    if (!letter?.public_id) return null
+    const base = (typeof window !== 'undefined' ? window.location.origin : '') || ''
+    return `${base}/verify-surat/${letter.public_id}`
+  }, [letter?.public_id])
+  const signed = Boolean(letter?.signed_at)
 
   if (loading) return <div className="p-6 text-gray-600">Loading...</div>
   if (error) return <div className="p-6 text-red-600">{error}</div>
@@ -116,11 +150,15 @@ export default function ViewLetterPage() {
         letter={letter}
         results={Array.isArray(letter.results) ? letter.results : []}
         instrument={instrument}
+        sensor={instrument}
         owner={owner}
         authorized={{ name: authorizedPerson?.name || null, title: authorizedPerson?.signer_title || null }}
         checkedBy={checkedBy}
         verifiedBy={verifiedBy}
         totalPages={2}
+        verifyUrl={verifyUrl}
+        signed={signed}
+        sensorSheets={sensorSheets}
       />
     </div>
   )

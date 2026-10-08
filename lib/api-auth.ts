@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from './supabase'
 import { isUserInCalibrationOrderTeam } from './certificate-access'
-import { verifyPdfRenderToken } from './pdf-render-token'
+import { verifyPdfRenderToken, type RenderScope } from './pdf-render-token'
 import { resultsToLegacyView } from './validators/certificate-results-render-adapter'
 
 // Render-context check for route handlers (see proxy.ts): the signed-PDF
 // renderer (headless Chromium with ?render_token=…) has no session token.
 // Requests carry the HMAC headers; routes re-verify independently of the
 // proxy so a spoofed header cannot grant more than read-only access.
+export function resolveRenderScope(request: NextRequest): RenderScope {
+  return request.headers.get('x-pdf-render-doc') === 'letter' ? 'letter' : 'certificate'
+}
+
 export function isRenderAuthorized(request: NextRequest): boolean {
   if (request.method !== 'GET') return false
   const token = request.headers.get('x-pdf-render-token')
@@ -15,7 +19,7 @@ export function isRenderAuthorized(request: NextRequest): boolean {
   const certId = request.headers.get('x-pdf-render-cert')
   if (!token || !ts || !certId || !/^\d+$/.test(certId)) return false
   try {
-    return verifyPdfRenderToken(certId, token, ts)
+    return verifyPdfRenderToken(certId, token, ts, resolveRenderScope(request))
   } catch {
     return false
   }
@@ -28,6 +32,7 @@ export function hasRenderCredentials(request: NextRequest): boolean {
 
 type RenderResource =
   | { type: 'certificate'; id: string }
+  | { type: 'letter'; id: string }
   | { type: 'instrument' | 'instrument-name' | 'station' | 'personel' | 'sensor'; id: string }
   | { type: 'raw-data'; sessionId: string }
 
@@ -37,14 +42,47 @@ export async function isRenderAuthorizedFor(
 ): Promise<boolean> {
   if (!isRenderAuthorized(request)) return false
 
-  const certificateId = request.headers.get('x-pdf-render-cert')!
-  if (resource.type === 'certificate') return resource.id === certificateId
+  const documentId = request.headers.get('x-pdf-render-cert')!
+  const scope = resolveRenderScope(request)
+
+  if (scope === 'letter') {
+    if (resource.type === 'letter') return resource.id === documentId
+    try {
+      const { data: letter, error } = await supabaseAdmin
+        .from('letter')
+        .select('instrument, owner, authorized_by, verifikator_1, verifikator_2, verifikator_3')
+        .eq('id', documentId)
+        .maybeSingle()
+      if (error || !letter) return false
+      if (resource.type === 'instrument') return String(letter.instrument ?? '') === resource.id
+      if (resource.type === 'station') return String(letter.owner ?? '') === resource.id
+      if (resource.type === 'instrument-name') {
+        if (letter.instrument == null) return false
+        const { data: instrument } = await supabaseAdmin
+          .from('instrument')
+          .select('names')
+          .eq('id', letter.instrument)
+          .maybeSingle()
+        return String(instrument?.names ?? '') === resource.id
+      }
+      if (resource.type === 'personel') {
+        return [letter.authorized_by, letter.verifikator_1, letter.verifikator_2, letter.verifikator_3]
+          .some(id => id != null && String(id) === resource.id)
+      }
+      return false
+    } catch {
+      return false
+    }
+  }
+
+  if (resource.type === 'letter') return false
+  if (resource.type === 'certificate') return resource.id === documentId
 
   try {
     const { data: certificate, error } = await supabaseAdmin
       .from('certificate')
       .select('instrument, station, authorized_by, verifikator_1, verifikator_2, verifikator_3, results')
-      .eq('id', certificateId)
+      .eq('id', documentId)
       .maybeSingle()
     if (error || !certificate) return false
 

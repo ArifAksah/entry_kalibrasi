@@ -18,6 +18,11 @@ import {
   calculatePyranometerUncertainty,
   PyranometerSensorData,
 } from '../../lib/uncertainty-utils'
+import {
+  buildPyranometerInputs,
+  calculateNewSensitivity,
+  isAnalogPyranometer,
+} from '../../lib/pyranometer-inputs'
 import { SigFigBadge } from '../ui/SigFigBadge'
 import qcCacheService from '../../lib/qc-cache-service'
 import { deserializeMap } from '../../lib/qc-cache-storage'
@@ -986,46 +991,54 @@ const QCDataModal: React.FC<QCDataModalProps> = ({
             { filterOutliers: false },
           )
 
-          const range = parseFloat(uutSensor.range_capacity || '2000') || 2000
-          const interpolatedU95 = standardCertRecord?.u95_general || 2.1
-          const stdMeanVal =
-            stdReadings.length > 0
-              ? stdReadings.reduce((a, b) => a + b, 0) / stdReadings.length
-              : 0
-          const uutMeanVal =
-            uutReadingsForCF.length > 0
-              ? uutReadingsForCF.reduce((a, b) => a + b, 0) /
-                uutReadingsForCF.length
-              : 0
-          const stdMinVal =
-            stdReadings.length > 0 ? Math.min(...stdReadings) : 0
-
           // Tipe alat standar (untuk ISO 9060 Drift lookup)
           const stdSensorForPyr = rowsForCalc[0]?.sensor_id_std
             ? sensors.find((s: any) => s.id === rowsForCalc[0].sensor_id_std)
             : null
-          const stdSensorTypeForPyr =
-            (stdSensorForPyr as any)?.type ||
-            (stdSensorForPyr as any)?.name ||
-            ''
 
-          const pyrResult = calculatePyranometerUncertainty({
-            cf_result: cfResult,
-            certU95_percent: interpolatedU95,
-            resolutionStd: standardCertRecord?.resolution || 0.01,
-            resolutionUut: uutSensor.resolution || 0.1,
-            range: range,
-            sensorType: uutSensor.type || uutSensor.name || '',
-            stdMean: stdMeanVal,
-            uutMean: uutMeanVal,
-            stdMin: stdMinVal,
-            stdSensorType: stdSensorTypeForPyr,
-            sensitivityStd:
-              (standardCertRecord as any)?.sensitivity || undefined,
-            sensitivityUut: (uutSensor as any)?.sensitivity || undefined,
+          // Input dirakit lewat helper bersama supaya IDENTIK dengan UncertaintyModal
+          // (temuan petugas kalibrasi: nilai sertifikat sempat menyimpang dari modal).
+          const pyrInputs = buildPyranometerInputs({
+            rows: rowsForCalc,
+            standardCertRecord,
+            uutSensor,
+            stdSensor: stdSensorForPyr,
             rules: pyranometerMethodProfile?.rules,
           })
+          const stdMeanVal = pyrInputs?.stdMean ?? 0
+          const uutMeanVal = pyrInputs?.uutMean ?? 0
+          const pyrResult = calculatePyranometerUncertainty(
+            pyrInputs?.params ?? {
+              cf_result: cfResult,
+              certU95_percent: 0,
+              resolutionStd: 0,
+              resolutionUut: 0,
+              range: parseFloat(uutSensor.range_capacity || '2000') || 2000,
+              sensorType: uutSensor.type || uutSensor.name || '',
+              stdMean: 0,
+              uutMean: 0,
+              rules: pyranometerMethodProfile?.rules,
+            },
+          )
+          const sensitivityOldValue =
+            (uutSensor as any)?.sensitivity != null
+              ? Number((uutSensor as any).sensitivity)
+              : null
+          const uutInstrumentForAnalog =
+            instruments.find((i: any) => i.id === certificateInstrumentId) ?? null
+          const sensitivityNewValue = isAnalogPyranometer(uutInstrumentForAnalog)
+            ? calculateNewSensitivity(sensitivityOldValue, cfResult?.cf_final)
+            : null
+
           pyranometerAuditMeta = {
+            sensitivity_old: Number.isFinite(sensitivityOldValue as number)
+              ? sensitivityOldValue
+              : null,
+            cf_final: Number.isFinite(Number(cfResult?.cf_final))
+              ? Number(cfResult?.cf_final)
+              : null,
+            sensitivity_new: sensitivityNewValue,
+            sensitivity_unit: 'µV/Wm-2',
             method_profile_code: pyranometerMethodProfile.code,
             method_profile_version: pyranometerMethodProfile.version,
             standard_references: pyranometerMethodProfile.source_documents,

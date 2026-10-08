@@ -37,9 +37,23 @@ import {
   PyranometerSensorData,
 } from '../../../lib/uncertainty-utils'
 import { resolveCalibrationMethodProfile } from '../../../lib/calibration-method-profiles'
+import {
+  buildPyranometerInputs,
+  calculateNewSensitivity,
+  isAnalogPyranometer,
+} from '../../../lib/pyranometer-inputs'
+import {
+  ROOM_CONDITION_DEFINITIONS,
+  calculateRoomConditionFromEndpoints,
+  resolveRoomCondition,
+  roomConditionDefinition,
+} from '../../../lib/room-condition'
 import DateRangePicker from '../../../components/ui/DateRangePicker'
 import RichTextEditor from '../../../components/ui/RichTextEditor'
-import { DEFAULT_NOTES_OTHERS_HTML } from '../../../lib/rich-text'
+import {
+  DEFAULT_NOTES_OTHERS_HTML,
+  resolveNotesOthersHtml,
+} from '../../../lib/rich-text'
 import {
   firstLegacyResult,
   resultsToLegacyView,
@@ -70,6 +84,12 @@ import {
  * Parses correction data from any historical DB format into a uniform array of
  * { setpoint, correction, u95 } objects.
  */
+/** Simpan hasil hitungan pada presisi tinggi; pembulatan hanya di layer tampilan. */
+function toStoredPrecision(value: number): string {
+  if (!Number.isFinite(value)) return ''
+  return String(Number(value.toPrecision(12)))
+}
+
 function parseCorrectionData(
   cert: any,
 ): Array<{ setpoint: string; correction: string; u95: string }> {
@@ -930,6 +950,47 @@ const CertificatesCRUD: React.FC = () => {
     selectedOrderItemId || (editing as any)?.calibration_order_item_id,
   )
 
+  // Penugasan Dokumen dari Order Kalibrasi: verifikator & penandatangan tidak
+  // perlu diisi ulang di form sertifikat — diambil dari identifikasi order.
+  const [orderAssignment, setOrderAssignment] = useState<any>(null)
+  useEffect(() => {
+    const itemId = selectedOrderItemId || (editing as any)?.calibration_order_item_id
+    if (!itemId) {
+      setOrderAssignment(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/calibration-order-items/${itemId}/document-assignment`)
+        const json = await res.json()
+        if (cancelled) return
+        const data = json?.data
+        if (!data) {
+          setOrderAssignment(null)
+          return
+        }
+        setOrderAssignment(data)
+        setForm((current) => ({
+          ...current,
+          verifikator_1: data.verifikator_1 ?? (current as any).verifikator_1 ?? null,
+          verifikator_2: data.verifikator_2 ?? (current as any).verifikator_2 ?? null,
+          verifikator_3: data.verifikator_3 ?? (current as any).verifikator_3 ?? null,
+          authorized_by: data.authorized_by ?? current.authorized_by ?? null,
+        } as any))
+      } catch {
+        if (!cancelled) setOrderAssignment(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedOrderItemId, editing])
+
+  // Kunci field verifikator/penandatangan HANYA bila penugasan dari order
+  // benar-benar ada. Kalau belum ada, field tetap bisa diisi manual.
+  const lockSignatories = isOrderBackedForm && Boolean(orderAssignment)
+
   // QC Modal State
   const [showQCModal, setShowQCModal] = useState(false)
   const [qcModalCertificate, setQcModalCertificate] =
@@ -1183,7 +1244,92 @@ const CertificatesCRUD: React.FC = () => {
   const selectedStationAddress = (form as any).station_address as string | null
 
   // Local UI state for calibration results blocks
-  type KV = { key: string; value: string; enabled?: boolean }
+  type KV = {
+    key: string
+    value: string
+    enabled?: boolean
+    /** Pembacaan Awal (cara workbook). */
+    awal?: string
+    /** Pembacaan Akhir (cara workbook). */
+    akhir?: string
+    /** U95 kondisi ruang (khusus sertifikat Tipping Bucket). */
+    u95?: string
+    unit?: string
+    type?: string
+  }
+
+  /**
+   * Parameter kondisi ruang yang ditampilkan di form.
+   * Sekarang cukup 2 (metode lama). Mesin 4 parameter tetap tersedia di
+   * `lib/room-condition.ts` — tinggal tambahkan 'tekanan' / 'suhu_air' di sini
+   * bila nanti petugas kalibrasi memutuskan memakainya.
+   */
+  const DEFAULT_ROOM_CONDITION_TYPES = ['suhu', 'kelembaban']
+
+  /** Lengkapi parameter kondisi ruang yang dipakai (lihat DEFAULT_ROOM_CONDITION_TYPES). */
+  const mergeEnvironmentRows = (environment: KV[] | undefined): KV[] => {
+    const rows: KV[] = (Array.isArray(environment) ? environment : []).map(
+      (row) => ({ ...row }),
+    )
+    const indexByType = new Map<string, number>()
+    rows.forEach((row, index) => {
+      const definition = roomConditionDefinition(
+        String(row?.type || row?.key || ''),
+      )
+      if (!definition || indexByType.has(definition.type)) return
+      indexByType.set(definition.type, index)
+      rows[index] = {
+        ...row,
+        type: row.type || definition.type,
+        unit: row.unit || definition.unit,
+      }
+    })
+    ROOM_CONDITION_DEFINITIONS.filter((definition) =>
+      DEFAULT_ROOM_CONDITION_TYPES.includes(definition.type),
+    ).forEach((definition) => {
+      if (indexByType.has(definition.type)) return
+      rows.push({
+        key: definition.key,
+        value: '',
+        awal: '',
+        akhir: '',
+        unit: definition.unit,
+        type: definition.type,
+        enabled: false,
+      })
+    })
+    return rows
+  }
+
+  /** Ubah satu baris; bila Awal/Akhir terisi, `value` diisi hasil hitungnya. */
+  const applyEnvironmentPatch = (
+    rows: KV[],
+    index: number,
+    patch: Partial<KV>,
+  ): KV[] => {
+    const next = rows.map((row, i) => (i === index ? { ...row, ...patch } : row))
+    const row = next[index]
+    if (!row) return next
+    const definition = roomConditionDefinition(String(row.type || row.key || ''))
+    if (!definition) return next
+    const computed = calculateRoomConditionFromEndpoints(
+      row.awal,
+      row.akhir,
+      row.unit || definition.unit,
+    )
+    next[index] = { ...row, value: computed?.display ?? row.value }
+    return next
+  }
+
+  /** Buang baris placeholder kosong agar tidak tersimpan/tercetak. */
+  const pruneEnvironmentRows = (rows: KV[]): KV[] =>
+    (Array.isArray(rows) ? rows : []).filter(
+      (row) =>
+        row.enabled === true ||
+        String(row.awal ?? '').trim() !== '' ||
+        String(row.akhir ?? '').trim() !== '' ||
+        String(row.value ?? '').trim() !== '',
+    )
   type TableRow = {
     key: string
     unit: string
@@ -1801,27 +1947,48 @@ const CertificatesCRUD: React.FC = () => {
           { filterOutliers: false },
         )
 
-        const range =
-          parseFloat(activeUutSensor.range_capacity || '2000') || 2000
-        const interpolatedU95 = standardCertRecord?.u95_general || 2.1
-        const stdMinVal =
-          stdReadings.length > 0
-            ? Math.min(...stdReadings.filter((v: number) => v > 0))
-            : 0
-
-        const pyrResult = calculatePyranometerUncertainty({
-          cf_result: cfResult,
-          certU95_percent: interpolatedU95,
-          resolutionStd: standardCertRecord?.resolution || 0.01,
-          resolutionUut: activeUutSensor.resolution || 0.1,
-          range: range,
-          sensorType: activeUutSensor.type || activeUutSensor.name || '',
-          stdMin: stdMinVal,
-          sensitivityStd: (standardCertRecord as any)?.sensitivity || undefined,
-          sensitivityUut: (activeUutSensor as any)?.sensitivity || undefined,
+        // Input dirakit lewat helper bersama supaya IDENTIK dengan UncertaintyModal
+        // (temuan petugas kalibrasi: nilai sertifikat sempat menyimpang dari modal).
+        const pyrInputs = buildPyranometerInputs({
+          rows: currentData,
+          standardCertRecord,
+          uutSensor: activeUutSensor,
+          stdSensor:
+            (sensors as any[])?.find(
+              (sn: any) => sn.id === (standardCertRecord as any)?.sensor_id,
+            ) ?? null,
           rules: pyranometerRules,
         })
+        const pyrResult = calculatePyranometerUncertainty(
+          pyrInputs?.params ?? {
+            cf_result: cfResult,
+            certU95_percent: 0,
+            resolutionStd: 0,
+            resolutionUut: 0,
+            range: parseFloat(activeUutSensor.range_capacity || '2000') || 2000,
+            sensorType: activeUutSensor.type || activeUutSensor.name || '',
+            stdMean: 0,
+            uutMean: 0,
+            rules: pyranometerRules,
+          },
+        )
+        const sensitivityOldValue =
+          (activeUutSensor as any)?.sensitivity != null
+            ? Number((activeUutSensor as any).sensitivity)
+            : null
+        const sensitivityNewValue = isAnalogPyranometer(uutInstrument)
+          ? calculateNewSensitivity(sensitivityOldValue, cfResult?.cf_final)
+          : null
+
         pyranometerAuditMeta = {
+          sensitivity_old: Number.isFinite(sensitivityOldValue as number)
+            ? sensitivityOldValue
+            : null,
+          cf_final: Number.isFinite(Number(cfResult?.cf_final))
+            ? Number(cfResult?.cf_final)
+            : null,
+          sensitivity_new: sensitivityNewValue,
+          sensitivity_unit: 'µV/Wm-2',
           method_profile_code: pyrResult.method_profile.code,
           method_profile_version: pyrResult.method_profile.version,
           standard_references: [...pyrResult.method_profile.standardReferences],
@@ -2342,50 +2509,46 @@ const CertificatesCRUD: React.FC = () => {
                 h.includes('rh'),
             )
 
-            const envConditions: { key: string; value: string }[] = []
+            const envConditions: KV[] = []
 
-            if (tempIdx !== -1) {
+            // Awal = nilai terkecil, Akhir = nilai terbesar dari kolom.
+            // Operator tetap bisa menimpanya manual di form.
+            const buildColumnCondition = (
+              type: 'suhu' | 'kelembaban',
+            ): KV | null => {
+              const definition = ROOM_CONDITION_DEFINITIONS.find(
+                (item) => item.type === type,
+              )
+              const columnIndex = type === 'suhu' ? tempIdx : humidIdx
+              if (!definition || columnIndex === -1) return null
               const values = sheet.data
                 .slice(1)
-                .map((row) => parseVal(row[tempIdx]))
+                .map((row) => parseVal(row[columnIndex]))
                 .filter((v) => !isNaN(v))
-              if (values.length > 0) {
-                const max = Math.max(...values)
-                const min = Math.min(...values)
-                // Formula: Mean ± (Max-Min)/2
-                // Mean = (Max + Min) / 2
-                // Uncertainty/HalfRange = (Max - Min) / 2
-                const mean = (max + min) / 2
-                const halfRange = (max - min) / 2
+              if (values.length === 0) return null
 
-                // Format: "25.5 ± 0.5 °C" (Replace dot with comma for Indo format if needed, but keeping standard for now)
-                // limit decimals to 1 or 2
-                const valStr = `${mean.toLocaleString('id-ID', { maximumFractionDigits: 1 })} ± ${halfRange.toLocaleString('id-ID', { maximumFractionDigits: 1 })} °C`
-                envConditions.push({ key: 'Suhu', value: valStr })
+              const min = Math.min(...values)
+              const max = Math.max(...values)
+              const computed = calculateRoomConditionFromEndpoints(
+                min,
+                max,
+                definition.unit,
+              )
+              return {
+                key: definition.key,
+                value: computed?.display ?? '',
+                awal: String(min),
+                akhir: String(max),
+                unit: definition.unit,
+                type: definition.type,
+                enabled: true,
               }
             }
 
-            if (humidIdx !== -1) {
-              const values = sheet.data
-                .slice(1)
-                .map((row) => parseVal(row[humidIdx]))
-                .filter((v) => !isNaN(v))
-              if (values.length > 0) {
-                const max = Math.max(...values)
-                const min = Math.min(...values)
-                const mean = (max + min) / 2
-                const halfRange = (max - min) / 2
-
-                const valStr = `${mean.toLocaleString('id-ID', { maximumFractionDigits: 1 })} ± ${halfRange.toLocaleString('id-ID', { maximumFractionDigits: 1 })} %RH`
-                envConditions.push({ key: 'Kelembaban', value: valStr })
-              }
-            }
-
-            // If no env columns found, populate with defaults
-            if (envConditions.length === 0) {
-              envConditions.push({ key: 'Suhu', value: '' })
-              envConditions.push({ key: 'Kelembaban', value: '' })
-            }
+            const suhuEnv = buildColumnCondition('suhu')
+            if (suhuEnv) envConditions.push(suhuEnv)
+            const humidEnv = buildColumnCondition('kelembaban')
+            if (humidEnv) envConditions.push(humidEnv)
 
             return {
               sensorId: sheetSensorMap.get(si)?.sensorId ?? null,
@@ -3538,9 +3701,10 @@ const CertificatesCRUD: React.FC = () => {
     }
 
     if (
-      !(form as any).verifikator_1 ||
-      !(form as any).verifikator_2 ||
-      !(form as any).verifikator_3
+      !lockSignatories &&
+      (!(form as any).verifikator_1 ||
+        !(form as any).verifikator_2 ||
+        !(form as any).verifikator_3)
     ) {
       showError('Verifikator 1, Verifikator 2, dan Verifikator 3 harus dipilih')
       return
@@ -3635,7 +3799,11 @@ const CertificatesCRUD: React.FC = () => {
     setSubmitDisabled(true)
 
     try {
-      const payload: any = { ...form, results }
+      const prunedResults = results.map((item) => ({
+          ...item,
+          environment: pruneEnvironmentRows(item.environment || []),
+        }))
+        const payload: any = { ...form, results: prunedResults }
       // Bila pembuatan sertifikat dari booking order, kirim order item id.
       // Nomor (no_order/no_identification) ditentukan oleh DB dari item tsb.
       if (!editing && selectedOrderItemId) {
@@ -4307,12 +4475,12 @@ const CertificatesCRUD: React.FC = () => {
                               )
                               if (!inst) return 'Unknown'
                               return (
+                                (inst as any).name_alias ||
                                 (inst as any).instrument_names?.name ||
                                 instrumentNames.find(
                                   (n) =>
                                     n.id === (inst as any).instrument_names_id,
                                 )?.name ||
-                                (inst as any).name_alias ||
                                 inst.name ||
                                 `${inst.manufacturer || ''} ${inst.type || ''}`.trim() ||
                                 'Unknown'
@@ -5220,11 +5388,17 @@ const CertificatesCRUD: React.FC = () => {
 
                     {/* Signatories */}
                     <div className="space-y-1">
+                      {lockSignatories && (
+                        <p className="text-[11px] text-gray-500">
+                          Verifikator &amp; penandatangan diambil dari Penugasan Dokumen di Order Kalibrasi.
+                        </p>
+                      )}
                       <label className="block text-xs font-semibold text-gray-700">
                         Authorized By
                       </label>
                       <SearchableDropdown
                         id="form-authorized-by"
+                        className={lockSignatories ? 'pointer-events-none opacity-70' : ''}
                         value={form.authorized_by}
                         onChange={(value) =>
                           setForm({
@@ -5246,6 +5420,7 @@ const CertificatesCRUD: React.FC = () => {
                       </label>
                       <SearchableDropdown
                         id="form-verifikator-1"
+                        className={lockSignatories ? 'pointer-events-none opacity-70' : ''}
                         value={(form as any).verifikator_1 ?? null}
                         onChange={(value) =>
                           setForm({
@@ -5267,6 +5442,7 @@ const CertificatesCRUD: React.FC = () => {
                       </label>
                       <SearchableDropdown
                         id="form-verifikator-2"
+                        className={lockSignatories ? 'pointer-events-none opacity-70' : ''}
                         value={(form as any).verifikator_2 ?? null}
                         onChange={(value) =>
                           setForm({
@@ -5288,6 +5464,7 @@ const CertificatesCRUD: React.FC = () => {
                       </label>
                       <SearchableDropdown
                         id="form-verifikator-3"
+                        className={lockSignatories ? 'pointer-events-none opacity-70' : ''}
                         value={(form as any).verifikator_3 ?? null}
                         onChange={(value) =>
                           setForm({
@@ -5528,25 +5705,20 @@ const CertificatesCRUD: React.FC = () => {
                               return !isStandard
                             })
                             .map((i) => {
-                              const baseName =
+                              const canonicalName =
                                 (i as any).instrument_names?.name ||
                                 instrumentNames.find(
                                   (n) =>
                                     n.id === (i as any).instrument_names_id,
                                 )?.name ||
-                                (i as any).name_alias ||
                                 (i as any).name ||
                                 'Unknown'
                               const alias = (i as any).name_alias
-                              const aliasPart =
-                                alias &&
-                                String(alias).trim() &&
-                                alias !== baseName
-                                  ? ` — ${alias}`
-                                  : ''
+                              const baseName =
+                                alias && String(alias).trim() ? alias : canonicalName
                               return {
                                 id: i.id,
-                                name: `${baseName}${aliasPart} (${i.manufacturer || '-'} ${i.type || '-'} • SN: ${(i as any).serial_number || '-'})`,
+                                name: `${baseName} — ${i.manufacturer || '-'} ${i.type || '-'} • SN: ${(i as any).serial_number || '-'}`,
                                 station_id: i.station?.name || '',
                               }
                             })}
@@ -6282,19 +6454,22 @@ const CertificatesCRUD: React.FC = () => {
                                     })
                                   }}
                                   options={standardInstruments.map((instrument) => {
-                                    const baseName =
+                                    // Utamakan ALIAS (mis. "AWOS 30") supaya unit yang
+                                    // bertipe sama tidak tertukar saat memilih standar.
+                                    const aliasName = (instrument as any).name_alias || null
+                                    const canonicalName =
                                       (instrument as any).instrument_names?.name ||
                                       instrumentNames.find(
                                         (name) =>
                                           name.id ===
                                           (instrument as any).instrument_names_id,
                                       )?.name ||
-                                      (instrument as any).name_alias ||
                                       (instrument as any).name ||
                                       'Unknown'
+                                    const baseName = aliasName || canonicalName
                                     return {
                                       id: instrument.id,
-                                      name: `${baseName} (${instrument.manufacturer || '-'} ${instrument.type || '-'} • SN: ${(instrument as any).serial_number || '-'})`,
+                                      name: `${baseName} — ${instrument.manufacturer || '-'} ${instrument.type || '-'} • SN: ${(instrument as any).serial_number || '-'}`,
                                       station_id: instrument.station?.name || '',
                                     }
                                   })}
@@ -6666,8 +6841,8 @@ const CertificatesCRUD: React.FC = () => {
                                 Kondisi Lingkungan
                               </h5>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {result.environment.length > 0 ? (
-                                  result.environment.map((env, envIdx) => {
+                                {mergeEnvironmentRows(result.environment).length > 0 ? (
+                                  mergeEnvironmentRows(result.environment).map((env, envIdx) => {
                                     const isEnabled = env.enabled !== false
                                     return (
                                       <div key={envIdx} className="space-y-1">
@@ -6682,39 +6857,146 @@ const CertificatesCRUD: React.FC = () => {
                                               type="checkbox"
                                               className="sr-only peer"
                                               checked={isEnabled}
-                                              onChange={(e) => {
-                                                const newEnv = [
-                                                  ...result.environment,
-                                                ]
-                                                newEnv[envIdx] = {
-                                                  ...newEnv[envIdx],
-                                                  enabled: e.target.checked,
-                                                }
+                                              onChange={(e) =>
                                                 updateResult(resultIndex, {
-                                                  environment: newEnv,
+                                                  environment:
+                                                    applyEnvironmentPatch(
+                                                      mergeEnvironmentRows(
+                                                        result.environment,
+                                                      ),
+                                                      envIdx,
+                                                      {
+                                                        enabled:
+                                                          e.target.checked,
+                                                      },
+                                                    ),
                                                 })
-                                              }}
+                                              }
                                             />
                                             <div className="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#1e377c]"></div>
                                           </label>
                                         </div>
-                                        <input
-                                          value={env.value}
-                                          disabled={!isEnabled}
-                                          onChange={(e) => {
-                                            const newEnv = [
-                                              ...result.environment,
-                                            ]
-                                            newEnv[envIdx] = {
-                                              ...newEnv[envIdx],
-                                              value: e.target.value,
+                                        <div className="flex items-center gap-2">
+                                          <input
+                                            value={env.awal ?? ''}
+                                            disabled={!isEnabled}
+                                            placeholder="Awal"
+                                            inputMode="decimal"
+                                            onChange={(e) =>
+                                              updateResult(resultIndex, {
+                                                environment:
+                                                  applyEnvironmentPatch(
+                                                    mergeEnvironmentRows(
+                                                      result.environment,
+                                                    ),
+                                                    envIdx,
+                                                    {
+                                                      awal: e.target.value,
+                                                      enabled: true,
+                                                    },
+                                                  ),
+                                              })
                                             }
-                                            updateResult(resultIndex, {
-                                              environment: newEnv,
-                                            })
-                                          }}
-                                          className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] ${!isEnabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
-                                        />
+                                            className={`w-1/2 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] ${!isEnabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
+                                          />
+                                          <span className="text-xs text-gray-400">
+                                            s/d
+                                          </span>
+                                          <input
+                                            value={env.akhir ?? ''}
+                                            disabled={!isEnabled}
+                                            placeholder="Akhir"
+                                            inputMode="decimal"
+                                            onChange={(e) =>
+                                              updateResult(resultIndex, {
+                                                environment:
+                                                  applyEnvironmentPatch(
+                                                    mergeEnvironmentRows(
+                                                      result.environment,
+                                                    ),
+                                                    envIdx,
+                                                    {
+                                                      akhir: e.target.value,
+                                                      enabled: true,
+                                                    },
+                                                  ),
+                                              })
+                                            }
+                                            className={`w-1/2 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] ${!isEnabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
+                                          />
+                                        </div>
+                                        {/* U95 kondisi ruang — khusus sertifikat Tipping Bucket */}
+                                        {Boolean((result as any)?.tippingBucket) && (
+                                          <input
+                                            value={env.u95 ?? ''}
+                                            disabled={!isEnabled}
+                                            placeholder="U95 kondisi ruang (mis. 0.06)"
+                                            inputMode="decimal"
+                                            onChange={(e) =>
+                                              updateResult(resultIndex, {
+                                                environment:
+                                                  applyEnvironmentPatch(
+                                                    mergeEnvironmentRows(
+                                                      result.environment,
+                                                    ),
+                                                    envIdx,
+                                                    {
+                                                      u95: e.target.value,
+                                                      enabled: true,
+                                                    },
+                                                  ),
+                                              })
+                                            }
+                                            className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] ${!isEnabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
+                                          />
+                                        )}
+                                        {String(env.awal ?? '').trim() !== '' ||
+                                        String(env.akhir ?? '').trim() !== '' ? (
+                                          <p className="text-xs text-gray-600">
+                                            Hasil:{' '}
+                                            <span className="font-semibold">
+                                              {(() => {
+                                                const resolved =
+                                                  resolveRoomCondition(env)
+                                                const isTb = Boolean(
+                                                  (result as any)?.tippingBucket,
+                                                )
+                                                return (
+                                                  (isTb
+                                                    ? (resolved?.initialU95Display ??
+                                                      resolved?.initialHalfDisplay)
+                                                    : resolved?.display) || '-'
+                                                )
+                                              })()}
+                                            </span>
+                                            <span className="text-gray-400">
+                                              {' '}
+                                              (dihitung dari Awal &amp; Akhir)
+                                            </span>
+                                          </p>
+                                        ) : (
+                                          <input
+                                            value={env.value}
+                                            disabled={!isEnabled}
+                                            placeholder="Nilai manual, mis. 25.5 ± 0.5 °C"
+                                            onChange={(e) =>
+                                              updateResult(resultIndex, {
+                                                environment:
+                                                  applyEnvironmentPatch(
+                                                    mergeEnvironmentRows(
+                                                      result.environment,
+                                                    ),
+                                                    envIdx,
+                                                    {
+                                                      value: e.target.value,
+                                                      enabled: true,
+                                                    },
+                                                  ),
+                                              })
+                                            }
+                                            className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-[#1e377c] ${!isEnabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
+                                          />
+                                        )}
                                       </div>
                                     )
                                   })
@@ -7056,7 +7338,7 @@ const CertificatesCRUD: React.FC = () => {
                                     </label>
                                   </div>
                                   <RichTextEditor
-                                    value={result.notesForm?.others || ''}
+                                    value={resolveNotesOthersHtml(result.notesForm?.others) || ''}
                                     onChange={(value) =>
                                       updateResult(resultIndex, {
                                         notesForm: {
@@ -7704,11 +7986,11 @@ const CertificatesCRUD: React.FC = () => {
 
                                         if (corrIdx >= 0) {
                                           if (corrIdx === 0)
-                                            r.key = correction.toFixed(4) // Unlikely
+                                            r.key = toStoredPrecision(correction) // Unlikely
                                           else if (corrIdx === 1)
-                                            r.unit = correction.toFixed(4) // Unlikely
+                                            r.unit = toStoredPrecision(correction) // Unlikely
                                           else if (corrIdx === 2)
-                                            r.value = correction.toFixed(4)
+                                            r.value = toStoredPrecision(correction)
                                           else {
                                             const extras = [
                                               ...(r.extraValues || []),
@@ -7716,13 +7998,13 @@ const CertificatesCRUD: React.FC = () => {
                                             while (extras.length < corrIdx - 3)
                                               extras.push('')
                                             extras[corrIdx - 3] =
-                                              correction.toFixed(4)
+                                              toStoredPrecision(correction)
                                             r.extraValues = extras
                                           }
                                         }
 
                                         if (trueIdx >= 0) {
-                                          const resVal = trueValue.toFixed(4)
+                                          const resVal = toStoredPrecision(trueValue)
                                           if (trueIdx === 0) r.key = resVal
                                           else if (trueIdx === 1)
                                             r.unit = resVal
@@ -8108,7 +8390,7 @@ const CertificatesCRUD: React.FC = () => {
                     </label>
                   </div>
                   <RichTextEditor
-                    value={noteDraft.others}
+                    value={resolveNotesOthersHtml(noteDraft.others)}
                     onChange={(value) =>
                       setNoteDraft((prev) => ({ ...prev, others: value }))
                     }

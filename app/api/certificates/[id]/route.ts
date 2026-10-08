@@ -8,6 +8,7 @@ import {
 import { authorizeCertificateAccess, isUserInCalibrationOrderTeam } from '../../../../lib/certificate-access'
 import { clientSafeMessage } from '../../../../lib/api-error'
 import { forbidden, isAdminCaller, isRenderAuthorizedFor, requireCaller } from '../../../../lib/api-auth'
+import { getDocumentAssignment } from '@/lib/document-assignment-service'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -250,6 +251,18 @@ export async function PUT(
         return NextResponse.json({ error: 'Invalid verifikator_3 (personel) id' }, { status: 400 })
       }
       v3 = verifikator_3
+    }
+
+    if (isOrderLinked) {
+      const sharedAssignment = await getDocumentAssignment(
+        Number(currentCertificate.calibration_order_item_id),
+      )
+      if (sharedAssignment) {
+        authorizedPersonId = sharedAssignment.authorized_by
+        v1 = sharedAssignment.verifikator_1
+        v2 = sharedAssignment.verifikator_2
+        v3 = sharedAssignment.verifikator_3
+      }
     }
 
     // --- Normalisasi results (V0 → V1) ---------------------------------

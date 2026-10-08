@@ -14,6 +14,7 @@ import { useAlert } from '../../hooks/useAlert'
 import { usePermissions } from '../../hooks/usePermissions'
 import { supabase } from '../../lib/supabase'
 import QCDataModal from '../../components/features/QCDataModal'
+import SearchableDropdown from '../../components/ui/SearchableDropdown'
 import {
   isDefaultNotesOthersValue,
   normalizeRichTextValue,
@@ -23,11 +24,16 @@ import {
   firstLegacyResult,
   resultsToLegacyView,
 } from '../../lib/validators/certificate-results-render-adapter'
-import { calculateRoomCondition } from '../../lib/room-condition'
+import {
+  calculateRoomCondition,
+  resolveRoomCondition,
+  roomConditionDefinition,
+} from '../../lib/room-condition'
 import {
   classifyCalibrationParameter,
   formatCalibrationResultRow,
   formatCalibrationResultValue,
+  decimalsFromResolution,
 } from '../../lib/result-display-format'
 import qcCacheService from '../../lib/qc-cache-service'
 import {
@@ -1000,6 +1006,10 @@ const CertificatePreview: React.FC<{
                           })
                         : '-'
                       const place = station?.name || res?.place || '-'
+                      // Lapang (FC/IFC): tanpa baris Tanggal Masuk, tanggal kalibrasi = mulai kegiatan.
+                      const isLapang =
+                        certificate?.calibration_place === 'FC' ||
+                        certificate?.calibration_place === 'IFC'
                       const sensorInfo: Array<{
                         label: string
                         labelEng: string
@@ -1025,16 +1035,22 @@ const CertificatePreview: React.FC<{
                           value: `${type} / ${serial}`,
                           bold: true,
                         },
-                        {
-                          label: 'Tanggal Masuk / ',
-                          labelEng: 'Date of Entry',
-                          value: start,
-                          topGap: true,
-                        },
+                        ...(isLapang
+                          ? []
+                          : [
+                              {
+                                label: 'Tanggal Masuk / ',
+                                labelEng: 'Date of Entry',
+                                value: start,
+                                topGap: true,
+                              },
+                            ]),
                         {
                           label: 'Tanggal Kalibrasi / ',
                           labelEng: 'Calibration Date',
-                          value: end,
+                          // Sertifikat lapang: tanggal kalibrasi = tanggal mulai kegiatan.
+                          value: isLapang ? start : end,
+                          topGap: isLapang,
                         },
                         {
                           label: 'Tempat Kalibrasi / ',
@@ -1045,6 +1061,7 @@ const CertificatePreview: React.FC<{
                       const envRows: Array<{
                         label: string
                         labelEng: string
+                        value: React.ReactNode
                         initial: React.ReactNode
                         final: React.ReactNode
                       }> = (() => {
@@ -1062,14 +1079,6 @@ const CertificatePreview: React.FC<{
                           sensorRawData,
                         )
                         const rawHum = computeEnvCondition(
-                          'kelembaban',
-                          sensorRawData,
-                        )
-                        const suhuCondition = calculateRoomCondition(
-                          'suhu',
-                          sensorRawData,
-                        )
-                        const humCondition = calculateRoomCondition(
                           'kelembaban',
                           sensorRawData,
                         )
@@ -1101,38 +1110,43 @@ const CertificatePreview: React.FC<{
 
                         return envList.map((env: any) => {
                           const key = String(env?.key || '')
-                          const lower = key.toLowerCase()
-                          const isSuhu = lower.includes('suhu')
-                          const isHum =
-                            lower.includes('kelembaban') || lower.includes('rh')
-
-                          const label = isSuhu
-                            ? 'Suhu / '
-                            : isHum
-                              ? 'Kelembaban / '
-                              : `${key} `
-                          const eng = isSuhu
-                            ? 'Temperature'
-                            : isHum
-                              ? 'Relative Humidity'
-                              : ''
+                          // Konvensi blok Kondisi Ruang mengikuti jenis sertifikat
+                          // (pyranometer: Awal ± ½rentang · TB: Awal ± U95 · lainnya: rata-rata ± ½rentang)
+                          const envIsPyrano = isPyranometer({
+                            name: (res as any)?.sensorDetails?.name,
+                            type: (res as any)?.sensorDetails?.type,
+                            resolution:
+                              (res as any)?.sensorDetails?.resolution ?? undefined,
+                            range_capacity: (res as any)?.sensorDetails
+                              ?.range_capacity,
+                          } as any)
+                          const envIsTippingBucket =
+                            (res as any)?.tippingBucket?.testVolume != null ||
+                            (res as any)?.setup?.tipping_bucket?.testVolume != null
+                          const resolvedEnv = resolveRoomCondition(env)
+                          const definition = roomConditionDefinition(
+                            String(env?.type || key || ''),
+                          )
+                          const label = definition
+                            ? `${definition.labelId} / `
+                            : `${key} `
+                          const eng = definition ? definition.labelEn : ''
 
                           const fallbackValue: React.ReactNode =
                             env?.value || '-'
                           return {
                             label,
                             labelEng: eng,
-                            initial: isSuhu
-                              ? (suhuCondition?.initialDisplay ?? fallbackValue)
-                              : isHum
-                                ? (humCondition?.initialDisplay ??
-                                  fallbackValue)
-                                : fallbackValue,
-                            final: isSuhu
-                              ? (suhuCondition?.finalDisplay ?? fallbackValue)
-                              : isHum
-                                ? (humCondition?.finalDisplay ?? fallbackValue)
-                                : fallbackValue,
+                            value:
+                              (envIsTippingBucket
+                                ? (resolvedEnv?.initialU95Display ??
+                                  resolvedEnv?.initialHalfDisplay)
+                                : envIsPyrano
+                                  ? resolvedEnv?.initialHalfDisplay
+                                  : resolvedEnv?.display) ?? fallbackValue,
+                            initial:
+                              resolvedEnv?.initialDisplay ?? fallbackValue,
+                            final: resolvedEnv?.finalDisplay ?? fallbackValue,
                           }
                         })
                       })()
@@ -1179,8 +1193,9 @@ const CertificatePreview: React.FC<{
                                     <thead>
                                       <tr>
                                         <th className="text-left"></th>
-                                        <th className="text-left">Awal</th>
-                                        <th className="text-left">Akhir</th>
+                                        <th className="text-left">
+                                          Kondisi / Room condition
+                                        </th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -1192,8 +1207,7 @@ const CertificatePreview: React.FC<{
                                               {row.labelEng}
                                             </span>
                                           </td>
-                                          <td>{row.initial}</td>
-                                          <td>{row.final}</td>
+                                          <td>{row.value}</td>
                                         </tr>
                                       ))}
                                     </tbody>
@@ -1303,6 +1317,18 @@ const CertificatePreview: React.FC<{
                                         row.unit,
                                         row.value,
                                         calibrationParameter,
+                                        {
+                                          readingDecimals: decimalsFromResolution(
+                                            (res as any)?.sensorDetails?.resolution ??
+                                              (
+                                                instruments.find((i) => i.id === certificate.instrument)?.sensor || []
+                                              ).find(
+                                                (s: any) =>
+                                                  String(s?.id) ===
+                                                  String((res as any)?.sensorId ?? (res as any)?.sensor_id),
+                                              )?.resolution,
+                                          ),
+                                        },
                                       )
                                     const isBlank = (val: any) =>
                                       !val ||
@@ -1772,6 +1798,12 @@ const DraftView: React.FC<{
   const verifikator2 = personel.find((p) => p.id === certificate.verifikator_2)
   const verifikator3 = personel.find((p) => p.id === certificate.verifikator_3)
   const assignor = personel.find((p) => p.id === certificate.assignor)
+  // Sertifikat dari Order Kalibrasi mengambil verifikator/penandatangan dari
+  // Penugasan Dokumen (satu sumber bersama Surat Keterangan).
+  const isOrderLinked = (certificate as any).calibration_order_item_id != null
+  const verifikatorOptions = personel
+    .filter((p) => (p as any).role === 'verifikator')
+    .map((p) => ({ id: p.id, name: p.name || p.id, description: (p as any).nip || '' }))
 
   const handleSendKonsep = async () => {
     if (isSending || hasSent) return
@@ -2327,73 +2359,71 @@ const DraftView: React.FC<{
           <h3 className="text-lg font-semibold text-blue-900 mb-4">
             Assign Verifikator
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Verifikator 1
-              </label>
-              <select
-                value={selectedVerifikator1}
-                onChange={(e) => setSelectedVerifikator1(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Pilih Verifikator 1</option>
-                {personel.map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.name}
-                  </option>
-                ))}
-              </select>
+          {isOrderLinked ? (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                Verifikator dan penandatangan sertifikat ini diatur dari
+                <strong> Order Kalibrasi → Atur Penugasan</strong> agar konsisten dengan Surat Keterangan.
+              </div>
+              <div className="space-y-1 text-sm text-gray-900">
+                <div>Verifikator 1: {verifikator1?.name || '-'}</div>
+                <div>Verifikator 2: {verifikator2?.name || '-'}</div>
+                <div>Verifikator 3: {verifikator3?.name || '-'}</div>
+                <div>Penandatangan: {assignor?.name || '-'}</div>
+              </div>
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Tutup
+                </button>
+                <a
+                  href="/calibration-orders"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Buka Order Kalibrasi
+                </a>
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Verifikator 2
-              </label>
-              <select
-                value={selectedVerifikator2}
-                onChange={(e) => setSelectedVerifikator2(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Pilih Verifikator 2</option>
-                {personel.map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.name}
-                  </option>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {([
+                  ['Verifikator 1', selectedVerifikator1, setSelectedVerifikator1],
+                  ['Verifikator 2', selectedVerifikator2, setSelectedVerifikator2],
+                  ['Verifikator 3', selectedVerifikator3, setSelectedVerifikator3],
+                ] as const).map(([label, value, setter]) => (
+                  <div key={label}>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      {label}
+                    </label>
+                    <SearchableDropdown
+                      value={value || null}
+                      onChange={(next) => setter((next as string) || '')}
+                      options={verifikatorOptions}
+                      placeholder={`Pilih ${label}`}
+                      searchPlaceholder={`Cari ${label.toLowerCase()}...`}
+                    />
+                  </div>
                 ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Verifikator 3
-              </label>
-              <select
-                value={selectedVerifikator3}
-                onChange={(e) => setSelectedVerifikator3(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Pilih Verifikator 3</option>
-                {personel.map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="flex justify-end space-x-3 mt-4">
-            <button
-              onClick={() => setIsEditing(false)}
-              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Batal
-            </button>
-            <button
-              onClick={handleSaveAssignments}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Simpan
-            </button>
-          </div>
+              </div>
+              <div className="flex justify-end space-x-3 mt-4">
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleSaveAssignments}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Simpan
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 

@@ -101,6 +101,22 @@ export async function PUT(
       return forbidden('Role, penugasan stasiun, dan atribut signer hanya dapat diubah oleh admin')
     }
 
+    // Stasiun harus benar-benar ada di tabel station, supaya penugasan ke
+    // user_stations tidak melanggar foreign key (dan tidak menyimpan id lama).
+    if (normalizedStationId) {
+      const { data: stationRow } = await supabaseAdmin
+        .from('station')
+        .select('id')
+        .eq('id', normalizedStationId)
+        .maybeSingle()
+      if (!stationRow) {
+        return NextResponse.json(
+          { error: 'Stasiun tidak ditemukan. Silakan pilih stasiun dari daftar.' },
+          { status: 400 },
+        )
+      }
+    }
+
     if (normalizedRole && !allowedRoles.has(normalizedRole)) {
       return NextResponse.json({ error: 'Role tidak valid' }, { status: 400 })
     }

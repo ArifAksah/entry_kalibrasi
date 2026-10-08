@@ -903,6 +903,13 @@ export function calculatePyranometerUncertainty(params: {
     stdMin?: number;
     /** Tipe alat standar (untuk lookup ISO 9060 Drift). Jika tidak diisi, fallback ke sensorType UUT. */
     stdSensorType?: string;
+    /**
+     * Drift standar (%) yang diambil langsung dari record `certificate_standard`
+     * milik sertifikat standar. Dipakai bila TIPE alat standar tidak tersedia
+     * (mis. sensor standar di luar halaman daftar sensor yang dimuat aplikasi),
+     * supaya komponen drift tidak jatuh menjadi 0.
+     */
+    driftPercentOverride?: number;
     /** Sensitivitas standar (µV/Wm⁻²) — untuk hitung resolusi dari sensitivitas */
     sensitivityStd?: number;
     /** Sensitivitas UUT (µV/Wm⁻²) — untuk hitung resolusi dari sensitivitas */
@@ -966,8 +973,13 @@ export function calculatePyranometerUncertainty(params: {
 
     // 4. Drift standar (konstanta: ISO 9060)
     const driftSensorType = stdSensorType || sensorType;
-    const driftPercent = getISO9060Drift(driftSensorType);
-    const driftClass = getISO9060Class(driftSensorType);
+    const driftFromType = getISO9060Drift(driftSensorType);
+    const overridePercent = Number(params.driftPercentOverride);
+    const useOverride = driftFromType === 0 && Number.isFinite(overridePercent) && overridePercent > 0;
+    const driftPercent = useOverride ? overridePercent : driftFromType;
+    const driftClass = useOverride
+        ? (overridePercent === 0.8 ? 'A' : overridePercent === 1.5 ? 'B' : overridePercent === 3 ? 'C' : null)
+        : getISO9060Class(driftSensorType);
     const driftA = driftPercent * driftRule.factor;
     const u_drift = driftA / divisorOf(driftRule, repeatN);
 

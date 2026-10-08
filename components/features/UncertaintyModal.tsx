@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { Certificate, Instrument, Sensor } from '../../lib/supabase'
+import { calculateNewSensitivity } from '../../lib/pyranometer-inputs'
 import {
   calculateUncertaintyBudget,
   UncertaintyResult,
@@ -397,6 +398,11 @@ function UncertaintyContent({
 
   // Kontrak metode yang tersimpan di sertifikat (snapshot). Bila tidak ada
   // (sertifikat lama), perhitungan memakai default sistem.
+  const [applyingSensitivity, setApplyingSensitivity] = useState(false)
+  const [sensitivityMessage, setSensitivityMessage] = useState<string | null>(null)
+  /** CF final pyranometer (diisi saat perhitungan) — dipakai panel sensitivitas. */
+  let pyranometerCfFinal: number | null = null
+
   const pyranometerAudit = React.useMemo(
     () => findPyranometerAudit((certificate as any)?.results),
     [certificate],
@@ -528,6 +534,37 @@ function UncertaintyContent({
     return 'SENSOR'
   }, [uutSensor, currentData, instrumentNames])
 
+  const handleApplySensitivity = async () => {
+    const sensor = uutSensor as any
+    const newValue = calculateNewSensitivity(sensor?.sensitivity, pyranometerCfFinal)
+    if (!sensor?.id || newValue == null) return
+
+    const konfirmasi = window.confirm(
+      'Terapkan sensitivitas baru ke master sensor?\n\n' +
+        `Sensor: ${sensor?.name || '-'} (SN ${sensor?.serial_number || '-'})\n` +
+        `Nilai: ${sensor?.sensitivity ?? '-'} -> ${newValue} µV/Wm-2\n` +
+        `Sumber: ${certificate?.no_certificate || '-'}`,
+    )
+    if (!konfirmasi) return
+
+    setApplyingSensitivity(true)
+    setSensitivityMessage(null)
+    try {
+      const res = await fetch(`/api/sensors/${sensor.id}/sensitivity`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sensitivity: newValue }),
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload?.error || 'Gagal menerapkan sensitivitas.')
+      setSensitivityMessage(`Sensitivitas master diperbarui menjadi ${newValue} µV/Wm-2.`)
+    } catch (e) {
+      setSensitivityMessage(e instanceof Error ? e.message : 'Gagal menerapkan sensitivitas.')
+    } finally {
+      setApplyingSensitivity(false)
+    }
+  }
+
   if (currentData.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-gray-500">
@@ -583,6 +620,9 @@ function UncertaintyContent({
     const cfResult = calculateCalibrationFactor(stdReadings, uutReadingsForCF, {
       filterOutliers: false,
     })
+    pyranometerCfFinal = Number.isFinite(Number(cfResult?.cf_final))
+      ? Number(cfResult?.cf_final)
+      : null
 
     const range = parseFloat(uutSensor?.range_capacity || '2000') || 2000
     const stdMeanVal =
@@ -782,6 +822,56 @@ function UncertaintyContent({
               </div>
             </div>
 
+            {/* Sensitivitas baru (pyranometer analog): Slama x CF final */}
+            {(() => {
+              const sensitivityOld =
+                (uutSensor as any)?.sensitivity != null
+                  ? Number((uutSensor as any).sensitivity)
+                  : null
+              const sensitivityNew = calculateNewSensitivity(sensitivityOld, pyranometerCfFinal)
+              return (
+                <div className="mt-3 border-t border-emerald-200 pt-2">
+                  <div className="font-semibold">Sensitivitas (khusus pyranometer analog)</div>
+                  <div className="mt-1 grid gap-x-4 gap-y-1 md:grid-cols-3">
+                    <div>
+                      Saat ini (Slama):{' '}
+                      <b>
+                        {Number.isFinite(Number(sensitivityOld))
+                          ? `${sensitivityOld} µV/Wm-2`
+                          : '-'}
+                      </b>
+                    </div>
+                    <div>
+                      CF final: <b>{pyranometerCfFinal ?? '-'}</b>
+                    </div>
+                    <div>
+                      Sensitivitas baru:{' '}
+                      <b>{sensitivityNew != null ? `${sensitivityNew} µV/Wm-2` : '-'}</b>
+                    </div>
+                  </div>
+                  {!isAnalog && (
+                    <div className="mt-1 text-[10px] opacity-80">
+                      Perhitungan ini hanya berlaku untuk pyranometer analog (jenis alat bukan
+                      analog).
+                    </div>
+                  )}
+                  {isAnalog && sensitivityNew != null && (uutSensor as any)?.id && (
+                    <button
+                      type="button"
+                      onClick={handleApplySensitivity}
+                      disabled={applyingSensitivity}
+                      className="mt-2 rounded bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                    >
+                      {applyingSensitivity ? 'Menerapkan...' : 'Terapkan ke master'}
+                    </button>
+                  )}
+                  {sensitivityMessage && (
+                    <div className="mt-1 text-[10px] font-semibold">{sensitivityMessage}</div>
+                  )}
+                </div>
+              )
+            })()}
+
             {/* Variabel kontrak per komponen (gabungan aturan + hasil) */}
             {pyranometerResult.rules_used && (
               <div className="mt-2 overflow-x-auto">
@@ -792,8 +882,6 @@ function UncertaintyContent({
                       <th className="pr-2">Nilai a</th>
                       <th className="pr-2">Pembagi</th>
                       <th className="pr-2">vi</th>
-                      <th className="pr-2">Klasifikasi</th>
-                      <th className="pr-2">Sumber</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -822,11 +910,6 @@ function UncertaintyContent({
                           <td className="pr-2 py-0.5">{computed ? computed.value_percent.toPrecision(4) : '—'}</td>
                           <td className="pr-2 py-0.5">{divisorLabel}</td>
                           <td className="pr-2 py-0.5">{viLabel}</td>
-                          <td className="pr-2 py-0.5">{rule.source.classification}</td>
-                          <td className="pr-2 py-0.5">
-                            {rule.source.doc}
-                            {rule.source.ref ? ` — ${rule.source.ref}` : ''}
-                          </td>
                         </tr>
                       )
                     })}
@@ -1021,7 +1104,7 @@ function UncertaintyContent({
                 {' '}
                 <span className="border-b-[1.5px] border-black inline-block">
                   {formatDec(result.expanded_uncert_u95)}{' '}
-                  {formatUnit(result.unit)}
+                  {formatUnit(result.unit) === '%' ? '± %' : formatUnit(result.unit)}
                 </span>
               </td>
             </tr>

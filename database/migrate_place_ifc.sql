@@ -37,8 +37,8 @@ ALTER TABLE public.calibration_order_counters DROP CONSTRAINT IF EXISTS calibrat
 ALTER TABLE public.calibration_order_counters ADD CONSTRAINT calibration_order_counters_place_chk
   CHECK (calibration_place IN ('FC', 'IFC', 'LC'));
 
--- 2) Label jenis dokumen: surat keterangan mengikuti nomor sertifikat --------
--- (bukan "S.Ket") sehingga label tetap 'Sert'.
+-- 2) Label jenis dokumen: Sertifikat "Sert", Surat Keterangan "S.Ket" -------
+-- (rujukan IKK terbaru: S.Ket.FC-AWOS/352.001/DIK/X/2026)
 CREATE OR REPLACE FUNCTION public._cert_type_label(p_type text)
  RETURNS text
  LANGUAGE sql
@@ -46,7 +46,7 @@ CREATE OR REPLACE FUNCTION public._cert_type_label(p_type text)
 AS $function$
   SELECT CASE LOWER(COALESCE(p_type, 'sert'))
            WHEN 'sert'  THEN 'Sert'
-           WHEN 's_ket' THEN 'Sert'
+           WHEN 's_ket' THEN 'S.Ket'
            ELSE 'Sert'
          END
 $function$;

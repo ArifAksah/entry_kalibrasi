@@ -19,7 +19,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const { data: item } = await supabase
     .from('calibration_order_items')
-    .select('id, order_id, status, certificate(id)')
+    .select('id, order_id, status, certificate(id), letter(id)')
     .eq('id', itemId)
     .maybeSingle()
   if (!item) return notFound('Item tidak ditemukan')
@@ -28,6 +28,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const linkedCert = Array.isArray((item as any).certificate) ? (item as any).certificate.length > 0 : !!(item as any).certificate
   if (linkedCert) {
     return NextResponse.json({ error: 'Item sudah memiliki sertifikat, tidak dapat di-void' }, { status: 409 })
+  }
+  const linkedLetter = Array.isArray((item as any).letter)
+    ? (item as any).letter.length > 0
+    : Boolean((item as any).letter)
+  if (linkedLetter) {
+    return NextResponse.json({ error: 'Item sudah memiliki Surat Keterangan, tidak dapat di-void' }, { status: 409 })
   }
 
   const { data: order } = await supabase

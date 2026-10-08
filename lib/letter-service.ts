@@ -3,6 +3,7 @@ import { isUserInCalibrationOrderTeam, getUserOrderTeamOrderIds } from './certif
 
 export type LetterInspectionRow = {
   inspection_item_id?: number | null
+  sensor_id?: number | null
   parameter?: string
   hasil?: string | null
   sort_order?: number
@@ -22,6 +23,69 @@ export type LetterContext = {
   itemId?: number | null
 }
 
+export type OrderItemLetterContext = {
+  itemId: number
+  orderId: number
+  noOrder: string
+  noIdentification: string
+  instrument: number
+  owner: number
+  instrumentCode: string
+  orderStatus: string
+  itemStatus: string
+  certificateId: number | null
+  letterId: number | null
+}
+
+export async function resolveOrderItemLetterContext(
+  itemId: number,
+): Promise<OrderItemLetterContext | null> {
+  if (!Number.isInteger(itemId) || itemId <= 0) return null
+
+  const { data: item, error } = await supabaseAdmin
+    .from('calibration_order_items')
+    .select(
+      'id, order_id, no_identification, instrument_id, instrument_code, status, calibration_orders!inner(id, no_order, station_id, status), certificate(id), letter(id)',
+    )
+    .eq('id', itemId)
+    .maybeSingle()
+
+  if (error || !item) return null
+  const row = item as any
+  const order = Array.isArray(row.calibration_orders)
+    ? row.calibration_orders[0]
+    : row.calibration_orders
+  const certificate = Array.isArray(row.certificate) ? row.certificate[0] : row.certificate
+  const letter = Array.isArray(row.letter) ? row.letter[0] : row.letter
+
+  if (!order) return null
+  return {
+    itemId: Number(row.id),
+    orderId: Number(row.order_id),
+    noOrder: String(order.no_order || ''),
+    noIdentification: String(row.no_identification || ''),
+    instrument: Number(row.instrument_id),
+    owner: Number(order.station_id),
+    instrumentCode: String(row.instrument_code || ''),
+    orderStatus: String(order.status || ''),
+    itemStatus: String(row.status || ''),
+    certificateId: certificate?.id != null ? Number(certificate.id) : null,
+    letterId: letter?.id != null ? Number(letter.id) : null,
+  }
+}
+
+export function validateOrderItemForLetter(ctx: OrderItemLetterContext): string | null {
+  if (!['booked', 'postponed', 'in_progress'].includes(ctx.orderStatus)) {
+    return `Order berstatus ${ctx.orderStatus} belum dapat dibuatkan Surat Keterangan`
+  }
+  if (ctx.itemStatus === 'void') return 'Alat UUT sudah ditandai tidak dipakai'
+  if (!ctx.noOrder || !ctx.noIdentification) return 'Nomor order dan identifikasi belum tersedia'
+  if (!Number.isFinite(ctx.instrument) || ctx.instrument <= 0 || !ctx.instrumentCode) {
+    return 'Instrumen dan kode alat belum lengkap'
+  }
+  return null
+}
+
 /** Simpan/ganti daftar hasil pemeriksaan milik sebuah surat. */
 export async function saveLetterResults(
   letterId: number,
@@ -36,6 +100,8 @@ export async function saveLetterResults(
         r.inspection_item_id != null && Number.isFinite(Number(r.inspection_item_id))
           ? Number(r.inspection_item_id)
           : null,
+      sensor_id:
+        r.sensor_id != null && Number.isFinite(Number(r.sensor_id)) ? Number(r.sensor_id) : null,
       parameter: String(r.parameter ?? '').trim(),
       hasil: r.hasil ?? null,
       sort_order: typeof r.sort_order === 'number' ? r.sort_order : i,
@@ -133,6 +199,16 @@ export async function canAccessLetter(
   if (role === 'admin') return true
   if (!letter) return false
   if (letter.created_by && letter.created_by === userId) return true
+  // Pihak-pihak pada Surat: penandatangan, verifikator, dan pengirim konsep
+  // harus bisa membuka/mengunduh dokumennya walau bukan pembuat/anggota tim.
+  const parties = [
+    letter.authorized_by,
+    letter.verifikator_1,
+    letter.verifikator_2,
+    letter.verifikator_3,
+    letter.sent_by,
+  ]
+  if (parties.some((party) => party != null && String(party) === userId)) return true
   if (letter.calibration_order_id) {
     return isUserInCalibrationOrderTeam(userId, Number(letter.calibration_order_id))
   }

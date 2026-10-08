@@ -113,7 +113,22 @@ export const isRichTextEmpty = (value: string | null | undefined) => {
 export const richTextContentClassName =
   '[&_p]:my-0 [&_p+*]:mt-1 [&_ul]:my-0 [&_ol]:my-0 [&_ul]:pl-5 [&_ol]:pl-5 [&_li]:my-0.5 [&_a]:text-blue-700 [&_a]:underline'
 
+/** Catatan default sesuai IKK baru (urutan & redaksi mengikuti IKK). */
 export const DEFAULT_NOTES_OTHERS_HTML = [
+  '<p><strong>Penunjukan nilai sebenarnya didapat dari penunjukan alat ditambah koreksi.</strong></p>',
+  '<p><em>The true value is determined from the instrument added by its correction.</em></p>',
+  '<p><strong>Ketidakpastian pengukuran dinyatakan pada tingkat kepercayaan tidak kurang dari 95 % dengan faktor cakupan k = 2</strong></p>',
+  '<p><em>Uncertainty of measurement is expressed at a confidence level of no less than 95 % with coverage factor k = 2</em></p>',
+  '<p><strong>Sertifikat ini hanya berlaku untuk peralatan dengan identitas yang dinyatakan di atas dan tidak boleh digandakan secara parsial. Penggandaan parsial hanya dapat dilakukan dengan izin dari laboratorium.</strong></p>',
+  '<p><em>This certificate only applies to equipment with the identity stated above and may not be reproduced partially. Partial reproduction is subject from the laboratory.</em></p>',
+].join('')
+
+/**
+ * Teks catatan default versi lama (sebelum IKK baru). Sertifikat yang sudah
+ * tersimpan memakai teks ini; saat dicetak otomatis diganti ke versi baru
+ * supaya tidak perlu memperbarui data lama satu per satu.
+ */
+export const LEGACY_NOTES_OTHERS_HTML = [
   '<p><strong>Penunjukan nilai sebenarnya didapat dari penunjukan alat ditambah koreksi.</strong></p>',
   '<p><em>The true value is determined from the instrument reading added by its correction.</em></p>',
   '<p><strong>Sertifikat ini hanya berlaku untuk peralatan dengan identitas yang dinyatakan di atas.</strong></p>',
@@ -124,3 +139,18 @@ export const DEFAULT_NOTES_OTHERS_HTML = [
 
 export const isDefaultNotesOthersValue = (value: string | null | undefined) =>
   normalizeRichTextValue(value) === normalizeRichTextValue(DEFAULT_NOTES_OTHERS_HTML)
+
+/** True bila `value` adalah teks catatan default yang dikenal (versi baru atau lama). */
+export const isKnownDefaultNotesOthersValue = (value: string | null | undefined) => {
+  const normalized = normalizeRichTextValue(value)
+  return (
+    normalized === normalizeRichTextValue(DEFAULT_NOTES_OTHERS_HTML) ||
+    normalized === normalizeRichTextValue(LEGACY_NOTES_OTHERS_HTML)
+  )
+}
+
+/** Teks catatan yang dirender: default versi baru bila tersimpan sebagai default lama. */
+export const resolveNotesOthersHtml = (value: string | null | undefined): string => {
+  if (!value) return ''
+  return isKnownDefaultNotesOthersValue(value) ? DEFAULT_NOTES_OTHERS_HTML : value
+}

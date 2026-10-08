@@ -167,5 +167,44 @@ export async function POST(request: NextRequest) {
       .insert({ order_id: order.id, personel_id: caller.user.id, assigned_by: caller.user.id })
   }
 
+  // Penugasan dokumen yang dipilih bersamaan saat memesan order (opsional).
+  // Disimpan sebagai default; setiap identifikasi mewarisinya lalu tetap bisa
+  // disesuaikan per alat. Bila tidak diisi, alur lama tidak berubah.
+  const defaults = {
+    default_verifikator_1: body?.default_verifikator_1 ? String(body.default_verifikator_1) : null,
+    default_verifikator_2: body?.default_verifikator_2 ? String(body.default_verifikator_2) : null,
+    default_verifikator_3: body?.default_verifikator_3 ? String(body.default_verifikator_3) : null,
+    default_authorized_by: body?.default_authorized_by ? String(body.default_authorized_by) : null,
+  }
+  const hasDefaults = Object.values(defaults).some(Boolean)
+  if (hasDefaults) {
+    const ids = Object.values(defaults).filter(Boolean) as string[]
+    const { data: people } = await supabaseAdmin
+      .from('personel')
+      .select('id')
+      .in('id', ids)
+    if ((people || []).length !== new Set(ids).size) {
+      return NextResponse.json(
+        { data: order, warning: 'Sebagian penugasan dokumen tidak ditemukan dan diabaikan.' },
+        { status: 201 },
+      )
+    }
+    const { error: defaultError } = await supabaseAdmin
+      .from('calibration_orders')
+      .update(defaults)
+      .eq('id', order.id)
+    if (defaultError) {
+      console.error('[calibration-orders] gagal menyimpan penugasan awal:', defaultError.message)
+      return NextResponse.json(
+        { data: order, warning: 'Order dibuat, tetapi penugasan dokumen awal gagal disimpan.' },
+        { status: 201 },
+      )
+    }
+    order.default_verifikator_1 = defaults.default_verifikator_1
+    order.default_verifikator_2 = defaults.default_verifikator_2
+    order.default_verifikator_3 = defaults.default_verifikator_3
+    order.default_authorized_by = defaults.default_authorized_by
+  }
+
   return NextResponse.json({ data: order }, { status: 201 })
 }

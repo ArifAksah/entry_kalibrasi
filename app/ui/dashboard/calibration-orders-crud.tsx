@@ -1,12 +1,13 @@
 'use client'
 
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useAlert } from '../../../hooks/useAlert'
 import Alert from '../../../components/ui/Alert'
 import { Spinner } from '../../../components/ui/Loading'
 import SearchableDropdown from '../../../components/ui/SearchableDropdown'
+import DocumentAssignmentPanel from '../../../components/features/DocumentAssignmentPanel'
 import type {
   CalibrationOrder,
   CalibrationOrderItem,
@@ -22,6 +23,7 @@ interface PersonelOption {
   id: string
   name: string
   role?: string | null
+  is_active?: boolean
 }
 
 interface InstrumentOption {
@@ -58,7 +60,11 @@ async function fetchAllUutInstruments(): Promise<InstrumentOption[]> {
 
 interface OrderDetail extends CalibrationOrder {
   personnel: Array<{ id: number; personel_id: string; personel?: { name?: string; nip?: string } | null }>
-  items: Array<CalibrationOrderItem & { certificate?: { id: number; no_certificate: string; status?: string } | null }>
+  items: Array<CalibrationOrderItem & {
+    certificate?: { id: number; no_certificate: string; status?: string } | null
+    letter?: { id: number; no_letter: string | null; status?: string; issue_date?: string | null } | null
+    can_create_letter?: boolean
+  }>
   schedule_history: Array<{ id: number; old_planned_date: string | null; new_planned_date: string | null; old_planned_end_date: string | null; new_planned_end_date: string | null; reason: string | null; changed_at: string }>
 }
 
@@ -96,6 +102,7 @@ const CalibrationOrdersCRUD: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [stations, setStations] = useState<StationOption[]>([])
   const [personel, setPersonel] = useState<PersonelOption[]>([])
+  const [allPersonel, setAllPersonel] = useState<PersonelOption[]>([])
   const [instruments, setInstruments] = useState<InstrumentOption[]>([])
   const [instrumentCodes, setInstrumentCodes] = useState<Array<{ id: number; code_alat: string | null }>>([])
 
@@ -113,11 +120,16 @@ const CalibrationOrdersCRUD: React.FC = () => {
     calibration_place: 'FC',
     notes: '',
     personnel_ids: [] as string[],
+    default_verifikator_1: '',
+    default_verifikator_2: '',
+    default_verifikator_3: '',
+    default_authorized_by: '',
   })
 
   const [detail, setDetail] = useState<OrderDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [selectedInstrumentId, setSelectedInstrumentId] = useState<number | null>(null)
+  const [addingItem, setAddingItem] = useState(false)
 
   // Modal konfirmasi in-app (menggantikan window.prompt/confirm)
   const [confirmModal, setConfirmModal] = useState<{
@@ -132,6 +144,22 @@ const CalibrationOrdersCRUD: React.FC = () => {
 
   const canManage = role === 'admin' || role === 'calibrator'
   const canCreate = role === 'admin' || role === 'calibrator'
+
+  // Opsi penugasan dokumen saat memesan order.
+  const verifikatorOptions = useMemo(
+    () =>
+      allPersonel
+        .filter((person) => person.role === 'verifikator' && person.is_active !== false)
+        .map((person) => ({ id: person.id, name: person.name || person.id, description: person.role || '' })),
+    [allPersonel],
+  )
+  const signerOptions = useMemo(
+    () =>
+      allPersonel
+        .filter((person) => person.role === 'assignor' && person.is_active !== false)
+        .map((person) => ({ id: person.id, name: person.name || person.id, description: person.role || '' })),
+    [allPersonel],
+  )
 
   // ── Fetch master options ────────────────────────────────────────────────
   useEffect(() => {
@@ -153,6 +181,12 @@ const CalibrationOrdersCRUD: React.FC = () => {
           peList
             .filter((p: any) => !p.deleted_at && p.role === 'calibrator')
             .map((p: any) => ({ id: p.id, name: p.name, role: p.role })),
+        )
+        // Daftar lengkap (semua role) khusus panel Penugasan Dokumen.
+        setAllPersonel(
+          peList
+            .filter((p: any) => !p.deleted_at)
+            .map((p: any) => ({ id: p.id, name: p.name, role: p.role, is_active: p.is_active })),
         )
         setInstruments(instrumentsAll)
         setInstrumentCodes(Array.isArray(codeJson) ? codeJson : codeJson?.data || [])
@@ -195,6 +229,10 @@ const CalibrationOrdersCRUD: React.FC = () => {
       calibration_place: 'FC',
       notes: '',
       personnel_ids: [],
+      default_verifikator_1: '',
+      default_verifikator_2: '',
+      default_verifikator_3: '',
+      default_authorized_by: '',
     })
     setPersonnelPickerId(null)
     setIsModalOpen(true)
@@ -220,6 +258,10 @@ const CalibrationOrdersCRUD: React.FC = () => {
           calibration_place: form.calibration_place,
           notes: form.notes || null,
           personnel_ids: form.personnel_ids,
+          default_verifikator_1: form.default_verifikator_1 || null,
+          default_verifikator_2: form.default_verifikator_2 || null,
+          default_verifikator_3: form.default_verifikator_3 || null,
+          default_authorized_by: form.default_authorized_by || null,
         }),
       })
       const json = await res.json()
@@ -276,6 +318,9 @@ const CalibrationOrdersCRUD: React.FC = () => {
 
   const addItem = async (instrumentId: number | null, instrumentCode: string | null) => {
     if (!detail) return
+    // Cegah dobel-klik: satu proses pada satu waktu.
+    if (addingItem) return
+    setAddingItem(true)
     try {
       const res = await fetch(`/api/calibration-orders/${detail.id}/items`, {
         method: 'POST',
@@ -289,7 +334,33 @@ const CalibrationOrdersCRUD: React.FC = () => {
       await refreshDetail(detail.id)
     } catch (e: any) {
       showError(e.message)
+    } finally {
+      setAddingItem(false)
     }
+  }
+
+  const deleteItem = (itemId: number, noIdentification: string) => {
+    setConfirmModalValues({})
+    setConfirmModal({
+      title: 'Hapus Identifikasi',
+      message: `Identifikasi ${noIdentification} akan dihapus. Nomornya tidak akan dipakai ulang untuk alat berikutnya.`,
+      fields: [],
+      confirmLabel: 'Hapus',
+      confirmColor: 'bg-rose-600 hover:bg-rose-700',
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`/api/calibration-order-items/${itemId}`, { method: 'DELETE' })
+          const json = await res.json()
+          if (!res.ok) throw new Error(json.error || 'Gagal menghapus identifikasi')
+          showSuccess('Identifikasi dihapus')
+          if (detail) await refreshDetail(detail.id)
+        } catch (e: any) {
+          showError(e.message)
+        } finally {
+          setConfirmModal(null)
+        }
+      },
+    })
   }
 
   const voidItem = (itemId: number) => {
@@ -463,14 +534,14 @@ const CalibrationOrdersCRUD: React.FC = () => {
       {/* Create Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm sm:p-6">
-          <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-2xl xl:max-w-6xl">
             <div className="rounded-t-2xl bg-gradient-to-r from-blue-950 to-blue-700 px-6 py-5 text-white">
               <h3 className="text-xl font-bold">Draf Order Kalibrasi</h3>
               <p className="mt-1 text-sm text-blue-100">
                 Draf belum mengonsumsi nomor. Nomor dialokasikan permanen saat pemesanan dikonfirmasi.
               </p>
             </div>
-            <div className="grid grid-cols-1 gap-5 p-6 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-5 p-6 sm:p-8 md:grid-cols-2">
               <div className="md:col-span-2">
                 <label className="mb-1.5 block text-sm font-semibold text-gray-700">Stasiun</label>
                 <SearchableDropdown
@@ -578,6 +649,41 @@ const CalibrationOrdersCRUD: React.FC = () => {
                 />
               </div>
             </div>
+            <div className="mt-4 rounded-lg border border-gray-200 p-3">
+              <div className="mb-1 text-sm font-bold text-gray-800">Penugasan Dokumen (opsional)</div>
+              <div className="mb-3 text-xs text-gray-500">
+                Dipilih sekarang supaya setiap alat pada order ini langsung punya verifikator dan
+                penandatangan. Masih bisa disesuaikan per alat di detail order.
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {([
+                  ['Verifikator 1', 'default_verifikator_1'],
+                  ['Verifikator 2', 'default_verifikator_2'],
+                  ['Verifikator 3', 'default_verifikator_3'],
+                ] as const).map(([label, key]) => (
+                  <div key={key} className="space-y-1">
+                    <label className="block text-xs font-semibold text-gray-700">{label}</label>
+                    <SearchableDropdown
+                      value={form[key] || null}
+                      onChange={(value) => setForm((current) => ({ ...current, [key]: (value as string) || '' }))}
+                      options={verifikatorOptions}
+                      placeholder="Pilih verifikator"
+                      searchPlaceholder={`Cari ${label.toLowerCase()}...`}
+                    />
+                  </div>
+                ))}
+                <div className="space-y-1">
+                  <label className="block text-xs font-semibold text-gray-700">Pejabat Pengesahan / Penandatangan</label>
+                  <SearchableDropdown
+                    value={form.default_authorized_by || null}
+                    onChange={(value) => setForm((current) => ({ ...current, default_authorized_by: (value as string) || '' }))}
+                    options={signerOptions}
+                    placeholder="Pilih penandatangan"
+                    searchPlaceholder="Cari penandatangan..."
+                  />
+                </div>
+              </div>
+            </div>
             <div className="flex justify-end gap-2 border-t border-gray-200 bg-gray-50 px-6 py-4">
               <button
                 onClick={() => setIsModalOpen(false)}
@@ -600,7 +706,7 @@ const CalibrationOrdersCRUD: React.FC = () => {
       {/* Detail Drawer */}
       {detail && (
         <div className="fixed inset-0 z-[70] flex justify-end bg-slate-950/50 backdrop-blur-sm">
-          <div className="flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl">
+          <div className="flex h-full w-full max-w-5xl flex-col bg-white shadow-2xl xl:max-w-6xl">
             <div className="flex items-center justify-between border-b border-gray-200 px-6 py-5">
               <div>
                 <h3 className="text-lg font-bold text-gray-900">Order {detail.no_order || '(Draf)'}</h3>
@@ -769,7 +875,7 @@ const CalibrationOrdersCRUD: React.FC = () => {
                         className="w-full sm:flex-1"
                       />
                       <button
-                        disabled={!selectedInstrumentId}
+                        disabled={!selectedInstrumentId || addingItem}
                         onClick={() => {
                           const instrument = instruments.find((row) => row.id === selectedInstrumentId)
                           if (!instrument) return
@@ -778,7 +884,7 @@ const CalibrationOrdersCRUD: React.FC = () => {
                         }}
                         className="w-full rounded-lg bg-[#1e377c] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50 sm:w-auto"
                       >
-                        + Tambah Alat UUT
+                        {addingItem ? 'Menambahkan...' : '+ Tambah Alat UUT'}
                       </button>
                   </div>
                 )}
@@ -789,6 +895,7 @@ const CalibrationOrdersCRUD: React.FC = () => {
                         <th className="px-3 py-2">Identifikasi</th>
                         <th className="px-3 py-2">Alat UUT</th>
                         <th className="px-3 py-2">Sertifikat</th>
+                        <th className="px-3 py-2">Surat</th>
                         <th className="px-3 py-2">Status</th>
                         <th className="px-3 py-2 text-right">Aksi</th>
                       </tr>
@@ -831,8 +938,32 @@ const CalibrationOrdersCRUD: React.FC = () => {
                               })()}
                             </td>
                             <td className="px-3 py-2">{it.certificate?.no_certificate || '-'}</td>
+                            <td className="px-3 py-2">{it.letter?.no_letter || (it.letter ? 'Draf' : '-')}</td>
                             <td className="px-3 py-2">{ITEM_STATUS_LABEL[it.status] || it.status}</td>
                             <td className="px-3 py-2 text-right">
+                              {it.letter ? (
+                                <button
+                                  onClick={() =>
+                                    router.push(
+                                      it.letter?.status === 'draft'
+                                        ? `/letters/${it.letter.id}/edit`
+                                        : `/letters/${it.letter!.id}/view`,
+                                    )
+                                  }
+                                  className="mr-2 rounded border border-emerald-200 px-2 py-0.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
+                                >
+                                  {it.letter.status === 'draft' ? 'Buka Draf Surat' : 'Lihat Surat'}
+                                </button>
+                              ) : it.can_create_letter && it.status !== 'void' ? (
+                                <button
+                                  onClick={() =>
+                                    router.push(`/letters/new?order=${detail.id}&item=${it.id}`)
+                                  }
+                                  className="mr-2 rounded bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                                >
+                                  Buat Surat
+                                </button>
+                              ) : null}
                               {it.certificate && (
                                 <button
                                   onClick={() =>
@@ -868,21 +999,61 @@ const CalibrationOrdersCRUD: React.FC = () => {
                               {canManage && it.status === 'identified' && (
                                 <button
                                   onClick={() => voidItem(it.id)}
-                                  className="rounded border border-rose-200 px-2 py-0.5 text-xs text-rose-600 hover:bg-rose-50"
+                                  className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50"
                                 >
                                   Tidak Dipakai
+                                </button>
+                              )}
+                              {canManage && !it.certificate && !it.letter && (
+                                <button
+                                  onClick={() => deleteItem(it.id, it.no_identification)}
+                                  className="ml-2 rounded border border-rose-200 px-2 py-0.5 text-xs font-semibold text-rose-600 hover:bg-rose-50"
+                                >
+                                  Hapus
                                 </button>
                               )}
                             </td>
                           </tr>
                         ))
                       ) : (
-                        <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-400">Belum ada alat</td></tr>
+                        <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400">Belum ada alat</td></tr>
                       )}
                     </tbody>
                   </table>
                 </div>
               </div>
+
+              {detail.items?.some((it) => it.status !== 'void') && (
+                <DocumentAssignmentPanel
+                  items={detail.items.map((it) => ({
+                    id: it.id,
+                    no_identification: it.no_identification,
+                    instrument_id: it.instrument_id,
+                    status: it.status,
+                  }))}
+                  team={Array.from(
+                    new Map(
+                      [
+                        allPersonel.find((person) => person.id === detail.created_by),
+                        ...detail.personnel.map((row) =>
+                          allPersonel.find((person) => person.id === row.personel_id),
+                        ),
+                      ]
+                        .filter(Boolean)
+                        .map((person) => [person!.id, person!]),
+                    ).values(),
+                  )}
+                  people={allPersonel}
+                  instrumentName={(item) => {
+                    const inst = instruments.find((row) => row.id === item.instrument_id)
+                    return (
+                      inst?.name_alias ||
+                      inst?.type ||
+                      (item.instrument_id ? `Instrumen #${item.instrument_id}` : '-')
+                    )
+                  }}
+                />
+              )}
 
               {/* Schedule history */}
               {detail.schedule_history?.length > 0 && (
@@ -964,6 +1135,7 @@ const CalibrationOrdersCRUD: React.FC = () => {
           </div>
         </div>
       )}
+
     </div>
   )
 }

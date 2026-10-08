@@ -56,10 +56,40 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(personelData)
       }
 
+      // Sumber stasiun yang otoritatif adalah `user_stations` (FK-nya valid).
+      // `user_roles.station_id` bisa berisi id lama yang sudah tidak ada di
+      // tabel station — kalau itu diteruskan ke form, penyimpanan akan gagal
+      // karena melanggar foreign key. Jadi hanya id yang benar-benar ada di
+      // tabel station yang dipakai.
+      const validStationForUser = new Map<string, number>()
+      if (is_admin) {
+        const [{ data: stationRows }, { data: userStationRows }] = await Promise.all([
+          supabaseAdmin.from('station').select('id'),
+          supabaseAdmin.from('user_stations').select('user_id, station_id'),
+        ])
+        const validStationIds = new Set(
+          (stationRows || []).map((row: any) => Number(row.id)).filter(Number.isFinite),
+        )
+        for (const row of userStationRows || []) {
+          const stationId = Number((row as any).station_id)
+          if (!validStationIds.has(stationId)) continue
+          if (!validStationForUser.has((row as any).user_id)) {
+            validStationForUser.set((row as any).user_id, stationId)
+          }
+        }
+        for (const row of rolesData || []) {
+          const stationId = Number((row as any).station_id)
+          if (!validStationIds.has(stationId)) continue
+          if (!validStationForUser.has((row as any).user_id)) {
+            validStationForUser.set((row as any).user_id, stationId)
+          }
+        }
+      }
+
       const mergedData = (personelData || []).map((p: any) => {
         const roleInfo = (rolesData || []).find((r: any) => r.user_id === p.id)
         return is_admin
-          ? { ...p, role: roleInfo?.role || null, station_id: roleInfo?.station_id || null }
+          ? { ...p, role: roleInfo?.role || null, station_id: validStationForUser.get(p.id) ?? null }
           : { ...p, role: roleInfo?.role || null }
       })
 

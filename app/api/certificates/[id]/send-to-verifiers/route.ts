@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { sendWhatsApp } from '../../../../../lib/wa'
 import { buildDraftSubmissionMessage } from '../../../../../lib/wa-messages'
 import { forbidden, isAdminCaller, requireCaller } from '../../../../../lib/api-auth'
+import { getDocumentAssignment } from '@/lib/document-assignment-service'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -58,17 +59,40 @@ export async function POST(
       return NextResponse.json({ error: 'Certificate is not in draft status' }, { status: 400 })
     }
 
-    if (!certificate.verifikator_1 || !certificate.verifikator_2 || !certificate.verifikator_3 || !certificate.authorized_by) {
+    let workflowAssignment = certificate
+    if (certificate.calibration_order_item_id) {
+      const itemId = Number(certificate.calibration_order_item_id)
+      // Hanya pakai Penugasan Dokumen bila sudah ada. Sertifikat lama yang belum
+      // punya baris penugasan tetap memakai kolom sertifikat (perilaku sebelumnya)
+      // agar alur verifikasi/TTE yang sudah berjalan tidak terganggu.
+      const existingAssignment = await getDocumentAssignment(itemId)
+      if (existingAssignment) {
+        const { error: lockError } = await supabase.rpc('lock_order_item_document_assignment', {
+          p_item_id: itemId,
+          p_actor: caller.user.id,
+          p_source: 'certificate_submission',
+        })
+        if (lockError) {
+          return NextResponse.json(
+            { error: `Penugasan Dokumen belum siap: ${lockError.message}` },
+            { status: 400 },
+          )
+        }
+        workflowAssignment = (await getDocumentAssignment(itemId)) ?? existingAssignment
+      }
+    }
+
+    if (!workflowAssignment.verifikator_1 || !workflowAssignment.verifikator_2 || !workflowAssignment.verifikator_3 || !workflowAssignment.authorized_by) {
       return NextResponse.json({
-        error: 'Verifikator 1, Verifikator 2, Verifikator 3, and Penandatangan must be assigned before sending'
+        error: 'Verifikator 1, Verifikator 2, Verifikator 3, dan Penandatangan wajib ditentukan sebelum kirim konsep'
       }, { status: 400 })
     }
 
     const assignedIds = [
-      certificate.verifikator_1,
-      certificate.verifikator_2,
-      certificate.verifikator_3,
-      certificate.authorized_by
+      workflowAssignment.verifikator_1,
+      workflowAssignment.verifikator_2,
+      workflowAssignment.verifikator_3,
+      workflowAssignment.authorized_by
     ]
 
     const { data: assignedPersonel, error: personelError } = await supabase
@@ -114,7 +138,7 @@ export async function POST(
 
     const now = new Date().toISOString()
     const verificationRecords = VERIFICATION_ASSIGNMENTS.map(({ level, field }) => {
-      const assignedUserId = certificate[field]
+      const assignedUserId = workflowAssignment[field]
       const preservedApprovalCandidate = level < resetFromLevel ? getPreservedApproval(level) : null
       const preservedApproval = preservedApprovalCandidate?.verified_by === assignedUserId
         ? preservedApprovalCandidate
@@ -206,10 +230,10 @@ export async function POST(
 
         // Only send to verifiers/penandatangan, exclude the calibrator (sent_by)
         const recipientIds = [
-          certificate.verifikator_1,
-          certificate.verifikator_2,
-          certificate.verifikator_3,
-          certificate.authorized_by
+          workflowAssignment.verifikator_1,
+          workflowAssignment.verifikator_2,
+          workflowAssignment.verifikator_3,
+          workflowAssignment.authorized_by
         ].filter((id): id is string => !!id && id !== sentBy)
 
         if (recipientIds.length === 0) {

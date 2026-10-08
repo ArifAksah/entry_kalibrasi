@@ -16,8 +16,12 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $fn$
 DECLARE
-  cur_month   INT  := EXTRACT(MONTH FROM now() AT TIME ZONE 'Asia/Jakarta')::INT;
-  cur_year    INT  := EXTRACT(YEAR  FROM now() AT TIME ZONE 'Asia/Jakarta')::INT;
+  v_issue_date DATE := COALESCE(
+    NULLIF(p_data->>'issue_date','')::date,
+    (now() AT TIME ZONE 'Asia/Jakarta')::date
+  );
+  cur_month   INT  := EXTRACT(MONTH FROM v_issue_date)::INT;
+  cur_year    INT  := EXTRACT(YEAR  FROM v_issue_date)::INT;
   v_item_id   BIGINT := NULLIF(p_data->>'calibration_order_item_id','')::bigint;
   v_cert_type TEXT   := COALESCE(NULLIF(p_data->>'certificate_type',''), 'sert');
   v_code      TEXT   := NULLIF(p_data->>'instrument_code','');
@@ -102,7 +106,7 @@ BEGIN
     v_item.calibration_place,
     v_code,
     v_item.no_identification,
-    NULLIF(p_data->>'issue_date','')::date,
+    v_issue_date,
     v_item.station_id,
     v_item.instrument_id,
     NULLIF(p_data->>'authorized_by','')::uuid,

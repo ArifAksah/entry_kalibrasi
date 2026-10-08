@@ -92,5 +92,51 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   const item: any = Array.isArray(data) ? data[0] : data
+
+  // Warisi penugasan dokumen yang dipilih saat memesan order (bila diisi).
+  // Kegagalan di sini tidak menggagalkan pembuatan identifikasi — petugas
+  // masih bisa mengatur penugasan manual di panel detail order.
+  try {
+    const { data: defaults } = await supabase
+      .from('calibration_orders')
+      .select('created_by, default_verifikator_1, default_verifikator_2, default_verifikator_3, default_authorized_by')
+      .eq('id', orderId)
+      .maybeSingle()
+
+    const complete =
+      defaults?.default_verifikator_1 &&
+      defaults?.default_verifikator_2 &&
+      defaults?.default_verifikator_3 &&
+      defaults?.default_authorized_by
+
+    if (complete && item?.id) {
+      const { data: teamRows } = await supabase
+        .from('calibration_order_personnel')
+        .select('personel_id')
+        .eq('order_id', orderId)
+      const checkerIds = Array.from(
+        new Set(
+          [defaults!.created_by, ...(teamRows || []).map((row: any) => row.personel_id)].filter(Boolean),
+        ),
+      )
+      const { error: assignError } = await supabase.rpc('save_order_item_document_assignment', {
+        p_data: {
+          calibration_order_item_id: item.id,
+          actor_id: caller.user.id,
+          checked_by_ids: checkerIds,
+          verifikator_1: defaults!.default_verifikator_1,
+          verifikator_2: defaults!.default_verifikator_2,
+          verifikator_3: defaults!.default_verifikator_3,
+          authorized_by: defaults!.default_authorized_by,
+        },
+      })
+      if (assignError) {
+        console.error('[order items] gagal mewarisi penugasan dokumen:', assignError.message)
+      }
+    }
+  } catch (inheritError) {
+    console.error('[order items] error mewarisi penugasan dokumen:', inheritError)
+  }
+
   return NextResponse.json({ data: item }, { status: 201 })
 }

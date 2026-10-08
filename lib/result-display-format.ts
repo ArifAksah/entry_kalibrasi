@@ -114,7 +114,25 @@ export function formatCalibrationResultRow(
     correction: unknown,
     uncertainty: unknown,
     parameter: CalibrationParameter = 'generic',
+    options: { readingDecimals?: number | null } = {},
 ): { reading: string; correction: string; uncertainty: string } {
+    // PYRANOMETER — ikut aturan sertifikat yang sama:
+    //   • Penunjukan Alat  : mengikuti RESOLUSI UUT (mis. 0.1 -> 1 desimal)
+    //   • Ketidakpastian   : 2 angka di belakang koma (U95 pyranometer dalam %,
+    //                        mis. 4.03) — bukan 2 angka penting
+    //   • Faktor Kalibrasi : jumlah desimal SAMA dengan ketidakpastian (0.99)
+    if (parameter === 'pyranometer') {
+        const pyrReadingDecimals =
+            options.readingDecimals != null && Number.isFinite(options.readingDecimals)
+                ? Math.max(0, Math.min(8, Math.trunc(options.readingDecimals)))
+                : (readingDecimals.pyranometer ?? 2);
+        return {
+            reading: fixedDisplay(reading, pyrReadingDecimals),
+            correction: fixedDisplay(correction, 2),
+            uncertainty: fixedDisplay(uncertainty, 2),
+        };
+    }
+
     const uncertaintyDisplay = formatCalibrationResultValue(uncertainty, 2);
     if (!isNumericString(uncertainty)) {
         return {
@@ -126,11 +144,17 @@ export function formatCalibrationResultRow(
 
     const point = uncertaintyDisplay.indexOf('.');
     const uncertaintyDecimals = point === -1 ? 0 : uncertaintyDisplay.length - point - 1;
+    // Aturan sertifikat: Penunjukan Alat mengikuti RESOLUSI UUT. Bila resolusi
+    // tidak diketahui, kembali ke format per parameter (workbook).
     const workbookReadingDecimals = readingDecimals[parameter];
+    const effectiveReadingDecimals =
+        options.readingDecimals != null && Number.isFinite(options.readingDecimals)
+            ? Math.max(0, Math.min(8, Math.trunc(options.readingDecimals)))
+            : workbookReadingDecimals;
     return {
-        reading: workbookReadingDecimals === undefined
+        reading: effectiveReadingDecimals === undefined
             ? formatCalibrationResultValue(reading, 2)
-            : fixedDisplay(reading, workbookReadingDecimals),
+            : fixedDisplay(reading, effectiveReadingDecimals),
         correction: fixedDisplay(correction, uncertaintyDecimals),
         uncertainty: uncertaintyDisplay,
     };
@@ -146,4 +170,21 @@ export function formatCalibrationCorrection(value: unknown, isPyranometer = fals
 
 export function formatCalibrationUncertainty(value: unknown, isPyranometer = false, digits = 4): string {
     return roundDisplay(value, isPyranometer ? Math.max(digits, 2) : digits);
+}
+
+/**
+ * Jumlah angka di belakang koma dari RESOLUSI alat.
+ * Aturan sertifikat: Penunjukan Alat ditampilkan mengikuti resolusi UUT
+ * (mis. resolusi 0.01 -> 2 desimal, 0.1 -> 1, 1 -> 0, 0.5 -> 1).
+ * Mengembalikan `null` bila resolusi tidak diketahui.
+ */
+export function decimalsFromResolution(resolution: unknown): number | null {
+    if (resolution === null || resolution === undefined) return null;
+    const text0 = String(resolution).trim();
+    if (text0 === '') return null;
+    const value = Number(text0.replace(',', '.'));
+    if (!Number.isFinite(value) || value <= 0) return null;
+    const text = value.toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
+    const dot = text.indexOf('.');
+    return dot === -1 ? 0 : text.length - dot - 1;
 }

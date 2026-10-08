@@ -230,6 +230,11 @@ function convertLegacyEntry(raw: unknown, index: number): SensorResultV1 {
     key: asString(c.key),
     value: asString(c.value),
     unit: asString(c.unit),
+    type: asString(c.type),
+    awal: asString(c.awal),
+    akhir: asString(c.akhir),
+    u95: asString(c.u95),
+    ...(typeof c.enabled === 'boolean' ? { enabled: c.enabled } : {}),
   }))
 
   const setup: SensorResultV1['setup'] = {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { verifyPdfRenderToken } from './lib/pdf-render-token'
+import { verifyPdfRenderToken, type RenderScope } from './lib/pdf-render-token'
 
 // ─── Signed-PDF renderer bypass ────────────────────────────────────────────
 // lib/certificate-pdf-helper.ts spins up headless Chromium against
@@ -17,10 +17,16 @@ const RENDER_RELATED_PATHS = [
   /^\/api\/personel\/[^/]+$/,
 ]
 
-export function isPdfRenderPathAllowed(request: NextRequest, certificateId: string): boolean {
+export function isPdfRenderPathAllowed(
+  request: NextRequest,
+  documentId: string,
+  scope: RenderScope = 'certificate',
+): boolean {
   const { pathname, searchParams } = request.nextUrl
   const queryKeys = Array.from(searchParams.keys())
-  if (pathname === `/api/certificates/${certificateId}`) return queryKeys.length === 0
+  const documentPath =
+    scope === 'letter' ? `/api/letters/${documentId}` : `/api/certificates/${documentId}`
+  if (pathname === documentPath) return queryKeys.length === 0
   if (RENDER_RELATED_PATHS.some(pattern => pattern.test(pathname))) return queryKeys.length === 0
   if (pathname !== '/api/raw-data') return false
 
@@ -30,15 +36,20 @@ export function isPdfRenderPathAllowed(request: NextRequest, certificateId: stri
     && searchParams.get('mode') === 'room'
 }
 
+export function resolveRenderScope(request: NextRequest): RenderScope {
+  return request.headers.get('x-pdf-render-doc') === 'letter' ? 'letter' : 'certificate'
+}
+
 export function renderBypassAllowed(request: NextRequest): boolean {
   if (request.method !== 'GET') return false
   const token = request.headers.get('x-pdf-render-token')
   const ts = request.headers.get('x-pdf-render-ts')
   const certId = request.headers.get('x-pdf-render-cert')
   if (!token || !ts || !certId || !/^\d+$/.test(certId)) return false
-  if (!isPdfRenderPathAllowed(request, certId)) return false
+  const scope = resolveRenderScope(request)
+  if (!isPdfRenderPathAllowed(request, certId, scope)) return false
   try {
-    return verifyPdfRenderToken(certId, token, ts)
+    return verifyPdfRenderToken(certId, token, ts, scope)
   } catch {
     return false
   }
@@ -104,6 +115,16 @@ export async function proxy(request: NextRequest) {
   }
 
   if (isPublicPath(pathname)) {
+    return NextResponse.next()
+  }
+
+  // Unduhan PDF Surat Keterangan yang sudah ditandatangani bersifat publik,
+  // asalkan membawa public_id. Route handler-nya tetap memverifikasi bahwa
+  // public_id itu memang milik surat tersebut dan suratnya sudah selesai.
+  if (
+    /^\/api\/letters\/\d+\/pdf$/.test(pathname) &&
+    request.nextUrl.searchParams.get('public_id')
+  ) {
     return NextResponse.next()
   }
 
