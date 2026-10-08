@@ -971,21 +971,77 @@ const InstrumentsCRUD: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // For single instrument: require manufacturer, type, serial_number, name
-    // For multi-sensor instrument: only require name (manufacturer/type/serial are at sensor level)
+    // ── Isian wajib sesuai pemetaan Instrumen / Sensor / Data Kalibrasi ──
+    // Instrumen: ID, Kode, Nama, Tipe, Alias, Station.
+    // Sensor: Nama, Alias, Merk, Tipe, Resolution (Serial Number/Range opsional).
+    // Data Kalibrasi: Nomor Sertifikat, Tanggal, Traceability, Drift,
+    // U95 General, Tabel Koreksi & Ketidakpastian.
+    const isBlank = (value: unknown) =>
+      value == null || String(value).trim() === ''
+    const isBlankOrZero = (value: unknown) =>
+      isBlank(value) || Number(value) === 0
+    const missing: string[] = []
+
+    if (isBlank((form as any).instrument_id)) missing.push('ID Instrumen')
+    if ((form as any).instrument_code_id == null) missing.push('Kode Instrumen')
+    if (
+      (form as any).instrument_names_id == null &&
+      isBlank((form as any).names)
+    ) {
+      missing.push('Nama Instrumen')
+    }
+    if ((form as any).instrument_type_id == null) missing.push('Tipe Instrumen')
+    if (isBlank((form as any).name_alias)) missing.push('Alias')
+    if ((form as any).station_id == null) missing.push('Station')
+
+    sensorForms.forEach((sensor, index) => {
+      const label = `Sensor ${index + 1}`
+      if (sensor.sensor_name_id == null) missing.push(`${label}: Nama Sensor`)
+      if (isBlank(sensor.nama_sensor)) missing.push(`${label}: Alias Sensor`)
+      if (isBlank(sensor.merk_sensor)) missing.push(`${label}: Merk Sensor`)
+      if (isBlank(sensor.tipe_sensor)) missing.push(`${label}: Tipe Sensor`)
+      if (isBlankOrZero(sensor.resolution)) {
+        missing.push(`${label}: Resolution`)
+      }
+    })
+
     if (!form.memiliki_lebih_satu) {
-      if (
-        !form.manufacturer ||
-        !form.type ||
-        !form.serial_number ||
-        !form.name
-      ) {
-        return
+      if (isBlank(form.manufacturer)) missing.push('Merk Sensor')
+      if (isBlank(form.type)) missing.push('Tipe Sensor')
+    }
+
+    globalCertificates.forEach((cert: any) => {
+      const certLabel = isBlank(cert?.no_certificate)
+        ? 'Data Kalibrasi'
+        : `Sertifikat ${cert.no_certificate}`
+      if (isBlank(cert?.no_certificate)) missing.push('Nomor Sertifikat')
+      if (isBlank(cert?.calibration_date)) {
+        missing.push(`${certLabel}: Tanggal Kalibrasi`)
       }
-    } else {
-      if (!form.name) {
-        return
-      }
+      ;(cert?.sensorData || []).forEach((sd: any) => {
+        if (isBlank(sd?.tracebility)) missing.push(`${certLabel}: Traceability`)
+        if (isBlankOrZero(sd?.drift)) missing.push(`${certLabel}: Drift`)
+        if (isBlankOrZero(sd?.u95_general)) {
+          missing.push(`${certLabel}: U95 General`)
+        }
+        const rows = Array.isArray(sd?.correction_data) ? sd.correction_data : []
+        const hasCompleteRow = rows.some(
+          (row: any) =>
+            !isBlank(row?.setpoint) &&
+            !isBlank(row?.correction) &&
+            !isBlank(row?.u95),
+        )
+        if (!hasCompleteRow) {
+          missing.push(`${certLabel}: Tabel Koreksi & Ketidakpastian`)
+        }
+      })
+    })
+
+    if (missing.length > 0) {
+      showError(
+        `Isian wajib belum lengkap: ${Array.from(new Set(missing)).join(', ')}.`,
+      )
+      return
     }
     setIsSubmitting(true)
     try {
@@ -1566,13 +1622,12 @@ const InstrumentsCRUD: React.FC = () => {
                       {/* ID Instrumen */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          ID Instrumen{' '}
-                          <span className="text-gray-400 font-normal text-xs">
-                            (opsional)
-                          </span>
+                          ID Instrumen 
+                          <span className="text-red-500">*</span>
                         </label>
                         <input
                           type="text"
+                          required
                           value={(form as any).instrument_id || ''}
                           onChange={(e) =>
                             setForm({
@@ -1586,7 +1641,7 @@ const InstrumentsCRUD: React.FC = () => {
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Kode Instrumen *
+                          Kode Instrumen <span className="text-red-500">*</span>
                         </label>
                         <SearchableDropdown
                           value={selectedInstrumentCodeId ?? null}
@@ -1610,7 +1665,7 @@ const InstrumentsCRUD: React.FC = () => {
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Nama Instrumen *
+                          Nama Instrumen <span className="text-red-500">*</span>
                         </label>
                         <SearchableDropdown
                           options={instrumentNames
@@ -1665,10 +1720,8 @@ const InstrumentsCRUD: React.FC = () => {
                       {/* Instrument Type */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Tipe Instrumen{' '}
-                          <span className="text-gray-400 font-normal text-xs">
-                            (opsional)
-                          </span>
+                          Tipe Instrumen 
+                          <span className="text-red-500">*</span>
                         </label>
                         <div className="flex gap-3">
                           {instrumentTypes.length > 0 ? (
@@ -1686,6 +1739,7 @@ const InstrumentsCRUD: React.FC = () => {
                                 <input
                                   type="radio"
                                   name="instrument_type_id"
+                                  required
                                   value={t.id}
                                   checked={
                                     (form as any).instrument_type_id === t.id
@@ -1725,7 +1779,10 @@ const InstrumentsCRUD: React.FC = () => {
                         {/* Memiliki Lebih Satu Sensor */}
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Multi-Sensor
+                            Multi-Sensor 
+                            <span className="text-gray-400 font-normal text-xs">
+                              (opsional)
+                            </span>
                           </label>
                           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 h-full flex items-center">
                             <div className="flex items-center space-x-3">
@@ -1781,7 +1838,10 @@ const InstrumentsCRUD: React.FC = () => {
                         {!isReadOnlyUserStation && (
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Alat Standar
+                              Alat Standar 
+                              <span className="text-gray-400 font-normal text-xs">
+                                (opsional)
+                              </span>
                             </label>
                             <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 h-full flex items-center">
                               <div className="flex items-center space-x-3">
@@ -1817,10 +1877,8 @@ const InstrumentsCRUD: React.FC = () => {
                       {/* Alias - disimpan ke kolom name_alias */}
                       <div className="lg:col-span-3">
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Alias{' '}
-                          <span className="text-gray-400 font-normal text-xs">
-                            (nama khusus alat, wajib)
-                          </span>
+                          Alias 
+                          <span className="text-red-500">*</span>
                         </label>
                         <input
                           type="text"
@@ -1842,7 +1900,7 @@ const InstrumentsCRUD: React.FC = () => {
 
                       <div className="lg:col-span-3">
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Station
+                          Station <span className="text-red-500">*</span>
                         </label>
                         <div className="relative">
                           <input
@@ -2013,7 +2071,7 @@ const InstrumentsCRUD: React.FC = () => {
                                   <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
                                       Range Capacity
-                                    </label>
+                                    <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
                                     <div className="flex gap-2">
                                       <input
                                         value={sensor.range_capacity}
@@ -2046,6 +2104,7 @@ const InstrumentsCRUD: React.FC = () => {
                                   <div className="md:col-span-2">
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
                                       Resolution{' '}
+                                                          <span className="text-red-500">*</span>
                                       <span className="text-gray-400 text-xs font-normal">
                                         (untuk perhitungan U95)
                                       </span>
@@ -2256,7 +2315,7 @@ const InstrumentsCRUD: React.FC = () => {
                                     <div>
                                       <label className="block text-xs font-medium text-gray-600 mb-1">
                                         Nomor Sertifikat
-                                      </label>
+                                      <span className="text-red-500">*</span></label>
                                       <input
                                         type="text"
                                         value={cert.no_certificate}
@@ -2279,7 +2338,7 @@ const InstrumentsCRUD: React.FC = () => {
                                     <div>
                                       <label className="block text-xs font-medium text-gray-600 mb-1">
                                         Tanggal Kalibrasi
-                                      </label>
+                                      <span className="text-red-500">*</span></label>
                                       <input
                                         type="date"
                                         value={cert.calibration_date}
@@ -2562,7 +2621,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                     <div>
                                                       <label className="block text-xs font-medium text-gray-600 mb-1">
                                                         Nama Sensor
-                                                      </label>
+                                                      <span className="text-red-500">*</span></label>
                                                       <SearchableDropdown
                                                         options={[
                                                           {
@@ -2616,7 +2675,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                     <div>
                                                       <label className="block text-xs font-medium text-gray-600 mb-1">
                                                         Alias Sensor
-                                                      </label>
+                                                      <span className="text-red-500">*</span></label>
                                                       <input
                                                         type="text"
                                                         value={
@@ -2636,7 +2695,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                       <div>
                                                         <label className="block text-xs font-medium text-gray-600 mb-1">
                                                           Merk
-                                                        </label>
+                                                        <span className="text-red-500">*</span></label>
                                                         <input
                                                           type="text"
                                                           value={
@@ -2655,7 +2714,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                       <div>
                                                         <label className="block text-xs font-medium text-gray-600 mb-1">
                                                           Tipe
-                                                        </label>
+                                                        <span className="text-red-500">*</span></label>
                                                         <input
                                                           type="text"
                                                           value={
@@ -2674,7 +2733,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                       <div>
                                                         <label className="block text-xs font-medium text-gray-600 mb-1">
                                                           Serial Number
-                                                        </label>
+                                                        <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
                                                         <input
                                                           type="text"
                                                           value={
@@ -2695,7 +2754,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                       <div>
                                                         <label className="block text-xs font-medium text-gray-600 mb-1">
                                                           Range Capacity
-                                                        </label>
+                                                        <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
                                                         <div className="flex gap-2">
                                                           <input
                                                             type="text"
@@ -2731,6 +2790,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                       <div className="sm:col-span-1">
                                                         <label className="block text-xs font-medium text-gray-600 mb-1">
                                                           Resolution{' '}
+                                                          <span className="text-red-500">*</span>
                                                           <span className="text-gray-400 font-normal">
                                                             (untuk perhitungan
                                                             U95)
@@ -2895,7 +2955,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                   <div className="mb-3">
                                                     <label className="block text-xs font-medium text-gray-600 mb-1">
                                                       Traceability
-                                                    </label>
+                                                    <span className="text-red-500">*</span></label>
                                                     <input
                                                       type="text"
                                                       value={
@@ -2915,7 +2975,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                     <div>
                                                       <label className="block text-xs font-medium text-gray-600 mb-1">
                                                         Drift
-                                                      </label>
+                                                      <span className="text-red-500">*</span></label>
                                                       <input
                                                         type="text"
                                                         inputMode="decimal"
@@ -2957,7 +3017,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                     <div>
                                                       <label className="block text-xs font-medium text-gray-600 mb-1">
                                                         U95 General
-                                                      </label>
+                                                      <span className="text-red-500">*</span></label>
                                                       <input
                                                         type="text"
                                                         inputMode="decimal"
@@ -3003,7 +3063,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                   <div className="flex justify-between items-center mb-2">
                                                     <span className="text-xs font-semibold text-gray-600">
                                                       Tabel Koreksi &amp;
-                                                      Ketidakpastian
+                                                      Ketidakpastian <span className="text-red-500">*</span>
                                                     </span>
                                                     <button
                                                       type="button"
@@ -3554,7 +3614,7 @@ const InstrumentsCRUD: React.FC = () => {
                                 <div>
                                   <label className="block text-sm font-medium text-gray-700 mb-2">
                                     Nama Sensor
-                                  </label>
+                                  <span className="text-red-500">*</span></label>
                                   <SearchableDropdown
                                     options={[
                                       { id: '', name: 'Tidak dipilih' },
@@ -3677,7 +3737,7 @@ const InstrumentsCRUD: React.FC = () => {
                                   <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
                                       Range Capacity
-                                    </label>
+                                    <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
                                     <div className="flex gap-2">
                                       <input
                                         type="text"
@@ -3711,6 +3771,7 @@ const InstrumentsCRUD: React.FC = () => {
                                   <div className="sm:col-span-2">
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
                                       Resolution{' '}
+                                                          <span className="text-red-500">*</span>
                                       <span className="text-gray-400 text-xs font-normal">
                                         (untuk perhitungan U95)
                                       </span>
@@ -3949,7 +4010,7 @@ const InstrumentsCRUD: React.FC = () => {
                               <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
                                   Range Capacity
-                                </label>
+                                <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
                                 <div className="flex gap-2">
                                   <input
                                     value={sensor.range_capacity}
@@ -3982,6 +4043,7 @@ const InstrumentsCRUD: React.FC = () => {
                               <div className="md:col-span-2">
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
                                   Resolution{' '}
+                                                          <span className="text-red-500">*</span>
                                   <span className="text-gray-400 text-xs font-normal">
                                     (untuk perhitungan U95)
                                   </span>

@@ -3,6 +3,8 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useSensors } from '../../../hooks/useSensors'
 import { usePermissions } from '../../../hooks/usePermissions'
+import Alert from '../../../components/ui/Alert'
+import { useAlert } from '../../../hooks/useAlert'
 import { Sensor, SensorInsert } from '../../../lib/supabase'
 import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
@@ -102,6 +104,7 @@ const SensorsCRUD: React.FC = () => {
     fetchSensors,
   } = useSensors()
   const { can, canEndpoint } = usePermissions()
+  const { alert, showError, hideAlert } = useAlert()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingSensor, setEditingSensor] = useState<Sensor | null>(null)
   const [formData, setFormData] = useState<SensorInsert>({
@@ -120,6 +123,7 @@ const SensorsCRUD: React.FC = () => {
     funnel_area: 0,
     funnel_area_unit: '',
     name: '',
+    resolution: null,
     is_standard: false as any,
     parameter_code: null,
   })
@@ -226,6 +230,7 @@ const SensorsCRUD: React.FC = () => {
       funnel_area: 0,
       funnel_area_unit: '',
       name: '',
+      resolution: null,
       is_standard: false,
       parameter_code: null,
     })
@@ -233,13 +238,38 @@ const SensorsCRUD: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    // ── Isian wajib sesuai pemetaan Sensor ──
+    // Wajib: Nama Sensor, Merk, Tipe, Resolution.
+    // Opsional: Serial Number, Range Capacity, Range Capacity Unit, Graduating Unit.
+    const isBlank = (value: unknown) =>
+      value == null || String(value).trim() === ''
+    const missing: string[] = []
+    if (isBlank(formData.name)) missing.push('Nama Sensor')
+    if (isBlank(formData.manufacturer)) missing.push('Merk Sensor')
+    if (isBlank(formData.type)) missing.push('Tipe Sensor')
+    if (isBlank(formData.resolution) || Number(formData.resolution) === 0) {
+      missing.push('Resolution')
+    }
+    if (missing.length > 0) {
+      showError(`Isian wajib belum lengkap: ${missing.join(', ')}.`)
+      return
+    }
+
     setIsSubmitting(true)
+    // Kolom resolution bertipe numerik: string kosong harus jadi null.
+    const payload: SensorInsert = {
+      ...formData,
+      resolution: isBlank(formData.resolution)
+        ? null
+        : Number(formData.resolution),
+    }
 
     try {
       if (editingSensor) {
-        await updateSensor(editingSensor.id, formData)
+        await updateSensor(editingSensor.id, payload)
       } else {
-        await addSensor(formData)
+        await addSensor(payload)
       }
       handleCloseModal()
     } catch (error) {
@@ -281,6 +311,15 @@ const SensorsCRUD: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {alert.show && (
+        <Alert
+          type={alert.type}
+          message={alert.message}
+          onClose={hideAlert}
+          autoHide={alert.autoHide}
+        />
+      )}
+
       <div className="flex items-center justify-between">
         <Breadcrumb
           items={[{ label: 'Sensors', href: '#' }, { label: 'Manager' }]}
@@ -487,12 +526,19 @@ const SensorsCRUD: React.FC = () => {
                         placeholder: 'Sensor type',
                       },
                       {
-                        label: 'Serial Number *',
+                        label: 'Serial Number (opsional)',
                         name: 'serial_number',
                         value: formData.serial_number,
                         type: 'text',
-                        required: true,
                         placeholder: 'Serial number',
+                      },
+                      {
+                        label: 'Resolution *',
+                        name: 'resolution',
+                        value: formData.resolution ?? '',
+                        type: 'text',
+                        required: true,
+                        placeholder: 'Ex: 0.01',
                       },
                     ].map((field, index) => (
                       <div key={index} className="space-y-1">
@@ -539,14 +585,14 @@ const SensorsCRUD: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {[
                       {
-                        label: 'Range Capacity',
+                        label: 'Range Capacity (opsional)',
                         name: 'range_capacity',
                         value: formData.range_capacity,
                         type: 'text',
                         placeholder: 'Range capacity',
                       },
                       {
-                        label: 'Range Capacity Unit',
+                        label: 'Range Capacity Unit (opsional)',
                         name: 'range_capacity_unit',
                         value: formData.range_capacity_unit,
                         type: 'select',

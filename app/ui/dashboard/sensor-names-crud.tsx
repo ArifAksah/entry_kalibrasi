@@ -3,6 +3,8 @@
 import React, { useState } from 'react'
 import { useSensors } from '../../../hooks/useSensors'
 import { usePermissions } from '../../../hooks/usePermissions'
+import Alert from '../../../components/ui/Alert'
+import { useAlert } from '../../../hooks/useAlert'
 import { Sensor, SensorInsert } from '../../../lib/supabase'
 import Card from '../../../components/ui/Card'
 import Table from '../../../components/ui/Table'
@@ -13,6 +15,7 @@ const SensorsCRUD: React.FC = () => {
   const { sensors, loading, error, addSensor, updateSensor, deleteSensor } =
     useSensors()
   const { can, canEndpoint } = usePermissions()
+  const { alert, showError, hideAlert } = useAlert()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingSensor, setEditingSensor] = useState<Sensor | null>(null)
   const [formData, setFormData] = useState<SensorInsert>({
@@ -31,6 +34,7 @@ const SensorsCRUD: React.FC = () => {
     funnel_area: 0,
     funnel_area_unit: '',
     name: '',
+    resolution: null,
     is_standard: false as any,
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -102,19 +106,45 @@ const SensorsCRUD: React.FC = () => {
       funnel_area: 0,
       funnel_area_unit: '',
       name: '',
+      resolution: null,
       is_standard: false,
     })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    // ── Isian wajib sesuai pemetaan Sensor ──
+    // Wajib: Nama Sensor, Merk, Tipe, Resolution.
+    // Opsional: Serial Number, Range Capacity, Range Capacity Unit, Graduating Unit.
+    const isBlank = (value: unknown) =>
+      value == null || String(value).trim() === ''
+    const missing: string[] = []
+    if (isBlank(formData.name)) missing.push('Nama Sensor')
+    if (isBlank(formData.manufacturer)) missing.push('Merk Sensor')
+    if (isBlank(formData.type)) missing.push('Tipe Sensor')
+    if (isBlank(formData.resolution) || Number(formData.resolution) === 0) {
+      missing.push('Resolution')
+    }
+    if (missing.length > 0) {
+      showError(`Isian wajib belum lengkap: ${missing.join(', ')}.`)
+      return
+    }
+
     setIsSubmitting(true)
+    // Kolom resolution bertipe numerik: string kosong harus jadi null.
+    const payload: SensorInsert = {
+      ...formData,
+      resolution: isBlank(formData.resolution)
+        ? null
+        : Number(formData.resolution),
+    }
 
     try {
       if (editingSensor) {
-        await updateSensor(editingSensor.id, formData)
+        await updateSensor(editingSensor.id, payload)
       } else {
-        await addSensor(formData)
+        await addSensor(payload)
       }
       handleCloseModal()
     } catch (error) {
@@ -168,6 +198,14 @@ const SensorsCRUD: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {alert.show && (
+        <Alert
+          type={alert.type}
+          message={alert.message}
+          onClose={hideAlert}
+          autoHide={alert.autoHide}
+        />
+      )}
       <div className="flex items-center justify-between">
         <Breadcrumb
           items={[{ label: 'Sensors', href: '#' }, { label: 'Manager' }]}
@@ -385,16 +423,30 @@ const SensorsCRUD: React.FC = () => {
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Serial Number *
+                        Serial Number (opsional)
                       </label>
                       <input
                         type="text"
                         name="serial_number"
                         value={formData.serial_number}
                         onChange={handleInputChange}
-                        required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                         placeholder="Serial number"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Resolution *
+                      </label>
+                      <input
+                        type="text"
+                        name="resolution"
+                        value={formData.resolution ?? ''}
+                        onChange={handleInputChange}
+                        required
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                        placeholder="Ex: 0.01"
                       />
                     </div>
                   </div>
@@ -408,7 +460,7 @@ const SensorsCRUD: React.FC = () => {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Range Capacity
-                      </label>
+                       (opsional)</label>
                       <input
                         type="text"
                         name="range_capacity"
@@ -422,7 +474,7 @@ const SensorsCRUD: React.FC = () => {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Range Capacity Unit
-                      </label>
+                       (opsional)</label>
                       <select
                         name="range_capacity_unit"
                         value={formData.range_capacity_unit}
