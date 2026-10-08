@@ -610,6 +610,14 @@ export interface PyranometerUncertaintyResult {
         outlier_indices: number[];
         drift_class: 'A' | 'B' | 'C' | null;
         drift_value_percent: number;
+        /**
+         * Dari mana nilai drift berasal:
+         * - `type`        : dibaca dari tipe alat standar (ISO 9060) — jalur benar.
+         * - `certificate` : cadangan dari `certificate_standard.drift`.
+         * - `missing`     : keduanya tidak tersedia sehingga drift = 0; hasil U95
+         *                   tidak boleh dipercaya dan harus terlihat di audit.
+         */
+        drift_source: 'type' | 'certificate' | 'missing';
     };
     certificate: {
         calibration_factor: number;
@@ -865,6 +873,7 @@ function createEmptyPyranometerResult(): PyranometerUncertaintyResult {
             outlier_indices: [],
             drift_class: null,
             drift_value_percent: 0,
+            drift_source: 'missing',
         },
         certificate: {
             calibration_factor: 0,
@@ -977,6 +986,11 @@ export function calculatePyranometerUncertainty(params: {
     const overridePercent = Number(params.driftPercentOverride);
     const useOverride = driftFromType === 0 && Number.isFinite(overridePercent) && overridePercent > 0;
     const driftPercent = useOverride ? overridePercent : driftFromType;
+    const driftSource: 'type' | 'certificate' | 'missing' = useOverride
+        ? 'certificate'
+        : driftFromType > 0
+          ? 'type'
+          : 'missing';
     const driftClass = useOverride
         ? (overridePercent === 0.8 ? 'A' : overridePercent === 1.5 ? 'B' : overridePercent === 3 ? 'C' : null)
         : getISO9060Class(driftSensorType);
@@ -1034,6 +1048,7 @@ export function calculatePyranometerUncertainty(params: {
             outlier_indices: cf_result.outlier_indices,
             drift_class: driftClass,
             drift_value_percent: driftPercent,
+            drift_source: driftSource,
         },
         certificate: {
             calibration_factor: cf_result.cf_final,

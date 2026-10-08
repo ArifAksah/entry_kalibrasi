@@ -41,6 +41,7 @@ import {
   buildPyranometerInputs,
   calculateNewSensitivity,
   isAnalogPyranometer,
+  resolveStdSensor,
 } from '../../../lib/pyranometer-inputs'
 import {
   ROOM_CONDITION_DEFINITIONS,
@@ -1844,27 +1845,6 @@ const CertificatesCRUD: React.FC = () => {
   }
 
   // Auto-Generate Table Result from QC Data
-  /**
-   * Ambil data sensor standar: dari daftar yang dimuat lebih dulu, dan bila tidak
-   * ada ambil langsung dari API. Daftar sensor di aplikasi bisa belum memuat sensor
-   * standar tertentu sehingga tipe alat tidak terbaca dan drift ISO 9060 jatuh 0.
-   */
-  const resolveStdSensor = async (id: number | string | null | undefined) => {
-    if (id == null) return null
-    const found = (sensors as any[])?.find(
-      (sn: any) => String(sn?.id) === String(id),
-    )
-    if (found) return found
-    try {
-      const res = await fetch(`/api/sensors/${id}`)
-      if (!res.ok) return null
-      const payload = await res.json()
-      return (payload as any)?.data ?? payload ?? null
-    } catch {
-      return null
-    }
-  }
-
   const handleAutoGenerate = async (sectionIndex: number) => {
     if (tableEditIndex === null) return
     setIsGenerating(true)
@@ -1968,15 +1948,22 @@ const CertificatesCRUD: React.FC = () => {
           { filterOutliers: false },
         )
 
+        // Sensor standar: daftar sensor aplikasi bisa tidak memuatnya (lihat
+        // resolveStdSensor), dan tanpa tipenya drift ISO 9060 jatuh 0.
+        const stdSensorForPyr = await resolveStdSensor(
+          (standardCertRecord as any)?.sensor_id ??
+            currentData[0]?.sensor_id_std ??
+            null,
+          sensors as any[],
+        )
+
         // Input dirakit lewat helper bersama supaya IDENTIK dengan UncertaintyModal
         // (temuan petugas kalibrasi: nilai sertifikat sempat menyimpang dari modal).
         const pyrInputs = buildPyranometerInputs({
           rows: currentData,
           standardCertRecord,
           uutSensor: activeUutSensor,
-          stdSensor: await resolveStdSensor(
-            (standardCertRecord as any)?.sensor_id ?? null,
-          ),
+          stdSensor: stdSensorForPyr,
           rules: pyranometerRules,
         })
         const pyrResult = calculatePyranometerUncertainty(
@@ -1989,9 +1976,20 @@ const CertificatesCRUD: React.FC = () => {
             sensorType: activeUutSensor.type || activeUutSensor.name || '',
             stdMean: 0,
             uutMean: 0,
+            // Cadangan tidak boleh menghitung dengan drift 0 tanpa jejak — parameter
+            // ini menjaga komponen drift tetap terisi, dan penandanya ikut tersimpan.
+            stdSensorType: stdSensorForPyr?.type || stdSensorForPyr?.name || '',
+            driftPercentOverride:
+              Number((standardCertRecord as any)?.drift) || undefined,
             rules: pyranometerRules,
           },
         )
+        if (!pyrInputs) {
+          console.warn(
+            '[pyranometer] pasangan (std, uut) tidak valid → memakai parameter cadangan; sumber drift: ' +
+              pyrResult.audit.drift_source,
+          )
+        }
         const sensitivityOldValue =
           (activeUutSensor as any)?.sensitivity != null
             ? Number((activeUutSensor as any).sensitivity)
@@ -2020,6 +2018,7 @@ const CertificatesCRUD: React.FC = () => {
           outlier_indices: pyrResult.audit.outlier_indices,
           drift_class: pyrResult.audit.drift_class,
           drift_value_percent: pyrResult.audit.drift_value_percent,
+          drift_source: pyrResult.audit.drift_source,
           coverage_rule: pyrResult.method_profile.coverageRule,
           resolution_rule: pyrResult.method_profile.resolutionRule,
         }
@@ -3951,12 +3950,16 @@ const CertificatesCRUD: React.FC = () => {
 
                   let stdUnit: string | null = results[idx]?.unitStd || null
                   if (!stdUnit && stdSensorId) {
-                    const allSensorsFlat = instruments.flatMap(
-                      (i: any) => i.sensor ?? [],
-                    )
-                    const stdSensorObj = allSensorsFlat.find(
-                      (s: any) => s.id === stdSensorId,
-                    )
+                    // Sensor standar bisa tidak terdaftar di `instruments[].sensor`
+                    // (mis. alat standar di luar instrumen UUT), jadi daftar sensor
+                    // lengkap diutamakan sebelum jatuh ke daftar terpangkas.
+                    const stdSensorObj =
+                      sensors.find(
+                        (s: any) => String(s.id) === String(stdSensorId),
+                      ) ??
+                      instruments
+                        .flatMap((i: any) => i.sensor ?? [])
+                        .find((s: any) => String(s.id) === String(stdSensorId))
                     stdUnit =
                       stdSensorObj?.graduating_unit ||
                       stdSensorObj?.range_capacity_unit ||
@@ -9075,10 +9078,7 @@ const CertificatesCRUD: React.FC = () => {
                 instruments.find((i) => i.id === lhksCertificate.instrument) ||
                 null
               }
-              sensors={
-                instruments.find((i) => i.id === lhksCertificate.instrument)
-                  ?.sensor || []
-              }
+              sensors={sensors}
               rawData={lhksRawData}
               standardCerts={standardCerts}
               calibrationDate={

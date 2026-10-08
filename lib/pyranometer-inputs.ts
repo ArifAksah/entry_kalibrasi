@@ -42,6 +42,40 @@ export function resolveStdResolution(standardCertRecord: any): number {
 }
 
 /**
+ * Ambil data sensor standar dengan aman.
+ *
+ * Sensor standar seringkali TIDAK ada di daftar sensor yang dimuat aplikasi: daftar
+ * yang dikirim ke QC Check hanya memuat sensor milik instrumen UUT
+ * (`getFullSensorsForInstrument`). Bila pencarian gagal, tipe alat standar tidak
+ * terbaca sehingga drift ISO 9060 jatuh menjadi 0 dan U95 sertifikat salah
+ * (mis. 2,109 % alih-alih 4,029 %). Karena itu, bila tidak ada di daftar, sensor
+ * diambil langsung lewat API.
+ *
+ * `fetcher` disediakan agar bisa diuji tanpa jaringan.
+ */
+export async function resolveStdSensor(
+    id: number | string | null | undefined,
+    sensors?: any[] | null,
+    fetcher: typeof fetch = fetch,
+): Promise<any | null> {
+    if (id == null || id === '') return null
+
+    const found = (Array.isArray(sensors) ? sensors : []).find(
+        (sensor: any) => String(sensor?.id) === String(id),
+    )
+    if (found) return found
+
+    try {
+        const response = await fetcher(`/api/sensors/${id}`)
+        if (!response?.ok) return null
+        const payload: any = await response.json()
+        return payload?.data ?? payload ?? null
+    } catch {
+        return null
+    }
+}
+
+/**
  * U95 sertifikat standar (dalam %): interpolasi dari titik setpoint, kalau
  * tidak ada titik baru pakai `u95_general`, kalau tidak ada sama sekali → 0.
  * Ini yang membedakan dari perilaku lama `u95_general || 2.1`.

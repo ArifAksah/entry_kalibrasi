@@ -16,7 +16,12 @@
  */
 
 import { hitungKoreksiBatch, fetchQCLimitForSensor, QCLimit } from './qc-utils'
-import { calculateCalibrationResult } from './uncertainty-utils'
+import {
+  calculateCalibrationResult,
+  calculatePyranometerUncertainty,
+  isPyranometer,
+} from './uncertainty-utils'
+import { buildPyranometerInputs, resolveStdSensor } from './pyranometer-inputs'
 import { CacheEntry, serializeMap } from './qc-cache-storage'
 import { filterPairedMeasurementRows } from './measurement-rows'
 
@@ -186,11 +191,41 @@ export async function computeQCData(sessionId: string): Promise<CacheEntry> {
     ) || null
     if (!standardCertRecord) continue
 
-    const { uutAvg, correction, uncertainty } = calculateCalibrationResult({
-      currentData: groupData,
-      uutSensor,
-      standardCertRecord,
-    })
+    // Pyranometer memakai jalur Faktor Kalibrasi, bukan selisih linear — supaya
+    // angka yang di-cache sejalan dengan yang tertulis di sertifikat.
+    let uutAvg = 0
+    let correction = 0
+    let uncertainty = 0
+
+    const isPyr = isPyranometer(
+      uutSensor ? { name: uutSensor.name, type: uutSensor.type } : null,
+    )
+
+    const pyrInputs = isPyr
+      ? buildPyranometerInputs({
+          rows: groupData,
+          standardCertRecord,
+          uutSensor,
+          stdSensor: await resolveStdSensor(stdSensorId, null),
+        })
+      : null
+
+    if (pyrInputs) {
+      const pyrResult = calculatePyranometerUncertainty(pyrInputs.params)
+      uutAvg = pyrInputs.uutMean
+      // Faktor Kalibrasi (analog "koreksi" pada tabel sertifikat pyranometer)
+      correction = pyrResult.certificate.calibration_factor
+      uncertainty = pyrResult.u95_percent
+    } else {
+      const fallback = calculateCalibrationResult({
+        currentData: groupData,
+        uutSensor,
+        standardCertRecord,
+      })
+      uutAvg = fallback.uutAvg
+      correction = fallback.correction
+      uncertainty = fallback.uncertainty
+    }
 
     calibrationResults[key] = {
       uutAvg: uutAvg || 0,

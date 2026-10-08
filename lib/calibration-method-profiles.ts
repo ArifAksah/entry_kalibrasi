@@ -198,6 +198,8 @@ export interface PyranometerAuditSnapshot {
   resolution_rule?: string
   drift_class?: string | null
   drift_value_percent?: number
+  /** Sumber nilai drift: `type` (ISO 9060 dari alat standar) | `certificate` | `missing`. */
+  drift_source?: 'type' | 'certificate' | 'missing'
   valid_pair_count?: number
   outlier_count?: number
 }

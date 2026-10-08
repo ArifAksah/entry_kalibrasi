@@ -97,6 +97,7 @@ export const ResultTableRowSchema = z.object({
     outlier_indices: z.array(z.number()).optional(),
     drift_class: z.enum(['A', 'B', 'C']).nullable().optional(),
     drift_value_percent: z.number().optional(),
+    drift_source: z.enum(['type', 'certificate', 'missing']).optional(),
     coverage_rule: z.string().optional(),
     resolution_rule: z.string().optional(),
     calibration_method: z.string().nullable().optional(),

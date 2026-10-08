@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { Certificate, Instrument, Sensor } from '../../lib/supabase'
-import { calculateNewSensitivity } from '../../lib/pyranometer-inputs'
+import { calculateNewSensitivity, resolveStdSensor } from '../../lib/pyranometer-inputs'
 import {
   calculateUncertaintyBudget,
   UncertaintyResult,
@@ -474,9 +474,23 @@ function UncertaintyContent({
   // koreksi_uut = std_terkoreksi_dalam_unit_UUT - uut_data
   // CRITICAL: convert standard_data from its unit (unit_std, e.g. hPa) to uut unit (unit_uut, e.g. inHg)
   // before subtraction. Without this, hPa(~1007) - inHg(~29.7) = ~977 → wrong huge std dev.
-  const stdSensor = stdSensorId
-    ? sensors.find((sensor: any) => sensor.id === stdSensorId)
-    : null
+  // Sensor standar tidak selalu termuat di daftar sensor aplikasi; bila tidak
+  // ketemu, sensor diambil dari API supaya tipe alat (drift ISO 9060) tetap
+  // terbaca — sumber data yang sama dengan jalur penulis sertifikat.
+  const [stdSensor, setStdSensor] = useState<any | null>(null)
+  useEffect(() => {
+    let active = true
+    resolveStdSensor(stdSensorId, sensors as any[])
+      .then((sensor) => {
+        if (active) setStdSensor(sensor)
+      })
+      .catch(() => {
+        if (active) setStdSensor(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [stdSensorId, sensors])
   const unitStd =
     currentData[0]?.unit_std ||
     stdSensor?.graduating_unit ||
@@ -647,6 +661,9 @@ function UncertaintyContent({
       stdMean: stdMeanVal,
       uutMean: uutMeanVal,
       stdSensorType: stdSensorType,
+      // Sama seperti jalur penulis sertifikat: bila tipe alat standar tidak
+      // terbaca, drift diambil dari record sertifikat standar (bukan 0).
+      driftPercentOverride: Number(standardCertRecord?.drift) || undefined,
       rules: storedPyranometerRules,
     })
 
@@ -810,6 +827,12 @@ function UncertaintyContent({
               </div>
               <div>
                 Drift standar: <b>{pyranometerResult.audit.drift_class || '-'} / {pyranometerResult.audit.drift_value_percent}%</b>
+                {pyranometerResult.audit.drift_source === 'missing' && (
+                  <span className="ml-1 text-amber-700">
+                    (tipe alat standar tidak terbaca — drift dianggap 0, U95 belum
+                    dapat dipercaya)
+                  </span>
+                )}
               </div>
               <div>
                 Rumus CF: <b>{pyranometerResult.rules_used?.cfRule || '-'}</b>

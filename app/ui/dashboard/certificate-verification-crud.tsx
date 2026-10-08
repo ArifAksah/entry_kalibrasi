@@ -3025,15 +3025,7 @@ const CertificateVerificationCRUD: React.FC = () => {
                       : lhksCertificate.instrument),
                 ) || null
               }
-              sensors={
-                instruments.find(
-                  (i) =>
-                    i.id ===
-                    (typeof lhksCertificate.instrument === 'object'
-                      ? (lhksCertificate.instrument as any)?.id
-                      : lhksCertificate.instrument),
-                )?.sensor || []
-              }
+              sensors={sensors}
               rawData={lhksRawData}
               standardCerts={lhksStandardCerts}
               calibrationDate={
