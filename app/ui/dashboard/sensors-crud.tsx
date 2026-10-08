@@ -241,7 +241,8 @@ const SensorsCRUD: React.FC = () => {
 
     // ── Isian wajib sesuai pemetaan Sensor ──
     // Wajib: Nama Sensor, Merk, Tipe, Resolution.
-    // Opsional: Serial Number, Range Capacity, Range Capacity Unit, Graduating Unit.
+    // Opsional: Serial Number, Range Capacity, Range Capacity Unit.
+    // (Graduating/Graduating Unit sengaja tidak ditampilkan; kolomnya tetap di DB.)
     const isBlank = (value: unknown) =>
       value == null || String(value).trim() === ''
     const missing: string[] = []
