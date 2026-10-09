@@ -6,6 +6,7 @@ import { useAuth } from '../../../contexts/AuthContext'
 import { Instrument, InstrumentInsert, Station } from '../../../lib/supabase'
 import { usePermissions } from '../../../hooks/usePermissions'
 import { useStations } from '../../../hooks/useStations'
+import { isPyranometer } from '../../../lib/uncertainty-utils'
 import Alert from '../../../components/ui/Alert'
 import { useAlert } from '../../../hooks/useAlert'
 import Loading from '../../../components/ui/Loading'
@@ -968,6 +969,31 @@ const InstrumentsCRUD: React.FC = () => {
     return response.json()
   }
 
+  /**
+   * Setpoint (Tabel Koreksi & Ketidakpastian) TIDAK dipakai oleh dua jenis alat
+   * standar: pyranometer (memakai Faktor Kalibrasi) dan tipping bucket (memakai
+   * volume per tip / gelas ukur). Keduanya tidak diwajibkan mengisi tabel itu.
+   */
+  const sensorUsesSetpointTable = (
+    sensorName?: string | null,
+    sensorType?: string | null,
+  ): boolean => {
+    const name = sensorName || ''
+    const type = sensorType || ''
+    const identity = `${name} ${type}`.toLowerCase()
+    if (isPyranometer({ name, type } as any)) return false
+    if (/\btb\b|tb\d|tipping|penakar|curah hujan|rain gauge/.test(identity)) {
+      return false
+    }
+    const instrumentIdentity = `${
+      (form as any).instrument_code || ''
+    } ${(form as any).name_alias || ''} ${form.name || ''}`.toLowerCase()
+    if (/tipping|penakar|curah hujan|rain gauge/.test(instrumentIdentity)) {
+      return false
+    }
+    return true
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -1032,15 +1058,24 @@ const InstrumentsCRUD: React.FC = () => {
         if (isBlankOrZero(sd?.u95_general)) {
           missing.push(`${certLabel}: U95 General`)
         }
-        const rows = Array.isArray(sd?.correction_data) ? sd.correction_data : []
-        const hasCompleteRow = rows.some(
-          (row: any) =>
-            !isBlank(row?.setpoint) &&
-            !isBlank(row?.correction) &&
-            !isBlank(row?.u95),
-        )
-        if (!hasCompleteRow) {
-          missing.push(`${certLabel}: Tabel Koreksi & Ketidakpastian`)
+        if (
+          sensorUsesSetpointTable(
+            sensorForCert?.nama_sensor,
+            sensorForCert?.tipe_sensor,
+          )
+        ) {
+          const rows = Array.isArray(sd?.correction_data)
+            ? sd.correction_data
+            : []
+          const hasCompleteRow = rows.some(
+            (row: any) =>
+              !isBlank(row?.setpoint) &&
+              !isBlank(row?.correction) &&
+              !isBlank(row?.u95),
+          )
+          if (!hasCompleteRow) {
+            missing.push(`${certLabel}: Tabel Koreksi & Ketidakpastian`)
+          }
         }
       })
     })
@@ -3071,7 +3106,21 @@ const InstrumentsCRUD: React.FC = () => {
                                                   <div className="flex justify-between items-center mb-2">
                                                     <span className="text-xs font-semibold text-gray-600">
                                                       Tabel Koreksi &amp;
-                                                      Ketidakpastian <span className="text-red-500">*</span>
+                                                      Ketidakpastian{' '}
+                                                      {sensorUsesSetpointTable(
+                                                        sensor.nama_sensor,
+                                                        sensor.tipe_sensor,
+                                                      ) ? (
+                                                        <span className="text-red-500">
+                                                          *
+                                                        </span>
+                                                      ) : (
+                                                        <span className="text-gray-400 font-normal">
+                                                          (tidak dipakai
+                                                          pyranometer/tipping
+                                                          bucket)
+                                                        </span>
+                                                      )}
                                                     </span>
                                                     <button
                                                       type="button"
