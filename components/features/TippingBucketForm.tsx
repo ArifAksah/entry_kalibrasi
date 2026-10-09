@@ -94,6 +94,8 @@ export default function TippingBucketForm({
   })
   const [preview, setPreview] = useState<TippingBucketResult | null>(null)
   const [error, setError] = useState('')
+  /** Kata kunci pencarian sertifikat standar per slot (volume/length). */
+  const [certSearch, setCertSearch] = useState<Record<string, string>>({})
 
   const certificateSensor = (certificate: CertStandard) =>
     standardSensors.find((item) => Number(item.id) === Number(certificate.sensor_id))
@@ -517,6 +519,22 @@ export default function TippingBucketForm({
                 {ROLE_SLOTS.map((slot) => {
                   const row = slotRow(slot.role)
                   const { matched, others } = slotCertificates(slot.role)
+                  const query = (certSearch[slot.role] ?? '').toLowerCase().trim()
+                  const matchesQuery = (certificate: CertStandard) =>
+                    query === '' ||
+                    certificateOptionLabel(certificate)
+                      .toLowerCase()
+                      .includes(query)
+                  // Sertifikat yang sedang dipilih selalu ditampilkan agar pilihan
+                  // tidak hilang saat kata kunci berubah.
+                  const keepSelected = (certificate: CertStandard) =>
+                    Number(certificate.id) === Number(row?.certificateId)
+                  const visibleMatched = matched.filter(
+                    (certificate) => keepSelected(certificate) || matchesQuery(certificate),
+                  )
+                  const visibleOthers = others.filter(
+                    (certificate) => keepSelected(certificate) || matchesQuery(certificate),
+                  )
                   return (
                     <div
                       key={slot.role}
@@ -527,6 +545,18 @@ export default function TippingBucketForm({
                           <label className="mb-1 block text-xs font-semibold text-slate-600">
                             {slot.title} *
                           </label>
+                          <input
+                            type="text"
+                            value={certSearch[slot.role] ?? ''}
+                            onChange={(event) =>
+                              setCertSearch((prev) => ({
+                                ...prev,
+                                [slot.role]: event.target.value,
+                              }))
+                            }
+                            placeholder="Cari sertifikat standar (nomor, sensor, parameter)…"
+                            className="mb-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs"
+                          />
                           <select
                             value={row?.certificateId ?? ''}
                             onChange={(event) =>
@@ -540,11 +570,11 @@ export default function TippingBucketForm({
                                 Belum ada sertifikat standar terdaftar
                               </option>
                             )}
-                            {matched.length > 0 && (
+                            {visibleMatched.length > 0 && (
                               <optgroup
                                 label={`Disarankan (${slot.parameterLabel})`}
                               >
-                                {matched.map((certificate) => (
+                                {visibleMatched.map((certificate) => (
                                   <option
                                     key={certificate.id}
                                     value={certificate.id}
@@ -554,9 +584,9 @@ export default function TippingBucketForm({
                                 ))}
                               </optgroup>
                             )}
-                            {others.length > 0 && (
+                            {visibleOthers.length > 0 && (
                               <optgroup label="Standar lain">
-                                {others.map((certificate) => (
+                                {visibleOthers.map((certificate) => (
                                   <option
                                     key={certificate.id}
                                     value={certificate.id}
@@ -567,6 +597,14 @@ export default function TippingBucketForm({
                               </optgroup>
                             )}
                           </select>
+                          {query !== '' &&
+                            visibleMatched.length === 0 &&
+                            visibleOthers.length === 0 && (
+                              <p className="mt-1 text-[11px] text-amber-600">
+                                Tidak ada sertifikat standar yang cocok dengan
+                                &quot;{query}&quot;.
+                              </p>
+                            )}
                           <p className="mt-1 text-[11px] text-slate-400">
                             {slot.hint}
                           </p>

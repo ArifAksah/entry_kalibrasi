@@ -981,16 +981,32 @@ const InstrumentsCRUD: React.FC = () => {
     const name = sensorName || ''
     const type = sensorType || ''
     const identity = `${name} ${type}`.toLowerCase()
-    if (isPyranometer({ name, type } as any)) return false
-    if (/\btb\b|tb\d|tipping|penakar|curah hujan|rain gauge/.test(identity)) {
-      return false
-    }
     const instrumentIdentity = `${
       (form as any).instrument_code || ''
     } ${(form as any).name_alias || ''} ${form.name || ''}`.toLowerCase()
-    if (/tipping|penakar|curah hujan|rain gauge/.test(instrumentIdentity)) {
+
+    // Pyranometer — dari tipe/nama sensor (deteksi yang sudah dipakai sistem)
+    // maupun identitas alatnya, karena alat standar sering dinamai "Pyranometer".
+    if (isPyranometer({ name, type } as any)) return false
+    if (/pyranometer|piranometer|radiometer|solarimeter/.test(identity)) {
       return false
     }
+    if (/pyranometer|piranometer|radiometer|solarimeter/.test(instrumentIdentity)) {
+      return false
+    }
+
+    // Tipping bucket / penakar hujan (RR).
+    if (/\btb\b|tb\d|tipping|penakar|curah hujan|rain\s*(gauge|fall)|\brr\b/.test(identity)) {
+      return false
+    }
+    if (
+      /tipping|penakar|curah hujan|rain\s*(gauge|fall)|\brr\b/.test(
+        instrumentIdentity,
+      )
+    ) {
+      return false
+    }
+
     return true
   }
 
