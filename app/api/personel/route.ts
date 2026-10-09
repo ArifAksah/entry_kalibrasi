@@ -19,6 +19,18 @@ export async function GET(request: NextRequest) {
       const columns = is_admin ? '*' : 'id, name, balai_id'
 
       let query = supabaseAdmin.from('personel').select(columns)
+      // Pencarian dari kotak cari halaman Manajemen Personel.
+      // Sebelumnya parameter `search` dikirim klien tetapi tidak pernah dibaca
+      // server, sehingga mengetik di kotak cari tidak mengubah hasil.
+      const searchTerm = (searchParams.get('search') || '').trim()
+      if (searchTerm) {
+        const safeTerm = searchTerm.replace(/[%,()]/g, ' ').trim()
+        if (safeTerm) {
+          query = query.or(
+            `name.ilike.%${safeTerm}%,nip.ilike.%${safeTerm}%,nik.ilike.%${safeTerm}%,email.ilike.%${safeTerm}%`,
+          )
+        }
+      }
       if (!includeInactive) {
         query = query.or('is_active.eq.true,is_active.is.null')
       }
