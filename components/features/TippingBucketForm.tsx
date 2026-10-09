@@ -14,6 +14,7 @@ import {
   type TippingBucketStandardRow,
 } from '../../lib/tipping-bucket'
 import type { CmcResult } from '../../lib/cmc-config'
+import SearchableDropdown from '../ui/SearchableDropdown'
 
 // Nilai default RR-LEGACY-V1 mengikuti workbook lapangan. Nilai ini bukan
 // resolusi standar dan tidak boleh diperkecil menjadi 0,019 secara otomatis.
@@ -94,8 +95,6 @@ export default function TippingBucketForm({
   })
   const [preview, setPreview] = useState<TippingBucketResult | null>(null)
   const [error, setError] = useState('')
-  /** Kata kunci pencarian sertifikat standar per slot (volume/length). */
-  const [certSearch, setCertSearch] = useState<Record<string, string>>({})
 
   const certificateSensor = (certificate: CertStandard) =>
     standardSensors.find((item) => Number(item.id) === Number(certificate.sensor_id))
@@ -519,22 +518,6 @@ export default function TippingBucketForm({
                 {ROLE_SLOTS.map((slot) => {
                   const row = slotRow(slot.role)
                   const { matched, others } = slotCertificates(slot.role)
-                  const query = (certSearch[slot.role] ?? '').toLowerCase().trim()
-                  const matchesQuery = (certificate: CertStandard) =>
-                    query === '' ||
-                    certificateOptionLabel(certificate)
-                      .toLowerCase()
-                      .includes(query)
-                  // Sertifikat yang sedang dipilih selalu ditampilkan agar pilihan
-                  // tidak hilang saat kata kunci berubah.
-                  const keepSelected = (certificate: CertStandard) =>
-                    Number(certificate.id) === Number(row?.certificateId)
-                  const visibleMatched = matched.filter(
-                    (certificate) => keepSelected(certificate) || matchesQuery(certificate),
-                  )
-                  const visibleOthers = others.filter(
-                    (certificate) => keepSelected(certificate) || matchesQuery(certificate),
-                  )
                   return (
                     <div
                       key={slot.role}
@@ -545,66 +528,33 @@ export default function TippingBucketForm({
                           <label className="mb-1 block text-xs font-semibold text-slate-600">
                             {slot.title} *
                           </label>
-                          <input
-                            type="text"
-                            value={certSearch[slot.role] ?? ''}
-                            onChange={(event) =>
-                              setCertSearch((prev) => ({
-                                ...prev,
-                                [slot.role]: event.target.value,
-                              }))
+                          <SearchableDropdown
+                            value={row?.certificateId ?? null}
+                            onChange={(value) =>
+                              setSlotCertificate(
+                                slot.role,
+                                value == null ? '' : String(value),
+                              )
                             }
-                            placeholder="Cari sertifikat standar (nomor, sensor, parameter)…"
-                            className="mb-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs"
+                            options={[
+                              ...matched.map((certificate) => ({
+                                id: certificate.id,
+                                name: `\u2605 ${certificateOptionLabel(certificate)}`,
+                                station_id: `Disarankan (${slot.parameterLabel})`,
+                              })),
+                              ...others.map((certificate) => ({
+                                id: certificate.id,
+                                name: certificateOptionLabel(certificate),
+                                station_id: 'Standar lain',
+                              })),
+                            ]}
+                            placeholder={
+                              standardCerts.length === 0
+                                ? 'Belum ada sertifikat standar terdaftar'
+                                : 'Pilih sertifikat standar...'
+                            }
+                            searchPlaceholder="Cari sertifikat standar (nomor, sensor, parameter)..."
                           />
-                          <select
-                            value={row?.certificateId ?? ''}
-                            onChange={(event) =>
-                              setSlotCertificate(slot.role, event.target.value)
-                            }
-                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                          >
-                            <option value="">Pilih sertifikat standar...</option>
-                            {standardCerts.length === 0 && (
-                              <option value="" disabled>
-                                Belum ada sertifikat standar terdaftar
-                              </option>
-                            )}
-                            {visibleMatched.length > 0 && (
-                              <optgroup
-                                label={`Disarankan (${slot.parameterLabel})`}
-                              >
-                                {visibleMatched.map((certificate) => (
-                                  <option
-                                    key={certificate.id}
-                                    value={certificate.id}
-                                  >
-                                    {certificateOptionLabel(certificate)}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            )}
-                            {visibleOthers.length > 0 && (
-                              <optgroup label="Standar lain">
-                                {visibleOthers.map((certificate) => (
-                                  <option
-                                    key={certificate.id}
-                                    value={certificate.id}
-                                  >
-                                    {certificateOptionLabel(certificate)}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            )}
-                          </select>
-                          {query !== '' &&
-                            visibleMatched.length === 0 &&
-                            visibleOthers.length === 0 && (
-                              <p className="mt-1 text-[11px] text-amber-600">
-                                Tidak ada sertifikat standar yang cocok dengan
-                                &quot;{query}&quot;.
-                              </p>
-                            )}
                           <p className="mt-1 text-[11px] text-slate-400">
                             {slot.hint}
                           </p>
