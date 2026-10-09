@@ -3913,7 +3913,70 @@ const CertificatesCRUD: React.FC = () => {
     setSubmitDisabled(true)
 
     try {
-      const prunedResults = results.map((item) => ({
+      // ── Kondisi ruang suhu & kelembapan dipastikan terisi SEBELUM disimpan ──
+      // Pengisian saat form dibuka tidak cukup: bila efeknya belum selesai atau
+      // isian operator masih kosong, sertifikat tersimpan tanpa kondisi ruang
+      // sehingga view, PDF, dan LHKS ikut kosong. Di sini nilainya diambil ulang
+      // dari pembacaan alat standar (Awal = minimum, Akhir = maksimum).
+      let roomRows = roomConditionRawData
+      if (!roomRows || roomRows.length === 0) {
+        const sessionIdForRoom =
+          getAnyResultSessionId((editing as any)?.results) ??
+          results
+            .map((item: any) => item?.session_id)
+            .find((value: any) => !!value) ??
+          null
+        if (sessionIdForRoom) {
+          try {
+            const roomRes = await fetch(
+              `/api/raw-data?session_id=${sessionIdForRoom}&lean=true`,
+            )
+            if (roomRes.ok) {
+              const roomJson = await roomRes.json()
+              roomRows = Array.isArray(roomJson?.data) ? roomJson.data : []
+            }
+          } catch (error) {
+            console.warn('Gagal mengambil data untuk kondisi ruang', error)
+          }
+        }
+      }
+      const resultsWithRoomCondition =
+        roomRows && roomRows.length > 0
+          ? results.map((item) => {
+              const envRows = mergeEnvironmentRows(item.environment)
+              let changed = false
+              const nextRows = envRows.map((row: any) => {
+                const definition = roomConditionDefinition(
+                  String(row?.type || row?.key || ''),
+                )
+                if (
+                  !definition ||
+                  (definition.type !== 'suhu' &&
+                    definition.type !== 'kelembaban')
+                ) {
+                  return row
+                }
+                const hasAwal = String(row?.awal ?? '').trim() !== ''
+                const hasAkhir = String(row?.akhir ?? '').trim() !== ''
+                if (hasAwal || hasAkhir) return row
+                const derived = calculateRoomCondition(definition.type, roomRows)
+                if (!derived) return row
+                changed = true
+                return {
+                  ...row,
+                  awal: String(derived.initial),
+                  akhir: String(derived.final),
+                  unit: row?.unit || definition.unit,
+                  enabled: true,
+                }
+              })
+              return changed
+                ? ({ ...item, environment: nextRows } as any)
+                : item
+            })
+          : results
+
+      const prunedResults = resultsWithRoomCondition.map((item) => ({
           ...item,
           environment: pruneEnvironmentRows(item.environment || []),
         }))
