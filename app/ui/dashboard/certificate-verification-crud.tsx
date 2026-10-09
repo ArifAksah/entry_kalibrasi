@@ -3025,7 +3025,23 @@ const CertificateVerificationCRUD: React.FC = () => {
                       : lhksCertificate.instrument),
                 ) || null
               }
-              sensors={sensors}
+              sensors={(() => {
+                // Cakupan LHKS = sensor instrumen sertifikat ini saja (seperti LHK
+                // workbook); daftar lengkap pernah dipakai dan membuat blok
+                // identitas menampilkan puluhan sensor lain.
+                const instrumentId =
+                  typeof lhksCertificate.instrument === 'object'
+                    ? (lhksCertificate.instrument as any)?.id
+                    : lhksCertificate.instrument
+                const instrumentSensors =
+                  instruments.find((i) => i.id === instrumentId)?.sensor || []
+                return instrumentSensors.map((s: any) => ({
+                  ...s,
+                  ...(sensors.find(
+                    (master: any) => String(master.id) === String(s.id),
+                  ) || {}),
+                }))
+              })()}
               rawData={lhksRawData}
               standardCerts={lhksStandardCerts}
               calibrationDate={

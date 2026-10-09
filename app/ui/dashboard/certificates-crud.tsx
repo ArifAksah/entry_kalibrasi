@@ -9124,7 +9124,22 @@ const CertificatesCRUD: React.FC = () => {
                 instruments.find((i) => i.id === lhksCertificate.instrument) ||
                 null
               }
-              sensors={sensors}
+              sensors={(() => {
+                // LHKS hanya boleh menampilkan sensor instrumen sertifikat ini
+                // (seperti LHK workbook). Daftar sebelumnya pernah diisi seluruh
+                // sensor aplikasi sehingga blok identitas (Resolusi/Kapasitas/
+                // Sensitivitas) menampilkan puluhan sensor lain.
+                const instrumentSensors =
+                  instruments.find((i) => i.id === lhksCertificate.instrument)
+                    ?.sensor || []
+                return instrumentSensors.map((s: any) => ({
+                  ...s,
+                  // Lengkapi dari master sensor agar resolusi/sensitivitas terisi.
+                  ...(sensors.find(
+                    (master: any) => String(master.id) === String(s.id),
+                  ) || {}),
+                }))
+              })()}
               rawData={lhksRawData}
               standardCerts={standardCerts}
               calibrationDate={
