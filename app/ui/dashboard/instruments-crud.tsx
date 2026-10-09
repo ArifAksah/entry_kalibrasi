@@ -995,14 +995,20 @@ const InstrumentsCRUD: React.FC = () => {
       return false
     }
 
-    // Tipping bucket / penakar hujan (RR).
-    if (/\btb\b|tb\d|tipping|penakar|curah hujan|rain\s*(gauge|fall)|\brr\b/.test(identity)) {
+    // Alat standar Tipping Bucket sendiri: penakar hujan (RR) dan dua alat
+    // pembandingnya — gelas ukur (volume, kode VL) dan jangka sorong
+    // (panjang, kode LN). Ketiganya tidak memakai setpoint, walaupun namanya
+    // tidak selalu memuat kata "tipping bucket" (mis. "digital caliper").
+    const tbStandardPattern =
+      /\btb\b|tb\d|tipping|penakar|curah hujan|rain\s*(gauge|fall)|\brr\b|\bvl\b|\bln\b|\bvn\b/
+    const tbToolPattern =
+      /jangka\s*sorong|caliper|gelas\s*(ukur|takar)|measuring\s*(glass|cylinder)|silinder\s*ukur/
+    if (tbStandardPattern.test(identity) || tbToolPattern.test(identity)) {
       return false
     }
     if (
-      /tipping|penakar|curah hujan|rain\s*(gauge|fall)|\brr\b/.test(
-        instrumentIdentity,
-      )
+      tbStandardPattern.test(instrumentIdentity) ||
+      tbToolPattern.test(instrumentIdentity)
     ) {
       return false
     }
