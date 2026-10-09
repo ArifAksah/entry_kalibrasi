@@ -115,8 +115,9 @@ const AccountSettingsPage: React.FC = () => {
         throw new Error('Email baru sama dengan email yang sedang dipakai.');
       }
 
-      // Supabase mengirim tautan konfirmasi ke email lama dan baru sebelum
-      // perubahan benar-benar berlaku.
+      // Konfirmasi email dimatikan (GOTRUE_MAILER_AUTOCONFIRM=true), jadi
+      // Supabase menerapkan perubahan email segera tanpa tautan konfirmasi.
+      // Saat SMTP sudah tersedia, aktifkan kembali konfirmasinya di sisi server.
       const { error: updateError } = await supabase.auth.updateUser({
         email: newEmail,
       });
@@ -124,9 +125,12 @@ const AccountSettingsPage: React.FC = () => {
         throw new Error(updateError.message || 'Gagal memperbarui email.');
       }
 
+      // Konfirmasi email belum aktif (SMTP belum tersedia), jadi perubahan
+      // langsung berlaku — pesannya tidak boleh menjanjikan tautan konfirmasi.
       setSuccess(
-        'Permintaan perubahan email terkirim. Buka tautan konfirmasi di email lama dan email baru agar perubahan berlaku.',
+        `Alamat email berhasil diubah menjadi ${newEmail}. Perubahan langsung berlaku; gunakan email baru saat masuk berikutnya.`,
       );
+      setFormData(prev => ({ ...prev, email: newEmail }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal memperbarui email');
     } finally {
@@ -325,6 +329,10 @@ const AccountSettingsPage: React.FC = () => {
                       {/* Change Email */}
                       <div className="border-t border-gray-200 pt-8">
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Change Email Address</h3>
+                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-2">
+                          Perubahan email langsung berlaku (konfirmasi lewat email belum aktif).
+                          Pastikan alamatnya benar dan aktif sebelum disimpan.
+                        </p>
                         <form onSubmit={handleEmailChange} className="space-y-4">
                           <div>
                             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
