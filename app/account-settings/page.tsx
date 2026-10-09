@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import ProtectedRoute from '../../components/ProtectedRoute';
 import SideNav from '../ui/dashboard/sidenav';
 import Header from '../ui/dashboard/header';
+import { supabase } from '../../lib/supabase';
 
 const AccountSettingsPage: React.FC = () => {
   const { user } = useAuth();
@@ -49,9 +50,40 @@ const AccountSettingsPage: React.FC = () => {
     setSuccess(null);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setSuccess('Password updated successfully!');
+      if (!user?.email) {
+        throw new Error('Sesi pengguna tidak ditemukan. Silakan masuk ulang.');
+      }
+      if (!formData.currentPassword) {
+        throw new Error('Kata sandi saat ini wajib diisi.');
+      }
+      if (!formData.newPassword) {
+        throw new Error('Kata sandi baru wajib diisi.');
+      }
+      if (formData.newPassword.length < 8) {
+        throw new Error('Kata sandi baru minimal 8 karakter.');
+      }
+      if (formData.newPassword !== formData.confirmPassword) {
+        throw new Error('Konfirmasi kata sandi tidak sama dengan kata sandi baru.');
+      }
+
+      // Supabase tidak meminta kata sandi lama saat updateUser, jadi diverifikasi
+      // dulu agar orang yang memegang sesi terbuka tidak bisa menggantinya bebas.
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: formData.currentPassword,
+      });
+      if (verifyError) {
+        throw new Error('Kata sandi saat ini salah.');
+      }
+
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: formData.newPassword,
+      });
+      if (updateError) {
+        throw new Error(updateError.message || 'Gagal memperbarui kata sandi.');
+      }
+
+      setSuccess('Kata sandi berhasil diperbarui.');
       setFormData(prev => ({
         ...prev,
         currentPassword: '',
@@ -59,7 +91,7 @@ const AccountSettingsPage: React.FC = () => {
         confirmPassword: ''
       }));
     } catch (err) {
-      setError('Failed to update password');
+      setError(err instanceof Error ? err.message : 'Gagal memperbarui kata sandi');
     } finally {
       setSaving(false);
     }
@@ -72,11 +104,31 @@ const AccountSettingsPage: React.FC = () => {
     setSuccess(null);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setSuccess('Email update request sent. Please check your email to confirm the change.');
+      const newEmail = formData.email.trim();
+      if (!newEmail) {
+        throw new Error('Alamat email wajib diisi.');
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+        throw new Error('Format alamat email tidak valid.');
+      }
+      if (user?.email && newEmail.toLowerCase() === user.email.toLowerCase()) {
+        throw new Error('Email baru sama dengan email yang sedang dipakai.');
+      }
+
+      // Supabase mengirim tautan konfirmasi ke email lama dan baru sebelum
+      // perubahan benar-benar berlaku.
+      const { error: updateError } = await supabase.auth.updateUser({
+        email: newEmail,
+      });
+      if (updateError) {
+        throw new Error(updateError.message || 'Gagal memperbarui email.');
+      }
+
+      setSuccess(
+        'Permintaan perubahan email terkirim. Buka tautan konfirmasi di email lama dan email baru agar perubahan berlaku.',
+      );
     } catch (err) {
-      setError('Failed to update email');
+      setError(err instanceof Error ? err.message : 'Gagal memperbarui email');
     } finally {
       setSaving(false);
     }
