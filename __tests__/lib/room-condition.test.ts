@@ -2,6 +2,7 @@ import {
     ROOM_CONDITION_DEFINITIONS,
     calculateRoomCondition,
     calculateRoomConditionFromEndpoints,
+  isRoomConditionAlwaysMean,
     resolveRoomCondition,
     roomConditionDefinition,
 } from '../../lib/room-condition';
@@ -184,3 +185,37 @@ describe('resolveRoomCondition — sumber nilai', () => {
         expect(resolveRoomCondition({ key: 'Suhu Udara', type: 'suhu', value: '' })).toBeNull();
     });
 });
+
+/**
+ * Rumus kondisi ruang yang ditetapkan petugas kalibrasi untuk suhu & kelembapan:
+ *   rata-rata = (maksimum + minimum) / 2
+ *   setengah rentang = maksimum - rata-rata = (maksimum - minimum) / 2
+ * Contoh acuan: minimum 26,6 dan maksimum 31,4 -> (29 ± 2,4) °C.
+ */
+describe('rumus kondisi ruang suhu & kelembapan (min/maks dari alat standar)', () => {
+    it('endpoint: Awal = minimum, Akhir = maksimum menghasilkan (29 ± 2,4) °C', () => {
+        const result = calculateRoomConditionFromEndpoints(26.6, 31.4, '°C')
+        expect(result?.mean).toBeCloseTo(29, 6)
+        expect(result?.halfRange).toBeCloseTo(2.4, 6)
+        expect(result?.display).toBe('(29 ± 2.4) °C')
+    })
+
+    it('dari data alat standar: min jadi Awal, maks jadi Akhir', () => {
+        const rows = [
+            { sheet_name: 'Suhu', unit_std: '°C', std_corrected: 27.8 },
+            { sheet_name: 'Suhu', unit_std: '°C', std_corrected: 31.4 },
+            { sheet_name: 'Suhu', unit_std: '°C', std_corrected: 26.6 },
+        ]
+        const result = calculateRoomCondition('suhu', rows)
+        expect(result?.initial).toBeCloseTo(26.6, 6)
+        expect(result?.final).toBeCloseTo(31.4, 6)
+        expect(result?.display).toBe('(29 ± 2.4) °C')
+    })
+
+    it('suhu & kelembapan selalu memakai mean ± half-range, parameter lain tidak', () => {
+        expect(isRoomConditionAlwaysMean({ type: 'suhu' })).toBe(true)
+        expect(isRoomConditionAlwaysMean({ key: 'Kelembaban' })).toBe(true)
+        expect(isRoomConditionAlwaysMean({ type: 'tekanan' })).toBe(false)
+        expect(isRoomConditionAlwaysMean({ type: 'suhu_air' })).toBe(false)
+    })
+})

@@ -27,6 +27,7 @@ import {
 import {
   calculateRoomCondition,
   resolveRoomCondition,
+  isRoomConditionAlwaysMean,
   roomConditionDefinition,
 } from '../../lib/room-condition'
 import {
@@ -1138,12 +1139,14 @@ const CertificatePreview: React.FC<{
                             label,
                             labelEng: eng,
                             value:
-                              (envIsTippingBucket
-                                ? (resolvedEnv?.initialU95Display ??
-                                  resolvedEnv?.initialHalfDisplay)
-                                : envIsPyrano
-                                  ? resolvedEnv?.initialHalfDisplay
-                                  : resolvedEnv?.display) ?? fallbackValue,
+                              (isRoomConditionAlwaysMean(env)
+  ? resolvedEnv?.display
+  : envIsTippingBucket
+    ? (resolvedEnv?.initialU95Display ??
+      resolvedEnv?.initialHalfDisplay)
+    : envIsPyrano
+      ? resolvedEnv?.initialHalfDisplay
+      : resolvedEnv?.display) ?? fallbackValue,
                             initial:
                               resolvedEnv?.initialDisplay ?? fallbackValue,
                             final: resolvedEnv?.finalDisplay ?? fallbackValue,

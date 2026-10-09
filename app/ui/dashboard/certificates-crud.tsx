@@ -47,8 +47,10 @@ import {
 } from '../../../lib/pyranometer-inputs'
 import {
   ROOM_CONDITION_DEFINITIONS,
+  calculateRoomCondition,
   calculateRoomConditionFromEndpoints,
   resolveRoomCondition,
+  isRoomConditionAlwaysMean,
   roomConditionDefinition,
 } from '../../../lib/room-condition'
 import DateRangePicker from '../../../components/ui/DateRangePicker'
@@ -476,6 +478,7 @@ const LaTeXPreview = ({
   latex: string
   className?: string
 }) => {
+
   const ref = useRef<HTMLSpanElement>(null)
   const [error, setError] = useState(false)
 
@@ -1375,6 +1378,81 @@ const CertificatesCRUD: React.FC = () => {
     others_enabled: false,
     standardInstruments: [] as number[],
   })
+
+  /** Kondisi ruang dari data alat standar: Awal = minimum, Akhir = maksimum. */
+  const [roomConditionRawData, setRoomConditionRawData] = useState<any[] | null>(
+    null,
+  )
+  const roomConditionFilledForRef = useRef<string | null>(null)
+
+  /**
+   * Suhu & Kelembapan diambil otomatis dari pembacaan alat standar pada sesi
+   * kalibrasi — Awal = nilai minimum, Akhir = nilai maksimum — sehingga rumus
+   * `(rata-rata ± setengah rentang)` menghasilkan kondisi ruang selama
+   * kalibrasi. Isian operator tidak pernah ditimpa: pengisian hanya dilakukan
+   * bila Awal dan Akhir masih kosong, dan tetap bisa diubah manual.
+   */
+  useEffect(() => {
+    if (!isModalOpen || !editing) return
+    const sessionId = getAnyResultSessionId((editing as any).results)
+    if (!sessionId || roomConditionFilledForRef.current === sessionId) return
+
+    let active = true
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/raw-data?session_id=${sessionId}&lean=true`)
+        if (!res.ok) return
+        const json = await res.json()
+        const rows: any[] = Array.isArray(json?.data) ? json.data : []
+        if (!active || rows.length === 0) {
+          setRoomConditionRawData(rows)
+          return
+        }
+        setRoomConditionRawData(rows)
+        setResults((prev) =>
+          prev.map((result) => {
+            const envRows = mergeEnvironmentRows((result as any).environment)
+            let changed = false
+            const nextRows = envRows.map((row: any) => {
+              const definition = roomConditionDefinition(
+                String(row?.type || row?.key || ''),
+              )
+              if (
+                !definition ||
+                (definition.type !== 'suhu' &&
+                  definition.type !== 'kelembaban')
+              ) {
+                return row
+              }
+              const hasAwal = String(row?.awal ?? '').trim() !== ''
+              const hasAkhir = String(row?.akhir ?? '').trim() !== ''
+              if (hasAwal || hasAkhir) return row
+              const derived = calculateRoomCondition(definition.type, rows)
+              if (!derived) return row
+              changed = true
+              return {
+                ...row,
+                awal: String(derived.initial),
+                akhir: String(derived.final),
+                unit: row?.unit || definition.unit,
+                enabled: true,
+              }
+            })
+            return changed
+              ? ({ ...result, environment: nextRows } as any)
+              : result
+          }),
+        )
+        roomConditionFilledForRef.current = sessionId
+      } catch (error) {
+        console.warn('Gagal mengambil kondisi ruang dari data mentah', error)
+      }
+    })()
+
+    return () => {
+      active = false
+    }
+  }, [isModalOpen, editing])
 
   const [results, setResults] = useState<ResultItem[]>([
     {
@@ -7031,16 +7109,20 @@ const CertificatesCRUD: React.FC = () => {
                                                   (result as any)?.tippingBucket,
                                                 )
                                                 return (
-                                                  (isTb
-                                                    ? (resolved?.initialU95Display ??
-                                                      resolved?.initialHalfDisplay)
-                                                    : resolved?.display) || '-'
+                                                  (isRoomConditionAlwaysMean(env) ||
+                                                  !isTb
+                                                    ? resolved?.display
+                                                    : (resolved?.initialU95Display ??
+                                                      resolved?.initialHalfDisplay)) ||
+                                                  '-'
                                                 )
                                               })()}
                                             </span>
                                             <span className="text-gray-400">
                                               {' '}
-                                              (dihitung dari Awal &amp; Akhir)
+                                              (dihitung dari Awal &amp; Akhir;
+                                              terisi otomatis dari data alat
+                                              standar bila masih kosong)
                                             </span>
                                           </p>
                                         ) : (

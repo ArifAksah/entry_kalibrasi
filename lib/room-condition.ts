@@ -205,6 +205,18 @@ export interface ResolvedRoomCondition {
  * Prioritas: Awal/Akhir → data mentah (min/max) → teks bebas.
  * Mengembalikan `null` bila tidak ada sumber nilai sama sekali.
  */
+/**
+ * Suhu & Kelembapan SELALU dilaporkan sebagai (rata-rata ± setengah rentang)
+ * di semua jenis sertifikat — nilainya adalah kondisi ruang selama kalibrasi
+ * (Awal = minimum, Akhir = maksimum), bukan bacaan awal/akhir alat.
+ * Dua parameter lain (Tekanan Ruang, Suhu Air) tetap mengikuti konvensi jenis
+ * sertifikat yang berlaku.
+ */
+export function isRoomConditionAlwaysMean(entry: RoomConditionEntryLike): boolean {
+    const definition = roomConditionDefinition(String(entry?.type || entry?.key || ''));
+    return definition?.type === 'suhu' || definition?.type === 'kelembaban';
+}
+
 export function resolveRoomCondition(entry: RoomConditionEntryLike): ResolvedRoomCondition | null {
     const definition = roomConditionDefinition(String(entry?.type || entry?.key || ''));
     const unit = String(entry?.unit || definition?.unit || '');

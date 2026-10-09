@@ -17,6 +17,7 @@ import {
 import { resultsToLegacyView } from '../../../../lib/validators/certificate-results-render-adapter'
 import {
   resolveRoomCondition,
+  isRoomConditionAlwaysMean,
   roomConditionDefinition,
 } from '../../../../lib/room-condition'
 import {
@@ -2630,12 +2631,14 @@ const PrintCertificatePage: React.FC = () => {
                                 : `${key} `,
                               labelEng: definition ? definition.labelEn : '',
                                 value:
-                (envIsTippingBucket
-                  ? (resolvedEnv?.initialU95Display ??
-                    resolvedEnv?.initialHalfDisplay)
-                  : envIsPyrano
-                    ? resolvedEnv?.initialHalfDisplay
-                    : resolvedEnv?.display) ?? fallbackValue,
+                (isRoomConditionAlwaysMean(env)
+  ? resolvedEnv?.display
+  : envIsTippingBucket
+    ? (resolvedEnv?.initialU95Display ??
+      resolvedEnv?.initialHalfDisplay)
+    : envIsPyrano
+      ? resolvedEnv?.initialHalfDisplay
+      : resolvedEnv?.display) ?? fallbackValue,
                               }
                             })
   .filter((row) => row.value && row.value !== '-')
