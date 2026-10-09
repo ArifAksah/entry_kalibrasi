@@ -597,26 +597,32 @@ const LHKSReport: React.FC<LHKSReportProps> = ({
                     {effectiveSensors
                       .filter((s: Sensor) => !s.is_standard)
                       .map((s: Sensor) => {
-                        // Check multiple sources for resolution
-                        // 1. From sensor object (snapshot or database)
-                        let resolutionValue = s.resolution
-                        let resolutionUnit = s.graduating_unit || ''
-
-                        // 2. If not found, try to find from allSensors (database)
-                        if (!resolutionValue && allSensors) {
-                          const dbSensor = allSensors.find((x) => x.id === s.id)
-                          if (dbSensor?.resolution) {
-                            resolutionValue = dbSensor.resolution
-                            resolutionUnit =
-                              dbSensor.graduating_unit || resolutionUnit
-                          }
+                        // Resolusi ditampilkan dari MASTER DATA — sumber yang
+                        // dipakai perhitungan dan wajib diisi — lalu snapshot
+                        // sertifikat, lalu field lama `graduating` sebagai cadangan.
+                        // Satuan diambil dari master juga (graduating_unit atau
+                        // range_capacity_unit) supaya pyranometer (W/m²) dan
+                        // tipping bucket (mm) tidak tampil tanpa satuan.
+                        const master = allSensors?.find((x) => x.id === s.id)
+                        const pick = (value: unknown): string | null => {
+                          const text = value == null ? '' : String(value).trim()
+                          if (text === '' || Number(text) === 0) return null
+                          return text
                         }
-
+                        const resolutionValue =
+                          pick(master?.resolution) ??
+                          pick(s.resolution) ??
+                          pick((master as any)?.graduating) ??
+                          pick(s.graduating)
+                        const resolutionUnit =
+                          master?.graduating_unit ||
+                          master?.range_capacity_unit ||
+                          s.graduating_unit ||
+                          s.range_capacity_unit ||
+                          ''
                         const resolution = resolutionValue
                           ? `${resolutionValue} ${resolutionUnit}`.trim()
-                          : s.graduating && s.graduating_unit
-                            ? `${s.graduating} ${s.graduating_unit}`
-                            : s.graduating || s.graduating_unit || '-'
+                          : '-'
                         return (
                           <tr key={`res-${s.id}`}>
                             <td className="border-none align-top pl-6">
