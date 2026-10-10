@@ -7310,12 +7310,29 @@ const CertificatesCRUD: React.FC = () => {
                                       })
                                     }
                                   } else {
-                                    const inst = instruments.find(
-                                      (i) => i.id === result.standardInstrumentId,
+                                    // Sensor standar harus mengikuti SERTIFIKAT yang
+                                    // dipilih (langkah 3), bukan sensor `is_standard`
+                                    // pertama pada instrumen. Instrumen standar
+                                    // multi-sensor (mis. AWS) akan selalu jatuh ke
+                                    // sensor pertama (contoh: "Sensor Arah Angin").
+                                    const selectedCert = standardCerts.find(
+                                      (c: any) =>
+                                        Number(c.id) ===
+                                        Number(result.standardCertificateId),
                                     )
-                                    const sensor = inst?.sensor?.find(
-                                      (s: any) => s.is_standard,
+                                    const sensor = resolveSensor(
+                                      selectedCert?.sensor_id,
                                     )
+                                    const inst =
+                                      instruments.find(
+                                        (i) =>
+                                          i.id === result.standardInstrumentId,
+                                      ) ??
+                                      standardInstruments.find(
+                                        (i) =>
+                                          Number(i.id) ===
+                                          Number(result.standardInstrumentId),
+                                      )
                                     const entity = sensor || inst
                                     if (entity) {
                                       entries.push({
