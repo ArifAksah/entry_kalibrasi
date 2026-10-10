@@ -1044,10 +1044,16 @@ const InstrumentsCRUD: React.FC = () => {
 
     sensorForms.forEach((sensor, index) => {
       const label = `Sensor ${index + 1}`
-      if (sensor.sensor_name_id == null) missing.push(`${label}: Nama Sensor`)
-      if (isBlank(sensor.nama_sensor)) missing.push(`${label}: Alias Sensor`)
-      if (isBlank(sensor.merk_sensor)) missing.push(`${label}: Merk Sensor`)
-      if (isBlank(sensor.tipe_sensor)) missing.push(`${label}: Tipe Sensor`)
+      // Identitas sensor (nama, alias, merk, tipe) hanya diisi per-sensor pada
+      // instrumen multi-sensor. Untuk instrumen single (UUT tunggal / alat
+      // standar), identitas ini disunting di level instrumen dan baru
+      // disinkronkan ke sensor saat submit — divalidasi lewat blok instrumen.
+      if (form.memiliki_lebih_satu) {
+        if (sensor.sensor_name_id == null) missing.push(`${label}: Nama Sensor`)
+        if (isBlank(sensor.nama_sensor)) missing.push(`${label}: Alias Sensor`)
+        if (isBlank(sensor.merk_sensor)) missing.push(`${label}: Merk Sensor`)
+        if (isBlank(sensor.tipe_sensor)) missing.push(`${label}: Tipe Sensor`)
+      }
       if (isBlankOrZero(sensor.resolution)) {
         missing.push(`${label}: Resolution`)
       }
