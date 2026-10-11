@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/api-auth'
 import { supabaseAdmin } from '@/lib/supabase'
+import { createLetterLog } from '@/lib/letter-log-helper'
 
 /**
  * POST /api/letters/[id]/reset-for-resign (admin)
@@ -57,11 +58,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       pdf_path: null,
       pdf_generated_at: null,
       repair_status: 'none',
+      // Tanggal Terbit diisi ulang otomatis saat TTE berikutnya.
+      issue_date: null,
     })
     .eq('id', letterId)
   if (letterError) {
     return NextResponse.json({ error: letterError.message }, { status: 400 })
   }
+
+  await createLetterLog({
+    letter_id: letterId,
+    action: 'updated',
+    performed_by: gate.user.id,
+    previous_status: letter.status,
+    new_status: 'verified',
+    notes: `Reset untuk TTE ulang${reason ? `: ${reason}` : ''}`,
+  })
 
   try {
     await supabaseAdmin.from('audit_logs').insert({

@@ -4,9 +4,12 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { isUserInCalibrationOrderTeam } from '@/lib/certificate-access'
 import { getDocumentAssignment } from '@/lib/document-assignment-service'
 import { fetchLetterResults } from '@/lib/letter-service'
+import { sendWhatsApp } from '@/lib/wa'
+import { buildLetterDraftSubmissionMessage } from '@/lib/wa-messages'
+import { createLetterLog } from '@/lib/letter-log-helper'
 
-/** Surat Keterangan hanya punya dua langkah: satu verifikasi + satu penandatanganan. */
-const VERIFICATION_LEVEL = 1
+/** Surat Keterangan: tiga langkah verifikasi (Verifikator 1→2→3) + penandatanganan. */
+const VERIFICATION_LEVELS = [1, 2, 3]
 const SIGNING_LEVEL = 4
 
 /** POST /api/letters/[id]/send-to-verifiers — kirim konsep Surat ke verifikator. */
@@ -108,19 +111,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const currentVersion = letter.version || 1
   const now = new Date().toISOString()
 
-  // Verifikator 1 menjadi pemegang baris verifikasi; siapa pun dari verifikator
-  // yang ditugaskan boleh menyetujuinya (dicek di endpoint verifikasi).
+  // Tiga langkah verifikasi berurutan (Verifikator 1 → 2 → 3), lalu penandatanganan.
+  const verifikatorByLevel: Record<number, string | null> = {
+    1: assignment.verifikator_1,
+    2: assignment.verifikator_2,
+    3: assignment.verifikator_3,
+  }
   const records = [
-    {
+    ...VERIFICATION_LEVELS.map((level) => ({
       letter_id: letterId,
-      verification_level: VERIFICATION_LEVEL,
-      verified_by: assignment.verifikator_1,
+      verification_level: level,
+      verified_by: verifikatorByLevel[level],
       letter_version: currentVersion,
       status: 'pending',
       notes: null,
       created_at: now,
       updated_at: now,
-    },
+    })),
     {
       letter_id: letterId,
       verification_level: SIGNING_LEVEL,
@@ -161,6 +168,75 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (updateError) {
     return NextResponse.json({ error: 'Gagal memperbarui status Surat Keterangan' }, { status: 500 })
   }
+
+  await createLetterLog({
+    letter_id: letterId,
+    action: 'sent',
+    performed_by: caller.user.id,
+    previous_status: 'draft',
+    new_status: 'sent',
+    notes: 'Dikirim ke Verifikator 1-3 & Penandatangan',
+  })
+
+  // Notifikasi bell ke verifikator tahap pertama (siapa yang harus memverifikasi
+  // berikutnya). Kegagalan notifikasi tidak boleh membatalkan pengiriman.
+  try {
+    await supabaseAdmin.from('notifications').insert({
+      user_id: assignment.verifikator_1,
+      message: `Surat Keterangan ${letter.no_letter || letterId} menunggu verifikasi Anda`,
+      link: '/verifikasi-surat',
+    })
+  } catch (notifyError) {
+    console.error('[letter send] gagal membuat notifikasi:', notifyError)
+  }
+
+  // Notifikasi WhatsApp ke Verifikator 1-3 & Penandatangan (fire-and-forget,
+  // mengikuti pola sertifikat). Pengirim sendiri dikecualikan.
+  void (async () => {
+    try {
+      const { data: sender } = await supabaseAdmin
+        .from('personel')
+        .select('name')
+        .eq('id', caller.user.id)
+        .maybeSingle()
+      const senderName = sender?.name || 'Petugas Kalibrasi'
+
+      const recipientIds = [
+        assignment.verifikator_1,
+        assignment.verifikator_2,
+        assignment.verifikator_3,
+        assignment.authorized_by,
+      ].filter((id): id is string => Boolean(id) && id !== caller.user.id)
+      if (recipientIds.length === 0) return
+
+      const { data: recipients } = await supabaseAdmin
+        .from('personel')
+        .select('id, name, phone')
+        .in('id', recipientIds)
+
+      const message = buildLetterDraftSubmissionMessage(
+        letter.no_letter || `ID-${letterId}`,
+        senderName,
+      )
+      const sentPhones = new Set<string>()
+      for (const recipient of recipients || []) {
+        if (!recipient.phone || sentPhones.has(recipient.phone)) continue
+        sentPhones.add(recipient.phone)
+        try {
+          const result = await sendWhatsApp({ phone: recipient.phone, message })
+          if (!result.success) {
+            console.error(
+              `[letter send] gagal kirim WA ke ${recipient.phone} (${recipient.name || recipient.id}): ${result.error}`,
+            )
+          }
+        } catch (sendError) {
+          console.error(`[letter send] error kirim WA ke ${recipient.phone}:`, sendError)
+        }
+      }
+    } catch (waError) {
+      console.error('[letter send] error pada blok notifikasi WA:', waError)
+    }
+  })()
 
   return NextResponse.json({
     success: true,

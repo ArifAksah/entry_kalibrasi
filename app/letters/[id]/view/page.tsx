@@ -1,9 +1,40 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
+import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
+import bmkgLogo from '../../../bmkg.png'
 import { SuratKeteranganDocument } from '../../../../components/features/SuratKeteranganDocument'
 import { assignmentDisplay } from '@/lib/document-assignment-display'
+
+const STATUS_INFO: Record<string, { label: string; cls: string }> = {
+  draft: { label: 'Draf', cls: 'bg-gray-100 text-gray-700' },
+  sent: { label: 'Menunggu Verifikasi', cls: 'bg-blue-100 text-blue-700' },
+  verified: { label: 'Siap Ditandatangani', cls: 'bg-indigo-100 text-indigo-700' },
+  completed: { label: 'Selesai', cls: 'bg-emerald-100 text-emerald-700' },
+  rejected: { label: 'Ditolak', cls: 'bg-red-100 text-red-700' },
+}
+
+const LETTER_ACTION_LABEL: Record<string, string> = {
+  created: 'Dibuat',
+  sent: 'Dikirim Ke Verifikator',
+  approved_v1: 'Disetujui Verifikator 1',
+  approved_v2: 'Disetujui Verifikator 2',
+  approved_v3: 'Disetujui Verifikator 3',
+  rejected_v1: 'Ditolak Verifikator 1',
+  rejected_v2: 'Ditolak Verifikator 2',
+  rejected_v3: 'Ditolak Verifikator 3',
+  signed: 'Ditandatangani Penandatangan',
+  completed: 'Selesai',
+}
+
+type TimelineEvent = {
+  id: string
+  action: string
+  created_at: string
+  performed_by_name: string
+  notes?: string | null
+}
 
 export default function ViewLetterPage() {
   const params = useParams<{ id: string }>()
@@ -14,6 +45,7 @@ export default function ViewLetterPage() {
   const [instruments, setInstruments] = useState<any[]>([])
   const [stations, setStations] = useState<any[]>([])
   const [sensors, setSensors] = useState<any[]>([])
+  const [showTimeline, setShowTimeline] = useState(true)
 
   useEffect(() => {
     const run = async () => {
@@ -109,57 +141,184 @@ export default function ViewLetterPage() {
   }, [letter?.public_id])
   const signed = Boolean(letter?.signed_at)
 
+  // Linimasa dibaca dari tabel letter_logs (sama seperti sertifikat).
+  const [timelineLogs, setTimelineLogs] = useState<TimelineEvent[]>([])
+  useEffect(() => {
+    if (!letter?.id) return
+    fetch(`/api/letter-logs?letter_id=${letter.id}&pageSize=100`)
+      .then((res) => res.json())
+      .then((data) => {
+        const rows = Array.isArray(data?.data) ? data.data : []
+        setTimelineLogs(
+          rows
+            .map((log: any): TimelineEvent => ({
+              id: String(log.id),
+              action: String(log.action),
+              created_at: log.created_at,
+              performed_by_name: log.performed_by_name || 'Pengguna',
+              notes: log.notes || log.approval_notes || log.rejection_reason || null,
+            }))
+            .sort(
+              (a: TimelineEvent, b: TimelineEvent) =>
+                new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+            ),
+        )
+      })
+      .catch((err) => console.error('Failed to load letter logs', err))
+  }, [letter?.id])
+
   if (loading) return <div className="p-6 text-gray-600">Loading...</div>
   if (error) return <div className="p-6 text-red-600">{error}</div>
   if (!letter) return <div className="p-6 text-gray-600">Not found</div>
 
+  const statusInfo = STATUS_INFO[String(letter.status || 'draft').toLowerCase()] || {
+    label: letter.status || 'Draf',
+    cls: 'bg-gray-100 text-gray-700',
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div
-        className="sk-no-print"
-        style={{ position: 'sticky', top: 0, zIndex: 50, background: '#fff', borderBottom: '1px solid #e5e7eb' }}
-      >
-        <div style={{ maxWidth: 900, margin: '0 auto', display: 'flex', justifyContent: 'space-between', padding: '8px 16px' }}>
-          <div className="text-sm font-semibold text-gray-700">Surat Keterangan</div>
-          <div className="space-x-2">
-            <a
-              href={`/letters/${letter.id}/edit`}
-              className="px-3 py-1.5 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200"
-            >
-              Edit
-            </a>
-            <a
-              href={`/letters/${letter.id}/print`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-            >
-              Print
-            </a>
-            <button
-              onClick={() => router.back()}
-              className="px-3 py-1.5 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200"
-            >
-              Kembali
-            </button>
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center pb-12 pt-16 print:bg-white print:pb-0 print:pt-0 print:m-0 print:block">
+      {/* Header */}
+      <div className="w-full bg-white shadow-sm border-b absolute top-0 left-0 right-0 z-50 print:hidden">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16 gap-4">
+            <div className="flex items-center min-w-0">
+              <Image src={bmkgLogo} alt="BMKG" width={40} height={40} className="mr-3" />
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-xl font-semibold text-gray-900">Surat Keterangan</h1>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm text-gray-500 truncate">
+                    {letter.no_letter || '-'} • Order {letter.no_order || '-'}
+                  </p>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusInfo.cls}`}>
+                    {statusInfo.label}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowTimeline((value) => !value)}
+                className="px-3 sm:px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+              >
+                {showTimeline ? 'Sembunyikan Linimasa' : 'Tampilkan Linimasa'}
+              </button>
+              {String(letter.status || 'draft').toLowerCase() === 'draft' && (
+                <a
+                  href={`/letters/${letter.id}/edit`}
+                  className="px-3 sm:px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+                >
+                  Edit
+                </a>
+              )}
+              <a
+                href={`/letters/${letter.id}/print`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+              >
+                Print
+              </a>
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="px-3 sm:px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+              >
+                Kembali
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      <SuratKeteranganDocument
-        letter={letter}
-        results={Array.isArray(letter.results) ? letter.results : []}
-        instrument={instrument}
-        sensor={instrument}
-        owner={owner}
-        authorized={{ name: authorizedPerson?.name || null, title: authorizedPerson?.signer_title || null }}
-        checkedBy={checkedBy}
-        verifiedBy={verifiedBy}
-        totalPages={2}
-        verifyUrl={verifyUrl}
-        signed={signed}
-        sensorSheets={sensorSheets}
-      />
+      <div className="mt-20 w-full max-w-7xl mx-auto flex flex-col md:flex-row gap-6 px-4 sm:px-6 lg:px-8 items-start print:block print:m-0 print:p-0 print:px-0 print:mt-0">
+        {/* Sidebar Linimasa (tidak ikut tercetak) */}
+        {showTimeline && (
+        <div className="w-full md:w-80 flex-shrink-0 bg-white rounded-lg shadow-sm border border-gray-200 p-6 self-start sticky top-20 print:hidden">
+          <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2 mb-6 border-b pb-3">
+            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            Linimasa Surat Keterangan
+          </h3>
+          {timelineLogs.length === 0 ? (
+            <div className="text-sm text-gray-500 text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+              <svg className="w-8 h-8 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <p className="font-semibold text-gray-700">Belum Ada History / Linimasa</p>
+              <p className="text-xs mt-1">Surat ini belum memiliki catatan aktivitas.</p>
+            </div>
+          ) : (
+            <div className="relative border-l-2 border-gray-200 ml-3 space-y-6">
+              {timelineLogs.map((log) => {
+                const isRejected = log.action.includes('reject')
+                const color = isRejected ? 'bg-red-500' : 'bg-green-500'
+                const dateObj = new Date(log.created_at)
+                const time =
+                  dateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB'
+                const date = dateObj.toLocaleDateString('id-ID', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                })
+                return (
+                  <div key={log.id} className="relative mb-6 last:mb-0 ml-4">
+                    <div
+                      className={`absolute -left-[23px] top-1 h-3 w-3 rounded-full border-2 border-white ${color} shadow-sm z-10`}
+                    ></div>
+                    <div className="text-[10px] font-bold text-gray-500 mb-0.5">{date}</div>
+                    <div className="text-xs font-bold text-gray-900 mb-1">
+                      {LETTER_ACTION_LABEL[log.action] || log.action}
+                    </div>
+                    <div className="text-[10px] bg-gray-100/50 text-gray-500 px-2 py-0.5 rounded inline-block mb-1">
+                      {time}
+                    </div>
+                    <div className="text-[10px] text-gray-600 mt-1 leading-relaxed capitalize">
+                      {log.performed_by_name}
+                    </div>
+                    {log.notes && (
+                      <div className="text-[10px] italic text-gray-500 mt-1 border-l-2 border-gray-200 pl-2">
+                        "{log.notes}"
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+        )}
+
+        {/* Dokumen surat */}
+        <div className="flex-1 w-full flex justify-center print:block print:w-full">
+          <SuratKeteranganDocument
+            letter={letter}
+            results={Array.isArray(letter.results) ? letter.results : []}
+            instrument={instrument}
+            sensor={instrument}
+            owner={owner}
+            authorized={{ name: authorizedPerson?.name || null, title: authorizedPerson?.signer_title || null }}
+            checkedBy={checkedBy}
+            verifiedBy={verifiedBy}
+            totalPages={2}
+            verifyUrl={verifyUrl}
+            signed={signed}
+            sensorSheets={sensorSheets}
+          />
+        </div>
+      </div>
     </div>
   )
 }

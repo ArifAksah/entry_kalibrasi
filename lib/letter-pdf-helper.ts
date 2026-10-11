@@ -280,7 +280,11 @@ export async function generateAndSaveLetterPDF(
             const lower = preview.toLowerCase()
             if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
             if (lower.includes('nik') || lower.includes('tidak terdaftar') || lower.includes('not registered')) {
-              return { success: false, error: `NIK_INVALID_IN_BSRE: ${preview.slice(0, 200)}` }
+              return {
+                success: false,
+                error:
+                  'NIK penandatangan tidak terdaftar/tidak valid pada layanan TTE (BSrE). Hubungi administrator untuk memperbaiki data NIK penandatangan.',
+              }
             }
             if (
               signResponse.status === 401
@@ -298,7 +302,19 @@ export async function generateAndSaveLetterPDF(
         }
       } catch (signError: any) {
         if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath)
-        return { success: false, error: `Gagal menandatangani PDF: ${signError?.message || 'unknown error'}` }
+        const raw = String(signError?.message || '')
+        // Kegagalan jaringan ke BSrE ("fetch failed", DNS, timeout) sering muncul
+        // mentah — terjemahkan agar petugas tahu apa yang harus dilakukan.
+        const isNetworkError =
+          /fetch failed|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|network|aborted/i.test(
+            raw,
+          )
+        return {
+          success: false,
+          error: isNetworkError
+            ? 'Layanan TTE (BSrE) tidak dapat dihubungi dari server. Periksa koneksi server ke BSrE atau hubungi administrator.'
+            : `Gagal menandatangani PDF: ${raw || 'penyebab tidak diketahui'}`,
+        }
       }
 
       const bufferToSave = signedPdf ?? pdf

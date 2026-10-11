@@ -74,14 +74,25 @@ export async function GET(
     }
     if (!data) return NextResponse.json({ error: 'Surat Keterangan tidak ditemukan' }, { status: 404 })
 
-    const [results, display, documentAssignment] = await Promise.all([
+    const [results, display, documentAssignment, verificationRows] = await Promise.all([
       fetchLetterResults(letterId),
       loadLetterDisplayData(data),
       data.calibration_order_item_id
         ? getDocumentAssignment(Number(data.calibration_order_item_id))
         : Promise.resolve(null),
+      supabaseAdmin
+        .from('letter_verification')
+        .select('*')
+        .eq('letter_id', letterId)
+        .order('verification_level', { ascending: true }),
     ])
-    return NextResponse.json({ ...data, results, document_assignment: documentAssignment, ...display })
+    return NextResponse.json({
+      ...data,
+      results,
+      document_assignment: documentAssignment,
+      verifications: verificationRows?.data ?? [],
+      ...display,
+    })
   }
 
   const caller = await requireCaller(request)
@@ -96,14 +107,25 @@ export async function GET(
     if (!(await canAccessLetter(caller.user.id, caller.role, data))) {
       return NextResponse.json({ error: 'Tidak memiliki akses' }, { status: 403 })
     }
-    const [results, documentAssignment, display] = await Promise.all([
+    const [results, documentAssignment, display, verificationRows] = await Promise.all([
       fetchLetterResults(Number(id)),
       data.calibration_order_item_id
         ? getDocumentAssignment(Number(data.calibration_order_item_id))
         : Promise.resolve(null),
       loadLetterDisplayData(data),
+      supabaseAdmin
+        .from('letter_verification')
+        .select('*')
+        .eq('letter_id', Number(id))
+        .order('verification_level', { ascending: true }),
     ])
-    return NextResponse.json({ ...data, results, document_assignment: documentAssignment, ...display })
+    return NextResponse.json({
+      ...data,
+      results,
+      document_assignment: documentAssignment,
+      verifications: verificationRows?.data ?? [],
+      ...display,
+    })
   } catch (e) {
     return NextResponse.json({ error: 'Failed to fetch letter' }, { status: 500 })
   }
@@ -148,13 +170,16 @@ export async function PUT(
       }
     }
 
+    // issue_date (Tanggal Terbit) tidak disunting dari form — diisi otomatis saat TTE.
     const update = {
-      issue_date: body.issue_date || null,
       ...(body.inspection_date !== undefined ? { inspection_date: body.inspection_date || null } : {}),
       ...(body.inspection_place !== undefined ? { inspection_place: body.inspection_place || null } : {}),
       ...(body.reference_document !== undefined ? { reference_document: body.reference_document || null } : {}),
       ...(body.notes !== undefined ? { notes: body.notes || null } : {}),
       ...(body.status !== undefined ? { status: nextStatus } : {}),
+      ...(body.included_sensor_ids !== undefined
+        ? { included_sensor_ids: body.included_sensor_ids }
+        : {}),
     }
 
     const { data, error } = await supabaseAdmin

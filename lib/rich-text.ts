@@ -11,6 +11,14 @@ const ALLOWED_TAGS = new Set([
   'LI',
   'A',
   'DIV',
+  'TABLE',
+  'THEAD',
+  'TBODY',
+  'TFOOT',
+  'TR',
+  'TH',
+  'TD',
+  'CAPTION',
 ])
 
 const escapeHtml = (value: string) =>
@@ -69,6 +77,17 @@ const sanitizeNode = (node: Node) => {
       return
     }
 
+    // Sel tabel boleh membawa colspan/rowspan (angka saja).
+    if ((tagName === 'TD' || tagName === 'TH') && (attrName === 'colspan' || attrName === 'rowspan')) {
+      const span = parseInt(element.getAttribute(attr.name) || '', 10)
+      if (Number.isFinite(span) && span > 1) {
+        element.setAttribute(attr.name, String(Math.min(span, 100)))
+      } else {
+        element.removeAttribute(attr.name)
+      }
+      return
+    }
+
     element.removeAttribute(attr.name)
   })
 
@@ -111,7 +130,7 @@ export const isRichTextEmpty = (value: string | null | undefined) => {
 }
 
 export const richTextContentClassName =
-  '[&_p]:my-0 [&_p+*]:mt-1 [&_ul]:my-0 [&_ol]:my-0 [&_ul]:pl-5 [&_ol]:pl-5 [&_li]:my-0.5 [&_a]:text-blue-700 [&_a]:underline'
+  '[&_p]:my-0 [&_p+*]:mt-1 [&_ul]:my-0 [&_ol]:my-0 [&_ul]:pl-5 [&_ol]:pl-5 [&_li]:my-0.5 [&_a]:text-blue-700 [&_a]:underline [&_table]:w-full [&_table]:border-collapse [&_table]:my-1 [&_th]:border [&_th]:border-gray-400 [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-gray-400 [&_td]:px-2 [&_td]:py-1'
 
 /** Catatan default sesuai IKK baru (urutan & redaksi mengikuti IKK). */
 export const DEFAULT_NOTES_OTHERS_HTML = [

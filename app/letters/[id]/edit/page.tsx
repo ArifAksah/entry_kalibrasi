@@ -6,6 +6,10 @@ import SideNav from '../../../ui/dashboard/sidenav'
 import Header from '../../../ui/dashboard/header'
 import ProtectedRoute from '../../../../components/ProtectedRoute'
 import { assignmentDisplay } from '@/lib/document-assignment-display'
+import RichTextEditor from '../../../../components/ui/RichTextEditor'
+
+const escapeHtmlText = (value: string) =>
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 type Row = { inspection_item_id: number | null; sensor_id: number | null; parameter: string; hasil: string }
 
@@ -25,12 +29,11 @@ export default function EditLetterPage() {
 
   const [inspectionDate, setInspectionDate] = useState('')
   const [inspectionPlace, setInspectionPlace] = useState('')
-  const [issueDate, setIssueDate] = useState('')
-  const [referenceDocument, setReferenceDocument] = useState('')
   const [notes, setNotes] = useState('')
   const [status, setStatus] = useState('draft')
   const [rows, setRows] = useState<Row[]>([])
   const [sensors, setSensors] = useState<any[]>([])
+  const [includedSensorIds, setIncludedSensorIds] = useState<number[] | null>(null)
 
   useEffect(() => {
     const run = async () => {
@@ -44,16 +47,34 @@ export default function EditLetterPage() {
 
         setInspectionDate(l.inspection_date || '')
         setInspectionPlace(l.inspection_place || '')
-        setIssueDate(l.issue_date || '')
-        setReferenceDocument(l.reference_document || '')
         setNotes(l.notes || '')
         setStatus(l.status || 'draft')
+        setIncludedSensorIds(
+          Array.isArray(l.included_sensor_ids) ? l.included_sensor_ids.map(Number) : null,
+        )
+        // Hasil lama tersimpan per baris (parameter + hasil); hasil baru berupa satu
+        // blok rich text per sensor. Satukan jadi satu baris HTML per sensor.
+        const rawResults = Array.isArray(l.results) ? l.results : []
+        const bySensor = new Map<string, any[]>()
+        for (const r of rawResults) {
+          const key = r.sensor_id == null ? 'null' : String(r.sensor_id)
+          if (!bySensor.has(key)) bySensor.set(key, [])
+          bySensor.get(key)!.push(r)
+        }
         setRows(
-          (Array.isArray(l.results) ? l.results : []).map((r: any) => ({
-            inspection_item_id: r.inspection_item_id ?? null,
-            sensor_id: r.sensor_id ?? null,
-            parameter: r.parameter || '',
-            hasil: r.hasil || '',
+          Array.from(bySensor.entries()).map(([key, list]) => ({
+            inspection_item_id: list[0]?.inspection_item_id ?? null,
+            sensor_id: key === 'null' ? null : Number(key),
+            parameter: '',
+            hasil: list
+              .map((r: any) => {
+                if (r.parameter) {
+                  const hasilText = r.hasil ? `: ${escapeHtmlText(String(r.hasil))}` : ''
+                  return `<p><strong>${escapeHtmlText(String(r.parameter))}</strong>${hasilText}</p>`
+                }
+                return r.hasil || ''
+              })
+              .join(''),
           })),
         )
         if (l.instrument) {
@@ -82,14 +103,25 @@ export default function EditLetterPage() {
     run()
   }, [letterId])
 
-  const setRow = (idx: number, patch: Partial<Row>) =>
-    setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)))
-  const addRow = (sensorId: number | null = null) =>
-    setRows((prev) => [...prev, { inspection_item_id: null, sensor_id: sensorId, parameter: '', hasil: '' }])
-  const removeRow = (idx: number) => setRows((prev) => prev.filter((_, i) => i !== idx))
+  const getSensorHtml = (sensorId: number | null) =>
+    rows.find((row) => (row.sensor_id ?? null) === sensorId)?.hasil || ''
+  const setSensorHtml = (sensorId: number | null, html: string) => {
+    setRows((prev) => {
+      const index = prev.findIndex((row) => (row.sensor_id ?? null) === sensorId)
+      if (index === -1) {
+        return [...prev, { inspection_item_id: null, sensor_id: sensorId, parameter: '', hasil: html }]
+      }
+      return prev.map((row, i) => (i === index ? { ...row, hasil: html } : row))
+    })
+  }
   const removeSensor = (sensorId: number) => {
     setSensors((prev) => prev.filter((sensor) => Number(sensor.id) !== sensorId))
     setRows((prev) => prev.filter((row) => Number(row.sensor_id) !== sensorId))
+    // Catat sensor yang dipakai agar penghapusan tetap tersimpan setelah reload.
+    setIncludedSensorIds((prev) => {
+      const base = prev ?? sensors.map((sensor) => Number(sensor.id))
+      return base.filter((id) => Number(id) !== Number(sensorId))
+    })
   }
 
   // Satu lembar per sensor. Sensor instrumen selalu tampil; sensor yang tidak
@@ -105,7 +137,13 @@ export default function EditLetterPage() {
       rows: Array<{ row: Row; index: number }>
     }> = []
 
-    for (const sensor of sensors) {
+    // Hanya tampilkan sensor yang tercatat dipakai (bila sudah diatur); NULL =
+    // semua sensor instrumen (perilaku lama).
+    const effectiveSensors = includedSensorIds
+      ? sensors.filter((sensor: any) => includedSensorIds.includes(Number(sensor.id)))
+      : sensors
+
+    for (const sensor of effectiveSensors) {
       groups.push({
         key: `sensor-${sensor.id}`,
         sensorId: Number(sensor.id),
@@ -116,7 +154,7 @@ export default function EditLetterPage() {
       })
     }
 
-    const knownIds = new Set(sensors.map((sensor: any) => Number(sensor.id)))
+    const knownIds = new Set(effectiveSensors.map((sensor: any) => Number(sensor.id)))
     const extraIds = Array.from(
       new Set(
         rows
@@ -148,7 +186,7 @@ export default function EditLetterPage() {
         ? group.rows.length > 0 || sensors.length === 0
         : group.rows.length > 0 || sensors.some((sensor: any) => Number(sensor.id) === group.sensorId),
     )
-  }, [sensors, rows])
+  }, [sensors, rows, includedSensorIds])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -161,10 +199,10 @@ export default function EditLetterPage() {
         body: JSON.stringify({
           inspection_date: inspectionDate || null,
           inspection_place: inspectionPlace || null,
-          issue_date: issueDate || null,
-          reference_document: referenceDocument || null,
           notes: notes || null,
           status,
+          included_sensor_ids:
+            includedSensorIds ?? sensors.map((sensor) => Number(sensor.id)),
           results: rows.map((r, i) => ({
             inspection_item_id: r.inspection_item_id,
             sensor_id: r.sensor_id,
@@ -195,7 +233,7 @@ export default function EditLetterPage() {
             <div className="p-6 text-red-600">{error}</div>
           ) : (
             <form onSubmit={submit} className="p-6 space-y-4">
-              <div className="flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <div className="sticky top-0 z-30 flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
                 <div>
                   <div className="text-lg font-bold text-blue-950">Edit Surat Keterangan</div>
                   <div className="text-xs text-blue-700">
@@ -238,20 +276,8 @@ export default function EditLetterPage() {
                     <input value={inspectionPlace} onChange={(e) => setInspectionPlace(e.target.value)} className={inputClass} />
                   </label>
                   <label className="block text-xs font-semibold text-gray-600">
-                    Tanggal Terbit
-                    <input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} className={inputClass} />
-                  </label>
-                  <label className="block text-xs font-semibold text-gray-600">
-                    Dokumen Acuan
-                    <input value={referenceDocument} onChange={(e) => setReferenceDocument(e.target.value)} className={inputClass} />
-                  </label>
-                  <label className="block text-xs font-semibold text-gray-600">
                     Status
                     <input readOnly value={letter?.results_frozen_at ? 'Dibekukan (terkirim ke verifikator)' : 'draft'} className={`${inputClass} bg-gray-50 text-gray-700`} />
-                  </label>
-                  <label className="block text-xs font-semibold text-gray-600 md:col-span-2">
-                    Catatan
-                    <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputClass} />
                   </label>
                 </div>
 
@@ -276,10 +302,10 @@ export default function EditLetterPage() {
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
                 <div className="mb-4 border-b border-gray-100 pb-2">
                   <h3 className="text-base font-bold text-gray-800">Hasil Pemeriksaan</h3>
-                  <div className="text-xs text-gray-500">Satu lembar per sensor; sensor yang tidak diperiksa bisa dihapus.</div>
+                  <div className="text-xs text-gray-500">Satu blok rich text per sensor; sensor yang tidak diperiksa bisa dihapus.</div>
                 </div>
                 {sheetGroups.length === 0 ? (
-                  <div className="text-sm text-gray-500">Belum ada sensor. Tambahkan baris dengan tombol + Baris.</div>
+                  <div className="text-sm text-gray-500">Belum ada sensor.</div>
                 ) : (
                   <div className="space-y-4">
                     {sheetGroups.map((group) => (
@@ -291,59 +317,33 @@ export default function EditLetterPage() {
                               <div className="text-xs text-gray-500">{group.subtitle}</div>
                             ) : null}
                           </div>
-                          <div className="flex items-center gap-2">
+                          {group.removable && group.sensorId != null && (
                             <button
                               type="button"
-                              onClick={() => addRow(group.sensorId)}
-                              className="rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold hover:bg-gray-50"
+                              onClick={() => removeSensor(group.sensorId as number)}
+                              className="text-xs text-red-600 hover:underline"
                             >
-                              + Baris
+                              Hapus sensor
                             </button>
-                            {group.removable && group.sensorId != null && (
-                              <button
-                                type="button"
-                                onClick={() => removeSensor(group.sensorId as number)}
-                                className="text-xs text-red-600 hover:underline"
-                              >
-                                Hapus sensor
-                              </button>
-                            )}
-                          </div>
+                          )}
                         </div>
-                        {group.rows.length === 0 ? (
-                          <div className="px-3 py-3 text-xs text-gray-500">Belum ada parameter untuk sensor ini.</div>
-                        ) : (
-                          <table className="min-w-full text-sm">
-                            <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
-                              <tr>
-                                <th className="px-3 py-2">Parameter</th>
-                                <th className="px-3 py-2">Hasil</th>
-                                <th className="w-16 px-3 py-2" />
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                              {group.rows.map(({ row, index }) => (
-                                <tr key={index}>
-                                  <td className="px-3 py-2">
-                                    <input value={row.parameter} onChange={(e) => setRow(index, { parameter: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <input value={row.hasil} onChange={(e) => setRow(index, { hasil: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
-                                  </td>
-                                  <td className="px-3 py-2 text-right">
-                                    <button type="button" onClick={() => removeRow(index)} className="text-xs text-red-600 hover:underline">
-                                      Hapus
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        )}
+                        <div className="p-3">
+                          <RichTextEditor
+                            value={getSensorHtml(group.sensorId)}
+                            onChange={(html) => setSensorHtml(group.sensorId, html)}
+                            minHeightClassName="min-h-[120px]"
+                            placeholder="Tulis hasil pemeriksaan sensor ini..."
+                          />
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
+
+                <label className="mt-4 block text-xs font-semibold text-gray-600">
+                  Catatan
+                  <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputClass} />
+                </label>
               </div>
             </form>
           )}

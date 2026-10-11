@@ -166,6 +166,7 @@ const sections: NavSection[] = [
       { name: 'Sertifikat', href: '/certificates', icon: Icon.doc },
       { name: 'Log Sertifikat', href: '/certificate-logs', icon: Icon.clock },
       { name: 'Surat', href: '/letters', icon: Icon.mail },
+      { name: 'Log Surat', href: '/letter-logs', icon: Icon.clock },
     ],
   },
   {
@@ -257,6 +258,9 @@ const SideNav: React.FC = () => {
               )
             }
             if (item.href === '/certificate-logs') {
+              return role === 'admin' || role === 'assignor'
+            }
+            if (item.href === '/letter-logs') {
               return role === 'admin' || role === 'assignor'
             }
             if (item.href === '/certificates') {

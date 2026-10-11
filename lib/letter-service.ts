@@ -106,7 +106,7 @@ export async function saveLetterResults(
       hasil: r.hasil ?? null,
       sort_order: typeof r.sort_order === 'number' ? r.sort_order : i,
     }))
-    .filter((r) => r.parameter)
+    .filter((r) => r.parameter || (typeof r.hasil === 'string' && r.hasil.trim()))
   if (rows.length > 0) {
     const { error } = await supabaseAdmin.from('letter_inspection_results').insert(rows)
     if (error) throw error

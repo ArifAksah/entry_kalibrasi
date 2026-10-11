@@ -10,28 +10,78 @@ import {
   validateOrderItemForLetter,
 } from '../../../lib/letter-service'
 import { isUserInCalibrationOrderTeam } from '../../../lib/certificate-access'
+import { createLetterLog } from '../../../lib/letter-log-helper'
 
 export async function GET(request: NextRequest) {
   const caller = await requireCaller(request)
   if (caller instanceof NextResponse) return caller
   try {
-    const { data, error } = await supabaseAdmin
-      .from('letter')
-      .select('*')
-      .order('created_at', { ascending: false })
-    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
-    const list = Array.isArray(data) ? data : []
+    const { searchParams } = new URL(request.url)
+    const q = (searchParams.get('q') || '').trim()
+    const status = (searchParams.get('status') || 'all').trim()
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
+    const pageSize = Math.min(
+      100,
+      Math.max(1, parseInt(searchParams.get('pageSize') || '10', 10) || 10),
+    )
+
+    // Scoping (non-admin): hanya surat buatan sendiri atau dari order timnya.
+    let scopeClause: string | null = null
     if (caller.role !== 'admin') {
       const orderIds = await accessibleOrderIds(caller.user.id)
-      return NextResponse.json(
-        list.filter(
-          (letter: any) =>
-            letter.created_by === caller.user.id ||
-            (letter.calibration_order_id && orderIds.includes(Number(letter.calibration_order_id))),
-        ),
-      )
+      const parts = [`created_by.eq.${caller.user.id}`]
+      if (orderIds.length) parts.push(`calibration_order_id.in.(${orderIds.join(',')})`)
+      scopeClause = parts.join(',')
     }
-    return NextResponse.json(list)
+
+    // Pencarian teks: kolom surat + instrumen + pemilik (nama instrumen/stasiun
+    // di-resolve dulu jadi daftar id agar bisa disaring di query).
+    let searchClause: string | null = null
+    if (q) {
+      const safe = q.replace(/[,()%*]/g, ' ').trim()
+      if (safe) {
+        const [{ data: inst }, { data: st }] = await Promise.all([
+          supabaseAdmin
+            .from('instrument')
+            .select('id')
+            .or(
+              `name_alias.ilike.%${safe}%,type.ilike.%${safe}%,serial_number.ilike.%${safe}%`,
+            )
+            .limit(500),
+          supabaseAdmin.from('station').select('id').ilike('name', `%${safe}%`).limit(500),
+        ])
+        const parts = [
+          `no_letter.ilike.%${safe}%`,
+          `no_order.ilike.%${safe}%`,
+          `no_identification.ilike.%${safe}%`,
+        ]
+        const instIds = (inst || []).map((i: any) => i.id)
+        const stIds = (st || []).map((s: any) => s.id)
+        if (instIds.length) parts.push(`instrument.in.(${instIds.join(',')})`)
+        if (stIds.length) parts.push(`owner.in.(${stIds.join(',')})`)
+        searchClause = parts.join(',')
+      }
+    }
+
+    let query = supabaseAdmin.from('letter').select('*', { count: 'exact' })
+    if (status && status !== 'all') query = query.eq('status', status)
+    if (scopeClause) query = query.or(scopeClause)
+    if (searchClause) query = query.or(searchClause)
+
+    const from = (page - 1) * pageSize
+    query = query.order('created_at', { ascending: false }).range(from, from + pageSize - 1)
+
+    const { data, error, count } = await query
+    if (error) return NextResponse.json({ error: clientSafeMessage(error) }, { status: 500 })
+
+    const total = count ?? (Array.isArray(data) ? data.length : 0)
+    return NextResponse.json({
+      data: Array.isArray(data) ? data : [],
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    })
   } catch {
     return NextResponse.json({ error: 'Gagal memuat Surat Keterangan' }, { status: 500 })
   }
@@ -96,6 +146,9 @@ export async function POST(request: NextRequest) {
       verifikator_1: body.verifikator_1 || null,
       verifikator_2: body.verifikator_2 || null,
       verifikator_3: body.verifikator_3 || null,
+      included_sensor_ids: Array.isArray(body.included_sensor_ids)
+        ? body.included_sensor_ids
+        : null,
       status: 'draft',
       created_by: caller.user.id,
     }
@@ -114,6 +167,15 @@ export async function POST(request: NextRequest) {
     }
 
     await saveLetterResults(data.id, body.results)
+
+    await createLetterLog({
+      letter_id: data.id,
+      action: 'created',
+      performed_by: caller.user.id,
+      new_status: 'draft',
+      notes: 'Surat Keterangan dibuat',
+    })
+
     return NextResponse.json(
       { ...data, results: await fetchLetterResults(data.id) },
       { status: 201 },

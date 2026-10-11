@@ -42,6 +42,16 @@ export function buildDraftSubmissionMessage(
 }
 
 /**
+ * Versi Surat Keterangan dari pesan pengiriman konsep untuk verifikator.
+ */
+export function buildLetterDraftSubmissionMessage(
+  letterNumber: string,
+  calibratorName: string
+): string {
+  return `Pemberitahuan Verifikasi\n\nSurat Keterangan ${letterNumber} telah dikirim untuk verifikasi oleh ${calibratorName}.\n\nMohon segera ditindaklanjuti.\n\nTerima kasih.`;
+}
+
+/**
  * Builds the certificate rejection WhatsApp message sent to the calibrator.
  *
  * @param certificateNumber - The certificate number (no_certificate)

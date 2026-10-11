@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireCaller, isAdminCaller } from '@/lib/api-auth'
 import { supabaseAdmin } from '@/lib/supabase'
+import { createLetterLog, LetterLogAction } from '@/lib/letter-log-helper'
 
-const VERIFICATION_LEVEL = 1
+const VERIFICATION_LEVELS = [1, 2, 3]
+const levelVerifikatorField: Record<number, 'verifikator_1' | 'verifikator_2' | 'verifikator_3'> = {
+  1: 'verifikator_1',
+  2: 'verifikator_2',
+  3: 'verifikator_3',
+}
 
 async function createNotification(userId: string | null | undefined, message: string, link: string) {
   if (!userId) return
@@ -54,8 +60,8 @@ export async function POST(request: NextRequest) {
   const letterId = Number(body?.letter_id)
   const level = Number(body?.verification_level)
   const action = String(body?.action || '')
-  if (!Number.isInteger(letterId) || level !== VERIFICATION_LEVEL || !['approve', 'reject'].includes(action)) {
-    return NextResponse.json({ error: 'letter_id, verification_level (1), dan action wajib diisi' }, { status: 400 })
+  if (!Number.isInteger(letterId) || !VERIFICATION_LEVELS.includes(level) || !['approve', 'reject'].includes(action)) {
+    return NextResponse.json({ error: 'letter_id, verification_level (1-3), dan action wajib diisi' }, { status: 400 })
   }
 
   const { data: letter } = await supabaseAdmin
@@ -65,11 +71,11 @@ export async function POST(request: NextRequest) {
     .maybeSingle()
   if (!letter) return NextResponse.json({ error: 'Surat Keterangan tidak ditemukan' }, { status: 404 })
 
-  // Verifikasi harus berasal dari verifikator yang ditugaskan pada Surat ini.
-  const assignedVerifikators = [letter.verifikator_1, letter.verifikator_2, letter.verifikator_3].filter(Boolean)
-  if (!assignedVerifikators.includes(caller.user.id)) {
+  // Verifikasi berjenjang: hanya Verifikator N yang ditugaskan yang boleh memproses level N.
+  const assignedForLevel = (letter as any)[levelVerifikatorField[level]]
+  if (assignedForLevel !== caller.user.id) {
     return NextResponse.json(
-      { error: 'Hanya verifikator yang ditugaskan pada Surat Keterangan ini yang dapat memverifikasi' },
+      { error: `Hanya Verifikator ${level} yang ditugaskan pada Surat Keterangan ini yang dapat memverifikasi level ini` },
       { status: 403 },
     )
   }
@@ -92,6 +98,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Verifikasi level ini sudah diproses' }, { status: 400 })
   }
 
+  // Urutan: level 2 hanya setelah level 1 disetujui, level 3 setelah level 2 disetujui.
+  if (level > 1) {
+    const { data: prevVerification } = await supabaseAdmin
+      .from('letter_verification')
+      .select('status')
+      .eq('letter_id', letterId)
+      .eq('verification_level', level - 1)
+      .eq('letter_version', version)
+      .maybeSingle()
+    if (!prevVerification || prevVerification.status !== 'approved') {
+      return NextResponse.json(
+        { error: `Verifikator ${level} hanya dapat memverifikasi setelah Verifikator ${level - 1} menyetujui` },
+        { status: 400 },
+      )
+    }
+  }
+
   const now = new Date().toISOString()
 
   if (action === 'approve') {
@@ -106,18 +129,38 @@ export async function POST(request: NextRequest) {
       .eq('id', verification.id)
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
+    const isLastLevel = level === VERIFICATION_LEVELS[VERIFICATION_LEVELS.length - 1]
     const { error: letterError } = await supabaseAdmin
       .from('letter')
-      .update({ status: 'verified' })
+      .update({ status: isLastLevel ? 'verified' : 'sent' })
       .eq('id', letterId)
     if (letterError) return NextResponse.json({ error: letterError.message }, { status: 400 })
 
-    await createNotification(
-      letter.sent_by,
-      `Surat Keterangan ${letter.no_letter || letterId} disetujui dan siap ditandatangani`,
-      `/letters/${letterId}/view`,
-    )
-    return NextResponse.json({ success: true, status: 'verified' })
+    if (isLastLevel) {
+      await createNotification(
+        letter.sent_by,
+        `Surat Keterangan ${letter.no_letter || letterId} disetujui dan siap ditandatangani`,
+        `/letters/${letterId}/view`,
+      )
+    } else {
+      const nextVerifikator = (letter as any)[levelVerifikatorField[level + 1]]
+      await createNotification(
+        nextVerifikator,
+        `Surat Keterangan ${letter.no_letter || letterId} menunggu verifikasi Anda`,
+        '/verifikasi-surat',
+      )
+    }
+    await createLetterLog({
+      letter_id: letterId,
+      action: `approved_v${level}` as LetterLogAction,
+      performed_by: caller.user.id,
+      verification_level: level,
+      approval_notes: body?.notes || null,
+      previous_status: 'sent',
+      new_status: isLastLevel ? 'verified' : 'sent',
+    })
+
+    return NextResponse.json({ success: true, status: isLastLevel ? 'verified' : 'sent' })
   }
 
   // Reject: satu aksi, tanpa kategori — langsung kembali ke konseptor (draft).
@@ -152,6 +195,16 @@ export async function POST(request: NextRequest) {
     `Surat Keterangan ${letter.no_letter || letterId} ditolak: ${reason}`,
     `/letters/${letterId}/view`,
   )
+
+  await createLetterLog({
+    letter_id: letterId,
+    action: `rejected_v${level}` as LetterLogAction,
+    performed_by: caller.user.id,
+    verification_level: level,
+    rejection_reason: reason,
+    previous_status: 'sent',
+    new_status: 'draft',
+  })
 
   return NextResponse.json({ success: true, status: 'draft' })
 }

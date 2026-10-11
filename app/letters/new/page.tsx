@@ -6,6 +6,7 @@ import SideNav from '../../ui/dashboard/sidenav'
 import Header from '../../ui/dashboard/header'
 import ProtectedRoute from '../../../components/ProtectedRoute'
 import SearchableDropdown from '../../../components/ui/SearchableDropdown'
+import RichTextEditor from '../../../components/ui/RichTextEditor'
 
 type Row = { inspection_item_id: number | null; sensor_id: number | null; parameter: string; hasil: string }
 
@@ -43,10 +44,8 @@ export default function NewLetterPage() {
   const [error, setError] = useState<string | null>(null)
   const [orderItems, setOrderItems] = useState<OrderItemOption[]>([])
   const [orderItemId, setOrderItemId] = useState<number | null>(null)
-  const [issueDate, setIssueDate] = useState('')
   const [inspectionDate, setInspectionDate] = useState('')
   const [inspectionPlace, setInspectionPlace] = useState('')
-  const [referenceDocument, setReferenceDocument] = useState('')
   const [notes, setNotes] = useState('')
   const [rows, setRows] = useState<Row[]>([])
   const [sensors, setSensors] = useState<SensorOption[]>([])
@@ -112,11 +111,17 @@ export default function NewLetterPage() {
     }
   }
 
-  const setRow = (index: number, patch: Partial<Row>) =>
-    setRows((current) => current.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)))
-  const addRow = (sensorId: number | null = null) =>
-    setRows((current) => [...current, { inspection_item_id: null, sensor_id: sensorId, parameter: '', hasil: '' }])
-  const removeRow = (index: number) => setRows((current) => current.filter((_, rowIndex) => rowIndex !== index))
+  const getSensorHtml = (sensorId: number | null) =>
+    rows.find((row) => (row.sensor_id ?? null) === sensorId)?.hasil || ''
+  const setSensorHtml = (sensorId: number | null, html: string) => {
+    setRows((current) => {
+      const index = current.findIndex((row) => (row.sensor_id ?? null) === sensorId)
+      if (index === -1) {
+        return [...current, { inspection_item_id: null, sensor_id: sensorId, parameter: '', hasil: html }]
+      }
+      return current.map((row, i) => (i === index ? { ...row, hasil: html } : row))
+    })
+  }
   const removeSensor = (sensorId: number) => {
     setSensors((current) => current.filter((sensor) => sensor.id !== sensorId))
     setRows((current) => current.filter((row) => row.sensor_id !== sensorId))
@@ -136,11 +141,10 @@ export default function NewLetterPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           calibration_order_item_id: orderItemId,
-          issue_date: issueDate || null,
           inspection_date: inspectionDate || null,
           inspection_place: inspectionPlace || null,
-          reference_document: referenceDocument || null,
           notes: notes || null,
+          included_sensor_ids: sensors.map((sensor) => Number(sensor.id)),
           results: rows.map((row, index) => ({
             inspection_item_id: row.inspection_item_id,
             sensor_id: row.sensor_id,
@@ -166,7 +170,7 @@ export default function NewLetterPage() {
         <div className="bg-gray-50">
           <Header />
           <form onSubmit={submit} className="space-y-4 p-6">
-            <div className="flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <div className="sticky top-0 z-30 flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
               <div>
                 <div className="text-lg font-bold text-blue-950">Buat Surat Keterangan</div>
                 <div className="text-xs text-blue-700">
@@ -232,91 +236,52 @@ export default function NewLetterPage() {
                   Tempat Pemeriksaan
                   <input value={inspectionPlace} onChange={(event) => setInspectionPlace(event.target.value)} placeholder="Stasiun / lokasi" className={inputClass} />
                 </label>
-                <label className="block text-xs font-semibold text-gray-600">
-                  Tanggal Terbit
-                  <input type="date" value={issueDate} onChange={(event) => setIssueDate(event.target.value)} className={inputClass} />
-                </label>
-                <label className="block text-xs font-semibold text-gray-600">
-                  Dokumen Acuan
-                  <input value={referenceDocument} onChange={(event) => setReferenceDocument(event.target.value)} placeholder="SOP ..." className={inputClass} />
-                </label>
-                <label className="block text-xs font-semibold text-gray-600 md:col-span-2">
-                  Catatan
-                  <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} className={inputClass} />
-                </label>
               </div>
             </div>
 
             <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-              <div className="mb-4 flex items-center justify-between border-b border-gray-100 pb-2">
+              <div className="mb-4 border-b border-gray-100 pb-2">
                 <h3 className="text-base font-bold text-gray-800">Hasil Pemeriksaan</h3>
-                {sensors.length === 0 && (
-                  <button type="button" onClick={() => addRow(null)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold hover:bg-gray-50">+ Baris</button>
-                )}
+                <p className="text-xs text-gray-500">Satu blok per sensor — teks bisa diformat (tebal, miring, daftar).</p>
               </div>
 
               {sensors.length > 0 ? (
                 <div className="space-y-4">
-                  {sensors.map((sensor) => {
-                    const indexed = rows
-                      .map((row, index) => ({ row, index }))
-                      .filter(({ row }) => row.sensor_id === sensor.id)
-                    return (
-                      <div key={sensor.id} className="overflow-hidden rounded-xl border border-gray-200">
-                        <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-3 py-2">
-                          <div>
-                            <div className="text-sm font-bold text-gray-800">{sensor.name || `Sensor #${sensor.id}`}</div>
-                            <div className="text-xs text-gray-500">
-                              {sensor.manufacturer || '-'} • {sensor.type || '-'} / {sensor.serial_number || '-'}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button type="button" onClick={() => addRow(sensor.id)} className="rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold hover:bg-gray-50">+ Baris</button>
-                            <button type="button" onClick={() => removeSensor(sensor.id)} className="text-xs text-red-600 hover:underline">Hapus sensor</button>
+                  {sensors.map((sensor) => (
+                    <div key={sensor.id} className="overflow-hidden rounded-xl border border-gray-200">
+                      <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-3 py-2">
+                        <div>
+                          <div className="text-sm font-bold text-gray-800">{sensor.name || `Sensor #${sensor.id}`}</div>
+                          <div className="text-xs text-gray-500">
+                            {sensor.manufacturer || '-'} • {sensor.type || '-'} / {sensor.serial_number || '-'}
                           </div>
                         </div>
-                        {indexed.length === 0 ? (
-                          <div className="px-3 py-3 text-xs text-gray-500">Belum ada parameter untuk sensor ini.</div>
-                        ) : (
-                          <table className="min-w-full text-sm">
-                            <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
-                              <tr><th className="px-3 py-2">Parameter</th><th className="px-3 py-2">Hasil</th><th className="w-16 px-3 py-2" /></tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                              {indexed.map(({ row, index }) => (
-                                <tr key={index}>
-                                  <td className="px-3 py-2"><input value={row.parameter} onChange={(event) => setRow(index, { parameter: event.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm" /></td>
-                                  <td className="px-3 py-2"><input value={row.hasil} onChange={(event) => setRow(index, { hasil: event.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm" /></td>
-                                  <td className="px-3 py-2 text-right"><button type="button" onClick={() => removeRow(index)} className="text-xs text-red-600 hover:underline">Hapus</button></td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        )}
+                        <button type="button" onClick={() => removeSensor(sensor.id)} className="text-xs text-red-600 hover:underline">Hapus sensor</button>
                       </div>
-                    )
-                  })}
+                      <div className="p-3">
+                        <RichTextEditor
+                          value={getSensorHtml(sensor.id)}
+                          onChange={(html) => setSensorHtml(sensor.id, html)}
+                          minHeightClassName="min-h-[120px]"
+                          placeholder="Tulis hasil pemeriksaan sensor ini..."
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ) : rows.length === 0 ? (
-                <div className="text-sm text-gray-500">Belum ada baris pemeriksaan. Tambahkan dengan tombol + Baris.</div>
               ) : (
-                <div className="overflow-hidden rounded-xl border border-gray-200">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
-                      <tr><th className="px-3 py-2">Parameter</th><th className="px-3 py-2">Hasil</th><th className="w-16 px-3 py-2" /></tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {rows.map((row, index) => (
-                        <tr key={index}>
-                          <td className="px-3 py-2"><input value={row.parameter} onChange={(event) => setRow(index, { parameter: event.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm" /></td>
-                          <td className="px-3 py-2"><input value={row.hasil} onChange={(event) => setRow(index, { hasil: event.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm" /></td>
-                          <td className="px-3 py-2 text-right"><button type="button" onClick={() => removeRow(index)} className="text-xs text-red-600 hover:underline">Hapus</button></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <RichTextEditor
+                  value={getSensorHtml(null)}
+                  onChange={(html) => setSensorHtml(null, html)}
+                  minHeightClassName="min-h-[140px]"
+                  placeholder="Tulis hasil pemeriksaan..."
+                />
               )}
+
+              <label className="mt-4 block text-xs font-semibold text-gray-600">
+                Catatan
+                <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} className={inputClass} />
+              </label>
             </div>
           </form>
         </div>
