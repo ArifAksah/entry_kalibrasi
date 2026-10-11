@@ -207,6 +207,33 @@ const InstrumentsCRUD: React.FC = () => {
     },
     [instrumentNames, instrumentCodes],
   )
+
+  /**
+   * Tentukan apakah sensor (dari NAMA SENSOR yang dipilih) adalah pyranometer.
+   *
+   * Kode alat pyranometer adalah `SR` (Solar Radiasi) di menu instrumen, dan
+   * deteksi dua arah dipakai seperti isRainGaugeSensor: (1) kode alat nama sensor
+   * === 'SR', atau (2) nama sensor memuat kata kunci pyranometer. Nama sensor di
+   * dalam alat komposit mengikuti kode alat induk (AWS/AWOS), jadi kata kunci
+   * tetap diperlukan. Kolom Sensitivitas (µV/Wm⁻²) hanya relevan untuk pyranometer.
+   */
+  const isPyranometerSensor = React.useCallback(
+    (sensorNameId: number | null | undefined) => {
+      if (!sensorNameId) return false
+      const found = instrumentNames.find((n) => n.id === sensorNameId)
+      if (!found) return false
+
+      const code = found.instrument_code_id
+        ? instrumentCodes.find((c) => c.id === found.instrument_code_id)
+        : undefined
+
+      return isPyranometer({
+        name: found.name,
+        instrument_code: code?.code_alat ?? null,
+      } as any)
+    },
+    [instrumentNames, instrumentCodes],
+  )
   const [instrumentTypes, setInstrumentTypes] = useState<
     Array<{ id: number; name: string }>
   >([])
@@ -2195,6 +2222,7 @@ const InstrumentsCRUD: React.FC = () => {
                                       placeholder="Ex: 0.01"
                                     />
                                   </div>
+                                  {isPyranometerSensor(sensor.sensor_name_id) && (
                                   <div className="md:col-span-2">
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
                                       Sensitivitas 
@@ -2209,6 +2237,7 @@ const InstrumentsCRUD: React.FC = () => {
                                       placeholder="Ex: 7.22"
                                     />
                                   </div>
+                                  )}
                                 </div>
                               </div>
                             ))}
@@ -2884,6 +2913,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                           placeholder="Ex: 0.01"
                                                         />
                                                       </div>
+                                                      {isPyranometerSensor(sensor.sensor_name_id) && (
                                                       <div className="sm:col-span-1">
                                                         <label className="block text-xs font-medium text-gray-600 mb-1">
                                                           Sensitivitas 
@@ -2898,6 +2928,7 @@ const InstrumentsCRUD: React.FC = () => {
                                                           placeholder="Ex: 7.22"
                                                         />
                                                       </div>
+                                                      )}
                                                     </div>
                                                     {isRainSensor && (
                                                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -3876,6 +3907,7 @@ const InstrumentsCRUD: React.FC = () => {
                                       placeholder="Ex: 0.01"
                                     />
                                   </div>
+                                  {isPyranometerSensor(sensor.sensor_name_id) && (
                                   <div className="sm:col-span-2">
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
                                       Sensitivitas 
@@ -3890,6 +3922,7 @@ const InstrumentsCRUD: React.FC = () => {
                                       placeholder="Ex: 7.22"
                                     />
                                   </div>
+                                  )}
                                 </div>
                                 {/* Kolom Funnel hanya tampil untuk sensor curah hujan:
                                       kode alat master 'RR' (alat tunggal) atau sensor
@@ -4148,6 +4181,7 @@ const InstrumentsCRUD: React.FC = () => {
                                   placeholder="Ex: 0.01"
                                 />
                               </div>
+                              {isPyranometerSensor(sensor.sensor_name_id) && (
                               <div className="md:col-span-2">
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
                                   Sensitivitas 
@@ -4162,6 +4196,7 @@ const InstrumentsCRUD: React.FC = () => {
                                   placeholder="Ex: 7.22"
                                 />
                               </div>
+                              )}
                             </div>
                           </div>
                         ))}

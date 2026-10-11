@@ -15,6 +15,7 @@ import {
   resolveNotesOthersHtml,
 } from '../../../../lib/rich-text'
 import { resultsToLegacyView } from '../../../../lib/validators/certificate-results-render-adapter'
+import { formatTanggalIndonesia } from '../../../../lib/format-date-id'
 import {
   resolveRoomCondition,
   isRoomConditionAlwaysMean,
@@ -2096,16 +2097,7 @@ const ViewCertificatePage: React.FC = () => {
                         <td className="align-top">:</td>
                         <td className="align-top font-bold">
                           {' '}
-                          {cert.issue_date
-                            ? new Date(cert.issue_date).toLocaleDateString(
-                                'id-ID',
-                                {
-                                  day: 'numeric',
-                                  month: 'long',
-                                  year: 'numeric',
-                                },
-                              )
-                            : '-'}
+                          {formatTanggalIndonesia(cert.issue_date)}
                         </td>
                       </tr>
                       <tr>
@@ -2555,7 +2547,7 @@ const ViewCertificatePage: React.FC = () => {
                                           {
                                             label: 'Tanggal Masuk / ',
                                             labelEng: 'Date of Entry',
-                                            value: start,
+                                            value: formatTanggalIndonesia(start),
                                             topGap: true,
                                           },
                                         ]),
@@ -2563,7 +2555,9 @@ const ViewCertificatePage: React.FC = () => {
                                       label: 'Tanggal Kalibrasi / ',
                                       labelEng: 'Calibration Date',
                                       // Sertifikat lapang: tanggal kalibrasi = tanggal mulai kegiatan.
-                                      value: isLapang ? start : end,
+                                      value: formatTanggalIndonesia(
+                                        isLapang ? start : end,
+                                      ),
                                       topGap: isLapang,
                                     },
                                     {
