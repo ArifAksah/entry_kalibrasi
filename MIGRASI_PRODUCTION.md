@@ -56,6 +56,35 @@ Hanya jalankan bila tabel/kolom terkait belum ada:
 
 ---
 
+## Langkah 4 — Surat Keterangan (WAJIB untuk deploy ini)
+
+Deploy perubahan Surat Keterangan (template/view/print, TTE, verifikasi 3 tahap,
+linimasa, log, filter & pagination, format tanggal Indonesia) memerlukan tiga
+migrasi tambahan. **Semuanya idempoten** — aman dijalankan berulang.
+
+Jalankan lewat **Supabase SQL Editor** (production), tiap file sebagai satu query:
+
+### 4a. `database/letter_included_sensors.sql`
+Menambah kolom `letter.included_sensor_ids bigint[]` — daftar sensor yang benar-benar
+dipakai pada surat (NULL = tampilkan semua sensor instrumen, perilaku lama).
+Dipakai oleh: form buat/edit Surat Keterangan (hapus sensor tersimpan).
+
+### 4b. `database/create_letter_logs_table.sql`
+Membuat tabel `letter_logs` (+ index, RLS, dan trigger pengisi `performed_by_name`).
+Dipakai oleh: linimasa surat, menu **Log Surat**, dan `letter-log-helper`.
+
+### 4c. `database/letter_number_at_creation.sql`
+Mengganti fungsi trigger `sync_letter_from_order_item` sehingga **nomor surat dibuat
+saat draf dibuat** (bukan menunggu TTE), memakai bulan/tahun saat dibuat — mengikuti
+perilaku nomor sertifikat. Nomor yang sudah ada **tidak** diubah, jadi surat lama tetap
+aman; script ini tidak menyentuh baris yang sudah ada.
+
+> 4c mengubah **perilaku penomoran**. Jalankan bersamaan dengan deploy kode
+> (sebelum/saat restart), jangan jauh sebelumnya, agar nomor draf tidak muncul di
+> UI versi lama.
+
+---
+
 ## Urutan aman deploy di server
 
 ```bash
@@ -63,18 +92,23 @@ cd ~/kalibrasi_opr
 git stash                      # jika ada perubahan lokal di server
 git pull origin master
 
-# 1) Jalankan migrasi Langkah 1 di Supabase SQL Editor (production)
-# 2) Verifikasi kolom sudah ada (opsional, lewat SQL Editor):
+# 1) Jalankan migrasi Langkah 1 (ops/QC & personel) di Supabase SQL Editor
+# 2) Jalankan migrasi Langkah 4 (4a, 4b, 4c — Surat Keterangan)
+# 3) Verifikasi kolom sudah ada (opsional, lewat SQL Editor):
 #    select column_name from information_schema.columns
 #     where table_schema='public' and table_name='raw_data'
 #       and column_name in ('source_row_index','standard_certificate_id');
 #    select column_name from information_schema.columns
 #     where table_schema='public' and table_name='personel'
 #       and column_name in ('is_active','deleted_at');
+#    select column_name from information_schema.columns
+#     where table_schema='public' and table_name='letter'
+#       and column_name in ('included_sensor_ids');
+#    select to_regclass('public.letter_logs');  -- harus tidak NULL
 
 npm install                    # jika ada dependency baru
 npm run build
-pm2 restart next-app
+pm2 restart kalibrasi-app      # proses aktifnya bernama kalibrasi-app (bukan next-app)
 ```
 
 ---
@@ -92,5 +126,5 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3001/api/personel
 Cek log PM2 untuk memastikan tidak ada error `column ... does not exist`:
 
 ```bash
-pm2 logs next-app --lines 100 | grep -i "does not exist" || echo "OK: tidak ada error kolom"
+pm2 logs kalibrasi-app --lines 100 | grep -i "does not exist" || echo "OK: tidak ada error kolom"
 ```

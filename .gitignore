@@ -55,6 +55,10 @@ coverage/
 # Dependency directories
 jspm_packages/
 
+# Python virtualenv lokal (tool baca dokumen: markitdown)
+.venv/
+__pycache__/
+
 # Optional npm cache directory
 .npm
 
@@ -119,6 +123,8 @@ tsbuildinfo
 
 # Runtime PDF output (generated certificates)
 /e-certificate-signed/
+# Runtime PDF output (generated letters / surat keterangan)
+/e-letter-signed/
 
 # DB/session backup snapshots
 /backups/
